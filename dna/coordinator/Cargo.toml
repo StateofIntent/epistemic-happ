@@ -1,0 +1,38 @@
+[package]
+name = "epistemic_coordinator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned exactly (not a loose "0.4") and matched to epistemic_integrity's
+# own hdi pin (=0.5.4) — see that crate's Cargo.toml comment. Without a
+# Cargo workspace unifying versions across the two zome crates, loose
+# ranges let them resolve to different physical hdi instances, which
+# then made cargo treat structurally-identical types (e.g. EntryHash) as
+# incompatible across the crate boundary. Confirmed against a real build.
+hdk = "=0.4.4"
+serde = { version = "1.0", features = ["derive"] }
+epistemic_integrity = { path = "../integrity" }
+sha2 = "0.10"
+hex = "0.4"
+
+# [dev-dependencies] intentionally omit hdk's "mock" feature: hdk 0.4.4's
+# own bundled `mockall::mock! { impl HdkT for HdkT { ... } }` block
+# references methods (accept_countersigning_preflight_request,
+# block_agent, schedule, get_agent_key_lineage, is_same_agent) that don't
+# exist on the HdkT/HdiT traits this version of hdk itself resolves —
+# E0407, a bug in the published crate, not fixable from this Cargo.toml.
+# This turned out not to matter for `cargo test`: contrary to this
+# project's earlier assumption, the crate links and runs natively just
+# fine without any mock backend — hdk's non-mock host bindings apparently
+# aren't unconditional extern "C" wasm imports that would fail to
+# resolve, so src/lib.rs's pure-logic unit tests (`cargo test --lib`)
+# actually execute and pass, verified against a real build. What the
+# missing mock feature genuinely blocks is host-call-mocking tests
+# specifically (a MockHdkT-based tests/bridge_integration.rs was
+# attempted and had to be removed for this reason) — not test execution
+# in general. Production `cargo build --target wasm32-unknown-unknown`
+# (the real deployment target) never touches this dependency either way.

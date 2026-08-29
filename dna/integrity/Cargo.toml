@@ -1,0 +1,24 @@
+[package]
+name = "epistemic_integrity"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pinned to exactly what hdk 0.4.4 (the coordinator zome's dependency)
+# actually resolves hdi to — a loose "0.4" here let this crate build
+# standalone against hdi 0.4.6, which type-checks fine in isolation but
+# is a physically different crate instance from the hdi 0.5.4 that hdk
+# 0.4.4 pulls in. With no Cargo workspace unifying versions across
+# dna/integrity and dna/coordinator, that split produced HoloHash<Entry>
+# (via this crate) vs HoloHash<hdk::prelude::hash_type::Entry> (via
+# hdk's prelude) being reported as different types when the coordinator
+# zome tried to use both together — confirmed against a real build, not
+# a preventative guess.
+hdi = "=0.5.4"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+hdk = "=0.4.4"

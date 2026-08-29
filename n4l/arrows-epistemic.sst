@@ -1,0 +1,68 @@
+# ============================================================================
+# Epistemic Resonance Protocol — N4L arrow definitions
+#
+# These relations are used by the coordinator zome's N4L export
+# (dna/coordinator/src/lib.rs, ToN4L trait) and must be loaded alongside
+# SSTorytime's standard SSTconfig/ arrow files before ingesting exported
+# .dat files with the N4L compiler.
+#
+# VERIFICATION STATUS: this file and the exporter that depends on it have
+# been checked by hand against the published N4L spec
+# (https://github.com/markburgess/SSTorytime/blob/main/docs/N4L.md) but
+# have NOT been run through the real N4L Go binary. Before relying on
+# this in production, run the actual export through `N4L -v` (or `-d`
+# for diagnostics) with this file present in SSTconfig/ and confirm it
+# parses without errors. "Matches the spec as read" and "actually
+# parses" are different claims until that check happens.
+#
+# Per SSTorytime's four-type model (see docs/N4L.md):
+#   0 similarity  — undirected closeness
+#   1 leadsto     — causal/temporal order, one thing follows/affects another
+#   2 contains    — membership, part-of
+#   3 properties  — descriptive attributes
+# ============================================================================
+
+- leadsto
+
+    # A critique doesn't just describe a claim, it acts on its standing —
+    # so it's causal/affecting, not merely descriptive.
+    + critiques (crit)       - is critiqued by (critby)
+    + contradicts (contra)   - is contradicted by (contraby)
+    + adopts species (adopts) - is adopted by (adoptby)
+    + retracts (retr)        - is retracted by (retrby)
+    + replaced by (replby)   - replaces (repl)
+    + promoted to (promto)   - promoted from (promfrom)
+    + replies to (replyto)   - has reply (hasreply)
+    + imported from (impfrom) - was imported to (impto)
+
+- contains
+
+    + has evidence (ev)      - is evidence for (evfor)
+    + requires promise (reqp) - is required promise of (reqpof)
+    + covers period (covp)   - is period of (covpof)
+    + has promise (haspr)    - is promise of (prof)
+    + has condition (hascond) - is condition of (condof)
+
+- properties
+
+    + asserted by (assertby)   - is the assertion of (assertof)
+    + has domain (dom)         - is domain of (domof)
+    + has confidence (conf)    - is confidence of (confof)
+    + critique mode (cmode)    - is mode of critique (cmodeof)
+    + has tag (tag)            - is tag of (tagof)
+    + has source url (srcurl)  - is url source for (srcurlof)
+    + evidence type (evtype)   - is type of evidence (evtypeof)
+    + bridged via (bridge)     - is bridge for (bridgeof)
+    + bridge id (bridgeid)     - is bridge id of (bridgeidof)
+    + has description (desc)   - describes (descof)
+    + created by (createdby)   - is creator of (creatorof)
+    + expires at (expat)       - is expiry of (expof)
+    + has checksum (chk)       - is checksum of (chkof)
+    + has expertise tag (exp)  - is expertise tag of (expof2)
+    + sample action (sampact)  - is sample for (sampof)
+    + has entry count (ecount) - is count of (ecountof)
+    + promise action (promact) - is action of promise (promactof)
+    + promise modality (mod)   - is modality of (modof)
+    + condition type (condtype) - is type of condition (condtypeof)
+    + founded on constitution (foundedon) - is constitution founding (foundingof)
+    + target type (targtype)   - is target type of (targtypeof)

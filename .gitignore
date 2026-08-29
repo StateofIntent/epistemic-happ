@@ -1,0 +1,18 @@
+# Rust build artifacts (both zomes)
+/dna/integrity/target/
+/dna/coordinator/target/
+target/
+# Cargo.lock is intentionally NOT ignored: both zomes build to wasm
+# binaries that get deployed as part of the hApp, not published as
+# libraries, so the lockfile is kept for reproducible builds.
+
+# Node / bridge service
+/bridge/node_modules/
+/bridge/dist/
+node_modules/
+dist/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+*.swp

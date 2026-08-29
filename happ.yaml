@@ -1,0 +1,17 @@
+manifest_version: "1"
+name: epistemic-resonance-happ
+description: "Epistemic Resonance Protocol - A distributed knowledge system with Twitter bridge"
+roles:
+  - name: epistemic
+    provisioning:
+      strategy: create
+      deferred: false
+    dna:
+      bundled: ./epistemic.dna
+      modifiers:
+        network_seed: ~
+        properties: ~
+        origin_time: ~
+        quantum_time: ~
+      installed_hash: ~
+      clone_limit: 0

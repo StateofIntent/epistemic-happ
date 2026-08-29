@@ -1,0 +1,20 @@
+manifest_version: "1"
+name: epistemic-dna
+integrity:
+  origin_time: 2026-07-25T00:00:00.000000Z
+  network_seed: ~
+  properties: ~
+  zomes:
+    - name: epistemic_integrity
+      bundled: ../../target/wasm32-unknown-unknown/release/epistemic_integrity.wasm
+      hash: ~
+      dependencies: ~
+      dylib: ~
+coordinator:
+  zomes:
+    - name: epistemic_coordinator
+      bundled: ../../target/wasm32-unknown-unknown/release/epistemic_coordinator.wasm
+      hash: ~
+      dependencies:
+        - name: epistemic_integrity
+      dylib: ~
