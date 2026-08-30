@@ -1,0 +1,47 @@
+- epistemic export
+
+@evidence_361aa43d92f933c1 "RCT n=40, lumbar EMG pre/post pelvic tilt cueing" (asserted by) "uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+     "                (evidence type) "Study"
+     "                (has dht hash) "uhCEkZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"
+     "                (has source url) "https://example.org/study"
+
+@claim_5c1fa561b51e5ac5 "Anterior pelvic tilt correction reduces lumbar strain" (asserted by) "uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+     "                (has domain) "LumbarRehab"
+     "                (has confidence) "High"
+     "                (has dht hash) "uhCEkZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl"
+     "                (has evidence) "uhCEkZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm"
+     "                (has tag) "hip-mobility"
+     "                (has tag) "fascia"
+
+@critique_3ba0825786b79939 "This mechanism ignores fascial tension as a confound" (critiques) $claim_5c1fa561b51e5ac5.1
+     "                (target type) "Claim"
+     "                (critique mode) "Methodological"
+     "                (asserted by) "uhCAkAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC"
+     "                (has dht hash) "uhCEkZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dn"
+     "                (replication attempted) "false"
+
+@worldline_0bbc491ea5d6f86d "worldline of uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB" (asserted by) "uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+     "                (has checksum) "0000000000000000000000000000000000000000000000000000000000000000"
+     "                (has dht hash) "uhCEkaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGho"
+     "                (has expertise tag) "physio"
+     "                (covers period,p0) "LumbarRehab"
+     "                (sample action,p0) "uhCkkCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoK"
+     "                (has entry count,p0) "1"
+     "                (covers period,p1) "HipMobility"
+     "                (sample action,p1) "uhCkkCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsL"
+     "                (has entry count,p1) "1"
+
+@constitution_3e2737ca83627e83 "constitution of uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB" (asserted by) "uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+     "                (has dht hash) "uhCEkaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp"
+     "                (promise action,p0) "validate_claims"
+     "                (promise domain,p0) "LumbarRehab"
+     "                (promise modality,p0) "Methodological"
+     "                (condition type,c0) "if_evidence_present"
+     "                (condition param,c0,p0) "evidence_hashes.len() > 0"
+
+@membrane_926b3ef7149353f2 "LumbarRehab" (has description) "Lumbar rehabilitation practice and research"
+     "                (created by) "uhCAkAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+     "                (has dht hash) "uhCEkampqampqampqampqampqampqampqampqampqampqampqampq"
+     "                (founded on constitution) "uhCkkaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlp"
+     "                (requires promise) "validate_claims"
+

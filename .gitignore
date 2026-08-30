@@ -12,6 +12,9 @@ target/
 node_modules/
 dist/
 
+# SSTorytime local instance (cloned/built by sstorytime/setup.sh)
+/sstorytime/.local/
+
 # OS/editor cruft
 .DS_Store
 Thumbs.db
