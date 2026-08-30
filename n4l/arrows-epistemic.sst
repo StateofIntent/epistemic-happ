@@ -2,18 +2,40 @@
 # Epistemic Resonance Protocol — N4L arrow definitions
 #
 # These relations are used by the coordinator zome's N4L export
-# (dna/coordinator/src/lib.rs, ToN4L trait) and must be loaded alongside
-# SSTorytime's standard SSTconfig/ arrow files before ingesting exported
-# .dat files with the N4L compiler.
+# (dna/coordinator/src/lib.rs, ToN4L trait).
 #
-# VERIFICATION STATUS: this file and the exporter that depends on it have
-# been checked by hand against the published N4L spec
-# (https://github.com/markburgess/SSTorytime/blob/main/docs/N4L.md) but
-# have NOT been run through the real N4L Go binary. Before relying on
-# this in production, run the actual export through `N4L -v` (or `-d`
-# for diagnostics) with this file present in SSTconfig/ and confirm it
-# parses without errors. "Matches the spec as read" and "actually
-# parses" are different claims until that check happens.
+# LOADING: this file is NOT read automatically by placing it "alongside"
+# SSTorytime's standard SSTconfig/ files, despite what an earlier version
+# of this comment (and the README) claimed. The real N4L binary's
+# ReadConfig() only ever loads a hardcoded list of 6 exact filenames
+# (arrows-LT-1.sst, arrows-NR-0.sst, arrows-CN-2.sst, arrows-EP-3.sst,
+# annotations.sst, closures.sst) — confirmed by reading cmd/N4L/N4L.go.
+# A 7th file, however named, is silently never read. To actually use
+# these relations, merge each of this file's three sections into the
+# matching one of those 6 files (this one's `- leadsto` body into
+# arrows-LT-1.sst, `- contains` into arrows-CN-2.sst, `- properties`
+# into arrows-EP-3.sst), each as its own `:: epistemic ::` context block
+# — this file's own three-section layout mirrors that split for exactly
+# this reason.
+#
+# VERIFICATION STATUS: run end-to-end against the real N4L Go binary
+# (built from github.com/markburgess/SSTorytime, cmd/N4L) with a live
+# PostgreSQL backend (N4L's Open() pings the DB unconditionally, even
+# for -v/no-upload runs) and a real Rust-generated export sample. This
+# file's vocabulary itself parses cleanly once merged as described
+# above. Two further defects were found and fixed as a result of that
+# run, both now reflected in dna/coordinator/src/lib.rs: (1) every
+# ToN4L impl's output is missing the `- <chapter>` declaration N4L
+# requires before any other line (fatal: "Declarations outside a
+# section or chapter at line 1") — export_to_n4l now emits one; (2)
+# WorldlineTrace/Constitution baked a loop index directly into relation
+# names ("covers period 0", "promise 0 action", ...), which can never
+# match a fixed, pre-declared arrow vocabulary — fixed by moving the
+# index to N4L's comma-delimited context-tag syntax ("covers period,p0")
+# on a static, registered name instead. `has dht hash`,
+# `replication attempted`, `promise domain`, and `condition param` were
+# also missing from this file outright and are now registered above.
+# See README §5.2/§5.3 for the full account.
 #
 # Per SSTorytime's four-type model (see docs/N4L.md):
 #   0 similarity  — undirected closeness
@@ -66,3 +88,7 @@
     + condition type (condtype) - is type of condition (condtypeof)
     + founded on constitution (foundedon) - is constitution founding (foundingof)
     + target type (targtype)   - is target type of (targtypeof)
+    + has dht hash (dhth)       - is dht hash of (dhthof)
+    + replication attempted (repat) - is attempt of replication (repatof)
+    + promise domain (promdom) - is domain of promise (promdomof)
+    + condition param (condparam) - is parameter of condition (condparamof)

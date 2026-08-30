@@ -180,10 +180,20 @@ impl ToN4L for WorldlineTrace {
         for tag in &self.expertise_tags {
             out += &n4l_prop("has expertise tag", &n4l_esc(tag));
         }
+        // The period index is carried as an N4L context tag (the
+        // "(name,ctx)" comma form GetLinkArrowByName parses), not baked
+        // into the relation name itself. N4L's arrow directory is a
+        // fixed, pre-declared vocabulary (n4l/arrows-epistemic.sst) — an
+        // open-ended family of relation names like "covers period 3"
+        // can never all be registered in advance, and was confirmed
+        // fatal against the real binary ("No such arrow has been
+        // declared in the configuration: (covers period 0)"). Prefixing
+        // the tag with a letter ("p0") keeps it a non-numeric context
+        // string rather than being parsed as a relation weight.
         for (i, b) in self.period_boundaries.iter().enumerate() {
-            out += &n4l_prop(&format!("covers period {}", i), &b.domain_tag);
-            out += &n4l_prop(&format!("period {} sample action", i), &b.sample_action.to_string());
-            out += &n4l_prop(&format!("period {} entry count", i), &b.entry_count.to_string());
+            out += &n4l_prop(&format!("covers period,p{}", i), &b.domain_tag);
+            out += &n4l_prop(&format!("sample action,p{}", i), &b.sample_action.to_string());
+            out += &n4l_prop(&format!("has entry count,p{}", i), &b.entry_count.to_string());
         }
         out.push('\n');
         out
@@ -242,17 +252,20 @@ impl ToN4L for Constitution {
         if let Some(expires) = self.expires_at {
             out += &n4l_prop("expires at", &expires.to_string());
         }
+        // Same fix as WorldlineTrace above: index carried as an N4L
+        // context tag on a static, registered relation name, never
+        // interpolated into the name itself.
         for (i, p) in self.promises.iter().enumerate() {
-            out += &n4l_prop(&format!("promise {} action", i), &p.action);
-            out += &n4l_prop(&format!("promise {} domain", i), &p.domain);
+            out += &n4l_prop(&format!("promise action,p{}", i), &p.action);
+            out += &n4l_prop(&format!("promise domain,p{}", i), &p.domain);
             if let Some(ref modality) = p.modality {
-                out += &n4l_prop(&format!("promise {} modality", i), &format!("{:?}", modality));
+                out += &n4l_prop(&format!("promise modality,p{}", i), &format!("{:?}", modality));
             }
         }
         for (i, c) in self.conditions.iter().enumerate() {
-            out += &n4l_prop(&format!("condition {} type", i), &c.condition_type);
+            out += &n4l_prop(&format!("condition type,c{}", i), &c.condition_type);
             for (j, param) in c.parameters.iter().enumerate() {
-                out += &n4l_prop(&format!("condition {} param {}", i, j), param);
+                out += &n4l_prop(&format!("condition param,c{},p{}", i, j), param);
             }
         }
         out.push('\n');
@@ -1413,6 +1426,13 @@ pub struct N4LQuery {
 #[hdk_extern]
 pub fn export_to_n4l(params: N4LQuery) -> ExternResult<String> {
     let mut n4l = String::new();
+    // N4L requires every content file to open with a `- <chapter title>`
+    // declaration (docs/N4L.md's "-section/chapter" syntax) before any
+    // other declaration; a bare comment does not satisfy this. Confirmed
+    // against the real N4L binary: omitting this line fails the entire
+    // export with "Declarations outside a section or chapter at line 1"
+    // before a single entry is parsed. See README §5.2 verification note.
+    n4l.push_str("- epistemic export\n\n");
     n4l.push_str("# Epistemic Resonance Protocol - N4L Export\n\n");
 
     // Export claims.
@@ -2635,10 +2655,13 @@ mod tests {
         };
 
         let out = trace.to_n4l(&entry_hash);
-        assert!(out.contains("(covers period 0) \"LumbarRehab\""));
-        assert!(out.contains("(covers period 1) \"Nutrition\""));
-        assert!(out.contains("(period 0 entry count) \"3\""));
-        assert!(out.contains("(period 1 entry count) \"5\""));
+        // Static, registered relation name with the period index carried
+        // as an N4L comma-context tag, not baked into the name itself —
+        // see the comment on this loop in ToN4L for WorldlineTrace.
+        assert!(out.contains("(covers period,p0) \"LumbarRehab\""));
+        assert!(out.contains("(covers period,p1) \"Nutrition\""));
+        assert!(out.contains("(has entry count,p0) \"3\""));
+        assert!(out.contains("(has entry count,p1) \"5\""));
     }
 
     // --- ToN4L: Retraction ----------------------------------------------
