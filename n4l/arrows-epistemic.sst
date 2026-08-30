@@ -37,6 +37,18 @@
 # also missing from this file outright and are now registered above.
 # See README §5.2/§5.3 for the full account.
 #
+# A further pass (verified via a real N4L -u upload into a live SSTorytime
+# instance, see sstorytime/setup.sh + sstorytime/ingest.sh) found this file
+# had also redefined three arrows SSTorytime's own stock SSTconfig/ vocabulary
+# already provides under the same long name — "has description", "describes",
+# and "has condition" — which N4L flags as a long-name redefinition warning
+# (non-fatal, but a real vocabulary collision, not just noise). `has
+# description` is genuinely used (Membrane::to_n4l) and now simply resolves
+# via the stock arrow of that name instead of a redundant local one; no Rust
+# code change was needed, since to_n4l only emits the relation text, not a
+# short code. `describes` and `has condition` were never emitted by any
+# ToN4L impl at all and were removed outright as dead entries.
+#
 # Per SSTorytime's four-type model (see docs/N4L.md):
 #   0 similarity  — undirected closeness
 #   1 leadsto     — causal/temporal order, one thing follows/affects another
@@ -63,7 +75,6 @@
     + requires promise (reqp) - is required promise of (reqpof)
     + covers period (covp)   - is period of (covpof)
     + has promise (haspr)    - is promise of (prof)
-    + has condition (hascond) - is condition of (condof)
 
 - properties
 
@@ -76,7 +87,6 @@
     + evidence type (evtype)   - is type of evidence (evtypeof)
     + bridged via (bridge)     - is bridge for (bridgeof)
     + bridge id (bridgeid)     - is bridge id of (bridgeidof)
-    + has description (desc)   - describes (descof)
     + created by (createdby)   - is creator of (creatorof)
     + expires at (expat)       - is expiry of (expof)
     + has checksum (chk)       - is checksum of (chkof)
