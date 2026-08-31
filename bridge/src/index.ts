@@ -178,7 +178,24 @@ class HolochainClient {
         'see .env.example.'
       );
     }
-    const admin = await AdminWebsocket.connect({ url: new URL(HOLOCHAIN_ADMIN_URL) });
+    // `wsClientOptions.origin` sets the WebSocket handshake's `Origin`
+    // header — omitted, the `ws` client (unlike a browser) sends no Origin
+    // header at all, and a real conductor's admin/app interface rejects
+    // that handshake outright with HTTP 400 before any message is ever
+    // exchanged, even under an `allowed_origins: Any` policy (Any accepts
+    // any origin value, but still requires the header to be present).
+    // Confirmed directly against a live `hc sandbox` conductor: every call
+    // below failed with `HolochainError [ConnectionError]: ... Unexpected
+    // server response: 400` until this was added — invisible to
+    // `tsc --noEmit`, since it's a runtime handshake behavior, not a type
+    // error. The value itself just needs to be a non-empty, stable string
+    // identifying this client; the conductor doesn't validate it further.
+    const wsClientOptions = { origin: 'epistemic-bridge' };
+
+    const admin = await AdminWebsocket.connect({
+      url: new URL(HOLOCHAIN_ADMIN_URL),
+      wsClientOptions,
+    });
 
     let token;
     try {
@@ -197,6 +214,7 @@ class HolochainClient {
     this.client = await AppWebsocket.connect({
       url: new URL(HOLOCHAIN_URL),
       token,
+      wsClientOptions,
     });
 
     // HOLOCHAIN_APP_ID previously never touched anything after being read

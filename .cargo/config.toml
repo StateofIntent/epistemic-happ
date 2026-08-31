@@ -1,0 +1,29 @@
+# Required to actually LINK either zome crate for the real deployment
+# target (wasm32-unknown-unknown), not just type-check it.
+#
+# hdi/hdk declare Holochain's host functions (must_get_entry,
+# must_get_agent_activity, hash, verify_signature, dna_info, etc. — the
+# __hc__* symbols) as `extern "C"` functions with no body: on a native
+# target these would be resolved against a shared library, but on wasm32
+# they're meant to become WASM *import* entries, resolved at runtime by
+# the conductor's wasmer host, not at link time. rust-lld's wasm driver
+# (wasm-ld) does not do this by default — without --allow-undefined it
+# treats every one of those as an unresolved-symbol link error instead.
+#
+# This was never caught by this project's own verification, because
+# `cargo check` (what every "verified against a real build" note in
+# README.md / Cargo.toml refers to) does NOT invoke the linker at all —
+# only `cargo build`/`cargo build --release` does. `cargo check` passing
+# is compile-time-only evidence; it says nothing about whether the crate
+# actually links into a deployable .wasm. Confirmed directly: without
+# this file, `cargo build --target wasm32-unknown-unknown --release`
+# fails in dna/integrity with ~12 "undefined symbol: __hc__*" errors;
+# with it, both zomes link cleanly and produce real .wasm binaries.
+#
+# Lives at the repo root (not per-crate) because Cargo walks upward from
+# the invoking directory looking for .cargo/config.toml, so this one file
+# covers both dna/integrity and dna/coordinator regardless of which is
+# built from — matching how this repo already has no Cargo workspace
+# unifying the two crates otherwise (see either crate's Cargo.toml).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--allow-undefined"]

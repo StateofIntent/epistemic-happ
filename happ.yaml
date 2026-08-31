@@ -7,7 +7,15 @@ roles:
       strategy: create
       deferred: false
     dna:
-      bundled: ./epistemic.dna
+      # `hc dna pack .` (run from dna/, per README.md §6.2) names its
+      # output after dna.yaml's own `name:` field (epistemic-dna) and
+      # writes it alongside dna.yaml, i.e. dna/epistemic-dna.dna — not
+      # ./epistemic.dna at the repo root, which never existed. Confirmed
+      # directly: `hc app pack .` failed with "No such file or directory"
+      # at that path before this fix, since nothing had ever actually run
+      # that command against this repo before (same class of bug as
+      # dna.yaml's own previously-wrong bundled wasm paths).
+      bundled: ./dna/epistemic-dna.dna
       modifiers:
         network_seed: ~
         properties: ~

@@ -19,6 +19,18 @@ dist/
 # SSTorytime local instance (cloned/built by sstorytime/setup.sh)
 /sstorytime/.local/
 
+# Packed DNA/hApp bundles (produced by `hc dna pack` / `hc app pack` — see
+# README.md §6.2-6.3). Rebuildable from source; not meant to be committed.
+/dna/*.dna
+/*.happ
+
+# hc sandbox bookkeeping (created by `hc sandbox generate`/`run` — see
+# README.md §6.6). Point at a throwaway conductor data dir under /tmp;
+# nothing here is meant to survive past the sandbox that created it.
+/.hc
+/.hc_auth
+/.hc_live_*
+
 # OS/editor cruft
 .DS_Store
 Thumbs.db
