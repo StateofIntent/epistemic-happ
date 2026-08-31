@@ -1,10 +1,15 @@
-import { AppWebsocket } from '@holochain/client';
+import { AdminWebsocket, AppWebsocket, CellType, type AppInfo, type CellId } from '@holochain/client';
 // AppAgentCall, RoleName, ZomeName, FunctionName were imported here but
 // never used anywhere in this file — AppAgentCall doesn't even exist as
 // an export of the installed @holochain/client version (a real, hard
 // compile error caught by actually running `tsc`, not previously run in
 // this project). Removed rather than fixed, since none of the four were
 // load-bearing.
+//
+// AdminWebsocket, CellType and CellId are needed for the real admin-auth
+// flow below (see connect()) — verified against the installed
+// @holochain/client 0.17.1's own .d.ts files, not guessed: both are
+// genuine exports of "@holochain/client"'s root index.
 import { TwitterApi } from 'twitter-api-v2';
 import * as dotenv from 'dotenv';
 import * as winston from 'winston';
@@ -117,6 +122,12 @@ const logger = winston.createLogger({
 // ============================================================================
 
 const HOLOCHAIN_URL = process.env.HOLOCHAIN_URL || 'ws://localhost:8888';
+// The admin interface is a separate port from the app interface — the
+// conductor's config.yaml declares both independently, and there is no
+// way to derive one from the other. Required for the real admin-auth
+// flow below; unlike HOLOCHAIN_URL there's no conventional default port
+// to fall back to, so this is intentionally left unset if not provided.
+const HOLOCHAIN_ADMIN_URL = process.env.HOLOCHAIN_ADMIN_URL;
 const HOLOCHAIN_APP_ID = process.env.HOLOCHAIN_APP_ID || 'epistemic-resonance-happ';
 const TWITTER_API_KEY = process.env.TWITTER_API_KEY || '';
 const TWITTER_API_SECRET = process.env.TWITTER_API_SECRET || '';
@@ -137,25 +148,55 @@ class HolochainClient {
   }
 
   async connect() {
-    // KNOWN GAP, found by actually running `tsc` (not previously done in
-    // this project — see the coordinator zome's TESTS section for the
-    // Rust-side equivalent of this discovery): AppWebsocket's `token`
-    // option is typed `AppAuthenticationToken = number[]`, a real byte
-    // token obtained via `AdminWebsocket#issueAppAuthenticationToken` —
-    // not an arbitrary string. The `'bridge-auth-token'` placeholder
-    // this used to pass was never a valid token; this bridge has never
-    // actually been able to authenticate against a real conductor.
-    // Omitting `token` here fixes the type error and lets a
-    // single-app/no-auth-required conductor setup work, but a
-    // multi-app or auth-enforcing setup still needs a real admin
-    // connection: connect an AdminWebsocket, call
-    // issueAppAuthenticationToken with this app's installed_app_id, and
-    // pass the resulting number[] here. Not implemented — a genuine
-    // admin-auth flow is a separate piece of work from this file's
-    // other fixes, not something to guess at without a real conductor
-    // to verify against.
+    // Real admin-auth flow, verified against the installed
+    // @holochain/client 0.17.1's own .d.ts/.js (not guessed):
+    //
+    //   1. AppWebsocket's `token` option is typed
+    //      `AppAuthenticationToken = number[]`, a real byte token obtained
+    //      via `AdminWebsocket#issueAppAuthenticationToken` — the
+    //      `'bridge-auth-token'` placeholder this file used to pass was
+    //      never a valid token, so this bridge could never authenticate
+    //      the App API connection itself.
+    //   2. Separately — and previously missed entirely, since it only
+    //      surfaces once (1) is fixed and a real callZome is attempted —
+    //      this client's `callZome` signs every request via
+    //      `getSigningCredentials(cell_id)` (zome-call-signing.js), which
+    //      returns `undefined` and throws `NoSigningCredentialsForCell`
+    //      unless `AdminWebsocket#authorizeSigningCredentials` has been
+    //      called for that cell first. Fixing only the connection token
+    //      would leave every `callZome()` in this file failing on its
+    //      first real call against a live conductor.
+    //
+    // Both need an AdminWebsocket, which listens on a different port than
+    // the App API (HOLOCHAIN_URL) — there is no way to derive one from the
+    // other, so HOLOCHAIN_ADMIN_URL is a separate, required piece of config.
+    if (!HOLOCHAIN_ADMIN_URL) {
+      throw new Error(
+        'HOLOCHAIN_ADMIN_URL is not set. A real conductor connection needs ' +
+        'the admin interface URL (e.g. ws://localhost:8889) to issue an app ' +
+        'authentication token and authorize zome-call signing credentials — ' +
+        'see .env.example.'
+      );
+    }
+    const admin = await AdminWebsocket.connect({ url: new URL(HOLOCHAIN_ADMIN_URL) });
+
+    let token;
+    try {
+      const issued = await admin.issueAppAuthenticationToken({
+        installed_app_id: this.appId,
+      });
+      token = issued.token;
+    } catch (error) {
+      throw new Error(
+        `Failed to issue an app authentication token for "${this.appId}" via ` +
+        `the admin interface at ${HOLOCHAIN_ADMIN_URL}. Confirm HOLOCHAIN_APP_ID ` +
+        `matches an app actually installed on this conductor. Cause: ${error}`
+      );
+    }
+
     this.client = await AppWebsocket.connect({
       url: new URL(HOLOCHAIN_URL),
+      token,
     });
 
     // HOLOCHAIN_APP_ID previously never touched anything after being read
@@ -163,25 +204,56 @@ class HolochainClient {
     // isn't needed for that — but it's still worth using to catch a
     // misconfigured .env early, by checking it against whatever app the
     // conductor actually has connected on this socket.
-    try {
-      const info = await this.client.appInfo();
-      const runningAppId = info?.installed_app_id;
-      if (runningAppId && runningAppId !== this.appId) {
-        logger.warn(
-          `Configured HOLOCHAIN_APP_ID ("${this.appId}") does not match the ` +
-          `conductor's running app ("${runningAppId}"). Zome calls use role ` +
-          `names, not this id, so calls should still work, but check your .env.`
-        );
-      }
-    } catch (error) {
-      // appInfo()'s availability/shape on this client version hasn't been
-      // verified against a real conductor — same caveat as the rest of
-      // this file's Holochain integration. Don't let a failure here be
-      // fatal to startup.
-      logger.warn('Could not verify installed_app_id via appInfo():', error);
+    // Explicitly typed (this.client itself stays `any`, per this file's
+    // existing style — see the class field below) so cell_info below gets
+    // its real Record<RoleName, Array<CellInfo>> shape instead of TS
+    // inferring `unknown[]` from Object.values() on an `any`-typed value.
+    //
+    // This call used to be wrapped in a try/catch that only logged a
+    // warning on failure, since appInfo() was previously just a nice-to-
+    // have sanity check. It's no longer optional: cell_info below is now
+    // load-bearing — authorizeSigningCredentials can't run without it, and
+    // skipping that silently would just move today's failure from here to
+    // the first callZome() call instead, with a less useful error.
+    const info: AppInfo = await this.client.appInfo();
+    const runningAppId = info?.installed_app_id;
+    if (runningAppId && runningAppId !== this.appId) {
+      logger.warn(
+        `Configured HOLOCHAIN_APP_ID ("${this.appId}") does not match the ` +
+        `conductor's running app ("${runningAppId}"). Zome calls use role ` +
+        `names, not this id, so calls should still work, but check your .env.`
+      );
     }
 
-    logger.info(`Connected to Holochain conductor (app: ${this.appId})`);
+    // Authorize zome-call signing credentials for every real cell this app
+    // has — required for (2) above. `info.cell_info` is keyed by role name;
+    // each role can have provisioned/cloned/stem cells (CellType), of which
+    // only provisioned and cloned cells have a real cell_id to sign for.
+    const cellIds: CellId[] = [];
+    for (const roleCells of Object.values(info.cell_info)) {
+      for (const cell of roleCells) {
+        if (CellType.Provisioned in cell) {
+          cellIds.push(cell[CellType.Provisioned].cell_id);
+        } else if (CellType.Cloned in cell) {
+          cellIds.push(cell[CellType.Cloned].cell_id);
+        }
+      }
+    }
+    if (cellIds.length === 0) {
+      logger.warn(
+        `App "${this.appId}" has no provisioned or cloned cells — appInfo() ` +
+        `returned cell_info with nothing to authorize signing credentials for. ` +
+        `Every callZome() will fail with NoSigningCredentialsForCell.`
+      );
+    }
+    for (const cellId of cellIds) {
+      await admin.authorizeSigningCredentials(cellId);
+    }
+
+    logger.info(
+      `Connected to Holochain conductor (app: ${this.appId}, ` +
+      `${cellIds.length} cell(s) authorized for zome-call signing)`
+    );
   }
 
   async callZome(roleName: string, zomeName: string, fnName: string, payload: any): Promise<any> {

@@ -11,6 +11,10 @@ target/
 /bridge/dist/
 node_modules/
 dist/
+# Holds live conductor/Twitter credentials — see bridge/.env.example for
+# the documented, safe-to-commit template.
+/bridge/.env
+.env
 
 # SSTorytime local instance (cloned/built by sstorytime/setup.sh)
 /sstorytime/.local/
