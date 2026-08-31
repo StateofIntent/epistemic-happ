@@ -1713,6 +1713,233 @@ pub fn verify_trace_checksum(trace_hash: AnyDhtHash) -> ExternResult<bool> {
 }
 
 // ============================================================================
+// NEIGHBORHOOD BINDING (OpenZoo / HRR) — README §2.5
+// ============================================================================
+// A second, independent HRR use case from worldline binding above —
+// §2.5 is explicit these are separate roadmap items, not one implying
+// the other. Where worldline binding compresses one agent's source
+// chain, indexed by time ("when did this agent speak"), neighborhood
+// binding compresses one Claim's local neighborhood — its direct
+// evidence citations and the critiques that target it — indexed
+// associatively ("what's near this claim"), queried by role
+// (Evidence/Critique) rather than by period index.
+//
+// This deliberately does NOT introduce a new DHT entry type. §2.5's own
+// constraint table is explicit that neighborhood binding must be "a
+// reading lens, never a second record" — so build_neighborhood_binding
+// below writes nothing; it's a pure read that recomputes a
+// NeighborhoodBinding fresh, every call, from real evidence_hashes and
+// get_critiques_for data already on the DHT. Caching one locally (this
+// runs "locally, never as a centralized service", same as worldline
+// binding) is the caller's own business, not something this protocol
+// commits to disk.
+//
+// §2.5's constraint table also requires that "every value returned by
+// an HRR-recall function must carry the source EntryHash/ActionHash
+// list it was unbound from" — recall_neighborhood's own NeighborRecall
+// results below always carry their real source_hash, drawn only from
+// the exact list build_neighborhood_binding produced, never invented —
+// and that any such API be "named and documented distinctly from
+// get_grounding_path/export_to_n4l, which remain the only exact,
+// lossless reads" — see both functions' own doc comments below for
+// that distinction stated directly. The sybil-resonance property §2.5's
+// table names is explicitly left as an unverified design hypothesis
+// there ("not yet testable... a predicted consequence, not a built or
+// verified mechanism") — nothing below claims to test or guarantee it;
+// it inherits whatever that property turns out to be from the same
+// superposition math worldline binding already uses, no new claim is
+// made about it here.
+
+const NEIGHBORHOOD_BINDING_KEY: &[u8] = b"hrr-neighborhood-v1;dim=512;pos=source_hash";
+
+/// How this Claim's own evidence_hashes/get_critiques_for data relates
+/// to it — deliberately just these two, one hop each, not a transitive
+/// walk (get_grounding_path already owns transitive evidence walking;
+/// duplicating that here would blur exactly the "reading lens vs. exact
+/// read" line §2.5's constraint table draws).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum NeighborKind {
+    Evidence,
+    Critique,
+}
+
+fn hrr_neighbor_role_symbol(kind: &NeighborKind) -> &'static str {
+    match kind {
+        NeighborKind::Evidence => "neighbor-role:evidence",
+        NeighborKind::Critique => "neighbor-role:critique",
+    }
+}
+
+/// A neighbor's own hash, rendered via the same to_string() this
+/// codebase already uses everywhere a hash needs to become a stable
+/// string (see ToN4L's "has dht hash" fields) — the identity symbol
+/// hrr_bind associates with its role in the corpus, and what
+/// recall_neighborhood re-derives to score each of source_hashes
+/// against the unbound result.
+fn hrr_neighbor_hash_symbol(hash: &AnyDhtHash) -> String {
+    format!("neighbor-hash:{}", hash)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NeighborhoodBinding {
+    pub claim: AnyDhtHash,
+    pub corpus_payload: Vec<u8>,
+    pub binding_key: Vec<u8>,
+    // The mandatory source-hash list — see this section's own header
+    // comment. neighbor_kinds[i] is the role source_hashes[i] was bound
+    // under; both empty together for a claim with no evidence or
+    // critiques to bind.
+    pub neighbor_kinds: Vec<NeighborKind>,
+    pub source_hashes: Vec<AnyDhtHash>,
+}
+
+// Matches this file's other bounded-search caps (MAX_ATTESTATION_SEARCH_NODES,
+// MAX_GROUNDING_SEARCH_NODES) — a claim with an unusually large critique
+// stack still gets a bounded, not unbounded, corpus.
+const MAX_NEIGHBORHOOD_CRITIQUES: usize = 512;
+
+/// Builds a Claim's neighborhood binding fresh from real DHT data —
+/// never stored, see this section's header comment for why. Binds
+/// (role_symbol ⊛ neighbor_hash_symbol) for every direct evidence
+/// citation and every critique get_critiques_for finds targeting this
+/// claim, superposed into one fixed-size corpus_payload alongside the
+/// real source_hashes list recall_neighborhood needs to score against.
+///
+/// Returns an empty binding (not an error) for a claim with no evidence
+/// and no critiques — nothing to bind is a legitimate answer, the same
+/// judgment generate_worldline_trace already makes for an empty chain.
+#[hdk_extern]
+pub fn build_neighborhood_binding(claim_hash: AnyDhtHash) -> ExternResult<NeighborhoodBinding> {
+    let claim: Claim = get(claim_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Claim not found".into())))?
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Claim".into())))?;
+
+    let mut kinds: Vec<NeighborKind> = Vec::new();
+    let mut hashes: Vec<AnyDhtHash> = Vec::new();
+
+    for evidence_hash in &claim.evidence_hashes {
+        kinds.push(NeighborKind::Evidence);
+        hashes.push(AnyDhtHash::from(evidence_hash.clone()));
+    }
+
+    let critiques = get_critiques_for(claim_hash.clone())?;
+    for record in critiques.into_iter().take(MAX_NEIGHBORHOOD_CRITIQUES) {
+        kinds.push(NeighborKind::Critique);
+        hashes.push(AnyDhtHash::from(record.action_address().clone()));
+    }
+
+    if hashes.is_empty() {
+        return Ok(NeighborhoodBinding {
+            claim: claim_hash,
+            corpus_payload: Vec::new(),
+            binding_key: Vec::new(),
+            neighbor_kinds: Vec::new(),
+            source_hashes: Vec::new(),
+        });
+    }
+
+    let bound: Vec<[f32; HRR_DIM]> = kinds
+        .iter()
+        .zip(hashes.iter())
+        .map(|(kind, hash)| hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash))))
+        .collect();
+    let corpus_vector = hrr_superpose(&bound);
+
+    Ok(NeighborhoodBinding {
+        claim: claim_hash,
+        corpus_payload: hrr_vector_to_bytes(&corpus_vector),
+        binding_key: NEIGHBORHOOD_BINDING_KEY.to_vec(),
+        neighbor_kinds: kinds,
+        source_hashes: hashes,
+    })
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecallNeighborhoodInput {
+    pub corpus_payload: Vec<u8>,
+    pub binding_key: Vec<u8>,
+    // Caller-supplied candidates to probe, each with the role being
+    // tested — deliberately NOT "the binding's own source_hashes,
+    // filtered by kind": that would just echo neighbor_kinds/
+    // source_hashes back with no HRR involved at all, since role is
+    // already explicit, stored data on a NeighborhoodBinding a caller
+    // holds in full. Scoring caller-supplied candidates instead is what
+    // makes this a genuine associative probe rather than a roundabout
+    // re-listing of already-known structured fields — a caller can ask
+    // "does hash H, as Evidence, belong here" with only corpus_payload
+    // and binding_key in hand (received or cached separately from a
+    // full NeighborhoodBinding, e.g. from a peer, or checked against a
+    // DIFFERENT claim's corpus than the one H was originally bound
+    // into), which the by-source_hashes-only shape couldn't answer at
+    // all.
+    pub candidates: Vec<(AnyDhtHash, NeighborKind)>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NeighborRecall {
+    // The mandatory pointer back into the DHT — see this section's
+    // header comment. Always exactly the candidate hash this result is
+    // about (the caller's own input, echoed back paired with its
+    // score) — never a value this function invents.
+    pub source_hash: AnyDhtHash,
+    pub kind: NeighborKind,
+    pub similarity: f32,
+}
+
+/// Approximate, associative membership probe over an already-built
+/// neighborhood corpus: "does this candidate, under this claimed role,
+/// belong near this claim" — scores each (hash, kind) candidate by how
+/// strongly bind(role_symbol(kind), hash_symbol(hash)) itself resonates
+/// with the corpus (a direct correlation against the candidate's own
+/// bound-pair vector, the standard VSA "clean-up" pattern for testing a
+/// specific pair's presence in a superposition — mathematically
+/// equivalent in expectation to unbinding by role and comparing against
+/// the candidate, but doesn't require enumerating every real member
+/// first, which is what makes this usable from just corpus_payload/
+/// binding_key alone).
+///
+/// Lossy by construction, like every HRR read in this codebase — this
+/// is deliberately NOT get_grounding_path or export_to_n4l, and never a
+/// substitute for either: those remain the only exact, lossless reads
+/// of a claim's real evidence chain or critique stack (§2.5's own
+/// distinction). A NeighborRecall's similarity is a hint worth
+/// checking, not a claim of fact.
+///
+/// Returns an empty result for a binding_key that doesn't match
+/// NEIGHBORHOOD_BINDING_KEY (unset, or a future/foreign scheme version)
+/// rather than misinterpreting incompatible bytes — the same
+/// fail-closed check query_worldline_resonance performs for
+/// WorldlineTrace.
+#[hdk_extern]
+pub fn recall_neighborhood(input: RecallNeighborhoodInput) -> ExternResult<Vec<NeighborRecall>> {
+    if input.binding_key.as_slice() != NEIGHBORHOOD_BINDING_KEY {
+        return Ok(Vec::new());
+    }
+    let corpus_vector = match hrr_bytes_to_vector(&input.corpus_payload) {
+        Some(v) => v,
+        None => return Ok(Vec::new()),
+    };
+
+    let mut results: Vec<NeighborRecall> = input
+        .candidates
+        .iter()
+        .map(|(hash, kind)| {
+            let probe = hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash)));
+            NeighborRecall {
+                source_hash: hash.clone(),
+                kind: kind.clone(),
+                similarity: hrr_cosine_similarity(&corpus_vector, &probe),
+            }
+        })
+        .collect();
+    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(results)
+}
+
+// ============================================================================
 // N4L EXPORT
 //
 // VERIFICATION STATUS: output has been checked by hand against the N4L
@@ -3685,5 +3912,92 @@ mod tests {
         // #[hdk_extern] function directly.
         let is_compatible = matches!(&trace.binding_key, Some(k) if k.as_slice() == HRR_BINDING_KEY);
         assert!(!is_compatible);
+    }
+
+    // --- HRR: neighborhood binding (README §2.5) --------------------------
+    //
+    // build_neighborhood_binding/recall_neighborhood themselves need live
+    // get()/get_critiques_for host calls this crate's tests can't mock
+    // (see this Cargo.toml's own note) — the same reason
+    // generate_worldline_trace's own wiring wasn't natively unit-tested
+    // either. What's tested here directly is the pure math both externs
+    // are built from: hrr_bind/hrr_superpose/hrr_cosine_similarity plus
+    // the role/hash symbol derivation, replicated the same way
+    // build_neighborhood_binding and recall_neighborhood actually call
+    // them.
+
+    #[test]
+    fn hrr_neighbor_role_symbols_are_distinct() {
+        let sim = hrr_cosine_similarity(
+            &hrr_symbol_vector(hrr_neighbor_role_symbol(&NeighborKind::Evidence)),
+            &hrr_symbol_vector(hrr_neighbor_role_symbol(&NeighborKind::Critique)),
+        );
+        assert!(sim.abs() < 0.3, "expected low similarity between the two role symbols, got {sim}");
+    }
+
+    #[test]
+    fn hrr_neighbor_hash_symbol_is_deterministic_and_hash_specific() {
+        let a = AnyDhtHash::from(fixture_entry_hash(40));
+        let b = AnyDhtHash::from(fixture_entry_hash(41));
+        assert_eq!(hrr_neighbor_hash_symbol(&a), hrr_neighbor_hash_symbol(&a));
+        assert_ne!(hrr_neighbor_hash_symbol(&a), hrr_neighbor_hash_symbol(&b));
+    }
+
+    #[test]
+    fn neighborhood_recall_scores_true_members_above_impostors() {
+        // Replicates build_neighborhood_binding's own corpus construction
+        // (two Evidence hashes, one Critique hash) directly, then checks
+        // the property recall_neighborhood's membership probe actually
+        // depends on: a real member scores clearly higher, under its real
+        // role, than either (a) the same hash probed under the WRONG role,
+        // or (b) a hash that was never bound in at all.
+        let evidence_1 = AnyDhtHash::from(fixture_entry_hash(50));
+        let evidence_2 = AnyDhtHash::from(fixture_entry_hash(51));
+        let critique_1 = AnyDhtHash::from(fixture_action_hash(52));
+        let never_bound = AnyDhtHash::from(fixture_entry_hash(53));
+
+        let members = [
+            (&evidence_1, NeighborKind::Evidence),
+            (&evidence_2, NeighborKind::Evidence),
+            (&critique_1, NeighborKind::Critique),
+        ];
+        let bound: Vec<[f32; HRR_DIM]> = members
+            .iter()
+            .map(|(hash, kind)| hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash))))
+            .collect();
+        let corpus = hrr_superpose(&bound);
+
+        let probe = |hash: &AnyDhtHash, kind: &NeighborKind| -> f32 {
+            let p = hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash)));
+            hrr_cosine_similarity(&corpus, &p)
+        };
+
+        let true_member_score = probe(&evidence_1, &NeighborKind::Evidence);
+        let wrong_role_score = probe(&evidence_1, &NeighborKind::Critique);
+        let never_bound_score = probe(&never_bound, &NeighborKind::Evidence);
+
+        assert!(
+            true_member_score > wrong_role_score,
+            "a real member under its real role ({true_member_score}) should score above the same hash under the wrong role ({wrong_role_score})"
+        );
+        assert!(
+            true_member_score > never_bound_score,
+            "a real member ({true_member_score}) should score above a hash never bound in at all ({never_bound_score})"
+        );
+
+        // And every real member individually still scores clearly above
+        // an unrelated candidate, not just in relative ranking.
+        assert!(probe(&evidence_2, &NeighborKind::Evidence) > never_bound_score);
+        assert!(probe(&critique_1, &NeighborKind::Critique) > never_bound_score);
+    }
+
+    #[test]
+    fn neighborhood_recall_rejects_incompatible_binding_key() {
+        // Mirrors query_worldline_resonance_rejects_incompatible_binding_key
+        // above — the same forward-compatibility guard, for the same
+        // reason, on the neighborhood-binding side.
+        let is_compatible = |key: &[u8]| key == NEIGHBORHOOD_BINDING_KEY;
+        assert!(!is_compatible(b"some-other-scheme-v0"));
+        assert!(is_compatible(NEIGHBORHOOD_BINDING_KEY));
     }
 }
