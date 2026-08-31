@@ -1922,21 +1922,71 @@ pub fn recall_neighborhood(input: RecallNeighborhoodInput) -> ExternResult<Vec<N
         Some(v) => v,
         None => return Ok(Vec::new()),
     };
+    Ok(score_neighborhood_candidates(&corpus_vector, &input.candidates))
+}
 
-    let mut results: Vec<NeighborRecall> = input
-        .candidates
+/// Shared by recall_neighborhood and query_neighborhood_resonance below —
+/// pure, so it's the one thing about either extern this crate's tests
+/// can actually exercise directly (see the note on host-call mocking in
+/// this crate's own Cargo.toml).
+fn score_neighborhood_candidates(corpus_vector: &[f32; HRR_DIM], candidates: &[(AnyDhtHash, NeighborKind)]) -> Vec<NeighborRecall> {
+    let mut results: Vec<NeighborRecall> = candidates
         .iter()
         .map(|(hash, kind)| {
             let probe = hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash)));
             NeighborRecall {
                 source_hash: hash.clone(),
                 kind: kind.clone(),
-                similarity: hrr_cosine_similarity(&corpus_vector, &probe),
+                similarity: hrr_cosine_similarity(corpus_vector, &probe),
             }
         })
         .collect();
     results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
-    Ok(results)
+    results
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct QueryNeighborhoodResonanceInput {
+    pub claim_hash: AnyDhtHash,
+    pub candidates: Vec<(AnyDhtHash, NeighborKind)>,
+}
+
+/// Peer HRR query support for neighborhood binding — the completion
+/// query_worldline_resonance already gave worldline binding, done the
+/// same way: one call, no intermediate object for the caller to manage.
+///
+/// build_neighborhood_binding + recall_neighborhood is already a
+/// perfectly usable two-step local pipeline for a caller who wants to
+/// cache a corpus and probe it repeatedly (§2.5's "runs locally"
+/// framing) — this doesn't replace that, it collapses the common
+/// single-shot case ("is X near claim C") into one call any peer can
+/// make about any claim, without first fetching and re-passing back a
+/// NeighborhoodBinding they have no other use for. Unlike
+/// query_worldline_resonance, this needs no owner/peer identity
+/// argument at all: a Claim's evidence and critiques are ordinary
+/// public DHT data, readable by any agent via the exact same
+/// get()/get_critiques_for calls build_neighborhood_binding already
+/// makes — there is no agent-specific "whose neighborhood is this"
+/// question the way there is for a WorldlineTrace, which is why this
+/// takes a claim_hash instead of an AgentPubKey.
+///
+/// Still a reading lens, not a second record: builds the binding fresh
+/// on every call, exactly like build_neighborhood_binding does — see
+/// this section's header comment.
+#[hdk_extern]
+pub fn query_neighborhood_resonance(input: QueryNeighborhoodResonanceInput) -> ExternResult<Vec<NeighborRecall>> {
+    let binding = build_neighborhood_binding(input.claim_hash)?;
+    if binding.binding_key.as_slice() != NEIGHBORHOOD_BINDING_KEY {
+        // A claim with nothing to bind (build_neighborhood_binding's own
+        // documented empty case) — nothing to resonate with, not an
+        // error.
+        return Ok(Vec::new());
+    }
+    let corpus_vector = match hrr_bytes_to_vector(&binding.corpus_payload) {
+        Some(v) => v,
+        None => return Ok(Vec::new()),
+    };
+    Ok(score_neighborhood_candidates(&corpus_vector, &input.candidates))
 }
 
 // ============================================================================
@@ -3967,14 +4017,25 @@ mod tests {
             .collect();
         let corpus = hrr_superpose(&bound);
 
-        let probe = |hash: &AnyDhtHash, kind: &NeighborKind| -> f32 {
-            let p = hrr_bind(&hrr_symbol_vector(hrr_neighbor_role_symbol(kind)), &hrr_symbol_vector(&hrr_neighbor_hash_symbol(hash)));
-            hrr_cosine_similarity(&corpus, &p)
+        // Through score_neighborhood_candidates itself — the exact shared
+        // function both recall_neighborhood and query_neighborhood_resonance
+        // call — rather than reimplementing the probe inline, so this
+        // test locks in the real code path, not a parallel copy of it.
+        let candidates = vec![
+            (evidence_1.clone(), NeighborKind::Evidence), // true member, correct role
+            (evidence_1.clone(), NeighborKind::Critique),  // true member, WRONG role
+            (evidence_2.clone(), NeighborKind::Evidence),  // true member, correct role
+            (critique_1.clone(), NeighborKind::Critique),  // true member, correct role
+            (never_bound.clone(), NeighborKind::Evidence), // never bound at all
+        ];
+        let results = score_neighborhood_candidates(&corpus, &candidates);
+        let score_of = |hash: &AnyDhtHash, kind: &NeighborKind| -> f32 {
+            results.iter().find(|r| &r.source_hash == hash && &r.kind == kind).unwrap().similarity
         };
 
-        let true_member_score = probe(&evidence_1, &NeighborKind::Evidence);
-        let wrong_role_score = probe(&evidence_1, &NeighborKind::Critique);
-        let never_bound_score = probe(&never_bound, &NeighborKind::Evidence);
+        let true_member_score = score_of(&evidence_1, &NeighborKind::Evidence);
+        let wrong_role_score = score_of(&evidence_1, &NeighborKind::Critique);
+        let never_bound_score = score_of(&never_bound, &NeighborKind::Evidence);
 
         assert!(
             true_member_score > wrong_role_score,
@@ -3987,8 +4048,14 @@ mod tests {
 
         // And every real member individually still scores clearly above
         // an unrelated candidate, not just in relative ranking.
-        assert!(probe(&evidence_2, &NeighborKind::Evidence) > never_bound_score);
-        assert!(probe(&critique_1, &NeighborKind::Critique) > never_bound_score);
+        assert!(score_of(&evidence_2, &NeighborKind::Evidence) > never_bound_score);
+        assert!(score_of(&critique_1, &NeighborKind::Critique) > never_bound_score);
+
+        // score_neighborhood_candidates' own contract: results come back
+        // sorted descending by similarity.
+        for pair in results.windows(2) {
+            assert!(pair[0].similarity >= pair[1].similarity, "results must be sorted descending by similarity");
+        }
     }
 
     #[test]
