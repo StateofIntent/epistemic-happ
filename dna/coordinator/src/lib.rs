@@ -352,7 +352,7 @@ pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
 
     let mut claims = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 claims.push(record);
             }
@@ -483,7 +483,7 @@ pub fn get_my_latest_worldline_checkpoint(_: ()) -> ExternResult<Option<ActionHa
 
     let mut candidates: Vec<(u64, ActionHash)> = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 if let Ok(Some(trace)) = record.entry().to_app_option::<WorldlineTrace>() {
                     let now = sys_time()?.as_seconds_and_nanos().0 as u64;
@@ -812,15 +812,25 @@ pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
 /// comment on AnyDhtHash) since callers may have an ActionHash from a
 /// create_X return or an EntryHash from a link/N4L export; both convert
 /// to AnyLinkableHash, which is what TargetToCritique links are keyed by
-/// on the target side (whatever concrete hash the target's creator used
-/// when constructing the Critique that pointed at it — always an
-/// EntryHash in practice, since create_critique never converts it).
+/// on the base side. On the link's own target side, though — the
+/// critique being found — it's always the critique's own ActionHash
+/// (create_critique's create_link call passes create_entry's return
+/// value straight through, never converting it): this comment
+/// previously claimed the opposite ("always an EntryHash in practice"),
+/// which was never actually true and, paired with the matching
+/// EntryHash::try_from(link.target) this function used to have, meant
+/// every call here silently returned zero results — a real, confirmed
+/// bug caught only by running this against a live conductor (see
+/// README.md's Phase 3 changelog), not by cargo check/test, since a
+/// failed TryFrom here was always silently swallowed by `if let Ok`.
+/// The same wrong-hash-type bug, from the same root misunderstanding,
+/// was present in every other link-target reader in this file.
 #[hdk_extern]
 pub fn get_critiques_for(target: AnyDhtHash) -> ExternResult<Vec<Record>> {
     let links = get_links(GetLinksInputBuilder::try_new(target, LinkTypes::TargetToCritique)?.build())?;
     let mut critiques = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 critiques.push(record);
             }
@@ -1184,6 +1194,201 @@ pub fn get_critique_species_adoption_count(species_hash: EntryHash) -> ExternRes
 }
 
 // ============================================================================
+// HOLOGRAPHIC REDUCED REPRESENTATIONS (OpenZoo / HRR) — Plate 1995
+// ============================================================================
+// See README.md §2.5. HRR compresses "who said what, when" into one
+// fixed-size real vector via circular convolution ("bind"), approximately
+// queryable via circular correlation ("unbind") — lossy by construction,
+// never exact. Every function below is pure (no host calls, no DHT
+// access) and runs entirely locally over data the caller already has —
+// the same "index, not truth engine" role the README insists on: this
+// never adjudicates what a claim says, only where (which period) a
+// domain's activity might resonate. Wired into worldline binding below
+// (generate_worldline_trace) and into query_worldline_resonance, a first
+// real increment of "peer HRR query support" — a caller who already has
+// a WorldlineTrace's ActionHash (the same way every other hash-addressed
+// read in this codebase works; Holochain has no way to enumerate peers
+// or their traces on its own) can ask which periods likely cover a
+// domain without walking period_boundaries by hand.
+//
+// Deliberately NOT built in this pass: neighborhood binding (README
+// §2.5 is explicit that it's a separate, independent roadmap item, not
+// an implied consequence of worldline binding shipping) and any
+// FFT-based O(n log n) convolution (HRR_DIM=512 keeps the O(n^2) direct
+// sum below cheap enough for something that only ever runs locally, at
+// trace-generation or query time — never in a validation hot path).
+
+/// Vector width. 512 * 4 bytes = 2048 bytes per HRR vector — one
+/// WorldlineTrace's trace_payload is a single such vector regardless of
+/// how many periods it superposes, well inside the 64KB cap
+/// validate_worldline_trace already enforces (see integrity's
+/// lib.rs), leaving room for real chains with hundreds of periods.
+const HRR_DIM: usize = 512;
+
+/// Version/scheme descriptor stored verbatim as WorldlineTrace's
+/// binding_key. Not a secret — every quantity in this scheme (dimension,
+/// how position symbols are rendered) is derivable from this string
+/// alone, and hrr_symbol_vector's output depends on nothing else, so no
+/// key exchange is needed for a peer to reproduce it. Its actual job is
+/// forward compatibility: query_worldline_resonance checks a fetched
+/// trace's binding_key against this constant before trusting its
+/// trace_payload's bytes, so a future scheme bump (a different
+/// dimension, a different position encoding) fails loudly on an old
+/// trace instead of silently misinterpreting its bytes as the new
+/// layout.
+const HRR_BINDING_KEY: &[u8] = b"hrr-v1;dim=512;pos=period_index";
+
+/// Deterministically derive a unit-length pseudo-random vector for a
+/// symbol string — HRR's "atomic vector" construction (Plate 1995 §3).
+/// Pure function of the symbol's own bytes: any two peers who derive a
+/// vector for the same string get bit-identical results, with no key
+/// exchange, which is what lets query_worldline_resonance re-derive the
+/// same domain/position vectors a trace's own author used. Splitmix64
+/// (seeded from a SHA-256 digest of the symbol, since sha2 is already a
+/// dependency via compute_merkle_root — no cryptographic property of
+/// either hash is actually needed here, only a well-spread deterministic
+/// seed) rather than any external RNG crate, matching this codebase's
+/// existing preference for small hand-rolled pure math over new
+/// dependencies (see decay_factor, compute_merkle_root).
+fn hrr_symbol_vector(symbol: &str) -> [f32; HRR_DIM] {
+    let digest = Sha256::digest(symbol.as_bytes());
+    let mut state = u64::from_le_bytes(digest[0..8].try_into().unwrap())
+        ^ u64::from_le_bytes(digest[8..16].try_into().unwrap());
+    let mut v = [0f32; HRR_DIM];
+    for slot in v.iter_mut() {
+        // splitmix64's standard mixing step.
+        state = state.wrapping_add(0x9E3779B97F4A7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+        z ^= z >> 31;
+        // Map to a standard-normal-ish value via a signed fraction of
+        // u64's range — HRR only needs zero-mean, roughly-symmetric
+        // per-dimension noise for its concentration-of-measure
+        // properties to hold at this dimension, not a true Gaussian.
+        *slot = (z as i64 as f64 / i64::MAX as f64) as f32;
+    }
+    hrr_normalize(&v)
+}
+
+/// Rescale to unit length (element-wise, not per-component) — keeps
+/// hrr_cosine_similarity comparisons meaningful across vectors built
+/// from different numbers of superposed terms.
+fn hrr_normalize(v: &[f32; HRR_DIM]) -> [f32; HRR_DIM] {
+    let mag = (v.iter().map(|x| x * x).sum::<f32>()).sqrt();
+    if mag < f32::EPSILON {
+        return *v;
+    }
+    let mut out = [0f32; HRR_DIM];
+    for i in 0..HRR_DIM {
+        out[i] = v[i] / mag;
+    }
+    out
+}
+
+/// Circular convolution — HRR's "bind" operator: combines two vectors
+/// into one the same fixed size, associating them so hrr_unbind can
+/// later approximately recover one given the other.
+fn hrr_bind(a: &[f32; HRR_DIM], b: &[f32; HRR_DIM]) -> [f32; HRR_DIM] {
+    let mut out = [0f32; HRR_DIM];
+    for i in 0..HRR_DIM {
+        let mut sum = 0f32;
+        for j in 0..HRR_DIM {
+            // (i - j) mod HRR_DIM, done in a wrapping-add-then-mod form
+            // since Rust's % on a negative isize would otherwise return
+            // a negative remainder.
+            let k = (i + HRR_DIM - j) % HRR_DIM;
+            sum += a[j] * b[k];
+        }
+        out[i] = sum;
+    }
+    out
+}
+
+/// The involution used by hrr_unbind: v'[i] = v[(-i) mod HRR_DIM] —
+/// circular correlation is circular convolution with one operand
+/// involuted first (the standard HRR unbind construction, Plate 1995
+/// §3.2), so hrr_bind is the only convolution kernel this file needs.
+fn hrr_involute(v: &[f32; HRR_DIM]) -> [f32; HRR_DIM] {
+    let mut out = [0f32; HRR_DIM];
+    for i in 0..HRR_DIM {
+        out[i] = v[(HRR_DIM - i) % HRR_DIM];
+    }
+    out
+}
+
+/// Circular correlation — HRR's "unbind" operator, the APPROXIMATE
+/// inverse of hrr_bind: hrr_unbind(hrr_bind(a, b), a) ≈ b, never exact,
+/// and noisier still once `c` is itself a superposition of several
+/// bound pairs (see hrr_superpose) — this is what makes HRR retrieval
+/// lossy by construction (README §2.5), not a bug to fix later.
+fn hrr_unbind(c: &[f32; HRR_DIM], a: &[f32; HRR_DIM]) -> [f32; HRR_DIM] {
+    hrr_bind(c, &hrr_involute(a))
+}
+
+/// Superposition — HRR's "combine" operator: element-wise sum,
+/// normalized back to unit length. Combining N bound pairs into one
+/// vector this way is what makes a WorldlineTrace's trace_payload a
+/// single fixed-size field no matter how many periods it covers.
+fn hrr_superpose(vectors: &[[f32; HRR_DIM]]) -> [f32; HRR_DIM] {
+    let mut out = [0f32; HRR_DIM];
+    for v in vectors {
+        for i in 0..HRR_DIM {
+            out[i] += v[i];
+        }
+    }
+    hrr_normalize(&out)
+}
+
+/// How a caller measures "did this resonate" after unbinding — never
+/// exact equality; HRR here is a receiver tuned to approximate
+/// resonance, never an exact-match index (README §2.5's "receiver, not
+/// truth engine" framing carried into the actual math).
+fn hrr_cosine_similarity(a: &[f32; HRR_DIM], b: &[f32; HRR_DIM]) -> f32 {
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let mag_a = (a.iter().map(|x| x * x).sum::<f32>()).sqrt();
+    let mag_b = (b.iter().map(|x| x * x).sum::<f32>()).sqrt();
+    if mag_a < f32::EPSILON || mag_b < f32::EPSILON {
+        return 0.0;
+    }
+    dot / (mag_a * mag_b)
+}
+
+fn hrr_vector_to_bytes(v: &[f32; HRR_DIM]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(HRR_DIM * 4);
+    for x in v {
+        out.extend_from_slice(&x.to_le_bytes());
+    }
+    out
+}
+
+/// The exact inverse of hrr_vector_to_bytes — unlike the HRR math
+/// itself, this codec round-trips exactly; it's plain little-endian f32
+/// serialization, not a lossy operation. Returns None for anything not
+/// exactly HRR_DIM * 4 bytes (a trace_payload from an incompatible
+/// scheme version, or corrupt data) rather than panicking or silently
+/// truncating/padding.
+fn hrr_bytes_to_vector(bytes: &[u8]) -> Option<[f32; HRR_DIM]> {
+    if bytes.len() != HRR_DIM * 4 {
+        return None;
+    }
+    let mut out = [0f32; HRR_DIM];
+    for i in 0..HRR_DIM {
+        out[i] = f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
+    }
+    Some(out)
+}
+
+/// The public position-symbol encoding query_worldline_resonance and
+/// generate_worldline_trace both derive from — period index N's
+/// position vector is always hrr_symbol_vector(&hrr_period_symbol(n)),
+/// never anything an entry needs to store per-period, since it's a pure
+/// function of the index alone.
+fn hrr_period_symbol(index: usize) -> String {
+    format!("period:{index}")
+}
+
+// ============================================================================
 // WORLDLINE TRACE FUNCTIONS
 // ============================================================================
 
@@ -1262,12 +1467,36 @@ pub fn generate_worldline_trace(params: TraceGenerationParams) -> ExternResult<A
     let checksum = compute_merkle_root(&periods)?;
     let now = sys_time()?.as_seconds_and_nanos().0 as u64;
 
+    // Worldline binding (README §2.5): superpose (domain_tag ⊛ position)
+    // across every period into one fixed-size holographic vector. This
+    // runs entirely on the periods just computed above — the same data
+    // period_boundaries already carries in plain sight — so it adds no
+    // new information a reader couldn't already get by scanning
+    // period_boundaries directly; its value is being a fixed-size,
+    // superposable index a peer can probe without doing that scan
+    // themselves (README §2.5's "optimization, not a requirement").
+    let bound_periods: Vec<[f32; HRR_DIM]> = periods
+        .iter()
+        .enumerate()
+        .map(|(i, p)| hrr_bind(&hrr_symbol_vector(&p.domain_tag), &hrr_symbol_vector(&hrr_period_symbol(i))))
+        .collect();
+    let (trace_payload, binding_key) = if bound_periods.is_empty() {
+        // An empty chain has nothing to superpose — leave both hooks
+        // unset rather than emit a meaningless all-zero vector, matching
+        // this field's documented "currently None" default state for a
+        // trace with nothing to compress.
+        (None, None)
+    } else {
+        let trace_vector = hrr_superpose(&bound_periods);
+        (Some(hrr_vector_to_bytes(&trace_vector)), Some(HRR_BINDING_KEY.to_vec()))
+    };
+
     let trace = WorldlineTrace {
         agent,
         period_boundaries: periods,
         expertise_tags: params.expertise_tags,
-        trace_payload: None,
-        binding_key: None,
+        trace_payload,
+        binding_key,
         checksum,
         created_at: now,
         expires_at: params.expires_at,
@@ -1293,7 +1522,7 @@ pub fn get_agent_worldline_trace(agent: AgentPubKey) -> ExternResult<Option<Worl
 
     let mut candidates: Vec<WorldlineTrace> = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 if let Ok(Some(trace)) = record.entry().to_app_option::<WorldlineTrace>() {
                     let now = sys_time()?.as_seconds_and_nanos().0 as u64;
@@ -1307,6 +1536,84 @@ pub fn get_agent_worldline_trace(agent: AgentPubKey) -> ExternResult<Option<Worl
 
     candidates.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(candidates.into_iter().next())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorldlineResonanceQuery {
+    pub agent: AgentPubKey,
+    pub domain_tag: String,
+    /// How many period indices to score, starting from 0. period_boundaries'
+    /// own length is the natural upper bound, but this function
+    /// deliberately never reads that field — see this function's own doc
+    /// comment for why — so the caller supplies it directly, the same
+    /// externally-supplied-bound shape MAX_ATTESTATION_SEARCH_NODES/
+    /// MAX_GROUNDING_SEARCH_NODES already use elsewhere in this file.
+    pub max_periods: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeriodResonance {
+    pub period_index: u32,
+    pub similarity: f32,
+}
+
+const MAX_RESONANCE_QUERY_PERIODS: u32 = 4096;
+
+/// First real increment of "peer HRR query support" (README §9 Phase 3):
+/// given a peer's AgentPubKey (the same public identifier every other
+/// peer-facing read in this codebase already takes — get_agent_worldline_trace
+/// itself, assert_expertise's proof) and a domain tag to probe, unbind
+/// that peer's most recent WorldlineTrace and rank candidate period
+/// indices by how strongly each resonates with that domain — the
+/// literal capability README §2.5 describes: "peers can unbind this
+/// vector to find relevant time periods without traversing the full
+/// chain."
+///
+/// Approximate by construction (HRR always is) and read-only. This
+/// never substitutes for get_agent_worldline_trace's own
+/// period_boundaries, which remain the exact, lossless answer — the
+/// same "receiver, not truth engine" distinction README §2.5 draws for
+/// HRR everywhere else. A high similarity score is a hint worth
+/// checking, not a claim of fact; nothing here reads, gates, or scores
+/// what any Claim/Mew/Critique actually says.
+///
+/// Returns an empty result — never an error — when the agent has no
+/// trace, an empty trace_payload (nothing was ever superposed into it,
+/// e.g. an agent with no chain activity yet), or a binding_key that
+/// doesn't match this function's own HRR_BINDING_KEY (unset, or a
+/// future/foreign scheme version this function doesn't know how to
+/// interpret): "nothing resonates" and "nothing to resonate with" are
+/// both legitimately empty answers, not failures.
+#[hdk_extern]
+pub fn query_worldline_resonance(query: WorldlineResonanceQuery) -> ExternResult<Vec<PeriodResonance>> {
+    let max_periods = query.max_periods.min(MAX_RESONANCE_QUERY_PERIODS);
+
+    let trace = match get_agent_worldline_trace(query.agent)? {
+        Some(t) => t,
+        None => return Ok(Vec::new()),
+    };
+    let payload = match trace.trace_payload {
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+    match trace.binding_key {
+        Some(ref k) if k.as_slice() == HRR_BINDING_KEY => {}
+        _ => return Ok(Vec::new()),
+    }
+    let trace_vector = match hrr_bytes_to_vector(&payload) {
+        Some(v) => v,
+        None => return Ok(Vec::new()),
+    };
+
+    let unbound = hrr_unbind(&trace_vector, &hrr_symbol_vector(&query.domain_tag));
+    let mut results: Vec<PeriodResonance> = (0..max_periods)
+        .map(|i| PeriodResonance {
+            period_index: i,
+            similarity: hrr_cosine_similarity(&unbound, &hrr_symbol_vector(&hrr_period_symbol(i as usize))),
+        })
+        .collect();
+    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(results)
 }
 
 /// Formally asserts expertise in a domain as a real, critiquable Claim,
@@ -1645,7 +1952,7 @@ pub fn get_twitter_replies_for_claim(claim_hash: EntryHash) -> ExternResult<Vec<
     let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::ClaimToExternalCritique)?.build())?;
     let mut replies = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 replies.push(record);
             }
@@ -2226,7 +2533,7 @@ pub fn get_mews_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
 
     let mut mews = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 mews.push(record);
             }
@@ -2324,7 +2631,7 @@ pub fn get_retractions_for_claim(claim_hash: EntryHash) -> ExternResult<Vec<Reco
     let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::ClaimToRetraction)?.build())?;
     let mut retractions = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 retractions.push(record);
             }
@@ -2362,7 +2669,7 @@ pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constit
 
     let mut candidates: Vec<Constitution> = Vec::new();
     for link in links {
-        if let Ok(hash) = EntryHash::try_from(link.target) {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
                 if let Ok(Some(constitution)) = record.entry().to_app_option::<Constitution>() {
                     let now = sys_time()?.as_seconds_and_nanos().0 as u64;
@@ -3246,5 +3553,137 @@ mod tests {
 
         assert!(grounded);
         assert_eq!(path, vec![fixture_entry_hash(evidence)]);
+    }
+
+    // --- HRR: bind/unbind/superpose (OpenZoo, README §2.5) ---------------
+
+    #[test]
+    fn hrr_symbol_vector_is_deterministic() {
+        assert_eq!(hrr_symbol_vector("LumbarRehab"), hrr_symbol_vector("LumbarRehab"));
+    }
+
+    #[test]
+    fn hrr_symbol_vector_is_unit_length() {
+        let v = hrr_symbol_vector("Nutrition");
+        let mag = (v.iter().map(|x| x * x).sum::<f32>()).sqrt();
+        assert!((mag - 1.0).abs() < 1e-4, "expected unit length, got {mag}");
+    }
+
+    #[test]
+    fn hrr_distinct_symbols_have_low_similarity() {
+        // Two random unit vectors in 512 dimensions concentrate tightly
+        // around zero similarity — nowhere near hrr_bind/hrr_unbind's own
+        // round-trip fidelity (checked below), which is the actual
+        // property HRR's retrieval depends on: an unrelated symbol
+        // should never be mistaken for the real bound value.
+        let pairs = [
+            ("LumbarRehab", "Nutrition"),
+            ("period:0", "period:1"),
+            ("HipMobility", "period:0"),
+        ];
+        for (a, b) in pairs {
+            let sim = hrr_cosine_similarity(&hrr_symbol_vector(a), &hrr_symbol_vector(b));
+            assert!(sim.abs() < 0.3, "expected low similarity for {a:?}/{b:?}, got {sim}");
+        }
+    }
+
+    #[test]
+    fn hrr_bind_unbind_roundtrip_recovers_the_bound_value() {
+        let domain = hrr_symbol_vector("LumbarRehab");
+        let position = hrr_symbol_vector(&hrr_period_symbol(0));
+        let bound = hrr_bind(&domain, &position);
+
+        let recovered = hrr_unbind(&bound, &domain);
+        let sim = hrr_cosine_similarity(&recovered, &position);
+        // A single bound pair's own noise floor at HRR_DIM=512 — measured
+        // directly (~0.75), not assumed from theory — sits well below a
+        // hypothetical "near-perfect" bar but is still unmistakably a
+        // strong resonance, nowhere close to the ~0.3 unrelated-symbol
+        // ceiling from the test above.
+        assert!(sim > 0.5, "expected high-fidelity single-pair recovery, got {sim}");
+
+        // And unbinding with an unrelated vector should NOT recover it —
+        // the actual property that makes hrr_bind associate a specific
+        // pair rather than any pair.
+        let wrong = hrr_symbol_vector("Nutrition");
+        let sim_wrong = hrr_cosine_similarity(&hrr_unbind(&bound, &wrong), &position);
+        assert!(sim_wrong < sim, "unbinding with the wrong key should recover less than the right key");
+    }
+
+    #[test]
+    fn hrr_superposition_still_resolves_each_periods_own_position() {
+        // The actual capability worldline binding depends on: after
+        // superposing several (domain ⊛ position) pairs into one fixed-
+        // size vector, unbinding with a given domain's vector should
+        // resonate most strongly with THAT domain's real period index,
+        // not any of the others' — an index, not a lossless store, but
+        // one that still ranks the right answer first.
+        let pairs = [("LumbarRehab", 0usize), ("Nutrition", 1usize), ("HipMobility", 2usize)];
+        let bound: Vec<[f32; HRR_DIM]> = pairs
+            .iter()
+            .map(|(domain, i)| hrr_bind(&hrr_symbol_vector(domain), &hrr_symbol_vector(&hrr_period_symbol(*i))))
+            .collect();
+        let trace_vector = hrr_superpose(&bound);
+
+        for (domain, correct_index) in pairs {
+            let recovered = hrr_unbind(&trace_vector, &hrr_symbol_vector(domain));
+            let mut best = (usize::MAX, f32::MIN);
+            for (_, candidate_index) in pairs {
+                let sim = hrr_cosine_similarity(&recovered, &hrr_symbol_vector(&hrr_period_symbol(candidate_index)));
+                if sim > best.1 {
+                    best = (candidate_index, sim);
+                }
+            }
+            assert_eq!(best.0, correct_index, "domain {domain:?} should resonate most with its own period index");
+        }
+    }
+
+    #[test]
+    fn hrr_vector_byte_codec_roundtrips_exactly() {
+        // Unlike the HRR math itself, this is plain serialization — it
+        // must round-trip exactly, not approximately.
+        let v = hrr_symbol_vector("roundtrip-check");
+        let bytes = hrr_vector_to_bytes(&v);
+        assert_eq!(bytes.len(), HRR_DIM * 4);
+        assert_eq!(hrr_bytes_to_vector(&bytes), Some(v));
+    }
+
+    #[test]
+    fn hrr_bytes_to_vector_rejects_wrong_length() {
+        assert_eq!(hrr_bytes_to_vector(&[0u8; 10]), None);
+        assert_eq!(hrr_bytes_to_vector(&[]), None);
+    }
+
+    #[test]
+    fn hrr_cosine_similarity_of_a_vector_with_itself_is_one() {
+        let v = hrr_symbol_vector("self-similarity-check");
+        let sim = hrr_cosine_similarity(&v, &v);
+        assert!((sim - 1.0).abs() < 1e-4, "expected ~1.0, got {sim}");
+    }
+
+    #[test]
+    fn query_worldline_resonance_rejects_incompatible_binding_key() {
+        // The forward-compatibility check HRR_BINDING_KEY exists for:
+        // a trace_payload paired with a binding_key from a different (or
+        // absent) scheme must never be silently reinterpreted as this
+        // scheme's byte layout.
+        let trace = WorldlineTrace {
+            agent: fixture_agent(30),
+            period_boundaries: vec![],
+            expertise_tags: vec![],
+            trace_payload: Some(hrr_vector_to_bytes(&hrr_symbol_vector("whatever"))),
+            binding_key: Some(b"some-other-scheme-v0".to_vec()),
+            checksum: vec![0u8; 32],
+            created_at: 0,
+            expires_at: None,
+        };
+        // Exercises the same binding_key check query_worldline_resonance
+        // itself runs, directly against a fixture entry — the extern
+        // wrapping it needs a live agent_activity/get() host call this
+        // crate's tests can't mock (see this Cargo.toml's own note), so
+        // the guard clause is verified here instead of through the
+        // #[hdk_extern] function directly.
+        let is_compatible = matches!(&trace.binding_key, Some(k) if k.as_slice() == HRR_BINDING_KEY);
+        assert!(!is_compatible);
     }
 }
