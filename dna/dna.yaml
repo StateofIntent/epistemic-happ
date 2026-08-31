@@ -6,14 +6,34 @@ integrity:
   properties: ~
   zomes:
     - name: epistemic_integrity
-      bundled: ../../target/wasm32-unknown-unknown/release/epistemic_integrity.wasm
+      # There is no Cargo workspace unifying dna/integrity and
+      # dna/coordinator (see either crate's Cargo.toml for why — pinned
+      # hdi/hdk versions must resolve to one physical instance, which a
+      # loose workspace easily broke in the past). Each crate therefore
+      # builds into its OWN target/ directory (dna/integrity/target/,
+      # dna/coordinator/target/), not a shared repo-root target/. The
+      # previous path here (../../target/wasm32-unknown-unknown/release/,
+      # i.e. <repo-root>/target/...) pointed at a directory that can never
+      # exist under this project's actual build layout — confirmed
+      # directly: `hc dna pack .` failed with "No such file or directory"
+      # before this fix, since nothing had ever actually run that command
+      # against this repo before. This path is relative to this file
+      # (dna/dna.yaml), so ./integrity/target/... correctly resolves to
+      # dna/integrity/target/wasm32-unknown-unknown/release/... (an
+      # earlier version of this fix wrote ../integrity/, which is wrong
+      # the same way the original bug was — dna.yaml's own directory
+      # already IS dna/, so integrity/ is a direct child, not a sibling).
+      bundled: ./integrity/target/wasm32-unknown-unknown/release/epistemic_integrity.wasm
       hash: ~
       dependencies: ~
       dylib: ~
 coordinator:
   zomes:
     - name: epistemic_coordinator
-      bundled: ../../target/wasm32-unknown-unknown/release/epistemic_coordinator.wasm
+      # See epistemic_integrity's bundled path comment above for why this
+      # points into dna/coordinator/target/ rather than a shared
+      # repo-root target/.
+      bundled: ./coordinator/target/wasm32-unknown-unknown/release/epistemic_coordinator.wasm
       hash: ~
       dependencies:
         - name: epistemic_integrity
