@@ -523,8 +523,23 @@ POLL_INTERVAL_MS=30000
 
 ### 6.6 Run the Conductor
 
+`hc run -p 8888` (this section's instruction prior to the live-conductor
+verification pass logged in §9 Phase 2) is not a real subcommand of any
+`hc` version this project has actually installed — the real one is
+`hc sandbox`, and getting it running the first time surfaced several real,
+non-obvious gotchas (missing `lair-keystore`, global-vs-subcommand flag
+ordering, a wrapper process that exits before the server it started does).
+`scripts/sandbox.sh` (see its own header for the full account) wraps all of
+that:
+
 ```bash
-hc run -p 8888
+scripts/sandbox.sh start    # generates a sandbox from epistemic-resonance-happ.happ
+                             # the first time, resumes it (same DHT state) on
+                             # every later call — admin :8889, app :8888,
+                             # matching bridge/.env.example's defaults exactly
+scripts/sandbox.sh status   # is it up?
+scripts/sandbox.sh stop     # stop it (DHT state persists for the next `start`)
+scripts/sandbox.sh clean    # wipe it entirely — next `start` is genuinely fresh
 ```
 
 ### 6.7 Run the Bridge

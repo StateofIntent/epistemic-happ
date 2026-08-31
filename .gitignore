@@ -24,12 +24,15 @@ dist/
 /dna/*.dna
 /*.happ
 
-# hc sandbox bookkeeping (created by `hc sandbox generate`/`run` — see
-# README.md §6.6). Point at a throwaway conductor data dir under /tmp;
-# nothing here is meant to survive past the sandbox that created it.
+# hc sandbox bookkeeping (created by `hc sandbox generate`/`run`, or by
+# scripts/sandbox.sh — see README.md §6.6). Point at a throwaway conductor
+# data dir under /tmp; nothing here is meant to survive past the sandbox
+# that created it.
 /.hc
 /.hc_auth
 /.hc_live_*
+/.hc_sandbox.pid
+/.hc_sandbox.log
 
 # OS/editor cruft
 .DS_Store
