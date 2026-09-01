@@ -1,6 +1,6 @@
 # The Epistemic Resonance Protocol — Specification
 
-**Tracks:** `main` @ `9fde9d2` (PR #16 merged) — Phases 1–4 complete
+**Tracks:** `main` @ `8cd75a7` (PR #18 merged), plus this document's own federation-between-membranes addition — Phases 1–4 complete, Phase 5 in progress
 **Status:** Living document — see [§11](#11-versioning--change-process)
 **Companion to:** `README.md` (the architecture, philosophy, and build/run manual — read that first for *why*; this document is *what, exactly*)
 
@@ -187,6 +187,17 @@ A Twitter reply imported into the critique graph as a typed entry.
 ### 2.13 `SynapticLink` (a link, not an entry)
 Not an entry type — a `TargetToCritique`-paired link (§4) from a `Critique`'s target to the critique's own `ActionHash`, carrying a 4-byte little-endian `f32` initial conductance in its `LinkTag`. Immutable once written (Holochain `LinkTag`s cannot be mutated) — see §5.11 and §5.12 for how its *effective* conductance is instead computed fresh at read time from decay and `Reinforcement` links.
 
+### 2.14 `FederationRecord`
+A membrane's own, one-sided witness that it recognizes a specific membrane on a **different** Holochain network. See §10.14 for why this is necessarily one-sided (the two networks share no DHT) and how mutual recognition is derived externally rather than stored.
+
+| Field | Type | Notes |
+|---|---|---|
+| `local_membrane` | `EntryHash` | MUST resolve to a real `Membrane` entry on this network |
+| `remote_network_label` | `String` | MUST be non-empty. A human-readable identifier for the remote network — not independently verifiable, the same asymmetric-witness limitation `BridgeRecord.platform` already has |
+| `remote_membrane_ref` | `String` | MUST be non-empty. An opaque, out-of-band reference to a membrane on the remote network (its own `EntryHash`, base64-encoded, by convention — but this DHT cannot and does not verify that) |
+| `author` | `AgentPubKey` | MUST equal the creating action's author, AND MUST equal `local_membrane`'s own `creator` field (§5.18) — only a membrane's own founder may declare federation on its behalf |
+| `created_at` | `u64` | |
+
 ## 3. Enumerations
 
 Every enumeration below is a plain Rust enum (`#[derive(Serialize, Deserialize)]`, no custom representation attributes) — on the wire (Holochain's msgpack payload encoding) each unit variant serializes as its bare variant name string (e.g. `"Moderate"`, `"Logical"`), not an integer or a tagged object. An implementation in another language MUST reproduce this exact string representation to interoperate.
@@ -244,6 +255,7 @@ Every row is a Holochain typed link (`#[hdk_link_types]`). "Base → Target" giv
 | `TargetToAntibody` | Any of the five `CritiqueTargetType` kinds → `AntibodyPattern` | `kind` (debug-formatted) | Same one-link-type-for-five-kinds reasoning as `TargetToCritique` |
 | `SynapticLink` | A `Critique`'s target → the critique's own `ActionHash` | 4-byte LE `f32` initial conductance | See §2.13, §5.11 |
 | `Reinforcement` | A `SynapticLink`'s own `CreateLink` `ActionHash` → the reinforcing agent | — | See §5.12 |
+| `MembraneToFederationRecord` | `Membrane` → `FederationRecord` | `remote_network_label` (raw bytes) | See §2.14, §5.18, §10.14 |
 
 "Agent anchor" is `path_entry_hash()` of the `Path` constructed from the string `agent_{agent_pub_key}` — a deterministic per-agent anchor point, not a stored entry of its own.
 
@@ -322,7 +334,10 @@ In addition to §5.4's target cross-check and the non-empty `content` requiremen
 In addition to §5.5's target cross-check and the non-empty `rationale` requirement (§2.5): subject to SWO temporal friction (§5.10, §6), 20 per rolling hour per agent.
 
 ### 5.17 All other link types
-Every link type not named in §5.11–§5.14 (including `TargetToCritique`, `TargetToAntibody`, and every membrane-topology/agent-identity/bridge link in §4) has no dedicated `validate_create_link` branch and is accepted unconditionally at the link-creation layer — whatever constraints apply come from the entry-level validation of what the link connects (e.g. `TargetToCritique`'s real constraint is `Critique`'s own validation, §5.4/§5.15).
+Every link type not named in §5.11–§5.14 (including `TargetToCritique`, `TargetToAntibody`, `MembraneToFederationRecord`, and every membrane-topology/agent-identity/bridge link in §4) has no dedicated `validate_create_link` branch and is accepted unconditionally at the link-creation layer — whatever constraints apply come from the entry-level validation of what the link connects (e.g. `TargetToCritique`'s real constraint is `Critique`'s own validation, §5.4/§5.15).
+
+### 5.18 `FederationRecord` creation
+In addition to the non-empty `remote_network_label`/`remote_membrane_ref` requirements (§2.14): `local_membrane` MUST resolve to a real `Membrane` entry, and the creating agent MUST equal that `Membrane`'s own `creator` field — only a membrane's own founder may declare federation on its behalf, the same governance principle that already gates who can found the membrane at all (§5's `Membrane` author-binding rule, §5.2). No SWO temporal friction — see §10.14 for why.
 
 ## 6. Rate Limits (SWO Temporal Friction) — Consolidated
 
@@ -526,6 +541,14 @@ Every function below is a Holochain zome extern (`role_name: "epistemic"`, `zome
 
 ### 10.13 Signals
 Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts.
+
+### 10.14 Federation
+| Function | Payload | Returns |
+|---|---|---|
+| `record_federation` | `FederationRecord` | `ActionHash` |
+| `get_federation_records_for` | `membrane: AnyDhtHash` | `Vec<Record>` — one-sided: every `FederationRecord` this membrane has itself authored, never anything about whether the remote side has reciprocated |
+
+Two independently-run Holochain networks share no DHT — one cannot query the other's data, so a `FederationRecord` can only ever record what the *local* membrane has declared. Mutual/"federated" status is not a value either network computes or stores; it is derived externally by a bridge process (`federation/federate.mjs`) that connects to both conductors and independently checks both directions — the same correlative-witness shape §2.4/`BridgeRecord` already establishes for the Twitter bridge, applied to a second network instead of a non-Holochain platform. See `federation/README.md` for the verified, live, two-conductor account.
 
 ## 11. Versioning & Change Process
 

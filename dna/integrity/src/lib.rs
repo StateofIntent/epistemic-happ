@@ -189,6 +189,32 @@ pub struct Membrane {
     pub constitution: ActionHash, // creator's own published Constitution
 }
 
+/// A membrane's own witness that it recognizes a specific membrane on a
+/// DIFFERENT Holochain network — the correlative-witness pattern
+/// (README §2.4, `BridgeRecord` above) applied to network-to-network
+/// federation instead of Holochain-to-Twitter. The two networks share
+/// no DHT, so the remote side can only ever be an opaque, out-of-band
+/// reference — never a real Holochain hash on THIS DHT, the same
+/// honest limitation `BridgeRecord.twitter_id` already has for Twitter.
+///
+/// One-sided by construction: this entry records only that the LOCAL
+/// membrane recognizes the remote one. It says nothing about whether
+/// the remote side has reciprocated — this DHT has no way to see the
+/// remote network's own data, so mutual/"federated" status can only be
+/// confirmed by an external witness that has actually queried both
+/// sides (see `federation/`'s bridge service) — the same reasoning
+/// `AttestationPolicy` already applies to never computing a signal this
+/// DHT can't independently verify.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct FederationRecord {
+    pub local_membrane: EntryHash,
+    pub remote_network_label: String,
+    pub remote_membrane_ref: String,
+    pub author: AgentPubKey,
+    pub created_at: u64,
+}
+
 /// An agent's constitution - their voluntary promises.
 /// Makes Promise Theory explicit in the DHT, not just implicit in validation rules.
 #[hdk_entry_helper]
@@ -415,6 +441,15 @@ pub enum LinkTypes {
                             // documents — Holochain's link model doesn't
                             // care what entry type a link's base is.
 
+    // Federation
+    MembraneToFederationRecord,  // Membrane -> a FederationRecord it
+                                  // authored, recognizing a membrane on
+                                  // a different network. See
+                                  // FederationRecord's own doc comment —
+                                  // one-sided per link, mutuality is
+                                  // confirmed externally, not derivable
+                                  // from this DHT alone.
+
     // Synaptic / Hebbian links
     SynapticLink,
     Reinforcement,          // SynapticLink's own ActionHash -> reinforcing
@@ -463,6 +498,7 @@ pub enum EntryTypes {
     BridgeRecord(BridgeRecord),
     ExternalCritique(ExternalCritique),
     AntibodyPattern(AntibodyPattern),
+    FederationRecord(FederationRecord),
 }
 
 // ============================================================================
@@ -504,6 +540,7 @@ fn validate_store_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCall
                 EntryTypes::BridgeRecord(record) => validate_bridge_record(&record, &action),
                 EntryTypes::ExternalCritique(ext) => validate_external_critique(&ext, &action),
                 EntryTypes::AntibodyPattern(pattern) => validate_antibody_pattern(&pattern, &action),
+                EntryTypes::FederationRecord(record) => validate_federation_record(&record, &action),
             }
         }
         _ => Ok(ValidateCallbackResult::Valid),
@@ -820,6 +857,47 @@ fn validate_membrane(membrane: &Membrane, action: &Create) -> ExternResult<Valid
     if membrane.domain.is_empty() {
         return Ok(ValidateCallbackResult::Invalid("Membrane domain cannot be empty.".into()));
     }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+// --- FederationRecord Validation ---
+//
+// Only a membrane's own founding creator may declare federation on its
+// behalf — the same governance principle that already gates who can
+// found the membrane at all (validate_membrane above). Not something a
+// member, or an unrelated agent, can do unilaterally: federation is a
+// membrane-level commitment, not an individual one. No SWO temporal
+// friction here (unlike Critique/AntibodyPattern/SynapticLink) — a
+// membrane creator declaring federation with several other networks in
+// quick succession isn't the flooding-pattern friction exists to slow.
+fn validate_federation_record(record: &FederationRecord, action: &Create) -> ExternResult<ValidateCallbackResult> {
+    if record.author != action.author {
+        return Ok(ValidateCallbackResult::Invalid("FederationRecord author must match action author.".into()));
+    }
+
+    let membrane_entry = match must_get_entry(record.local_membrane.clone()) {
+        Ok(entry) => entry.into_content(),
+        Err(_) => return Ok(ValidateCallbackResult::Invalid("FederationRecord local_membrane not found.".into())),
+    };
+    let membrane: Membrane = match RecordEntry::Present(membrane_entry).to_app_option() {
+        Ok(Some(m)) => m,
+        Ok(None) | Err(_) => {
+            return Ok(ValidateCallbackResult::Invalid("FederationRecord local_membrane is not a Membrane entry.".into()));
+        }
+    };
+    if membrane.creator != record.author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "FederationRecord can only be authored by local_membrane's own creator.".into()
+        ));
+    }
+
+    if record.remote_network_label.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("FederationRecord remote_network_label cannot be empty.".into()));
+    }
+    if record.remote_membrane_ref.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("FederationRecord remote_membrane_ref cannot be empty.".into()));
+    }
+
     Ok(ValidateCallbackResult::Valid)
 }
 

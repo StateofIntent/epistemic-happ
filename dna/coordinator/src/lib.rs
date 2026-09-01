@@ -1251,6 +1251,55 @@ pub fn get_membrane_members(membrane: AnyDhtHash) -> ExternResult<Vec<AgentPubKe
 }
 
 // ============================================================================
+// FEDERATION
+//
+// README §9 Phase 5's "federation between domain membranes" — reusing
+// the correlative-witness pattern §2.4 already establishes for the
+// Twitter bridge (BridgeRecord), applied to a different pair of systems
+// that share no DHT: two independently-run Holochain networks, rather
+// than Holochain and Twitter. FederationRecord (integrity zome) is
+// one-sided by construction — the DHT itself cannot see the remote
+// network's data, so it cannot verify the remote side has reciprocated.
+// Mutual/"federated" status is derived only by an external witness that
+// has actually connected to and queried both conductors — see
+// federation/'s bridge service, which does exactly what
+// record_twitter_mirror's caller (bridge/src/index.ts) already does for
+// Twitter: build the correlation from outside, then record it durably
+// on the side(s) it can write to.
+// ============================================================================
+
+#[hdk_extern]
+pub fn record_federation(record: FederationRecord) -> ExternResult<ActionHash> {
+    let action_hash = create_entry(EntryTypes::FederationRecord(record.clone()))?;
+    create_link(
+        record.local_membrane.clone(),
+        action_hash.clone(),
+        LinkTypes::MembraneToFederationRecord,
+        LinkTag::new(record.remote_network_label.as_bytes().to_vec()),
+    )?;
+    Ok(action_hash)
+}
+
+/// Every FederationRecord `membrane` has itself authored — one-sided,
+/// per FederationRecord's own doc comment: this never reports whether
+/// any of these recognitions have been reciprocated by the remote side,
+/// only what THIS membrane has declared.
+#[hdk_extern]
+pub fn get_federation_records_for(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
+    let membrane_hash = membrane_entry_hash(membrane)?;
+    let links = get_links(GetLinksInputBuilder::try_new(membrane_hash, LinkTypes::MembraneToFederationRecord)?.build())?;
+    let mut records = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
+}
+
+// ============================================================================
 // CRITIQUE SPECIES FUNCTIONS
 // ============================================================================
 
