@@ -133,6 +133,34 @@ impl ToN4L for Critique {
     }
 }
 
+impl ToN4L for AntibodyPattern {
+    fn to_n4l(&self, entry_hash: &EntryHash) -> String {
+        let alias = n4l_alias("antibodypattern", entry_hash);
+        // Same dynamic-prefix resolution Critique's to_n4l already uses
+        // for its own scale-invariant target — see that impl's comment
+        // for why this can't be resolved any other way from a pure
+        // function with no DHT access.
+        let target_placeholder = match EntryHash::try_from(self.target.clone()) {
+            Ok(target_hash) => {
+                let prefix = n4l_prefix_for_target_type(&self.target_type);
+                format!("${}.1", n4l_alias(prefix, &target_hash))
+            }
+            Err(_) => format!("\"{}\"", self.target),
+        };
+        let mut out = format!(
+            "@{alias} \"{rationale}\" (flags) $target_placeholder\n",
+            alias = alias, rationale = n4l_esc(&self.rationale)
+        );
+        out = out.replace("$target_placeholder", &target_placeholder);
+        out += &n4l_prop("target type", &format!("{:?}", self.target_type));
+        out += &n4l_prop("pattern kind", &format!("{:?}", self.kind));
+        out += &n4l_prop("asserted by", &self.author.to_string());
+        out += &n4l_prop("has dht hash", &entry_hash.to_string());
+        out.push('\n');
+        out
+    }
+}
+
 impl ToN4L for Evidence {
     fn to_n4l(&self, entry_hash: &EntryHash) -> String {
         let alias = n4l_alias("evidence", entry_hash);
@@ -855,6 +883,94 @@ pub fn get_critiques_by_mode(mode: CritiqueMode) -> ExternResult<Vec<Record>> {
         }
     }
     Ok(critiques)
+}
+
+// ============================================================================
+// IMMUNE SYSTEM — ANTIBODY PATTERNS
+//
+// README §4.2's Biological → Digital mapping named "AntibodyPattern" as
+// deferred; this ships the first real increment. See AntibodyPattern's
+// own doc comment (integrity zome) for why this is a distinct entry
+// type from Critique, not a rename of it: a Critique adjudicates a
+// claim's content (Invariant #4's five typed receptor modes); an
+// AntibodyPattern flags a structural/behavioral pattern (spam, a sybil
+// cluster, plagiarism, coordinated manipulation, impersonation —
+// AntibodyPatternKind) independent of whether the content itself is
+// right or wrong. Same friction pattern as Critique: a coordinator-side
+// pre-check paired with real, unbypassable DHT-side enforcement in the
+// integrity zome's validate_antibody_pattern, since a custom client
+// could create the entry directly and skip this function entirely.
+// ============================================================================
+
+const ANTIBODY_PATTERN_WINDOW_SECS: i64 = 3600;
+const ANTIBODY_PATTERN_MAX_PER_WINDOW: usize = 20; // must match integrity zome's limit
+
+/// Mirrors count_recent_critiques exactly, for AntibodyPattern instead.
+fn count_recent_antibody_patterns(since: Timestamp) -> ExternResult<usize> {
+    let filter = ChainQueryFilter::new()
+        .include_entries(false)
+        .entry_type(EntryType::App(UnitEntryTypes::AntibodyPattern.try_into()?));
+    let records = query(filter)?;
+
+    let count = records
+        .iter()
+        .filter(|r| r.action().timestamp() >= since)
+        .count();
+
+    Ok(count)
+}
+
+fn check_antibody_pattern_friction() -> ExternResult<()> {
+    let now = sys_time()?;
+    let since = Timestamp::from_micros(now.as_micros() - ANTIBODY_PATTERN_WINDOW_SECS * 1_000_000);
+    let recent_count = count_recent_antibody_patterns(since)?;
+
+    if recent_count >= ANTIBODY_PATTERN_MAX_PER_WINDOW {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "SWO temporal friction: {} AntibodyPatterns already created in the last {} seconds (limit {}). \
+             This is intentional friction, not a reputation judgment — try again later.",
+            recent_count, ANTIBODY_PATTERN_WINDOW_SECS, ANTIBODY_PATTERN_MAX_PER_WINDOW
+        ))));
+    }
+    Ok(())
+}
+
+#[hdk_extern]
+pub fn publish_antibody_pattern(pattern: AntibodyPattern) -> ExternResult<ActionHash> {
+    check_antibody_pattern_friction()?;
+
+    let action_hash = create_entry(EntryTypes::AntibodyPattern(pattern.clone()))?;
+
+    // Link from the target (any critiquable node — see CritiqueTargetType,
+    // reused here exactly as Critique.target_type does) to this pattern.
+    create_link(
+        pattern.target.clone(),
+        action_hash.clone(),
+        LinkTypes::TargetToAntibody,
+        LinkTag::new(format!("{:?}", pattern.kind).into_bytes()),
+    )?;
+
+    Ok(action_hash)
+}
+
+/// Every AntibodyPattern flagging `target` — a raw, unfiltered read, the
+/// same shape get_critiques_for already has for Critique. Never scores,
+/// ranks, or filters (Invariant #1) — a caller who wants to discount
+/// patterns from agents they don't trust composes this with their own
+/// judgment, the same way AttestationPolicy/ConductancePolicy stay
+/// entirely opt-in rather than a protocol default.
+#[hdk_extern]
+pub fn get_antibody_patterns_for(target: AnyDhtHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(GetLinksInputBuilder::try_new(target, LinkTypes::TargetToAntibody)?.build())?;
+    let mut patterns = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                patterns.push(record);
+            }
+        }
+    }
+    Ok(patterns)
 }
 
 // ============================================================================
@@ -2005,6 +2121,7 @@ pub struct N4LQuery {
     pub limit: u32,
     pub include_critiques: bool,
     pub include_evidence: bool,
+    pub include_antibody_patterns: bool,
 }
 
 #[hdk_extern]
@@ -2073,6 +2190,24 @@ pub fn export_to_n4l(params: N4LQuery) -> ExternResult<String> {
                 }
                 let entry_hash = hash_entry(&evidence)?;
                 n4l.push_str(&evidence.to_n4l(&entry_hash));
+            }
+        }
+    }
+
+    // Export antibody patterns if requested.
+    if params.include_antibody_patterns {
+        let antibody_filter = ChainQueryFilter::new()
+            .include_entries(true)
+            .entry_type(EntryType::App(UnitEntryTypes::AntibodyPattern.try_into()?));
+
+        let patterns = query(antibody_filter)?;
+        for record in patterns {
+            if let Ok(Some(pattern)) = record.entry().to_app_option::<AntibodyPattern>() {
+                if let Some(ref author) = params.author {
+                    if &pattern.author != author { continue; }
+                }
+                let entry_hash = hash_entry(&pattern)?;
+                n4l.push_str(&pattern.to_n4l(&entry_hash));
             }
         }
     }
@@ -3386,6 +3521,60 @@ mod tests {
         let without_species = Critique { species: None, ..with_species };
         let out2 = without_species.to_n4l(&critique_entry_hash);
         assert!(!out2.contains("(adopts species)"));
+    }
+
+    // --- ToN4L: AntibodyPattern -------------------------------------------
+
+    #[test]
+    fn antibody_pattern_to_n4l_references_claim_target_by_its_own_alias() {
+        let claim_entry_hash = fixture_entry_hash(60);
+        let pattern_entry_hash = fixture_entry_hash(61);
+
+        let pattern = AntibodyPattern {
+            target: claim_entry_hash.clone().into(),
+            target_type: CritiqueTargetType::Claim,
+            kind: AntibodyPatternKind::SpamFlood,
+            rationale: "Ten near-identical claims posted in one minute".into(),
+            author: fixture_agent(62),
+            timestamp: 0,
+        };
+
+        let out = pattern.to_n4l(&pattern_entry_hash);
+
+        // Same cross-reference guarantee critique_to_n4l's own test
+        // checks: the alias must match what the target's own to_n4l
+        // impl would produce.
+        let expected_target_alias = n4l_alias("claim", &claim_entry_hash);
+        assert!(out.contains(&format!("${}.1", expected_target_alias)));
+        assert!(out.contains("(target type) \"Claim\""));
+        assert!(out.contains("(pattern kind) \"SpamFlood\""));
+        assert!(out.contains("(flags)"));
+    }
+
+    #[test]
+    fn antibody_pattern_to_n4l_references_critique_target_under_the_critique_prefix() {
+        // Scale invariance, same as Critique's own target: an
+        // AntibodyPattern can flag another Critique, not just a Claim.
+        let target_critique_entry_hash = fixture_entry_hash(63);
+        let pattern_entry_hash = fixture_entry_hash(64);
+
+        let pattern = AntibodyPattern {
+            target: target_critique_entry_hash.clone().into(),
+            target_type: CritiqueTargetType::Critique,
+            kind: AntibodyPatternKind::CoordinatedManipulation,
+            rationale: "Five agents posted the same critique within seconds of each other".into(),
+            author: fixture_agent(65),
+            timestamp: 0,
+        };
+
+        let out = pattern.to_n4l(&pattern_entry_hash);
+
+        let expected_target_alias = n4l_alias("critique", &target_critique_entry_hash);
+        assert!(out.contains(&format!("${}.1", expected_target_alias)));
+        let wrong_alias = n4l_alias("claim", &target_critique_entry_hash);
+        assert!(!out.contains(&format!("${}.1", wrong_alias)));
+        assert!(out.contains("(target type) \"Critique\""));
+        assert!(out.contains("(pattern kind) \"CoordinatedManipulation\""));
     }
 
     // --- ToN4L: WorldlineTrace ------------------------------------------

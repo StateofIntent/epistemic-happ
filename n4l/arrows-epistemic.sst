@@ -62,6 +62,7 @@
     # so it's causal/affecting, not merely descriptive.
     + critiques (crit)       - is critiqued by (critby)
     + contradicts (contra)   - is contradicted by (contraby)
+    + flags (flag)           - is flagged by (flagby)
     + adopts species (adopts) - is adopted by (adoptby)
     + retracts (retr)        - is retracted by (retrby)
     + replaced by (replby)   - replaces (repl)
@@ -102,3 +103,4 @@
     + replication attempted (repat) - is attempt of replication (repatof)
     + promise domain (promdom) - is domain of promise (promdomof)
     + condition param (condparam) - is parameter of condition (condparamof)
+    + pattern kind (patkind)   - is kind of pattern (patkindof)

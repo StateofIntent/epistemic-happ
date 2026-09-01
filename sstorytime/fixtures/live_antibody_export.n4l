@@ -1,0 +1,20 @@
+- epistemic export
+
+# Epistemic Resonance Protocol - N4L Export
+
+@claim_3f9aa63de09b1793 "A claim that will get flagged as spam-flooded" (asserted by) "uhCAkJmrb-TqhncgfFLyqY0tyS9Hke47vvDfgnKn_KM34i9t1F-8s"
+     "                (has domain) "ImmuneSystemTest-1788272489981"
+     "                (has confidence) "Moderate"
+     "                (has dht hash) "uhCEkQ4Kle11HvnmP6JaYT3PA2tn2NvG2XAfC_FeMNKOyJaezXTM8"
+
+@claim_78adcceec98d5c1f "An unrelated claim that gets no antibody pattern" (asserted by) "uhCAkJmrb-TqhncgfFLyqY0tyS9Hke47vvDfgnKn_KM34i9t1F-8s"
+     "                (has domain) "ImmuneSystemTest-1788272489981"
+     "                (has confidence) "Moderate"
+     "                (has dht hash) "uhCEkVLX_Xnw1Uh6p7gII1UyW9d85uDpSvqeF8mR1V-C6WoEETOdC"
+
+@antibodypattern_23b52994641e55c3 "Ten near-identical claims posted in the same minute" (flags) $claim_3f9aa63de09b1793.1
+     "                (target type) "Claim"
+     "                (pattern kind) "SpamFlood"
+     "                (asserted by) "uhCAkJmrb-TqhncgfFLyqY0tyS9Hke47vvDfgnKn_KM34i9t1F-8s"
+     "                (has dht hash) "uhCEklmuc6BUr0LPztunJt17txiBjNmhc6lInyGh2JLt4tUM07DnD"
+
