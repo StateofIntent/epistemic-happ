@@ -2542,6 +2542,55 @@ pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> 
 // DISCOURSE HEALTH
 // ============================================================================
 
+// CONDUCTANCE POLICY
+//
+// Read layer, same opt-in shape as AttestationPolicy immediately above:
+// get_effective_conductance (CONDUCTANCE ATROPHY section) has existed
+// since Phase 1 but was never wired into any aggregate read as an actual
+// filter — this closes that gap. A protocol-level default that silently
+// discounted low-conductance critiques was deliberately NOT built, for
+// the same Invariant #1 reason AttestationPolicy stays opt-in: applied
+// automatically, it would itself be a canonical, comparative judgment
+// about whose critique "counts." payload.conductance_policy: None (the
+// default) is exactly the old, unfiltered behavior — every critique in
+// the domain counts, no conductance check performed at all. A caller who
+// wants to discount critiques nobody has reinforced says so themselves,
+// on their own terms.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConductancePolicy {
+    /// A critique is only counted if its SynapticLink's read-time
+    /// effective conductance (base conductance decayed since creation,
+    /// plus one decaying contribution per Reinforcement — see
+    /// get_effective_conductance) is at least this. A critique with no
+    /// discoverable SynapticLink at all (should not happen in practice —
+    /// create_critique always makes one — but handled defensively) is
+    /// treated as conductance 0.0, i.e. excluded by any positive
+    /// threshold.
+    pub min_effective_conductance: f32,
+}
+
+/// The effective conductance of the SynapticLink create_critique made
+/// for `critique` (base: critique.target, target: the critique's own
+/// ActionHash — see create_critique and find_synaptic_link), or 0.0 if
+/// none is found. Split out so get_discourse_health's loop body stays
+/// readable; not itself an extern, since callers who want this for a
+/// critique they already hold can already compose find_synaptic_link +
+/// get_effective_conductance themselves.
+fn critique_effective_conductance(critique: &Critique, critique_action: &ActionHash) -> ExternResult<f32> {
+    let base: AnyDhtHash = match AnyDhtHash::try_from(critique.target.clone()) {
+        Ok(hash) => hash,
+        Err(_) => return Ok(0.0),
+    };
+    let synaptic_link_action = find_synaptic_link(FindSynapticLinkPayload {
+        base,
+        target_action: critique_action.clone(),
+    })?;
+    match synaptic_link_action {
+        Some(link_action) => get_effective_conductance(link_action),
+        None => Ok(0.0),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DiscourseHealth {
     pub domain: String,
@@ -2571,6 +2620,13 @@ pub struct GetDiscourseHealthPayload {
     /// `Some`, this membrane is also what scopes the AttestationGrant
     /// source in is_agent_attested's check.
     pub attestation_policy: Option<AttestationPolicy>,
+    /// Opt-in — see the CONDUCTANCE POLICY section above. `None` (the
+    /// default a caller gets by simply omitting this field) means every
+    /// critique in the domain counts regardless of how decayed or
+    /// reinforced its SynapticLink is, exactly the behavior before this
+    /// field existed. When `Some`, independent of attestation_policy —
+    /// a critique must pass both checks (whichever are `Some`) to count.
+    pub conductance_policy: Option<ConductancePolicy>,
 }
 
 #[hdk_extern]
@@ -2635,6 +2691,13 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
                         }
                     };
                     if !attested {
+                        continue;
+                    }
+                }
+
+                if let Some(ref policy) = payload.conductance_policy {
+                    let effective = critique_effective_conductance(&critique, record.action_address())?;
+                    if effective < policy.min_effective_conductance {
                         continue;
                     }
                 }
