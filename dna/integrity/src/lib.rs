@@ -93,6 +93,67 @@ pub struct Critique {
     pub species: Option<EntryHash>, // Optional: which CritiqueSpecies taxonomy this uses
 }
 
+/// Recognized classes of bad-faith structural/behavioral pattern — the
+/// "antigens" this protocol's agents have actually named. Deliberately a
+/// fixed, small, typed enum rather than free text, the same "typed, not
+/// flattened" discipline CritiqueMode already applies to disagreement
+/// (Invariant #4): "spam" as an open string would be exactly the kind of
+/// untyped, unaccountable label this codebase avoids elsewhere. Each
+/// variant names a specific pattern this project's own design
+/// discussions have already grounded (see README §2.3's spam-defense/
+/// sybil-farming discussion for SpamFlood and SybilCluster specifically)
+/// — matching §2.6's naming discipline of not dressing a mechanism in
+/// vocabulary it hasn't earned.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AntibodyPatternKind {
+    SpamFlood,               // rapid, low-effort, repetitive content
+    SybilCluster,             // a self-reinforcing ring with no real
+                               // resonance from outside itself
+    Plagiarism,               // content copied without attribution
+    CoordinatedManipulation,  // multiple agents acting in concert to
+                               // distort a graph region
+    Impersonation,            // content misrepresenting its own
+                               // provenance or authorship
+}
+
+/// An agent's own recognition that some entry exhibits a known
+/// bad-faith pattern — the "antibody" half of the immune-system
+/// metaphor (§4.2). Deliberately NOT the same thing as a `Critique`:
+/// a Critique is an ordinary, expected part of discourse, adjudicating
+/// a claim's *content* (is it true, well-reasoned, well-evidenced —
+/// Invariant #4's five typed receptor modes); an AntibodyPattern
+/// instead flags a *structural or behavioral* pattern — the entry (or
+/// the activity around it) looking like spam, a sybil ring, plagiarism,
+/// and so on, independent of whether its content is right or wrong.
+/// Conflating the two would blur a distinction this protocol needs to
+/// keep: disagreeing with a claim is not an accusation of bad faith,
+/// and an accusation of bad faith is not, by itself, a claim that the
+/// content is false.
+///
+/// `target`/`target_type` reuse `AnyLinkableHash`/`CritiqueTargetType`
+/// exactly as `Critique` does — an AntibodyPattern can point at anything
+/// a Critique can (Claim, Critique, Constitution, Membrane, or
+/// CritiqueSpecies), cross-checked against the DHT the same
+/// unspoofable way (see `validate_antibody_pattern`). Deliberately
+/// CANNOT target an `AgentPubKey` directly: an antibody that names an
+/// agent, rather than a specific entry that agent authored, would
+/// function as exactly the canonical, comparative reputation mark on an
+/// *identity* that Invariant #1 rules out — the same reasoning
+/// §2.3 already gives for why identity creation itself was never made
+/// to cost something. `rationale` is required non-empty, the same
+/// accountability requirement `Critique.content` already carries: an
+/// AntibodyPattern must say why, not just flag silently.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct AntibodyPattern {
+    pub target: AnyLinkableHash,
+    pub target_type: CritiqueTargetType,
+    pub kind: AntibodyPatternKind,
+    pub rationale: String,
+    pub author: AgentPubKey,
+    pub timestamp: u64,
+}
+
 /// Evidence entries link to external or internal supporting data.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
@@ -345,6 +406,15 @@ pub enum LinkTypes {
     SpeciesToParent,
     SpeciesToCritique,
 
+    // Immune system
+    TargetToAntibody,      // Any critiquable node (same five kinds
+                            // Critique's target can point at) → an
+                            // AntibodyPattern flagging it. One link type
+                            // reused across all five target kinds, the
+                            // same reasoning TargetToCritique already
+                            // documents — Holochain's link model doesn't
+                            // care what entry type a link's base is.
+
     // Synaptic / Hebbian links
     SynapticLink,
     Reinforcement,          // SynapticLink's own ActionHash -> reinforcing
@@ -392,6 +462,7 @@ pub enum EntryTypes {
     WorldlineTrace(WorldlineTrace),
     BridgeRecord(BridgeRecord),
     ExternalCritique(ExternalCritique),
+    AntibodyPattern(AntibodyPattern),
 }
 
 // ============================================================================
@@ -432,6 +503,7 @@ fn validate_store_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCall
                 EntryTypes::WorldlineTrace(trace) => validate_worldline_trace(&trace, &action),
                 EntryTypes::BridgeRecord(record) => validate_bridge_record(&record, &action),
                 EntryTypes::ExternalCritique(ext) => validate_external_critique(&ext, &action),
+                EntryTypes::AntibodyPattern(pattern) => validate_antibody_pattern(&pattern, &action),
             }
         }
         _ => Ok(ValidateCallbackResult::Valid),
@@ -635,6 +707,94 @@ fn validate_critique(critique: &Critique, action: &Create) -> ExternResult<Valid
             "SWO temporal friction: author has {} Critiques in the last {} seconds \
              (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
             recent_count, CRITIQUE_WINDOW_SECS_VALIDATION, CRITIQUE_MAX_PER_WINDOW_VALIDATION
+        )));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
+// --- AntibodyPattern Validation ---
+//
+// Mirrors validate_critique's shape closely — same target/target_type
+// cross-check (unspoofable the same way), same non-empty-accountability
+// requirement (rationale in place of content), same SWO temporal
+// friction pattern via count_recent_actions_since_checkpoint. An
+// AntibodyPattern is a distinct entry type from Critique (see that
+// struct's own doc comment for why), but nothing about validating it
+// needs to be — the two are structurally the same shape of "typed,
+// accountable, targeted, rate-limited claim about another entry."
+const ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION: i64 = 3600;
+const ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION: usize = 20; // must match coordinator's limit
+
+fn validate_antibody_pattern(pattern: &AntibodyPattern, action: &Create) -> ExternResult<ValidateCallbackResult> {
+    if pattern.author != action.author {
+        return Ok(ValidateCallbackResult::Invalid("AntibodyPattern author must match action author.".into()));
+    }
+
+    // Same unspoofable cross-check validate_critique already uses: the
+    // target must exist, and its real DHT-derived type must match what
+    // the author claimed. All five valid target kinds are entries (never
+    // an Agent or External hash — see AntibodyPattern's own doc comment
+    // on why an agent is deliberately not a valid target).
+    let target_hash = EntryHash::try_from(pattern.target.clone()).map_err(|_| {
+        wasm_error!(WasmErrorInner::Guest("AntibodyPattern target must be an EntryHash-shaped reference.".into()))
+    })?;
+    let target_entry = RecordEntry::Present(
+        must_get_entry(target_hash)
+            .map_err(|_| wasm_error!(WasmErrorInner::Guest("AntibodyPattern target not found.".into())))?
+            .into_content(),
+    );
+
+    let actual_target_type = if target_entry.to_app_option::<Claim>().ok().flatten().is_some() {
+        Some(CritiqueTargetType::Claim)
+    } else if target_entry.to_app_option::<Critique>().ok().flatten().is_some() {
+        Some(CritiqueTargetType::Critique)
+    } else if target_entry.to_app_option::<Constitution>().ok().flatten().is_some() {
+        Some(CritiqueTargetType::Constitution)
+    } else if target_entry.to_app_option::<Membrane>().ok().flatten().is_some() {
+        Some(CritiqueTargetType::Membrane)
+    } else if target_entry.to_app_option::<CritiqueSpecies>().ok().flatten().is_some() {
+        Some(CritiqueTargetType::CritiqueSpecies)
+    } else {
+        None
+    };
+
+    match actual_target_type {
+        Some(ref t) if *t == pattern.target_type => {}
+        Some(_) => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "AntibodyPattern target_type does not match what the target actually is.".into()
+            ));
+        }
+        None => {
+            return Ok(ValidateCallbackResult::Invalid(
+                "AntibodyPattern target is not a critiquable entry type.".into()
+            ));
+        }
+    }
+
+    if pattern.rationale.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("AntibodyPattern rationale cannot be empty.".into()));
+    }
+
+    let window_start = action.timestamp.as_micros() - ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION * 1_000_000;
+    let antibody_entry_type = EntryType::App(
+        UnitEntryTypes::AntibodyPattern.try_into().map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Could not resolve AntibodyPattern entry type.".into()))
+        })?
+    );
+    let recent_count = count_recent_actions_since_checkpoint(
+        action.author.clone(),
+        action.prev_action.clone(),
+        window_start,
+        move |a| matches!(a, Action::Create(create) if create.entry_type == antibody_entry_type),
+    )?;
+
+    if recent_count >= ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "SWO temporal friction: author has {} AntibodyPatterns in the last {} seconds \
+             (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
+            recent_count, ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION, ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION
         )));
     }
 
