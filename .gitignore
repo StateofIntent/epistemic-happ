@@ -6,9 +6,11 @@ target/
 # binaries that get deployed as part of the hApp, not published as
 # libraries, so the lockfile is kept for reproducible builds.
 
-# Node / bridge service
+# Node / bridge service / mobile UI
 /bridge/node_modules/
 /bridge/dist/
+/mobile-ui/node_modules/
+/mobile-ui/dist/
 node_modules/
 dist/
 # Holds live conductor/Twitter credentials — see bridge/.env.example for

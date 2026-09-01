@@ -1,0 +1,277 @@
+:root {
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --text-dim: #6b6b6b;
+  --border: #e0ddd8;
+  --accent: #2f6f4f;
+  --accent-text: #ffffff;
+  --danger-bg: #fdecea;
+  --danger-text: #9c2f2f;
+  --success-bg: #eaf6ee;
+  --success-text: #216b3f;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15171a;
+    --surface: #1e2125;
+    --text: #ececec;
+    --text-dim: #9a9a9a;
+    --border: #33373c;
+    --accent: #4caf7d;
+    --accent-text: #0c1a12;
+    --danger-bg: #3a1f1f;
+    --danger-text: #f2a3a3;
+    --success-bg: #17301f;
+    --success-text: #8fd9a8;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  max-width: 640px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* --- Header --- */
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.app-header h1 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.status {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-meta .link-button {
+  flex-shrink: 0;
+}
+
+.status.connected::before {
+  content: '●';
+  color: var(--accent);
+  margin-right: 0.35rem;
+}
+
+/* --- Generic form / button styling --- */
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-bottom: 0.9rem;
+}
+
+input, textarea, select {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.6rem 0.7rem;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+}
+
+textarea { min-height: 5rem; resize: vertical; }
+
+button {
+  font-size: 1rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.6; cursor: default; }
+
+.link-button {
+  background: none;
+  color: var(--accent);
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+}
+
+.error-box {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.success-box {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--success-bg);
+  color: var(--success-text);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+/* --- Connect screen --- */
+
+.connect-screen { padding: 1.25rem; }
+.connect-form { margin-top: 1rem; }
+
+/* --- Tabs --- */
+
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  color: var(--text-dim);
+  border-radius: 0;
+  padding: 0.8rem;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-content { padding: 1rem; flex: 1; }
+
+/* --- Browse tab --- */
+
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.search-row input { margin-top: 0; }
+
+.claim-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.claim-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.claim-content {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.claim-meta {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.tag-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.critique-panel {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.critique-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.critique-item:last-of-type { border-bottom: none; }
+
+.critique-mode {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.critique-item p { margin: 0.25rem 0 0; }
+
+.critique-form { margin-top: 0.8rem; }
+.critique-form select { margin-bottom: 0.5rem; }
+
+/* --- New claim tab --- */
+
+.claim-form { max-width: 480px; }
