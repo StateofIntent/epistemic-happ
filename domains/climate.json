@@ -1,0 +1,47 @@
+{
+  "domain": "ClimateScience",
+  "description": "Claims and critiques about climate systems, forcing, projections, and mitigation/adaptation measures — distinguishing observation from model output, and disclosing funding, as first-class epistemic norms rather than assumed background.",
+
+  "promises": [
+    { "action": "validate_claims", "domain": "ClimateScience", "modality": "Evidential" },
+    { "action": "distinguish_model_from_observation", "domain": "ClimateScience", "modality": "Methodological" },
+    { "action": "disclose_funding_sources", "domain": "ClimateScience", "modality": null }
+  ],
+  "required_promises": ["validate_claims", "distinguish_model_from_observation", "disclose_funding_sources"],
+  "conditions": [
+    { "condition_type": "if_evidence_present", "parameters": ["peer_reviewed"] }
+  ],
+
+  "critique_species": [
+    {
+      "name": "MethodologicalCritique",
+      "parent": null,
+      "required_evidence": ["Description of the alternative method, and why it's more appropriate than the one being critiqued"]
+    },
+    {
+      "name": "ModelUncertaintyCritique",
+      "parent": "MethodologicalCritique",
+      "required_evidence": ["The confidence interval, ensemble spread, or projection range being disputed"]
+    },
+    {
+      "name": "StatisticalCritique",
+      "parent": "MethodologicalCritique",
+      "required_evidence": ["A reanalysis, or a citation of the statistical methodology being applied instead"]
+    },
+    {
+      "name": "SourceCritique",
+      "parent": null,
+      "required_evidence": []
+    },
+    {
+      "name": "FundingBiasCritique",
+      "parent": "SourceCritique",
+      "required_evidence": ["The documented funding source creating the alleged bias"]
+    },
+    {
+      "name": "PeerReviewStatusCritique",
+      "parent": "SourceCritique",
+      "required_evidence": []
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "domain": "NutritionScience",
+  "description": "Claims and critiques about diet, metabolism, and health outcomes — where correlational epidemiology is common and easily overclaimed as causal, and industry funding of research is a well-documented, real source of bias.",
+
+  "promises": [
+    { "action": "validate_claims", "domain": "NutritionScience", "modality": "Evidential" },
+    { "action": "distinguish_correlation_causation", "domain": "NutritionScience", "modality": "Logical" },
+    { "action": "disclose_industry_funding", "domain": "NutritionScience", "modality": null }
+  ],
+  "required_promises": ["validate_claims", "distinguish_correlation_causation", "disclose_industry_funding"],
+  "conditions": [],
+
+  "critique_species": [
+    {
+      "name": "StudyDesignCritique",
+      "parent": null,
+      "required_evidence": ["The specific study design detail being disputed"]
+    },
+    {
+      "name": "ObservationalVsRCTCritique",
+      "parent": "StudyDesignCritique",
+      "required_evidence": ["Whether the cited study was observational or a randomized controlled trial, and why that matters for the claim being made"]
+    },
+    {
+      "name": "SampleSizeCritique",
+      "parent": "StudyDesignCritique",
+      "required_evidence": ["Sample size, and a power calculation if available"]
+    },
+    {
+      "name": "ConflictOfInterestCritique",
+      "parent": null,
+      "required_evidence": []
+    },
+    {
+      "name": "IndustryFundingCritique",
+      "parent": "ConflictOfInterestCritique",
+      "required_evidence": ["The documented funding source or disclosure statement"]
+    }
+  ]
+}
