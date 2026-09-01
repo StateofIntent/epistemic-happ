@@ -1,0 +1,15 @@
+{
+  "name": "epistemic-domain-bootstrap",
+  "version": "0.1.0",
+  "description": "Bootstrap tool for founding a new domain Membrane from a template — see README.md",
+  "type": "module",
+  "scripts": {
+    "bootstrap": "node bootstrap.mjs"
+  },
+  "dependencies": {
+    "@holochain/client": "^0.17.0"
+  },
+  "overrides": {
+    "libsodium-wrappers": "0.7.13"
+  }
+}

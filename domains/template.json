@@ -1,0 +1,31 @@
+{
+  "_comment": "Fill-in-the-blank template for founding a new domain Membrane. Not itself a valid domain to bootstrap as-is (the placeholder values below are illustrative) — copy this file, replace every field, and see domains/README.md for what each one actually means and why it's required. The _comment/_field_comment keys are stripped before use and exist only to be read, not part of the real schema (see domains/README.md's own note on why).",
+
+  "domain": "YourDomainName",
+  "description": "One or two sentences: what is this domain about, and what kind of claims belong in it?",
+
+  "_promises_comment": "Constitution.promises — what THIS founding agent commits to doing. 'action' is a short verb-phrase identifier (not validated against a fixed vocabulary — pick something the domain's own critique species/discussion will reference by name). 'modality' is optional and, if set, MUST be one of: Experiential, Methodological, Logical, Evidential, Phenomenological (see SPEC.md §3.2) — null if the promise isn't tied to one specific receptor type.",
+  "promises": [
+    { "action": "validate_claims", "domain": "YourDomainName", "modality": "Evidential" }
+  ],
+
+  "_required_promises_comment": "Membrane.required_promises — what this membrane demands of members generally (not independently cross-checked against 'promises' above by validation, but keeping them in sync is good practice — a membrane that requires a promise its own founder never made is a real, if unenforced, inconsistency).",
+  "required_promises": ["validate_claims"],
+
+  "_conditions_comment": "Constitution.conditions — optional; leave as [] if none apply.",
+  "conditions": [],
+
+  "_critique_species_comment": "A starter critique taxonomy for this domain — CritiqueSpecies entries, created in the order listed (a child's 'parent' must name a species earlier in this same list, or be null for a root species). This is the actual place a domain differentiates itself: what kinds of methodological/source/logical problems does THIS field's discourse actually need named, that a generic domain wouldn't? See domains/climate.json and domains/nutrition.json for two real, differentiated examples — copying LumbarRehab's implicit vocabulary here would defeat the point.",
+  "critique_species": [
+    {
+      "name": "ExampleRootSpecies",
+      "parent": null,
+      "required_evidence": ["What kind of evidence must a critique of this species cite?"]
+    },
+    {
+      "name": "ExampleChildSpecies",
+      "parent": "ExampleRootSpecies",
+      "required_evidence": []
+    }
+  ]
+}
