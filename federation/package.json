@@ -1,0 +1,15 @@
+{
+  "name": "epistemic-federation-bridge",
+  "version": "0.1.0",
+  "description": "Cross-network federation bridge — records and confirms mutual recognition between membranes on two independently-run Holochain conductors. See README.md.",
+  "type": "module",
+  "scripts": {
+    "federate": "node federate.mjs"
+  },
+  "dependencies": {
+    "@holochain/client": "^0.17.0"
+  },
+  "overrides": {
+    "libsodium-wrappers": "0.7.13"
+  }
+}
