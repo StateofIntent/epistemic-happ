@@ -2741,6 +2741,124 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
 }
 
 // ============================================================================
+// CROSS-DOMAIN CRITIQUE LINKS
+//
+// README.md's Fractal Impedance Matching section (SWO pillar, §2.3)
+// names "mesh topology between domains (cross-domain critique links)"
+// as the same multi-pool structure SWO's fragmented liquidity pools
+// create — but nothing before this shipped the actual mechanism, and
+// nothing needed to: Critique.target is already AnyLinkableHash (see
+// the scale-invariant Critique work, §2.6), so an agent could already
+// critique a Claim in a domain other than their own with no validation
+// change required. What was actually missing was the ability to SEE
+// that mesh — a real, queryable answer to "which critiques in this
+// domain came from agents whose own claims live elsewhere," rather than
+// the metaphor sitting unbacked by any function. This is a reading
+// lens only (Invariant #2 — the topology is the truth function), the
+// same shape get_grounding_path already uses: it never scores, ranks,
+// or gates anything, and creating/critiquing across domains was never
+// blocked by anything before this existed either. A critique counts as
+// cross-domain here if its author has authored at least one real Claim
+// in a domain other than the one being critiqued into — a literal,
+// checkable operationalization of "cross-domain," not a fuzzier
+// heuristic (e.g. "critiques mostly outside their home domain"), which
+// would require defining what a "home domain" even means for an agent
+// who has claims in several.
+// ============================================================================
+
+/// Every domain (other than `home_domain`) that appears in
+/// `claim_domains` — deduplicated, order-preserving. Pure so the actual
+/// filtering/dedup logic is directly unit-testable without a DHT; the
+/// host-calling half (which domains an agent's own claims are actually
+/// in) lives in get_cross_domain_critiques below, the same split
+/// bridge_link_type_for/compute_effective_conductance already use.
+fn distinct_other_domains(claim_domains: &[String], home_domain: &str) -> Vec<String> {
+    let mut others: Vec<String> = Vec::new();
+    for domain in claim_domains {
+        if domain != home_domain && !others.contains(domain) {
+            others.push(domain.clone());
+        }
+    }
+    others
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CrossDomainCritique {
+    pub critique_action: ActionHash,
+    pub critique_author: AgentPubKey,
+    /// Distinct domains — other than the membrane's own — the
+    /// critiquing agent has authored at least one real Claim in. Always
+    /// non-empty for an entry in get_cross_domain_critiques' result,
+    /// since that's the condition for being included at all.
+    pub critiquer_home_domains: Vec<String>,
+}
+
+/// Every critique of a Claim in `membrane`'s domain whose author has
+/// also authored at least one Claim in a different domain — the real,
+/// queryable mesh topology CROSS-DOMAIN CRITIQUE LINKS above discusses.
+/// Read-only: never scores or gates, matching get_grounding_path's own
+/// shape and the same Invariant #1/#2 reasoning AttestationPolicy and
+/// ConductancePolicy already document — this surfaces real structure,
+/// it doesn't rank agents by how "cross-domain" they are.
+#[hdk_extern]
+pub fn get_cross_domain_critiques(membrane: AnyDhtHash) -> ExternResult<Vec<CrossDomainCritique>> {
+    let membrane_record = get(membrane, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    let membrane_entry: Membrane = membrane_record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let home_domain = membrane_entry.domain.clone();
+
+    let claims = get_claims_by_domain(home_domain.clone())?;
+    let mut claim_hashes: Vec<EntryHash> = Vec::new();
+    for record in &claims {
+        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
+            claim_hashes.push(hash_entry(&claim)?);
+        }
+    }
+
+    // Cache each author's own claim domains within this call — the same
+    // reasoning get_discourse_health's attestation_cache already gives:
+    // several critiques being scanned here likely share an author, and
+    // get_claims_by_agent isn't free.
+    let mut author_domains_cache: HashMap<AgentPubKey, Vec<String>> = HashMap::new();
+    let mut results: Vec<CrossDomainCritique> = Vec::new();
+
+    for hash in claim_hashes {
+        let critiques = get_critiques_for(hash.into())?;
+        for record in critiques {
+            if let Ok(Some(critique)) = record.entry().to_app_option::<Critique>() {
+                let author_domains = match author_domains_cache.get(&critique.author) {
+                    Some(cached) => cached.clone(),
+                    None => {
+                        let their_claims = get_claims_by_agent(critique.author.clone())?;
+                        let mut domains = Vec::new();
+                        for their_record in &their_claims {
+                            if let Ok(Some(their_claim)) = their_record.entry().to_app_option::<Claim>() {
+                                domains.push(their_claim.domain);
+                            }
+                        }
+                        author_domains_cache.insert(critique.author.clone(), domains.clone());
+                        domains
+                    }
+                };
+
+                let other_domains = distinct_other_domains(&author_domains, &home_domain);
+                if !other_domains.is_empty() {
+                    results.push(CrossDomainCritique {
+                        critique_action: record.action_address().clone(),
+                        critique_author: critique.author,
+                        critiquer_home_domains: other_domains,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+// ============================================================================
 // HELPERS
 // ============================================================================
 
@@ -4129,5 +4247,57 @@ mod tests {
         let is_compatible = |key: &[u8]| key == NEIGHBORHOOD_BINDING_KEY;
         assert!(!is_compatible(b"some-other-scheme-v0"));
         assert!(is_compatible(NEIGHBORHOOD_BINDING_KEY));
+    }
+
+    // ---- CROSS-DOMAIN CRITIQUE LINKS: distinct_other_domains ----
+
+    #[test]
+    fn distinct_other_domains_excludes_the_home_domain() {
+        let claim_domains = vec!["LumbarRehab".to_string(), "LumbarRehab".to_string()];
+        let others = distinct_other_domains(&claim_domains, "LumbarRehab");
+        assert!(others.is_empty(), "an agent whose claims are all in the home domain has no cross-domain presence");
+    }
+
+    #[test]
+    fn distinct_other_domains_dedups_repeats() {
+        let claim_domains = vec![
+            "Nutrition".to_string(),
+            "Nutrition".to_string(),
+            "HipMobility".to_string(),
+        ];
+        let others = distinct_other_domains(&claim_domains, "LumbarRehab");
+        assert_eq!(others, vec!["Nutrition".to_string(), "HipMobility".to_string()]);
+    }
+
+    #[test]
+    fn distinct_other_domains_preserves_first_seen_order() {
+        let claim_domains = vec![
+            "HipMobility".to_string(),
+            "Nutrition".to_string(),
+            "HipMobility".to_string(),
+        ];
+        let others = distinct_other_domains(&claim_domains, "LumbarRehab");
+        assert_eq!(others, vec!["HipMobility".to_string(), "Nutrition".to_string()]);
+    }
+
+    #[test]
+    fn distinct_other_domains_of_no_claims_is_empty() {
+        let others = distinct_other_domains(&[], "LumbarRehab");
+        assert!(others.is_empty());
+    }
+
+    #[test]
+    fn distinct_other_domains_mixes_home_and_foreign() {
+        // An agent with claims in both their critique target's domain
+        // AND elsewhere should still surface as cross-domain, reporting
+        // only the elsewhere part — the home domain itself isn't
+        // "cross" anything.
+        let claim_domains = vec![
+            "LumbarRehab".to_string(),
+            "Nutrition".to_string(),
+            "LumbarRehab".to_string(),
+        ];
+        let others = distinct_other_domains(&claim_domains, "LumbarRehab");
+        assert_eq!(others, vec!["Nutrition".to_string()]);
     }
 }
