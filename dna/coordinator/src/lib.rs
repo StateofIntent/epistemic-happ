@@ -423,15 +423,12 @@ pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
 const SYNAPTIC_LINK_WINDOW_SECS: i64 = 3600; // rolling 1-hour window
 const SYNAPTIC_LINK_MAX_PER_WINDOW: usize = 20; // tunable; not load-bearing on exact value
 
-// Coupling to the metabolic biosignalling currency layer (see that
-// section below, after REINFORCEMENT TEMPORAL FRICTION) — bounded
-// burn-to-extend-friction. Mirrored, with real enforcement, in the
-// integrity zome's own copies (SYNAPTIC_LINK_HARD_CEILING_VALIDATION,
-// CREDIT_PER_EXTRA_ACTION_VALIDATION); this coordinator-side copy is
-// only the friendly, bypassable pre-check, same relationship
-// SYNAPTIC_LINK_MAX_PER_WINDOW already has to its own _VALIDATION twin.
-const SYNAPTIC_LINK_HARD_CEILING: usize = 30; // must match integrity zome's limit — absolute
-const CREDIT_PER_EXTRA_ACTION: f32 = 5.0; // must match integrity zome's limit
+// There is deliberately NO coupling to the metabolic currency layer
+// here. A burn-to-extend tier (free below 20, purchasable to 30) once
+// sat at this spot and was removed — it was unreachable by any honest
+// client, and handed ten extra links to the one client that could reach
+// it, for burns that nothing funds. See the integrity zome's matching
+// REMOVED note and docs/metabolic-biosignalling-currency-brief.md §7.2.
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SynapticFrictionStatus {
@@ -489,63 +486,21 @@ pub fn get_synaptic_link_friction_status(_: ()) -> ExternResult<SynapticFriction
     })
 }
 
-/// Sums this agent's own recent CreditBurn.amount (own local chain, same
-/// "each agent checks their own history" shape count_recent_synaptic_links
-/// already uses), restricted to burns tagged CREDIT_BURN_FRICTION_REASON.
-/// Friendly, bypassable pre-check only — see the integrity zome's
-/// sum_recent_credit_burn_amount for the real enforcement this mirrors.
-fn sum_recent_credit_burn_amount(since: Timestamp) -> ExternResult<f32> {
-    let filter = ChainQueryFilter::new()
-        .action_type(ActionType::Create)
-        .include_entries(true)
-        .entry_type(EntryType::App(UnitEntryTypes::CreditBurn.try_into()?));
-    let records = query(filter)?;
-
-    let mut total = 0f32;
-    for record in records {
-        if record.action().timestamp() < since {
-            continue;
-        }
-        if let Ok(Some(burn)) = record.entry().to_app_option::<CreditBurn>() {
-            if burn.reason == CREDIT_BURN_FRICTION_REASON {
-                total += burn.amount;
-            }
-        }
-    }
-    Ok(total)
-}
-
 fn check_synaptic_link_friction() -> ExternResult<()> {
     let now = sys_time()?;
     let since = Timestamp::from_micros(now.as_micros() - SYNAPTIC_LINK_WINDOW_SECS * 1_000_000);
     let recent_count = count_recent_synaptic_links(since)?;
 
     if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW {
-        // Absolute — see SYNAPTIC_LINK_HARD_CEILING's own comment above.
-        if recent_count >= SYNAPTIC_LINK_HARD_CEILING {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                "SWO temporal friction: {} SynapticLinks already created in the last {} seconds — at or \
-                 above the hard ceiling of {}. No amount of burned credit lifts this; it is an absolute limit.",
-                recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_HARD_CEILING
-            ))));
-        }
-        // Between the free tier and the hard ceiling: allowed if a
-        // matching CreditBurn covers the headroom. This is only the
-        // friendly pre-check — the integrity zome's validate_create_link
-        // independently re-derives the same thing from the DHT and is
-        // what actually enforces it.
-        let extra_actions_needed = (recent_count + 1 - SYNAPTIC_LINK_MAX_PER_WINDOW) as f32;
-        let required_burn = extra_actions_needed * CREDIT_PER_EXTRA_ACTION;
-        let burned = sum_recent_credit_burn_amount(since)?;
-        if burned < required_burn {
-            return Err(wasm_error!(WasmErrorInner::Guest(format!(
-                "SWO temporal friction: {} SynapticLinks already created in the last {} seconds (free limit \
-                 {}, hard ceiling {}). Extending past the free limit needs a recent CreditBurn (reason \"{}\") \
-                 totalling at least {} — found {} burned in the same window. Call create_credit_burn first.",
-                recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_MAX_PER_WINDOW, SYNAPTIC_LINK_HARD_CEILING,
-                CREDIT_BURN_FRICTION_REASON, required_burn, burned
-            ))));
-        }
+        // Absolute. No burn lifts this — see the note beside the
+        // friction constants above. Friendly pre-check only; the
+        // integrity zome's validate_create_link independently re-derives
+        // the same limit from the DHT and is what actually enforces it.
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "SWO temporal friction: {} SynapticLinks already created in the last {} seconds (limit {}). \
+             This is an absolute limit.",
+            recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_MAX_PER_WINDOW
+        ))));
     }
     Ok(())
 }
@@ -635,8 +590,16 @@ pub fn find_synaptic_link(payload: FindSynapticLinkPayload) -> ExternResult<Opti
 // See MutualCreditTransfer/CreditBurn's own doc comment in the integrity
 // zome (ENTRY TYPES) for the full design rationale: a demurrage-decaying
 // mutual-credit ledger (Gesell's Freigeld, tested at Wörgl 1932, still
-// running as the Chiemgauer) coupled to SynapticLink friction via a
-// hard-ceiling-bounded burn (SYNAPTIC_LINK_HARD_CEILING, above).
+// running as the Chiemgauer).
+//
+// NOTE ON SCOPE: this ledger currently has no consumer. It was built
+// coupled to SynapticLink friction via a burn-to-extend tier; that
+// coupling was removed once a live pass showed it unreachable (see the
+// note beside the friction constants above), and nothing else in this
+// protocol reads get_credit_balance to make a decision. What remains is
+// a real, countersigned, live-verified ledger awaiting a mechanism that
+// needs it — the honest state of it, recorded here rather than left for
+// someone to infer from a coupling that no longer exists.
 //
 // Real reference precedent consulted before building this (see
 // docs/metabolic-biosignalling-currency-brief.md for the full research
@@ -681,12 +644,11 @@ pub struct CreateCreditBurnPayload {
 
 /// Destroys `payload.amount` of the caller's own standing — no
 /// countersigning (see CreditBurn's doc comment): nobody else's consent
-/// is needed to spend what's yours. Tag `payload.reason` with
-/// CREDIT_BURN_FRICTION_REASON specifically to have it count toward
-/// SynapticLink's burn-to-extend-ceiling mechanism (check_synaptic_link_
-/// friction, above, and the integrity zome's matching real enforcement);
-/// any other reason string is a real, decaying debit against
-/// get_credit_balance but has no other protocol-level effect.
+/// is needed to spend what's yours. `payload.reason` is an open,
+/// non-authoritative label: no reason string carries protocol-level
+/// meaning any more (one did, before the SynapticLink burn-to-extend
+/// tier was removed). A burn's only effect is a real, decaying debit
+/// against the burning agent's own get_credit_balance.
 #[hdk_extern]
 pub fn create_credit_burn(payload: CreateCreditBurnPayload) -> ExternResult<ActionHash> {
     let agent = agent_info()?.agent_latest_pubkey;
