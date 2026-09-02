@@ -76,16 +76,35 @@ local trust into a global trust value per peer. **Explicitly NOT
 adopted**, same reason as SourceCred: a *global* score, not a
 *personalized* one.
 
-**MeritRank** (arXiv 2207.09950, BRAINS 2022) — proves a reputation
+**MeritRank** (arXiv 2207.09950, BRAINS 2022) — argues a reputation
 system can't simultaneously be generalizable, trustless, and
-Sybil-resistant, and resolves the trilemma with two tunable decay knobs
-— transitivity decay (an attestation matters less the more hops it
-crossed) and epoch decay (it matters less the older it is) — instead of
-a single binary depth cutoff. Validated on real MakerDAO interaction
-data. **Adopted**, but reshaped: MeritRank's own framing is
+Sybil-proof, and so aims at Sybil *tolerance* instead: rather than
+preventing Sybil attacks, it bounds what an attacker gains from them, by
+decaying the perceived value of their contributions. It defines **three**
+decay mechanisms, not two:
+
+- **transitivity decay** — an attestation matters less the more hops it
+  crossed;
+- **connectivity decay** — contributions from a tightly-clustered group
+  weakly connected to the rest of the graph are discounted, which is
+  what actually catches a Sybil cluster;
+- **epoch decay** — older contributions matter less.
+
+Validated on real MakerDAO interaction data. Two details matter for
+anything downstream of this paper, and an earlier version of this
+section got both wrong by describing MeritRank as a two-knob design:
+the paper's evaluation finds that **transitivity and connectivity decay
+together** are what deliver sufficient Sybil tolerance, and that **epoch
+decay actively worsens it** — an attacker gains least when there is no
+epoch decay, and gains more as it increases.
+
+**Partially adopted, and the divergence is larger than "reshaped"** —
+see §4.4 for exactly what was and wasn't taken, since what shipped keeps
+transitivity decay, omits connectivity decay, and adds epoch decay. The
+one framing genuinely carried over intact is that MeritRank is
 *personalized* (computed relative to a caller-chosen root set), which is
 exactly compatible with this codebase's existing `AttestationPolicy`
-pattern — see §4.3.
+pattern.
 
 **hREA** — a real, multi-year, community-maintained Holochain hApp
 implementing REA/ValueFlows economic coordination, explicitly built for
@@ -348,8 +367,49 @@ cycle-safe recursive shape `count_attestations_pure` already uses
 (`MAX_ATTESTATION_SEARCH_NODES` visit cap, a `visited` set as both cycle
 guard and cap). Each attestation's contribution to the final weight is
 its own age-decayed strength (`epoch_decay_factor`), multiplied by
-`transitivity_decay` once per hop crossed to reach it — MeritRank's two
-knobs, computed on request, for one caller-named root set, never stored.
+`transitivity_decay` once per hop crossed to reach it — computed on
+request, for one caller-named root set, never stored.
+
+**What this is not, stated precisely, because "MeritRank-inspired" reads
+as a stronger claim than the code supports.** Three divergences, none of
+which is a bug in what was built, all of which matter to anyone reading
+the label rather than the function:
+
+1. **No connectivity decay** (§2). What shipped keeps one of the two
+   mechanisms the paper credits with Sybil tolerance, drops the other,
+   and adds the one the paper says *reduces* it. So this has MeritRank's
+   shape without the property MeritRank exists to provide. That is
+   survivable only because nothing here claims Sybil resistance —
+   this codebase treats that as an open problem addressed nowhere
+   (README §2.3), and `get_attestation_weight` is not an attempt at it.
+2. **Not normalized.** MeritRank is random-walk/PageRank-derived and
+   yields a normalized distribution. `compute_attestation_weight` is an
+   unnormalized additive sum over decayed path products, so an agent
+   with fifty attesters simply scores higher, without bound. It is a
+   decayed reachability sum, not a MeritRank score.
+3. **Order-dependent.** The `visited` set is inserted into before
+   recursing and never unwound, so the first path to reach a node claims
+   it and every other path through that node contributes zero. Inherited
+   from `count_attestations_pure`, where it is harmless — a binary
+   "are there N distinct attesters" question doesn't care about order.
+   Summing weights does: the result depends on link iteration order,
+   which is exactly what a PageRank-family algorithm is defined to avoid.
+   Reusing the existing walk's shape carried over a cycle guard whose
+   semantics don't survive the change from counting to weighting.
+
+The honest description of what `get_attestation_weight` computes is a
+caller-scoped, age- and distance-decayed reachability sum over the
+attestation graph. That is a reasonable thing to offer, and it satisfies
+Invariant #1 by construction. It is not MeritRank, and the two should
+not be conflated when deciding whether some future mechanism can lean on
+it for Sybil tolerance — it cannot.
+
+**Verification status, since this differs from the rest of §4:**
+`compute_attestation_weight` is covered by unit tests over an in-memory
+fixture graph (§7) and has **never been exercised against a real
+conductor** — unlike the credit flow, whose live pass found three
+defects unit tests could not (§7.1). Nothing here has been run against
+real DHT data.
 
 **Deliberately not built:** anything resembling a single number attached
 to an agent that means the same thing to every caller — that is precisely

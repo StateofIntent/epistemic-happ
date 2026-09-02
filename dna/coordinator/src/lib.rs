@@ -3106,7 +3106,10 @@ pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> 
 }
 
 // ============================================================================
-// WEIGHTED ATTESTATION — MeritRank-inspired cascading extension
+// WEIGHTED ATTESTATION — decayed cascading extension of the
+// attestation walk (two mechanisms borrowed from MeritRank; NOT an
+// implementation of it — see the fidelity note at the end of this
+// comment before relying on that name)
 //
 // AttestationPolicy/count_attestations_pure (above) already answer a
 // binary question: does `candidate` have at least `min_attestations`
@@ -3121,12 +3124,14 @@ pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> 
 // This is the "cascading" property researched for the metabolic
 // biosignalling currency layer — see
 // docs/metabolic-biosignalling-currency-brief.md for the full trail.
-// MeritRank (arXiv 2207.09950) resolves the proven impossibility of a
+// MeritRank (arXiv 2207.09950) addresses the proven impossibility of a
 // reputation system being simultaneously generalizable, trustless, AND
-// Sybil-resistant with two tunable decay knobs instead of one binary
-// depth cutoff: transitivity decay (an attestation matters less the
-// more hops it crossed to reach you) and epoch decay (it matters less
-// the older it is — the third instance of the same biological pattern
+// Sybil-PROOF by aiming instead at Sybil TOLERANCE — bounding what an
+// attacker gains rather than preventing the attack — using graded decay
+// instead of one binary depth cutoff. Two of its mechanisms are used
+// here: transitivity decay (an attestation matters less the more hops
+// it crossed to reach you) and epoch decay (it matters less the older
+// it is — the third instance of the same biological pattern
 // CONDUCTANCE_HALF_LIFE_SECS and CREDIT_DEMURRAGE_HALF_LIFE_SECS above
 // already apply to connection strength and value, now applied to
 // trust). Deliberately NOT adopted: SourceCred/EigenTrust's single
@@ -3136,6 +3141,29 @@ pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> 
 // count_attestations_pure already is: every call names its own roots
 // and decay preferences, gets back a number that means something only
 // to the caller who asked, and nothing is ever written to the DHT.
+//
+// FIDELITY NOTE — read before leaning on the MeritRank name. This is
+// NOT MeritRank, and must not be treated as conferring its Sybil
+// tolerance:
+//   - MeritRank defines THREE decay mechanisms — transitivity,
+//     CONNECTIVITY, and epoch. Its own evaluation credits transitivity
+//     plus connectivity with delivering Sybil tolerance, and finds that
+//     epoch decay REDUCES it. This keeps transitivity, omits
+//     connectivity, and adds epoch: the shape without the property.
+//     Survivable only because nothing in this protocol claims Sybil
+//     resistance (README §2.3 treats it as open and unaddressed).
+//   - Not normalized. MeritRank is random-walk/PageRank-derived and
+//     yields a distribution; compute_attestation_weight sums decayed
+//     path products, so more attesters means a strictly higher number,
+//     without bound.
+//   - Order-dependent. The `visited` set below is inserted into before
+//     recursing and never unwound, so the first path to reach a node
+//     takes that node's whole contribution and every later path gets
+//     zero. That is harmless in count_attestations_pure, which only
+//     needs N distinct attesters; summing weights makes the result
+//     depend on link iteration order.
+// Honest description of what this computes: a caller-scoped, age- and
+// distance-decayed reachability sum over the attestation graph.
 // ============================================================================
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -3205,9 +3233,11 @@ fn epoch_decay_factor(elapsed_secs: f64, half_life_secs: f64) -> f32 {
     2f64.powf(-elapsed_secs / half_life_secs) as f32
 }
 
-/// Pure core of the weighted attestation walk — MeritRank-inspired
-/// transitivity + epoch decay layered onto the same bounded, cycle-safe
-/// shape count_attestations_pure (above) already established.
+/// Pure core of the weighted attestation walk — transitivity + epoch
+/// decay (two of MeritRank's three mechanisms; see this section's
+/// header comment on why that is not the same as implementing it)
+/// layered onto the same bounded, cycle-safe shape
+/// count_attestations_pure (above) already established.
 /// `weighted_direct_attesters` is a lookup (real host calls via
 /// weighted_direct_attesters_of in production, or an in-memory closure
 /// in tests) returning each attester with the Unix-seconds timestamp of
@@ -3266,8 +3296,10 @@ pub struct GetAttestationWeightPayload {
     pub policy: WeightedAttestationPolicy,
 }
 
-/// Opt-in, caller-scoped, MeritRank-inspired cascading trust weight —
-/// see this section's header comment for the full reasoning. Never
+/// Opt-in, caller-scoped cascading trust weight — an age- and
+/// distance-decayed reachability sum, not a MeritRank score; see this
+/// section's header comment for the full reasoning and the fidelity
+/// note. Never
 /// called by default anywhere else in this codebase; a caller who wants
 /// this asks for it by name, on their own terms, exactly like
 /// is_agent_attested.
@@ -4672,7 +4704,7 @@ mod tests {
 
     // --- compute_attestation_weight -----------------------------------------
     //
-    // The MeritRank-inspired weighted walk behind get_attestation_weight,
+    // The weighted walk behind get_attestation_weight,
     // tested against the same in-memory fixture-graph shape
     // count_attestations_pure's own tests already use, extended with a
     // per-edge timestamp for epoch decay.
