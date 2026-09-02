@@ -519,25 +519,71 @@ against a fixture `Create` action) join the 74 that already existed
 (64 coordinator + 10 integrity before this pass) — 96 total, all passing.
 
 This is real coverage of the pure logic, and §7.1 is the standing
-evidence for what it does not cover. **One live gap remains, named
-rather than quietly closed:** the `SynapticLink` burn-extension path
-(§4.3) — free below the original limit, burn-gated up to the hard
-ceiling, refused at it — has not been exercised against a real DHT. Its
-integrity-side enforcement re-derives claimed burns through
-`must_get_agent_activity`, another host-call path of exactly the kind
-§7.1's three defects all hid in, so it deserves the same treatment
-rather than an assumption that the credit layer's live pass covers it by
-association. That is now the top item in §8.
+evidence for what it does not cover.
+
+### 7.2 The burn-extension tier is unreachable — found by verifying it
+
+The `SynapticLink` burn-extension path (§4.3) has now also been driven
+live, by `scripts/live-verify/burn-friction.mjs`. It does not work as
+this document described it, for a structural reason that no amount of
+testing the mechanism itself would have surfaced — the mechanism is
+correct; nothing can reach it.
+
+`create_critique` is the only caller of `create_synaptic_link`, so a
+`SynapticLink` can only ever be created alongside a `Critique` entry.
+Both carry a 20-per-hour budget, and a single `create_critique` call
+advances both, so the two saturate on the same call. But
+`create_critique` checks the *Critique* budget first, and the Critique
+budget is a hard 20 with no burn tier of its own. The `SynapticLink`
+burn tier begins at exactly 20 — precisely the count at which creating
+another Critique has already become impossible.
+
+Measured live, against a clean conductor: 20 critiques succeed, creating
+20 `SynapticLink`s. The 21st is refused by the Critique budget, not the
+`SynapticLink` one. Burning 50 credit tagged `burn_friction` — ten times
+the 5.0 the 21st link would cost — changes nothing: the 21st critique is
+refused again, by the same Critique budget, with the same message.
+
+**So the 20–29 tier and its `CREDIT_PER_EXTRA_ACTION` price cannot be
+reached through this zome's API by any sequence of calls, paid or
+unpaid. Burning credit buys an agent nothing they can spend.** §4.3's
+claim that the two-tier design is "now actually enforced" is true and
+was the wrong thing to check: enforcement was never the weak point.
+
+This does **not** make the integrity-side burn check pointless, and the
+distinction is worth stating precisely rather than collapsing into "dead
+code." That check still governs a client that hand-crafts `SynapticLink`
+`CreateLink` actions without going through `create_critique` — exactly
+the bypassing client DHT-side validation exists for. But such a link is
+a `SynapticLink` attached to no `Critique`, which under §2.13's own
+definition (a critique's target → that critique) has no meaning in this
+protocol. The enforcement is real; what it governs is the creation of
+structurally meaningless links. The *feature* — buy headroom, then use
+it — is unreachable.
+
+**Left as a design decision rather than patched.** Four options are
+visible, and they are not equivalent: give `Critique` creation its own
+burn tier (makes the feature reachable, but extends a
+credit-buys-throughput mechanism to entry creation, which needs its own
+Invariant #1 analysis); lower the `SynapticLink` free tier below 20 so
+the paid tier opens before the Critique budget closes; drop the tier as
+unreachable; or keep it deliberately as bypass-only DHT enforcement and
+document it as such. Choosing among these is a protocol-design call
+about how much throughput credit should be able to buy, which is exactly
+the question §5's guardrails exist to keep deliberate. It is item 1 in
+§8.
 
 ---
 
 ## 8. Immediate next steps, in priority order
 
-1. **Live verification of the `SynapticLink` burn-extension path**
-   (§4.3) — the one part of this layer still resting on unit tests over
-   pure logic, and a host-call path of exactly the kind §7.1's three
-   defects all hid in. The countersigning flow itself is now verified
-   live (§7); this is what's left of that item.
+1. **Decide what to do about the unreachable burn tier** (§7.2) — the
+   four options are laid out there. This is a design decision about how
+   much throughput credit should be able to buy, not a bug fix, and it
+   should be made deliberately rather than by whoever next touches the
+   constants. Both live-verification gaps this document once listed are
+   now closed: the countersigning flow works (§7), and the burn tier is
+   unreachable (§7.2).
 2. **Per-pair credit limits**, if this ledger needs to hold anything with
    real stakes — closes the balance-check gap named in §4.2.
 3. **Multi-hop transitive settlement** (§6.1), if bilateral-only transfers
