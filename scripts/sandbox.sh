@@ -131,8 +131,18 @@ case "$cmd" in
     fi
     rm -f "$PIDFILE"
 
-    if [ -f "$REPO_ROOT/.hc" ] && [ -d "$(head -n1 "$REPO_ROOT/.hc")" ]; then
-      log "Resuming existing sandbox ($(head -n1 "$REPO_ROOT/.hc")) ..."
+    # `hc sandbox generate` APPENDS its new sandbox path to .hc rather
+    # than replacing the file, so the current sandbox is its LAST line,
+    # not its first. Reading the first line instead resolved a stale
+    # path from an earlier session — which made `start` either try to
+    # resume a sandbox that no longer exists, or (once ports were up)
+    # look for the conductor's PID under the wrong --config-path, fail
+    # to find it, exit non-zero, and leave the real conductor running
+    # with no PIDFILE recording it: exactly the orphan-process leak this
+    # script's header describes fixing the first time. Observed for
+    # real, so read the last line everywhere .hc is consulted.
+    if [ -f "$REPO_ROOT/.hc" ] && [ -d "$(tail -n1 "$REPO_ROOT/.hc")" ]; then
+      log "Resuming existing sandbox ($(tail -n1 "$REPO_ROOT/.hc")) ..."
       ( cd "$REPO_ROOT" && \
         echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$ADMIN_PORT" run -l \
           > "$LOGFILE" 2>&1 & )
@@ -158,7 +168,7 @@ case "$cmd" in
     # gone (reparented to init) by the time `stop` needs a PID to kill.
     # The actual long-running server has to be found by matching its own
     # --config-path instead, once ports confirm it's actually up.
-    sandbox_dir="$(head -n1 "$REPO_ROOT/.hc")"
+    sandbox_dir="$(tail -n1 "$REPO_ROOT/.hc")"
     real_pid="$(pgrep -f "holochain .*--config-path $sandbox_dir/conductor-config.yaml" | head -n1)"
     [ -n "$real_pid" ] || fail "Ports came up but couldn't find the holochain process (looked for --config-path $sandbox_dir/conductor-config.yaml). Log tail:$(echo; tail -n 30 "$LOGFILE")"
     echo "$real_pid" > "$PIDFILE"
