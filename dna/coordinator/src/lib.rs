@@ -423,6 +423,16 @@ pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
 const SYNAPTIC_LINK_WINDOW_SECS: i64 = 3600; // rolling 1-hour window
 const SYNAPTIC_LINK_MAX_PER_WINDOW: usize = 20; // tunable; not load-bearing on exact value
 
+// Coupling to the metabolic biosignalling currency layer (see that
+// section below, after REINFORCEMENT TEMPORAL FRICTION) — bounded
+// burn-to-extend-friction. Mirrored, with real enforcement, in the
+// integrity zome's own copies (SYNAPTIC_LINK_HARD_CEILING_VALIDATION,
+// CREDIT_PER_EXTRA_ACTION_VALIDATION); this coordinator-side copy is
+// only the friendly, bypassable pre-check, same relationship
+// SYNAPTIC_LINK_MAX_PER_WINDOW already has to its own _VALIDATION twin.
+const SYNAPTIC_LINK_HARD_CEILING: usize = 30; // must match integrity zome's limit — absolute
+const CREDIT_PER_EXTRA_ACTION: f32 = 5.0; // must match integrity zome's limit
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SynapticFrictionStatus {
     pub recent_count: usize,
@@ -479,17 +489,63 @@ pub fn get_synaptic_link_friction_status(_: ()) -> ExternResult<SynapticFriction
     })
 }
 
+/// Sums this agent's own recent CreditBurn.amount (own local chain, same
+/// "each agent checks their own history" shape count_recent_synaptic_links
+/// already uses), restricted to burns tagged CREDIT_BURN_FRICTION_REASON.
+/// Friendly, bypassable pre-check only — see the integrity zome's
+/// sum_recent_credit_burn_amount for the real enforcement this mirrors.
+fn sum_recent_credit_burn_amount(since: Timestamp) -> ExternResult<f32> {
+    let filter = ChainQueryFilter::new()
+        .action_type(ActionType::Create)
+        .include_entries(true)
+        .entry_type(EntryType::App(UnitEntryTypes::CreditBurn.try_into()?));
+    let records = query(filter)?;
+
+    let mut total = 0f32;
+    for record in records {
+        if record.action().timestamp() < since {
+            continue;
+        }
+        if let Ok(Some(burn)) = record.entry().to_app_option::<CreditBurn>() {
+            if burn.reason == CREDIT_BURN_FRICTION_REASON {
+                total += burn.amount;
+            }
+        }
+    }
+    Ok(total)
+}
+
 fn check_synaptic_link_friction() -> ExternResult<()> {
     let now = sys_time()?;
     let since = Timestamp::from_micros(now.as_micros() - SYNAPTIC_LINK_WINDOW_SECS * 1_000_000);
     let recent_count = count_recent_synaptic_links(since)?;
 
     if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW {
-        return Err(wasm_error!(WasmErrorInner::Guest(format!(
-            "SWO temporal friction: {} SynapticLinks already created in the last {} seconds (limit {}). \
-             This is intentional friction to make link-farming slow, not a reputation judgment — try again later.",
-            recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_MAX_PER_WINDOW
-        ))));
+        // Absolute — see SYNAPTIC_LINK_HARD_CEILING's own comment above.
+        if recent_count >= SYNAPTIC_LINK_HARD_CEILING {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "SWO temporal friction: {} SynapticLinks already created in the last {} seconds — at or \
+                 above the hard ceiling of {}. No amount of burned credit lifts this; it is an absolute limit.",
+                recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_HARD_CEILING
+            ))));
+        }
+        // Between the free tier and the hard ceiling: allowed if a
+        // matching CreditBurn covers the headroom. This is only the
+        // friendly pre-check — the integrity zome's validate_create_link
+        // independently re-derives the same thing from the DHT and is
+        // what actually enforces it.
+        let extra_actions_needed = (recent_count + 1 - SYNAPTIC_LINK_MAX_PER_WINDOW) as f32;
+        let required_burn = extra_actions_needed * CREDIT_PER_EXTRA_ACTION;
+        let burned = sum_recent_credit_burn_amount(since)?;
+        if burned < required_burn {
+            return Err(wasm_error!(WasmErrorInner::Guest(format!(
+                "SWO temporal friction: {} SynapticLinks already created in the last {} seconds (free limit \
+                 {}, hard ceiling {}). Extending past the free limit needs a recent CreditBurn (reason \"{}\") \
+                 totalling at least {} — found {} burned in the same window. Call create_credit_burn first.",
+                recent_count, SYNAPTIC_LINK_WINDOW_SECS, SYNAPTIC_LINK_MAX_PER_WINDOW, SYNAPTIC_LINK_HARD_CEILING,
+                CREDIT_BURN_FRICTION_REASON, required_burn, burned
+            ))));
+        }
     }
     Ok(())
 }
@@ -571,6 +627,333 @@ pub fn find_synaptic_link(payload: FindSynapticLinkPayload) -> ExternResult<Opti
         }
     }
     Ok(None)
+}
+
+// ============================================================================
+// METABOLIC BIOSIGNALLING CURRENCY — slow reserve layer
+//
+// See MutualCreditTransfer/CreditBurn's own doc comment in the integrity
+// zome (ENTRY TYPES) for the full design rationale: a demurrage-decaying
+// mutual-credit ledger (Gesell's Freigeld, tested at Wörgl 1932, still
+// running as the Chiemgauer) coupled to SynapticLink friction via a
+// hard-ceiling-bounded burn (SYNAPTIC_LINK_HARD_CEILING, above).
+//
+// Real reference precedent consulted before building this (see
+// docs/metabolic-biosignalling-currency-brief.md for the full research
+// trail): holochain-open-dev/community-mutual-credit and a minimal
+// implementation by vanarchist both document countersigning as the fix
+// for Holochain's specific double-spend risk (no global consensus means
+// an agent could otherwise roll back their own local chain); Circles
+// UBI's demurrage (7%/year, live, ~200k accounts) confirmed the general
+// "value fades if hoarded" shape. What was deliberately NOT imported:
+// a canonical, comparative balance ranking or "top holders" view of any
+// kind — that would violate Invariant #1 the same way a reputation
+// leaderboard would. get_credit_balance always answers for one named
+// agent, never produces a sorted list.
+// ============================================================================
+
+const CREDIT_DEMURRAGE_HALF_LIFE_SECS: f64 = 30.0 * 24.0 * 3600.0; // 30 days
+// Countersigning session window for MutualCreditTransfer — long enough
+// for two agents' clients to exchange a PreflightRequest/PreflightResponse
+// over ordinary network latency, short enough that a chain doesn't stay
+// locked indefinitely if the counterparty never responds; tunable.
+const CREDIT_TRANSFER_SESSION_MS: u64 = 5 * 60 * 1000;
+
+/// `2^(-elapsed_secs / half_life)`, same shape as decay_factor above but
+/// on its own half-life — kept as a separate function (not a shared
+/// parametrized one) so the two decay families stay independently
+/// documented and tunable, matching how CONDUCTANCE_HALF_LIFE_SECS and
+/// CREDIT_DEMURRAGE_HALF_LIFE_SECS are two different constants for two
+/// different biological precedents (pheromone evaporation vs. Freigeld
+/// demurrage), not one number reused for both.
+fn credit_decay_factor(elapsed_secs: f64) -> f32 {
+    if elapsed_secs <= 0.0 {
+        return 1.0;
+    }
+    2f64.powf(-elapsed_secs / CREDIT_DEMURRAGE_HALF_LIFE_SECS) as f32
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCreditBurnPayload {
+    pub amount: f32,
+    pub reason: String,
+}
+
+/// Destroys `payload.amount` of the caller's own standing — no
+/// countersigning (see CreditBurn's doc comment): nobody else's consent
+/// is needed to spend what's yours. Tag `payload.reason` with
+/// CREDIT_BURN_FRICTION_REASON specifically to have it count toward
+/// SynapticLink's burn-to-extend-ceiling mechanism (check_synaptic_link_
+/// friction, above, and the integrity zome's matching real enforcement);
+/// any other reason string is a real, decaying debit against
+/// get_credit_balance but has no other protocol-level effect.
+#[hdk_extern]
+pub fn create_credit_burn(payload: CreateCreditBurnPayload) -> ExternResult<ActionHash> {
+    let agent = agent_info()?.agent_latest_pubkey;
+    let now_secs = sys_time()?.as_seconds_and_nanos().0 as u64;
+    let burn = CreditBurn {
+        agent: agent.clone(),
+        amount: payload.amount,
+        reason: payload.reason,
+        timestamp: now_secs,
+    };
+    let action_hash = create_entry(EntryTypes::CreditBurn(burn))?;
+    let anchor = agent_anchor_hash(&agent)?;
+    create_link(anchor, action_hash.clone(), LinkTypes::AgentToCreditBurn, LinkTag::new(Vec::new()))?;
+    Ok(action_hash)
+}
+
+/// Step 1 of 3 for creating a MutualCreditTransfer: builds the
+/// PreflightRequest both `from` and `to` must independently accept (via
+/// accept_credit_transfer, below) before either can commit the entry.
+/// Callable by either party — whichever one calls this is the
+/// "proposer," a role with no protocol significance once both sides
+/// have accepted; nothing here commits anything or moves any value.
+/// Getting this PreflightRequest (and, separately, both sides'
+/// PreflightResponses once accepted) from one agent's client to the
+/// other's is a client/transport concern this zome deliberately doesn't
+/// prescribe — call_remote, a signal, or an out-of-band channel are all
+/// legitimate, the same way this codebase never prescribes how a UI
+/// carries a claim's hash from one screen to another.
+#[hdk_extern]
+pub fn propose_credit_transfer(payload: MutualCreditTransfer) -> ExternResult<PreflightRequest> {
+    if payload.from == payload.to {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "MutualCreditTransfer cannot transfer to yourself — use create_credit_burn instead.".into()
+        )));
+    }
+    let my_agent = agent_info()?.agent_latest_pubkey;
+    if payload.from != my_agent && payload.to != my_agent {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "propose_credit_transfer must be called by one of the transfer's own two parties.".into()
+        )));
+    }
+
+    let entry_hash = hash_entry(&payload)?;
+    let entry_type = EntryType::App(
+        UnitEntryTypes::MutualCreditTransfer.try_into().map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("Could not resolve MutualCreditTransfer entry type.".into()))
+        })?
+    );
+    let session_times = session_times_from_millis(CREDIT_TRANSFER_SESSION_MS)?;
+    let signing_agents: Vec<(AgentPubKey, Vec<Role>)> =
+        vec![(payload.from.clone(), Vec::new()), (payload.to.clone(), Vec::new())];
+
+    PreflightRequest::try_new(
+        entry_hash,
+        signing_agents,
+        Vec::new(),
+        0,
+        false,
+        session_times,
+        ActionBase::Create(CreateBase::new(entry_type)),
+        PreflightBytes(Vec::new()),
+    )
+    .map_err(|e| wasm_error!(WasmErrorInner::Guest(e.to_string())))
+}
+
+/// Step 2 of 3: each of `from` and `to` calls this, independently, on
+/// their own conductor, with the identical PreflightRequest
+/// propose_credit_transfer returned — this is what actually locks each
+/// agent's own chain for the session and produces their signed
+/// PreflightResponse. A thin wrapper around HDK's own
+/// accept_countersigning_preflight_request, kept as a same-named zome
+/// function so callers don't need their own HDK dependency just to
+/// accept a session this zome proposed.
+#[hdk_extern]
+pub fn accept_credit_transfer(preflight_request: PreflightRequest) -> ExternResult<PreflightRequestAcceptance> {
+    accept_countersigning_preflight_request(preflight_request)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FinalizeCreditTransferPayload {
+    pub transfer: MutualCreditTransfer,
+    /// Every signer's own `PreflightResponse` from step 2, in the same
+    /// order as the PreflightRequest's `signing_agents` (i.e. `from`
+    /// first, then `to`) — `CounterSigningSessionData::check_responses_
+    /// indexes` rejects any other order outright. Both are needed by
+    /// BOTH parties: a countersigned entry embeds the whole session, so
+    /// neither side can build its own half without the other's signed
+    /// response. Getting the counterparty's response here is the
+    /// client/transport concern propose_credit_transfer's own doc
+    /// comment describes.
+    pub responses: Vec<PreflightResponse>,
+}
+
+/// Step 3 of 3: called by each party once BOTH PreflightResponses exist
+/// (exchanged by whatever transport the client chooses) — commits this
+/// agent's own half of the countersigned entry.
+///
+/// This must construct `Entry::CounterSign` explicitly and commit it via
+/// `create`; the ordinary `create_entry` helper can only ever produce a
+/// plain `Entry::App`, because the countersigning session lives in the
+/// *entry body*, not in some ambient chain state the host would splice
+/// in on its own. An earlier version of this function assumed the
+/// opposite — that HDK would recognize the already-accepted session from
+/// a plain `create_entry` call for the matching entry hash — and it does
+/// not: the commit succeeded as a single-signer `Entry::App` and was
+/// then correctly rejected by this DNA's own integrity `validate`.
+/// That assumption survived unit tests and `cargo check` and was caught
+/// only by a real two-agent conductor run (scripts/live-verify/
+/// credit-transfer.mjs); `CreateInput.entry` is a full `Entry`, whose
+/// `CounterSign` variant is exactly the field that assumption claimed
+/// didn't exist.
+///
+/// Commits nothing but the session entry: the caller's own
+/// AgentToCreditTransfer index link is a *separate* zome call
+/// (link_credit_transfer, below), because a chain in a countersigning
+/// session accepts the session entry and nothing else — writing the
+/// link in this same call fails with "Attempted to write anything other
+/// than the countersigning session entry at the same time as the
+/// session entry." (Found the same way as the create_entry bug above:
+/// a real conductor run, not a unit test.)
+#[hdk_extern]
+pub fn finalize_credit_transfer(payload: FinalizeCreditTransferPayload) -> ExternResult<ActionHash> {
+    let FinalizeCreditTransferPayload { transfer, responses } = payload;
+
+    let session_data = CounterSigningSessionData::try_from_responses(responses, Vec::new())
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+            "Could not build a countersigning session from the supplied PreflightResponses: {e}"
+        ))))?;
+
+    // The entry committed here must hash to exactly the app_entry_hash
+    // every signer already accepted in step 2 — Entry::CounterSign's own
+    // hash is computed over the inner app bytes alone, so this holds as
+    // long as `transfer` is byte-identical to what was proposed.
+    let app_entry_bytes = match Entry::try_from(EntryTypes::MutualCreditTransfer(transfer.clone()))? {
+        Entry::App(bytes) => bytes,
+        _ => return Err(wasm_error!(WasmErrorInner::Guest(
+            "MutualCreditTransfer did not serialize to an app entry.".into()
+        ))),
+    };
+    let ScopedEntryDefIndex { zome_index, zome_type: entry_def_index } =
+        (&EntryTypes::MutualCreditTransfer(transfer)).try_into()?;
+
+    let action_hash = create(CreateInput::new(
+        EntryDefLocation::app(zome_index, entry_def_index),
+        EntryVisibility::Public,
+        Entry::CounterSign(Box::new(session_data), app_entry_bytes),
+        // Countersigning locks the chain for the session's duration —
+        // Relaxed ordering (which lets the host rebase a write onto a
+        // moved chain top) is incompatible with a session whose every
+        // signer already signed over one specific prev_action.
+        ChainTopOrdering::Strict,
+    ))?;
+
+    Ok(action_hash)
+}
+
+/// Step 3b: indexes a countersigned transfer under the caller's own
+/// agent anchor, so get_credit_balance can find it. Each party calls
+/// this for themselves once their own finalize_credit_transfer has
+/// returned and the session has released their chain.
+///
+/// This is a separate call rather than the tail of
+/// finalize_credit_transfer only because of the chain lock described
+/// there. The consequence worth stating plainly: a transfer whose
+/// finalize succeeded but whose link call never happened is a real,
+/// valid, countersigned entry on both chains that simply doesn't appear
+/// in that agent's own get_credit_balance. Nothing is lost — this link
+/// is an index, not the record — and calling this later, with the same
+/// action hash, repairs it.
+///
+/// No check is made here that `action_hash` really is a
+/// MutualCreditTransfer the caller is party to: an agent can only link
+/// from their own anchor, and get_credit_balance already counts a
+/// transfer only when the agent is its own `from` or `to`, so a link to
+/// anything else is inert. Fetching the record to check would make an
+/// index write depend on a DHT round trip for no gain in what the
+/// balance actually reports.
+#[hdk_extern]
+pub fn link_credit_transfer(action_hash: ActionHash) -> ExternResult<ActionHash> {
+    let my_agent = agent_info()?.agent_latest_pubkey;
+    let anchor = agent_anchor_hash(&my_agent)?;
+    create_link(anchor, action_hash, LinkTypes::AgentToCreditTransfer, LinkTag::new(Vec::new()))
+}
+
+/// Commits a `MutualCreditTransfer` as a plain, single-signer entry,
+/// with no countersigning session at all — which the integrity zome's
+/// `validate` rejects unconditionally (see its `Op::StoreEntry` branch).
+///
+/// This exists so that rejection can be verified against a real
+/// conductor rather than only asserted in a unit test: it is exactly
+/// what a client that skipped countersigning would do. It is not an
+/// attack surface — it cannot produce a valid entry, by construction,
+/// and every call to it fails. If it ever *succeeds*, the DHT-side
+/// enforcement this whole layer depends on has regressed, which is
+/// precisely what scripts/live-verify/credit-transfer.mjs asserts.
+#[hdk_extern]
+pub fn attempt_uncountersigned_credit_transfer(payload: MutualCreditTransfer) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::MutualCreditTransfer(payload))
+}
+
+/// One named agent's own current standing: every MutualCreditTransfer
+/// touching them (found via their own anchor's AgentToCreditTransfer
+/// links — both parties to a transfer link it from their own anchor, so
+/// an agent's own anchor always carries every transfer they were party
+/// to) plus every CreditBurn they've made, each individually demurrage-
+/// decayed by its own age (not one decay factor applied to a running
+/// total — see the same reasoning the original design brief gives:
+/// that would let one very old transaction distort how fast the whole
+/// balance fades). Always answers for one specific agent, on request —
+/// see this section's header comment for why this never produces
+/// anything comparative or ranked.
+/// Decodes a MutualCreditTransfer out of a record whose entry may be
+/// wrapped in a countersigning session.
+///
+/// `RecordEntry::to_app_option` — the ordinary way every other read in
+/// this zome decodes an app entry — matches `Entry::App` alone and
+/// returns `Ok(None)` for `Entry::CounterSign`, silently, with no error
+/// to notice. Since every valid MutualCreditTransfer is countersigned by
+/// construction, using it here meant get_credit_balance skipped every
+/// real transfer and reported a flat 0. It reads identically to an agent
+/// with no transfers at all, which is why unit tests over pure decay
+/// math could never have caught it — only a real conductor holding a
+/// real countersigned entry could, and did.
+fn transfer_from_record(record: &Record) -> Option<MutualCreditTransfer> {
+    let bytes = match record.entry().as_option()? {
+        Entry::App(bytes) | Entry::CounterSign(_, bytes) => bytes,
+        _ => return None,
+    };
+    MutualCreditTransfer::try_from(SerializedBytes::from(bytes.to_owned())).ok()
+}
+
+#[hdk_extern]
+pub fn get_credit_balance(agent: AgentPubKey) -> ExternResult<f32> {
+    let now_secs = sys_time()?.as_seconds_and_nanos().0;
+    let anchor = agent_anchor_hash(&agent)?;
+    let mut balance = 0f32;
+
+    let transfer_links = get_links(GetLinksInputBuilder::try_new(anchor.clone(), LinkTypes::AgentToCreditTransfer)?.build())?;
+    for link in transfer_links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                if let Some(transfer) = transfer_from_record(&record) {
+                    let elapsed = (now_secs - transfer.timestamp as i64) as f64;
+                    let decayed = transfer.amount * credit_decay_factor(elapsed);
+                    if transfer.to == agent {
+                        balance += decayed;
+                    } else if transfer.from == agent {
+                        balance -= decayed;
+                    }
+                }
+            }
+        }
+    }
+
+    let burn_links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::AgentToCreditBurn)?.build())?;
+    for link in burn_links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                if let Ok(Some(burn)) = record.entry().to_app_option::<CreditBurn>() {
+                    let elapsed = (now_secs - burn.timestamp as i64) as f64;
+                    balance -= burn.amount * credit_decay_factor(elapsed);
+                }
+            }
+        }
+    }
+
+    Ok(balance)
 }
 
 // ============================================================================
@@ -2723,6 +3106,189 @@ pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> 
 }
 
 // ============================================================================
+// WEIGHTED ATTESTATION — MeritRank-inspired cascading extension
+//
+// AttestationPolicy/count_attestations_pure (above) already answer a
+// binary question: does `candidate` have at least `min_attestations`
+// distinct attesters, direct or transitive, from `roots`? This section
+// answers a related but different question with the same bounded,
+// cycle-safe web-of-trust walk: HOW STRONGLY, as a single opt-in,
+// caller-computed number that decays per hop and per elapsed time —
+// never stored, never compared across agents by the protocol, never a
+// default anyone gets without asking for it by name. Same Invariant #1
+// reasoning AttestationPolicy's own header comment already gives.
+//
+// This is the "cascading" property researched for the metabolic
+// biosignalling currency layer — see
+// docs/metabolic-biosignalling-currency-brief.md for the full trail.
+// MeritRank (arXiv 2207.09950) resolves the proven impossibility of a
+// reputation system being simultaneously generalizable, trustless, AND
+// Sybil-resistant with two tunable decay knobs instead of one binary
+// depth cutoff: transitivity decay (an attestation matters less the
+// more hops it crossed to reach you) and epoch decay (it matters less
+// the older it is — the third instance of the same biological pattern
+// CONDUCTANCE_HALF_LIFE_SECS and CREDIT_DEMURRAGE_HALF_LIFE_SECS above
+// already apply to connection strength and value, now applied to
+// trust). Deliberately NOT adopted: SourceCred/EigenTrust's single
+// canonical, protocol-computed score per node — that is exactly the
+// "no karma, no trust index" Invariant #1 rules out. What's built here
+// stays personalized (MeritRank's own framing) the same way
+// count_attestations_pure already is: every call names its own roots
+// and decay preferences, gets back a number that means something only
+// to the caller who asked, and nothing is ever written to the DHT.
+// ============================================================================
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WeightedAttestationPolicy {
+    /// Same role as AttestationPolicy.require_attestation_from, but
+    /// never optional here — a weighted walk with no roots at all has
+    /// nothing to compute a weight relative to.
+    pub roots: Vec<AgentPubKey>,
+    pub max_depth: u8,
+    /// Multiplier applied per hop of transitivity, clamped to [0.0, 1.0]
+    /// by compute_attestation_weight. 1.0 means no transitivity decay at
+    /// all (every hop counts exactly as much as a direct attestation);
+    /// smaller values fall off faster with distance from `roots`.
+    pub transitivity_decay: f32,
+    /// Half-life, in seconds, for how much an individual attestation
+    /// edge's weight fades with age. Non-positive is treated as "no
+    /// decay" (weight 1.0 regardless of age) rather than dividing by
+    /// zero — see epoch_decay_factor.
+    pub epoch_half_life_secs: f64,
+}
+
+/// Same two sources direct_attesters_of (above) already reads, paired
+/// with each edge's own creation timestamp (Unix seconds) —
+/// compute_attestation_weight needs this for epoch decay.
+/// direct_attesters_of itself is left with its original, timestamp-free
+/// return type so is_agent_attested's cheaper binary check is
+/// unaffected by this section existing.
+fn weighted_direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResult<Vec<(AgentPubKey, i64)>> {
+    let mut attesters: Vec<(AgentPubKey, i64)> = Vec::new();
+
+    let claims = get_claims_by_agent(agent.clone())?;
+    for record in &claims {
+        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
+            let claim_hash = hash_entry(&claim)?;
+            let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::SynapticLink)?.build())?;
+            for link in links {
+                if !attesters.iter().any(|(a, _)| a == &link.author) {
+                    attesters.push((link.author, link.timestamp.as_seconds_and_nanos().0));
+                }
+            }
+        }
+    }
+
+    let grant_links = get_links(GetLinksInputBuilder::try_new(membrane.clone(), LinkTypes::AttestationGrant)?.build())?;
+    for link in grant_links {
+        if let Ok(candidate) = AgentPubKey::try_from(link.target.clone()) {
+            if &candidate == agent && !attesters.iter().any(|(a, _)| a == &link.author) {
+                attesters.push((link.author, link.timestamp.as_seconds_and_nanos().0));
+            }
+        }
+    }
+
+    Ok(attesters)
+}
+
+/// `2^(-elapsed_secs / half_life_secs)`, same shape decay_factor and
+/// credit_decay_factor already use, parametrized rather than sharing
+/// either of their fixed constants — WeightedAttestationPolicy lets a
+/// caller name their own half-life per call, unlike conductance/credit
+/// decay which are fixed, protocol-wide constants. Non-positive elapsed
+/// OR non-positive half-life both clamp to 1.0 (no decay) rather than
+/// producing a value above 1, dividing by zero, or panicking.
+fn epoch_decay_factor(elapsed_secs: f64, half_life_secs: f64) -> f32 {
+    if elapsed_secs <= 0.0 || half_life_secs <= 0.0 {
+        return 1.0;
+    }
+    2f64.powf(-elapsed_secs / half_life_secs) as f32
+}
+
+/// Pure core of the weighted attestation walk — MeritRank-inspired
+/// transitivity + epoch decay layered onto the same bounded, cycle-safe
+/// shape count_attestations_pure (above) already established.
+/// `weighted_direct_attesters` is a lookup (real host calls via
+/// weighted_direct_attesters_of in production, or an in-memory closure
+/// in tests) returning each attester with the Unix-seconds timestamp of
+/// the edge that attests. `now_secs` is passed in rather than read
+/// internally so this stays host-call-free and directly unit-testable,
+/// the same split compute_effective_conductance already uses.
+fn compute_attestation_weight<F>(
+    candidate: &AgentPubKey,
+    roots: &[AgentPubKey],
+    depth_remaining: u8,
+    transitivity_decay: f32,
+    epoch_half_life_secs: f64,
+    now_secs: i64,
+    weighted_direct_attesters: &F,
+    visited: &mut HashSet<AgentPubKey>,
+) -> ExternResult<f32>
+where
+    F: Fn(&AgentPubKey) -> ExternResult<Vec<(AgentPubKey, i64)>>,
+{
+    if visited.contains(candidate) || visited.len() >= MAX_ATTESTATION_SEARCH_NODES {
+        return Ok(0.0);
+    }
+    visited.insert(candidate.clone());
+
+    let transitivity_decay = transitivity_decay.clamp(0.0, 1.0);
+    let attesters = weighted_direct_attesters(candidate)?;
+
+    let mut weight = 0f32;
+    for (attester, attested_at_secs) in &attesters {
+        let edge_weight = epoch_decay_factor((now_secs - attested_at_secs) as f64, epoch_half_life_secs);
+        if roots.contains(attester) {
+            weight += edge_weight;
+        } else if depth_remaining > 0 {
+            let upstream = compute_attestation_weight(
+                attester,
+                roots,
+                depth_remaining - 1,
+                transitivity_decay,
+                epoch_half_life_secs,
+                now_secs,
+                weighted_direct_attesters,
+                visited,
+            )?;
+            if upstream > 0.0 {
+                weight += edge_weight * transitivity_decay * upstream;
+            }
+        }
+    }
+    Ok(weight)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetAttestationWeightPayload {
+    pub candidate: AgentPubKey,
+    pub membrane: AnyDhtHash,
+    pub policy: WeightedAttestationPolicy,
+}
+
+/// Opt-in, caller-scoped, MeritRank-inspired cascading trust weight —
+/// see this section's header comment for the full reasoning. Never
+/// called by default anywhere else in this codebase; a caller who wants
+/// this asks for it by name, on their own terms, exactly like
+/// is_agent_attested.
+#[hdk_extern]
+pub fn get_attestation_weight(payload: GetAttestationWeightPayload) -> ExternResult<f32> {
+    let membrane_hash = membrane_entry_hash(payload.membrane)?;
+    let now_secs = sys_time()?.as_seconds_and_nanos().0;
+    let mut visited = HashSet::new();
+    compute_attestation_weight(
+        &payload.candidate,
+        &payload.policy.roots,
+        payload.policy.max_depth,
+        payload.policy.transitivity_decay,
+        payload.policy.epoch_half_life_secs,
+        now_secs,
+        &|agent: &AgentPubKey| weighted_direct_attesters_of(agent, &membrane_hash),
+        &mut visited,
+    )
+}
+
+// ============================================================================
 // DISCOURSE HEALTH
 // ============================================================================
 
@@ -4064,6 +4630,185 @@ mod tests {
         let mut visited = HashSet::new();
         let count = count_attestations_pure(&candidate, &[root], 3, &lookup, &mut visited).unwrap();
         assert_eq!(count, 0);
+    }
+
+    // --- credit_decay_factor / epoch_decay_factor --------------------------
+    //
+    // Both are the same 2^(-elapsed/half_life) shape decay_factor above
+    // already has its own dedicated tests for; these confirm the two new
+    // instances of it behave identically rather than re-testing the
+    // formula itself from scratch.
+
+    #[test]
+    fn credit_decay_factor_is_one_at_zero_elapsed() {
+        assert_eq!(credit_decay_factor(0.0), 1.0);
+    }
+
+    #[test]
+    fn credit_decay_factor_is_exactly_half_at_the_half_life() {
+        let half = credit_decay_factor(CREDIT_DEMURRAGE_HALF_LIFE_SECS);
+        assert!((half - 0.5).abs() < 1e-6, "expected ~0.5, got {half}");
+    }
+
+    #[test]
+    fn credit_decay_factor_clamps_negative_elapsed_to_one() {
+        assert_eq!(credit_decay_factor(-100.0), 1.0);
+    }
+
+    #[test]
+    fn epoch_decay_factor_is_exactly_half_at_the_half_life() {
+        let half = epoch_decay_factor(1000.0, 1000.0);
+        assert!((half - 0.5).abs() < 1e-6, "expected ~0.5, got {half}");
+    }
+
+    #[test]
+    fn epoch_decay_factor_non_positive_half_life_means_no_decay() {
+        // A caller-supplied WeightedAttestationPolicy with a zero or
+        // negative half_life must not divide by zero or produce NaN —
+        // it degrades to "no decay at all" instead.
+        assert_eq!(epoch_decay_factor(500.0, 0.0), 1.0);
+        assert_eq!(epoch_decay_factor(500.0, -10.0), 1.0);
+    }
+
+    // --- compute_attestation_weight -----------------------------------------
+    //
+    // The MeritRank-inspired weighted walk behind get_attestation_weight,
+    // tested against the same in-memory fixture-graph shape
+    // count_attestations_pure's own tests already use, extended with a
+    // per-edge timestamp for epoch decay.
+
+    /// Same shape as fixture_attestation_graph above, but every edge
+    /// carries the same fixed age (`edge_age_secs` before `now`, both
+    /// supplied by the caller) rather than count_attestations_pure's
+    /// fixture needing none at all.
+    fn fixture_weighted_attestation_graph(
+        edges: &[(u8, u8)],
+        edge_timestamp_secs: i64,
+    ) -> impl Fn(&AgentPubKey) -> ExternResult<Vec<(AgentPubKey, i64)>> {
+        let mut graph: HashMap<AgentPubKey, Vec<(AgentPubKey, i64)>> = HashMap::new();
+        for &(attester_seed, attested_seed) in edges {
+            graph
+                .entry(fixture_agent(attested_seed))
+                .or_default()
+                .push((fixture_agent(attester_seed), edge_timestamp_secs));
+        }
+        move |agent: &AgentPubKey| Ok(graph.get(agent).cloned().unwrap_or_default())
+    }
+
+    #[test]
+    fn attestation_weight_direct_root_attester_at_zero_age_is_full_weight() {
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(2);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2)], now); // edge created "now"
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 0, 1.0, 1000.0, now, &lookup, &mut visited).unwrap();
+        assert!((weight - 1.0).abs() < 1e-6, "expected ~1.0 at zero age, got {weight}");
+    }
+
+    #[test]
+    fn attestation_weight_decays_with_edge_age() {
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(2);
+        let now = 1_000_000i64;
+        let half_life = 1000.0;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2)], now - 1000); // one half-life old
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 0, 1.0, half_life, now, &lookup, &mut visited).unwrap();
+        assert!((weight - 0.5).abs() < 1e-6, "expected ~0.5 at one half-life old, got {weight}");
+    }
+
+    #[test]
+    fn attestation_weight_transitive_hop_applies_transitivity_decay() {
+        // root(1) attests middle(2), middle(2) attests candidate(3), all
+        // edges at zero age (no epoch decay in play) so only
+        // transitivity_decay should reduce candidate's weight below the
+        // direct-attestation case.
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(3);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2), (2, 3)], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 1, 0.5, 1_000_000.0, now, &lookup, &mut visited)
+                .unwrap();
+        // one hop of transitivity_decay=0.5 applied to a full-weight (1.0)
+        // upstream attester: edge_weight(1.0) * 0.5 * upstream(1.0) = 0.5.
+        assert!((weight - 0.5).abs() < 1e-6, "expected ~0.5, got {weight}");
+    }
+
+    #[test]
+    fn attestation_weight_zero_transitivity_decay_kills_indirect_contribution() {
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(3);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2), (2, 3)], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 1, 0.0, 1_000_000.0, now, &lookup, &mut visited)
+                .unwrap();
+        assert_eq!(weight, 0.0);
+    }
+
+    #[test]
+    fn attestation_weight_insufficient_depth_blocks_transitive_contribution() {
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(3);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2), (2, 3)], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 0, 1.0, 1_000_000.0, now, &lookup, &mut visited)
+                .unwrap();
+        assert_eq!(weight, 0.0, "middle is two hops away; depth 0 allows only direct root attestation");
+    }
+
+    #[test]
+    fn attestation_weight_handles_a_two_cycle_without_looping_forever() {
+        let a = fixture_agent(1);
+        let b = fixture_agent(2);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 2), (2, 1)], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&b, &[a.clone()], 5, 1.0, 1000.0, now, &lookup, &mut visited).unwrap();
+        assert!((weight - 1.0).abs() < 1e-6, "b is directly attested by root a; walk must terminate");
+    }
+
+    #[test]
+    fn attestation_weight_multiple_root_attesters_sum() {
+        let root_a = fixture_agent(1);
+        let root_b = fixture_agent(2);
+        let candidate = fixture_agent(3);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[(1, 3), (2, 3)], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root_a, root_b], 0, 1.0, 1000.0, now, &lookup, &mut visited)
+                .unwrap();
+        assert!((weight - 2.0).abs() < 1e-6, "two full-weight direct attesters should sum to ~2.0, got {weight}");
+    }
+
+    #[test]
+    fn attestation_weight_no_attesters_at_all_is_zero() {
+        let root = fixture_agent(1);
+        let candidate = fixture_agent(2);
+        let now = 1_000_000i64;
+        let lookup = fixture_weighted_attestation_graph(&[], now);
+
+        let mut visited = HashSet::new();
+        let weight =
+            compute_attestation_weight(&candidate, &[root], 3, 1.0, 1000.0, now, &lookup, &mut visited).unwrap();
+        assert_eq!(weight, 0.0);
     }
 
     // --- find_grounding_path_pure -----------------------------------------

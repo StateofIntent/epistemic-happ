@@ -14,6 +14,11 @@ target/
 /domains/node_modules/
 /federation/node_modules/
 node_modules/
+# scripts/live-verify reuses federation's installed deps through a
+# symlink rather than a second copy of @holochain/client. The patterns
+# above end in a slash, so they match directories only and miss it —
+# a symlink needs its own slash-less entry to stay untracked.
+/scripts/live-verify/node_modules
 dist/
 # Holds live conductor/Twitter credentials — see bridge/.env.example for
 # the documented, safe-to-commit template.
