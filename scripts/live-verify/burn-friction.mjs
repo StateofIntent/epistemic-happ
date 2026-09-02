@@ -1,22 +1,24 @@
 #!/usr/bin/env node
 // ============================================================================
-// scripts/live-verify/burn-friction.mjs — live verification of the
-// SynapticLink burn-to-extend-friction path (SPEC.md §5.11's three
-// tiers), the one part of the metabolic currency layer that
-// docs/metabolic-biosignalling-currency-brief.md §8 still listed as
-// unverified against a real DHT.
+// scripts/live-verify/burn-friction.mjs — asserts that SynapticLink
+// friction is an ABSOLUTE limit that burned credit cannot buy past
+// (SPEC.md §5.11).
 //
-// What the tiers are supposed to be, per SPEC.md §5.11:
-//   < 20 SynapticLinks/hour  -> free
-//   20..29                   -> allowed only against CreditBurns tagged
-//                               "burn_friction" totalling
-//                               (recent_count + 1 - 20) * 5.0
-//   >= 30                    -> refused unconditionally, no matter the burn
+// This script was originally written to verify a burn-to-extend tier
+// (free below 20, purchasable to a ceiling of 30 against CreditBurns
+// tagged "burn_friction"). Running it is what established that the tier
+// was unreachable — create_critique is the only way to create a
+// SynapticLink, Critique creation carries its own hard 20/hour cap with
+// no burn tier, and that cap is checked first — and the tier was
+// subsequently removed (see docs/metabolic-biosignalling-currency-brief
+// .md §4.3 and §7.2).
 //
-// The result of running this is that the middle tier turns out to be
-// UNREACHABLE through this zome's own API, for a structural reason
-// worth stating rather than working around — see the summary this
-// script prints, and README's Phase 5 entry.
+// It is kept, retargeted, because the property it now asserts is the
+// one that must not silently regress: that credit buys no throughput
+// anywhere in this protocol. If a future change reintroduces a paid
+// tier, the burn below will start buying something and these checks
+// will fail — which is exactly when someone should be made to re-read
+// §7.2 before proceeding.
 //
 // Prereqs: scripts/sandbox.sh start, against a CLEAN sandbox — friction
 // is a rolling one-hour window over the agent's own source chain, so a
@@ -30,8 +32,8 @@ const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
 
 const CRITIQUE_MAX_PER_WINDOW = 20;   // SPEC.md §6
-const SYNAPTIC_FREE_TIER = 20;        // SPEC.md §5.11
-const CREDIT_PER_EXTRA_ACTION = 5.0;  // SPEC.md §5.11
+const SYNAPTIC_LINK_LIMIT = 20;       // SPEC.md §5.11 — absolute
+const BURN_AMOUNT = 50.0;             // far more than any former tier asked for
 
 function nowMicros() {
   return Date.now() * 1000;
@@ -110,10 +112,10 @@ async function main() {
   // -- Free tier: every critique creates exactly one SynapticLink
   // (create_critique is the only caller of create_synaptic_link), so
   // this walks both budgets up in lockstep.
-  log(`=== Free tier: creating critiques until one is refused ===`);
+  log(`=== Creating critiques until one is refused ===`);
   let created = 0;
   let firstRefusal = null;
-  for (let i = 1; i <= SYNAPTIC_FREE_TIER + 5; i++) {
+  for (let i = 1; i <= SYNAPTIC_LINK_LIMIT + 5; i++) {
     try {
       await makeCritique(i);
       created++;
@@ -123,7 +125,7 @@ async function main() {
     }
   }
   log(`  created ${created} critiques (and therefore ${created} SynapticLinks) before refusal`);
-  check(`the free tier is exactly ${SYNAPTIC_FREE_TIER}`, created === SYNAPTIC_FREE_TIER);
+  check(`the limit is exactly ${SYNAPTIC_LINK_LIMIT}`, created === SYNAPTIC_LINK_LIMIT);
   check('the 21st was refused, not silently accepted', firstRefusal !== null);
   log(`  refusal: ${firstRefusal?.slice(0, 240)}\n`);
 
@@ -143,8 +145,8 @@ async function main() {
   // SynapticLink needs (20 + 1 - 20) * 5.0 = 5.0 of burned credit;
   // this burns ten times that, so nothing below can be blamed on
   // having under-paid.
-  const burnAmount = CREDIT_PER_EXTRA_ACTION * 10;
-  log(`=== Buying headroom: burning ${burnAmount} tagged "burn_friction" ===`);
+  const burnAmount = BURN_AMOUNT;
+  log(`=== Attempting to buy headroom: burning ${burnAmount} ===`);
   // Asserted as a delta, not against an absolute threshold: this agent
   // may carry standing from an earlier script run on the same
   // conductor, and a threshold check would then pass on that prior
@@ -162,30 +164,32 @@ async function main() {
   } catch (e) {
     afterBurnRefusal = errText(e);
   }
-  check('the 21st critique is STILL refused after a 10x burn', afterBurnRefusal !== null);
+  check('the next critique is STILL refused after a large burn', afterBurnRefusal !== null);
   log(`  refusal: ${afterBurnRefusal?.slice(0, 240)}`);
   check('and it is still the Critique budget refusing it',
     /Critique/i.test(afterBurnRefusal ?? '') && !/SynapticLink/i.test(afterBurnRefusal ?? ''));
 
   log(`
 === What this establishes ===
-create_critique is the only caller of create_synaptic_link, so a
-SynapticLink can only ever be created alongside a Critique entry. Both
-carry a 20-per-hour budget, and one create_critique call advances both,
-so they saturate on the same call -- but create_critique checks the
-Critique budget FIRST, and the Critique budget has no burn tier.
+Credit buys no throughput. The limit is absolute: 20 critiques (and
+therefore 20 SynapticLinks) per rolling hour, and burning ${burnAmount}
+-- far more than the removed burn tier ever asked for -- moves it not at
+all.
 
-The SynapticLink burn tier begins at exactly 20, which is the same count
-at which Critique creation becomes impossible. So the 20..29 tier and
-its ${CREDIT_PER_EXTRA_ACTION}-per-action price cannot be reached through this zome's API by
-any sequence of calls, paid or unpaid. Burning credit buys nothing an
-agent can actually spend.
+A burn-to-extend tier used to sit between 20 and a ceiling of 30. It was
+removed after this script established it was unreachable: create_critique
+is the only caller of create_synaptic_link, Critique creation carries its
+own hard 20/hour cap with no burn tier, and that cap is checked first, so
+the paid tier opened at exactly the count where another Critique had
+already become impossible. It was also a net loss -- the one client that
+could reach it, by hand-crafting CreateLink actions, got ten extra links
+for burns that nothing funds, since balance is unenforceable at
+validation time. A plain hard limit is stricter against that client.
 
-This does NOT make the integrity-zome burn check pointless: it still
-governs a client that hand-crafts SynapticLink CreateLink actions
-without going through create_critique, which is exactly the DHT-side
-enforcement it was written for. What it means is narrower and worth
-saying exactly -- the enforcement is real, the FEATURE is unreachable.
+The ledger is untouched: MutualCreditTransfer, CreditBurn and
+get_credit_balance all still work (see credit-transfer.mjs), and the burn
+above really did debit the balance. It simply buys nothing. See
+docs/metabolic-biosignalling-currency-brief.md §4.3 and §7.2.
 `);
 
   log(`${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

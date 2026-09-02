@@ -216,7 +216,7 @@ A single agent destroying some of their own standing. No counterparty, therefore
 |---|---|---|
 | `agent` | `AgentPubKey` | MUST equal the creating action's author (§5.20) |
 | `amount` | `f32` | MUST be positive and finite |
-| `reason` | `String` | MUST be non-empty. The literal value `"burn_friction"` is the **one** reason string validation treats as load-bearing — only burns so tagged count toward the `SynapticLink` friction extension (§5.11). Any other value is valid but carries no protocol-level effect beyond reducing the agent's own balance |
+| `reason` | `String` | MUST be non-empty. An open, non-authoritative label — **no reason string carries protocol-level meaning.** One did (`"burn_friction"`, read by the since-removed `SynapticLink` burn tier, §5.11); today a burn's only effect is on the burning agent's own balance |
 | `timestamp` | `u64` | Unix seconds |
 
 ## 3. Enumerations
@@ -334,14 +334,9 @@ This bounds *per-identity throughput only* — it does not raise the cost of cre
 
 ### 5.11 `SynapticLink` creation
 - `LinkTag` MUST be at least 4 bytes (the `f32` initial conductance).
-- Subject to SWO temporal friction (§5.10, §6), in three tiers:
-  - **Below 20** in the rolling hour: free.
-  - **At or above 20, below 30**: permitted only if the author has committed `CreditBurn` entries (§2.16) tagged exactly `"burn_friction"` to their own chain within the same window, totalling at least `(recent_count + 1 - 20) × 5.0`. The validator re-derives this sum independently via `must_get_agent_activity` over the same checkpoint-bounded walk (§5.10); nothing about a claimed burn is trusted from the client.
-  - **At or above 30**: rejected unconditionally. No amount of burned credit lifts this ceiling. Letting credit fully buy out friction would let anyone who accumulates enough of it defeat the purpose SWO friction exists to serve, so the ceiling is absolute by design, not a tuning artifact.
+- Subject to SWO temporal friction (§5.10, §6): 20 per rolling hour per agent, an absolute limit. There is deliberately no way to buy past it.
 
-**The middle tier is currently unreachable through the coordinator API, and an implementer should know that before implementing it.** In the reference implementation, a `SynapticLink` is only ever created alongside a `Critique` (`create_critique` is the sole caller of the internal `create_synaptic_link`). `Critique` creation carries its own 20-per-hour budget (§5.15) with no burn tier, it is checked first, and one call advances both budgets — so the count at which the burn tier opens is exactly the count at which creating another `Critique` has already become impossible. Verified live: 20 critiques succeed, the 21st is refused by the Critique budget, and burning ten times the required amount does not change that.
-
-The rule above is still normative, because it still governs a client that authors `SynapticLink` `CreateLink` actions directly rather than through `create_critique` — a conforming validator MUST enforce it. But a conforming implementation should not expect the paid tier to be usable by an honest client unless it also changes one of the two limits, and note that a `SynapticLink` authored outside a `Critique` has no defined meaning under §2.13.
+**Historical note, because the tier was specified here and an implementer may have built it.** A burn-to-extend tier once sat here: free below 20, purchasable up to a hard ceiling of 30 against `CreditBurn`s tagged `"burn_friction"`, refused at 30. It was removed after live verification showed it was unreachable by any honest client — `create_critique` is the only way to create a `SynapticLink`, `Critique` creation carries its own hard 20-per-hour cap (§5.15) with no burn tier, and that cap is checked first, so the paid tier opened at exactly the count where creating another `Critique` had already become impossible. It also *weakened* the limit for the one client that could reach it (one authoring `CreateLink` actions directly), granting ten extra links for burns that nothing funds, since balance is not checkable at validation time (§5.19's KNOWN GAP). A conforming implementation MUST NOT reintroduce it without first making burns cost something.
 
 ### 5.12 `Reinforcement` creation
 - Target MUST be an `AgentPubKey`, and MUST equal the creating action's own author — an agent can only reinforce as themselves, never on another agent's behalf.
@@ -392,7 +387,7 @@ All windows are rolling (not fixed calendar buckets) and per-agent (global acros
 
 | Rate-limited action | Window | Max per window | Enforced |
 |---|---|---|---|
-| `SynapticLink` creation | 1 hour | 20 free; up to 30 with a burn; 30 absolute | DHT (§5.11) + coordinator pre-check |
+| `SynapticLink` creation | 1 hour | 20 | DHT (§5.11) + coordinator pre-check |
 | `Critique` creation | 1 hour | 20 | DHT (§5.15) + coordinator pre-check |
 | `AntibodyPattern` creation | 1 hour | 20 | DHT (§5.16) + coordinator pre-check |
 | `Reinforcement` creation | 1 hour | 40 | DHT (§5.12) + coordinator pre-check |
@@ -400,7 +395,7 @@ All windows are rolling (not fixed calendar buckets) and per-agent (global acros
 
 `AttestationGrant`'s tenure bar (30 days of prior membership, §5.14) is a separate, non-windowed cost, not a rate limit.
 
-`SynapticLink` is the only row with a purchasable middle tier: between 20 and 30 in the window, each additional link costs `5.0` of burned credit (§5.11), and at 30 no burn lifts the limit at all. Every other row is a hard cutoff with no equivalent. That middle tier is presently unreachable by an honest client, because the `Critique` row's own hard 20 closes at the same count it opens — see §5.11's note, which an implementer should read before relying on this row.
+Every row is an absolute cutoff. Nothing in this protocol can be bought past — `SynapticLink` briefly had a purchasable middle tier and no longer does (§5.11).
 
 **What this is not**: none of the above raises the cost of creating a new agent identity — an unlimited number of fresh agents can each independently spend their own full budget. This is documented in this codebase as *spam defense*, explicitly distinct from *sybil resistance*, which remains open (see README.md §2.3 for the full discussion and the local-topology mitigation that is available without it).
 

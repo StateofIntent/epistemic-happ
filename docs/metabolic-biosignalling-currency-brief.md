@@ -314,33 +314,53 @@ tightening, the honest fix is a per-pair credit limit checked against
 both parties' own chains via `must_get_agent_activity`, not a pretend
 global balance check this substrate can't actually make atomic.
 
-### 4.3 Coupling — bounded burn-to-extend-friction
+### 4.3 Coupling to SWO friction — built, then removed
+
+**This section previously described a shipped, working burn-to-extend
+tier. It no longer exists.** SynapticLink creation is once again a plain
+absolute limit of 20 per rolling hour, with no way to buy past it:
 
 ```rust
-SYNAPTIC_LINK_MAX_PER_WINDOW = 20   // free tier, unchanged from original SWO
-SYNAPTIC_LINK_HARD_CEILING   = 30   // absolute — no burn crosses this
-CREDIT_PER_EXTRA_ACTION      = 5.0  // cost per action of headroom above the free tier
-CREDIT_BURN_FRICTION_REASON  = "burn_friction"  // the one CreditBurn.reason
-                                                 // string validation treats
-                                                 // as load-bearing
+SYNAPTIC_LINK_MAX_PER_WINDOW = 20   // absolute; unchanged from original SWO
 ```
 
-Same two-tier shape the informal brief specified — free below the
-original limit, burn-gated between the limit and a hard ceiling, rejected
-unconditionally at or above the ceiling regardless of burn amount — but
-now **actually enforced**, which the informal brief's design couldn't be
-(it had no backing entry for a claimed burn to check against; see §4.2).
-`validate_create_link`'s `SynapticLink` branch independently re-derives
-the claimed burn via `must_get_agent_activity`/`must_get_valid_record`
-(the same checkpoint-bounded scan `count_recent_actions_since_checkpoint`
-already established for the plain SWO count, generalized via a new
-`recent_matching_activity_since_checkpoint` helper so both share one
-implementation), summing only `CreditBurn`s tagged
-`CREDIT_BURN_FRICTION_REASON` within the same window. Nothing about a
-claimed burn is trusted from the client. The coordinator's
-`check_synaptic_link_friction` mirrors the same logic as a friendly,
-bypassable pre-check — same relationship the plain SWO count already has
-between its coordinator and integrity copies.
+What was removed: a two-tier design where creation stayed free below 20,
+cost `5.0` of verified `CreditBurn` per action between 20 and a hard
+ceiling of 30, and was refused at 30 regardless of burn. It was real,
+correctly implemented, and independently enforced DHT-side — the
+integrity zome re-derived every claimed burn via
+`must_get_agent_activity`/`must_get_valid_record` rather than trusting
+the client. Enforcement was never the problem.
+
+It was removed because §7.2's live pass established two things. It was
+**unreachable**: `create_critique` is the only caller of
+`create_synaptic_link`, `Critique` creation carries its own hard 20/hour
+cap with no burn tier, and that cap is checked first, so the paid tier
+opened at exactly the count where making another `Critique` had already
+become impossible. And it was **a net loss**: the one client that could
+reach it — one hand-crafting `CreateLink` actions outside
+`create_critique` — got ten extra links from it, paid for with burns
+that nothing funds, since `validate_credit_burn` cannot check a balance
+(§4.2's KNOWN GAP). A plain hard limit is strictly stricter against that
+client, and simpler: two constants and a burn-summing chain scan came
+out of each zome.
+
+**What this deliberately does not do is retreat from the idea of a real
+cost layer.** The ledger is untouched — `MutualCreditTransfer`,
+`CreditBurn`, countersigning, and `get_credit_balance` all remain, all
+live-verified (§7), and remain the substrate a real coupling would be
+rebuilt on. The prerequisite is §8's per-pair credit limits: until a
+burn costs something, any tier built on burns is a toll booth with no
+gate. Rebuilding this coupling once that lands is a reasonable thing to
+want; rebuilding it before then is not.
+
+**A consequence worth stating rather than leaving to be inferred: the
+currency layer now has no consumer.** Nothing in this protocol reads
+`get_credit_balance` to make a decision. That was already true in
+practice — the coupling was unreachable — so removing it revealed the
+situation rather than creating it. But the honest description of this
+layer today is a working, verified ledger awaiting a mechanism that
+needs it.
 
 ### 4.4 The "cascading" property — `WeightedAttestationPolicy`
 
@@ -621,31 +641,59 @@ protocol. The enforcement is real; what it governs is the creation of
 structurally meaningless links. The *feature* — buy headroom, then use
 it — is unreachable.
 
-**Left as a design decision rather than patched.** Four options are
-visible, and they are not equivalent: give `Critique` creation its own
-burn tier (makes the feature reachable, but extends a
-credit-buys-throughput mechanism to entry creation, which needs its own
-Invariant #1 analysis); lower the `SynapticLink` free tier below 20 so
-the paid tier opens before the Critique budget closes; drop the tier as
-unreachable; or keep it deliberately as bypass-only DHT enforcement and
-document it as such. Choosing among these is a protocol-design call
-about how much throughput credit should be able to buy, which is exactly
-the question §5's guardrails exist to keep deliberate. It is item 1 in
-§8.
+**Decision: the tier was dropped** (§4.3). Four options were weighed and
+they were not equivalent:
+
+1. Give `Critique` creation its own burn tier — makes the feature
+   reachable, but extends credit-buys-throughput to entry creation,
+   which needs its own Invariant #1 analysis.
+2. Lower the `SynapticLink` free tier below 20 so the paid tier opens
+   before the Critique cap closes.
+3. Drop the tier.
+4. Keep it as bypass-only DHT enforcement and document it as such.
+
+Option 2 was rejected outright on inspection: because the Critique cap
+of 20 is what actually binds, lowering the free tier cannot give anyone
+a single extra link. It can only move part of the existing free
+allowance behind a paywall — a *subtractive* change presented as a
+feature, and directly against this codebase's repeated, deliberate
+stance that participation is made accountable rather than costly.
+Option 1 is the additive shape of the same idea and remains available
+later, but shares option 4's blocker.
+
+That blocker decided it: every option that keeps or extends the tier
+assumes a burn is a cost, and it isn't. Balances are unenforceable at
+validation time (§4.2's KNOWN GAP), so a burn is currently free to
+issue — verified accidentally by this very test, which took an agent
+from a balance of `0` to `-50` with nothing objecting. Keeping the tier
+therefore preserved a ten-link loophole for the only party able to reach
+it while offering honest agents nothing. Option 3 is strictly stricter
+against that party and removes two constants and a burn-summing chain
+scan from each zome.
+
+The idea is deferred, not abandoned: §8's per-pair credit limits are the
+prerequisite, and option 1 is the shape to revisit once burns cost
+something.
 
 ---
 
 ## 8. Immediate next steps, in priority order
 
-1. **Decide what to do about the unreachable burn tier** (§7.2) — the
-   four options are laid out there. This is a design decision about how
-   much throughput credit should be able to buy, not a bug fix, and it
-   should be made deliberately rather than by whoever next touches the
-   constants. Both live-verification gaps this document once listed are
-   now closed: the countersigning flow works (§7), and the burn tier is
-   unreachable (§7.2).
-2. **Per-pair credit limits**, if this ledger needs to hold anything with
-   real stakes — closes the balance-check gap named in §4.2.
+1. **Per-pair credit limits** — promoted to the top, because everything
+   else here depends on it. Until a burn costs something, no mechanism
+   built on burns can mean anything: that is what made the burn tier
+   removable in §7.2, and it is what any future cost coupling would have
+   to solve first. Closes the balance-check gap named in §4.2. The
+   honest fix is a limit checked against both parties' own chains via
+   `must_get_agent_activity`, not a pretend global balance check this
+   substrate cannot make atomic.
+2. **Find the ledger a consumer, or accept that it is waiting for one**
+   (§4.3). With the burn coupling removed, nothing in this protocol
+   reads `get_credit_balance` to make a decision. That is worth a
+   deliberate answer rather than drift — either a mechanism that needs
+   it (the additive `Critique` burn tier of §7.2 option 1, once item 1
+   lands, is the nearest candidate), or an explicit "this is substrate,
+   parked until needed."
 3. **Multi-hop transitive settlement** (§6.1), if bilateral-only transfers
    turn out to be too limiting in practice.
 4. **hREA migration spike** (§6.2) — worth doing before this parallel

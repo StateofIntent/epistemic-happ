@@ -241,13 +241,13 @@ pub struct FederationRecord {
 //   CreditBurn destroys the burning agent's OWN standing — no other
 //   party's consent is needed to spend your own value, so it's an
 //   ordinary single-signer entry, the same shape every other entry type
-//   in this zome already uses. This is also what makes the SynapticLink
-//   friction ceiling's burn-to-extend mechanism (see
-//   SYNAPTIC_LINK_HARD_CEILING_VALIDATION below) actually verifiable by
-//   DHT validation: a burn that exists only as a same-call parameter
-//   (an earlier draft's design) can't be independently checked by
-//   anyone; a burn that is its own real, validated, chain-scanned entry
-//   can.
+//   in this zome already uses. Making a burn a real entry rather than a
+//   same-call parameter (an earlier draft's design) is what would let
+//   any future cost mechanism verify it independently: a claimed burn
+//   that exists only as a function argument can't be checked by anyone;
+//   a burn that is its own validated, chain-scanned entry can. No such
+//   mechanism reads burns today — see the REMOVED note beside this
+//   zome's friction constants.
 //
 // Both decay rather than delete when read (get_credit_balance,
 // coordinator zome) — Invariant #6 ("nothing is deleted — only
@@ -287,12 +287,13 @@ pub struct MutualCreditTransfer {
 
 /// A single agent destroying some of their own standing — no
 /// counterparty, so no countersigning: nobody else's consent is needed
-/// to spend what's yours. `reason` distinguishes what the burn was for;
-/// `CREDIT_BURN_FRICTION_REASON` (coordinator zome) is the one reason
-/// string this zome's own validation gives independent, load-bearing
-/// meaning to (see SynapticLink's burn-verification branch below) — any
-/// other reason is accepted but carries no protocol-level effect beyond
-/// reducing the burning agent's own get_credit_balance.
+/// to spend what's yours. `reason` is an open, non-authoritative label
+/// distinguishing what the burn was for; **no reason string carries any
+/// protocol-level meaning.** One once did ("burn_friction", read by the
+/// SynapticLink burn-to-extend tier) — that tier was removed after a
+/// live pass showed it unreachable, so a burn's only effect today is on
+/// the burning agent's own get_credit_balance. See the REMOVED note
+/// beside this zome's friction constants.
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct CreditBurn {
@@ -1300,24 +1301,30 @@ const ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION: i64 = 30 * 24 * 3600;
 const ATTESTATION_GRANT_WINDOW_SECS_VALIDATION: i64 = 7 * 24 * 3600;
 const ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION: usize = 5; // must match coordinator's limit
 
-// Coupling — bounded burn-to-extend-friction. Below the free tier,
-// SynapticLink creation costs nothing (unchanged SWO, above). Between
-// the free tier and the hard ceiling, it costs real, independently-
-// verified CreditBurn amount (see sum_recent_credit_burn_amount and the
-// SynapticLink branch below). At or above the hard ceiling, no amount
-// of burned credit is accepted — this is the load-bearing guarantee an
-// earlier, uncountersigned draft of this mechanism (see
-// docs/metabolic-biosignalling-currency-brief.md) got right in
-// principle but couldn't yet enforce, since it had no way to verify a
-// claimed burn actually happened.
-const SYNAPTIC_LINK_HARD_CEILING_VALIDATION: usize = 30; // must match coordinator's limit — absolute
-const CREDIT_PER_EXTRA_ACTION_VALIDATION: f32 = 5.0; // must match coordinator's limit
-/// The one CreditBurn.reason string this zome's own validation gives
-/// independent, load-bearing meaning to — see CreditBurn's doc comment.
-/// `pub` so the coordinator zome (which actually creates these burns)
-/// tags them with the exact same literal rather than a second copy of
-/// the string that could drift.
-pub const CREDIT_BURN_FRICTION_REASON: &str = "burn_friction";
+// REMOVED: the burn-to-extend-friction tier. SynapticLink creation used
+// to be free below 20, purchasable up to a hard ceiling of 30 against
+// verified CreditBurns, and refused at 30. It was removed after being
+// driven against a real conductor, which established that no honest
+// client could ever reach it: create_critique is the only way to create
+// a SynapticLink, Critique creation carries its own 20/hour cap with no
+// burn tier, and that cap is checked first — so the purchasable tier
+// opened at exactly the count where creating another Critique had
+// already become impossible.
+//
+// Worse than merely unreachable, it was a net loss. The one client that
+// COULD reach it — one hand-crafting CreateLink actions outside
+// create_critique — got ten extra links out of it, paid for with burns
+// that nothing funds, since validate_credit_burn cannot check a balance
+// on an eventually-consistent DHT (see MutualCreditTransfer's KNOWN GAP
+// below). A plain hard limit is therefore strictly STRICTER against the
+// only party who could reach the tier, as well as simpler.
+//
+// The ledger itself is untouched: MutualCreditTransfer, CreditBurn and
+// get_credit_balance all remain, and remain the substrate for a real
+// cost coupling once per-pair credit limits make a burn cost something.
+// What was removed is the coupling, not the currency. See
+// docs/metabolic-biosignalling-currency-brief.md §7.2 for the full
+// account and the four options that were weighed.
 
 /// Pure arithmetic core of AttestationGrant's tenure check: has enough
 /// time elapsed between the referenced AgentToMembrane join action and
@@ -1335,18 +1342,16 @@ fn tenure_satisfied(join_timestamp_micros: i64, grant_timestamp_micros: i64, min
 /// own activity items since `prev_action`, at or after `window_start`
 /// (microseconds), that satisfy `matches` — bounded by their most
 /// recent WorldlineTrace checkpoint if one is found within a small
-/// first-pass scan, falling back to a flat safety cap otherwise. Split
-/// out from count_recent_actions_since_checkpoint (which only needs how
-/// many) so sum_recent_credit_burn_amount (which needs to inspect each
-/// match's own entry content, not just count matches) can share the
-/// same checkpoint-bounding mechanism instead of a second copy that
-/// could drift from this one.
-fn recent_matching_activity_since_checkpoint(
+/// first-pass scan, falling back to a flat safety cap otherwise.
+/// Extracted so SynapticLink's and Critique's temporal friction checks
+/// share one implementation of the checkpoint-bounding mechanism instead
+/// of two copies that could drift.
+fn count_recent_actions_since_checkpoint(
     author: AgentPubKey,
     prev_action: ActionHash,
     window_start: i64,
     matches: impl Fn(&Action) -> bool,
-) -> ExternResult<Vec<RegisterAgentActivity>> {
+) -> ExternResult<usize> {
     let worldline_entry_type = EntryType::App(
         UnitEntryTypes::WorldlineTrace.try_into().map_err(|_| {
             wasm_error!(WasmErrorInner::Guest("Could not resolve WorldlineTrace entry type.".into()))
@@ -1386,62 +1391,7 @@ fn recent_matching_activity_since_checkpoint(
             let a = item.action.action();
             a.timestamp().as_micros() >= window_start && matches(a)
         })
-        .collect())
-}
-
-/// Counts how many of `author`'s own actions since `prev_action`, and at
-/// or after `window_start` (microseconds), satisfy `matches` — bounded by
-/// their most recent WorldlineTrace checkpoint if one is found within a
-/// small first-pass scan, falling back to a flat safety cap otherwise.
-/// Extracted so SynapticLink's and Critique's temporal friction checks
-/// share one implementation of the checkpoint-bounding mechanism instead
-/// of two copies that could drift.
-fn count_recent_actions_since_checkpoint(
-    author: AgentPubKey,
-    prev_action: ActionHash,
-    window_start: i64,
-    matches: impl Fn(&Action) -> bool,
-) -> ExternResult<usize> {
-    Ok(recent_matching_activity_since_checkpoint(author, prev_action, window_start, matches)?.len())
-}
-
-/// Sums CreditBurn.amount over `author`'s own recent chain activity
-/// (same checkpoint-bounded window count_recent_actions_since_checkpoint
-/// uses), restricted to burns tagged CREDIT_BURN_FRICTION_REASON — the
-/// one reason string this zome's validation treats as load-bearing (see
-/// CreditBurn's doc comment). This is what makes SynapticLink's
-/// burn-to-extend-ceiling mechanism (below) real DHT-side enforcement:
-/// each candidate burn action found in the scan is independently
-/// fetched via must_get_valid_record and its own entry content read —
-/// nothing about the amount is trusted from the SynapticLink creation
-/// call itself, which carries no burn data of its own at all.
-fn sum_recent_credit_burn_amount(
-    author: AgentPubKey,
-    prev_action: ActionHash,
-    window_start: i64,
-) -> ExternResult<f32> {
-    let burn_entry_type = EntryType::App(
-        UnitEntryTypes::CreditBurn.try_into().map_err(|_| {
-            wasm_error!(WasmErrorInner::Guest("Could not resolve CreditBurn entry type.".into()))
-        })?
-    );
-    let items = recent_matching_activity_since_checkpoint(
-        author,
-        prev_action,
-        window_start,
-        |a| matches!(a, Action::Create(c) if c.entry_type == burn_entry_type),
-    )?;
-
-    let mut total = 0f32;
-    for item in items {
-        let record = must_get_valid_record(item.action.action_address().clone())?;
-        if let Ok(Some(burn)) = record.entry().to_app_option::<CreditBurn>() {
-            if burn.reason == CREDIT_BURN_FRICTION_REASON {
-                total += burn.amount;
-            }
-        }
-    }
-    Ok(total)
+        .count())
 }
 
 fn validate_create_link(
@@ -1466,45 +1416,16 @@ fn validate_create_link(
             |a| matches!(a, Action::CreateLink(cl) if cl.link_type == action.link_type),
         )?;
 
+        // A plain, absolute limit. There is deliberately no way to buy
+        // past this with burned credit — see the REMOVED note beside
+        // this zome's friction constants for why the burn tier that
+        // used to sit here made the limit weaker rather than stronger.
         if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION {
-            // Absolute — no burn, no matter how large, crosses this.
-            // Letting burned credit fully bypass friction would let
-            // anyone who accumulates enough credit defeat the entire
-            // sybil-resistance purpose SWO exists to provide; see
-            // CreditBurn's doc comment (ENTRY TYPES, above).
-            if recent_count >= SYNAPTIC_LINK_HARD_CEILING_VALIDATION {
-                return Ok(ValidateCallbackResult::Invalid(format!(
-                    "SWO temporal friction: author has {} SynapticLinks in the last {} seconds — at \
-                     or above the hard ceiling of {}. No amount of burned credit lifts this; it is \
-                     an absolute limit, enforced by DHT validation, not a client-side courtesy.",
-                    recent_count, SYNAPTIC_LINK_WINDOW_SECS_VALIDATION, SYNAPTIC_LINK_HARD_CEILING_VALIDATION
-                )));
-            }
-
-            // Between the free tier and the hard ceiling: allowed only
-            // if a matching CreditBurn has actually been committed to
-            // the author's own chain within the same window —
-            // independently re-derived here via must_get_agent_activity,
-            // never trusted from anything the client claims. This is
-            // the real enforcement the coordinator zome's own
-            // check_synaptic_link_friction only advises.
-            let extra_actions_needed = (recent_count + 1 - SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION) as f32;
-            let required_burn = extra_actions_needed * CREDIT_PER_EXTRA_ACTION_VALIDATION;
-            let burned = sum_recent_credit_burn_amount(
-                action.author.clone(),
-                action.prev_action.clone(),
-                window_start,
-            )?;
-            if burned < required_burn {
-                return Ok(ValidateCallbackResult::Invalid(format!(
-                    "SWO temporal friction: author has {} SynapticLinks in the last {} seconds (free \
-                     limit {}, hard ceiling {}). Extending past the free limit requires burning at \
-                     least {} credit via a recent CreditBurn (reason \"{}\") — found {} burned in the \
-                     same window.",
-                    recent_count, SYNAPTIC_LINK_WINDOW_SECS_VALIDATION, SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION,
-                    SYNAPTIC_LINK_HARD_CEILING_VALIDATION, required_burn, CREDIT_BURN_FRICTION_REASON, burned
-                )));
-            }
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). \
+                 This is an absolute limit, enforced by DHT validation, not a client-side courtesy.",
+                recent_count, SYNAPTIC_LINK_WINDOW_SECS_VALIDATION, SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION
+            )));
         }
     } else if link_type == LinkTypes::AgentToMembrane {
         // Membership is a voluntary promise (Promise Theory) — only the
