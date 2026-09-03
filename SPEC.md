@@ -365,6 +365,21 @@ Every link type not named in §5.11–§5.14 (including `TargetToCritique`, `Tar
 ### 5.18 `FederationRecord` creation
 In addition to the non-empty `remote_network_label`/`remote_membrane_ref` requirements (§2.14): `local_membrane` MUST resolve to a real `Membrane` entry, and the creating agent MUST equal that `Membrane`'s own `creator` field — only a membrane's own founder may declare federation on its behalf, the same governance principle that already gates who can found the membrane at all (§5's `Membrane` author-binding rule, §5.2). No SWO temporal friction — see §10.14 for why.
 
+### 5.20a Every normative claim in §2 and §5, checked against validation
+
+A second audit, from the specification side rather than the code side. §5.21 swept coordinator guards for checks claiming a DHT twin that did not exist; that sweep could not have caught `validate_retraction`, whose gap was a **specification claim with no coordinator guard at all** — §2.3 and the entry type's own doc comment both said a retraction records *the author* withdrawing, and validation checked only the signature. Three such gaps had been found by then (the `SynapticLink` burn tier, `validate_membrane`, `validate_retraction`), so every MUST in §2 and §5 was checked against a reachable validation branch.
+
+**Result: no further gaps.** Every stated rule is enforced. Specifically confirmed rather than assumed:
+
+- **Author binding (§5.2)** holds for every type that carries such a field. `BridgeRecord` and `ExternalCritique` have none — `ExternalCritique.author_handle` is an external platform handle this DHT cannot verify, correctly outside the rule rather than an omission from it.
+- **Referential integrity (§5.3)** is enforced for every listed field, with `Critique.evidence_hashes` the one documented exception and correctly so (see §5.3's own reasoning).
+- **`Critique.target` and `AntibodyPattern.target`** both reject `Agent`- and `External`-kind hashes via a real `EntryHash::try_from` guard, not merely by convention, and both cross-check the declared `target_type` against the entry's actual decoded type.
+- **`Reinforcement`** enforces both its stated rules: the target downcasts to an `AgentPubKey` equal to the action's author, and the base is independently verified to be a real `SynapticLink` `CreateLink` action.
+- **`AttestationGrant`** enforces tenure *and* budget, not just the budget.
+- **`WorldlineTrace`** enforces all seven of its constraints, including that each `PeriodBoundary.sample_action` resolves to an action authored by the trace's own agent.
+
+**What made three gaps possible, stated so the next one is easier to spot:** each was a rule whose *natural place to check* was somewhere other than validation — the burn tier and membrane accountability lived in coordinator functions that felt authoritative, and retraction's author rule lived only in prose that read like a description of the type rather than a constraint on it. A rule is enforced only where `validate` runs. Prose in §2, a doc comment, and a coordinator guard are all equally non-binding.
+
 ### 5.21 Coordinator courtesies that are NOT validation rules
 
 Audit result, recorded because the distinction has been got wrong twice in this codebase and both times a comment asserted enforcement that did not exist (§5.8a, and the `SynapticLink` burn tier removed earlier).
