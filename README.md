@@ -202,10 +202,10 @@ This keeps HRR consistent with Invariant #10 (Appendix A) for exactly the reason
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  HUMAN AGENT (Consciousness — the non-computable observer)                  │
+│  HUMAN AGENT — the interpreter with stakes                                  │
 │  • Reads 3D semantic manifold (SSTorytime)                                  │
-│  • Writes critiques that collapse epistemic superposition                   │
-│  • Makes voluntary promises that curve spacetime                            │
+│  • Writes typed critiques — how a claim acquires status                     │
+│  • Makes voluntary promises (Promise Theory binding)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  SSTORYTIME (Semantic Spacetime Visualization)                              │
 │  • N4L query language — "from !agent_A trace 'fascial'"                    │
@@ -308,17 +308,25 @@ Agent calls export_to_n4l → Queries DHT for entries matching filter
 | Immune system | AntibodyPattern | `AntibodyPattern` entry type + `publish_antibody_pattern`/`get_antibody_patterns_for` (§9, Phase 4) |
 | Homeostasis | Discourse health monitoring | `get_discourse_health` |
 
-### 4.3 The Quantum → Classical Mapping
+### 4.3 The Epistemological Foundation — and what replaced the physics framing
 
-| Quantum Concept | Protocol Implementation |
-|-----------------|------------------------|
-| Superposition | Claim exists as multiple possible interpretations before critique |
-| Measurement | Critique/validation collapses superposition into definite record |
-| Entanglement | Claim and critique are linked — meaning depends on both |
-| Decoherence | Bridge latency prevents instantaneous flattening |
-| No-cloning theorem | Source chains are cryptographically unique |
-| Wavefunction | DHT topology as probability field over what is true |
-| Observer | Human agent — the non-computable measurement apparatus |
+**This section previously held a "Quantum → Classical Mapping" table** — superposition/measurement/entanglement/decoherence/no-cloning/wavefunction/observer, each mapped to a protocol concept. It has been removed rather than softened, and the reasoning is worth keeping because the table was not harmless.
+
+Non-locality in physics is a specific, measurable phenomenon: correlations violating Bell inequalities, which no local hidden-variable process can explain. DHT gossip is the opposite of that. Every message travels node-to-node bounded by ordinary network latency, fully explicable by classical causal propagation — **maximally local**. "Vacuum state," "wavefunction" and "measurement apparatus" are likewise precise terms with mathematical definitions in quantum field theory; applying them to a DHT identified no mechanism, it borrowed vocabulary because the analogy felt apt. A useful test: *if a sentence stays true after replacing "quantum" with "complicated," no quantum mechanism was doing work in it.* Every row of that table failed it.
+
+To a technically literate reader the table also undermined trust in the parts of this project that are well-reasoned, which is the practical reason it is gone rather than merely qualified.
+
+**Two things that look similar are deliberately kept**, because they are their frameworks' own vocabulary rather than physics imported for effect. *Superposition* in the HRR sections (§2.5, §5.3) is the established name for the element-wise bundling operator in vector-symbolic architectures (Plate 1995), not an appeal to quantum states. *Semantic Spacetime* and its curved manifold are Burgess's own defined terms, and §2.2 already states the disanalogy with Einstein's spacetime explicitly.
+
+**What the design actually rests on, stated positively.** No single sense-apparatus is a self-certifying source of truth — mine or anyone else's. The pramāṇa tradition (Dignāga, Dharmakīrti) develops this into a theory of how knowledge is validated: through recognised means of knowing that must themselves be checked, and through convergence across independent instances of them. Nāgārjuna's Madhyamaka sharpens it: nothing possesses *svabhāva*, inherent self-standing existence, and things arise only dependently, in relation to conditions and observers. Applied here: **a claim's epistemic status is not a property it holds on its own.** It exists only relationally, as a function of how other bounded agents have critiqued, corroborated or contested it.
+
+Burgess supplies the mechanism in his own vocabulary. An agent's interior — its private reasoning, its unshared data — sits behind an *event horizon* by construction, not by any physical barrier, and becomes visible only through what the agent voluntarily promises to expose. What crosses that boundary is exactly the material available for cross-checking by other bounded agents. This needs no non-locality, entanglement, or vacuum state: only bounded agents, voluntary disclosure, and a graph in which truth-status is relational.
+
+**Three calibrations, because a foundation is easy to over-claim** — the same discipline `docs/metabolic-biosignalling-currency-brief.md` §5.1 applies to this project's biological metaphor:
+
+1. **The epistemological claim is adopted; the metaphysical one is declined.** "No single observer's report is self-certifying, and validity emerges relationally" is well-founded and directly usable. "Observation *constitutes* reality" — closer to Wheeler's participatory universe, or contested idealist readings of Yogācāra — is a distinct and live philosophical dispute that this design takes no position on and does not need to. Nāgārjuna's own conclusion is in fact *more* deflationary than "we jointly build a shared reality"; his target is the absence of any fixed ground, including that one.
+2. **This is articulation, not derivation.** Invariant #1 (no canonical comparative score), Invariant #4 (every critique is typed, never flattened to one bit), and the prohibition on deletion were all built and justified before this framing was written down, from Promise Theory and from the codebase's own reasoning. Note that `CritiqueMode`'s five non-fungible modes are already the pramāṇa point about distinct means of knowing — arrived at independently. **The framework explains and reinforces what exists; it is not evidence for adding anything.** Applying §4.3's own test: "a claim's status is a function of how other agents engaged with it" stays true with the citation deleted, so Madhyamaka supplies lineage and vocabulary rather than mechanism. That is worth having and is a weaker claim than "foundation" usually implies.
+3. **What makes cross-checking trustworthy is a social precondition, not a protocol guarantee.** The account above works because the checking is done by genuinely independent observers with real stakes. **This protocol cannot verify any of that.** Identity creation is free, sybil resistance is open (§2.3), and ten independent people are indistinguishable to it from ten sybils of one. The epistemology is sound; the guarantee that its conditions hold lives outside the software, in the same place §2.3's honest ceiling already puts it.
 
 ---
 
@@ -632,7 +640,6 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 | **HRR** | Holographic Reduced Representations — vector compression technique (Plate 1995) |
 | **Membrane** | A domain with shared promise geometry — a region of semantic spacetime |
 | **N4L** | Notes for Learning — SSTorytime's query/input language |
-| **Orch-OR** | Orchestrated Objective Reduction — Penrose-Hameroff theory of quantum consciousness |
 | **Correlative Witness** | This project's bridge pattern: a durable, one-sided Holochain record that a DHT entry and an external post (e.g. a tweet) co-occurred — inspired by, but not equivalent to, a Ricardian contract, since there's no mutual agreement or enforceability |
 | **Promise Theory** | Mark Burgess' framework where autonomous systems interact through voluntary promises |
 | **Ricardian Contract** | (Reference concept, not implemented here) A contract that is simultaneously human-readable, machine-executable, and mutually enforceable between both parties — see Correlative Witness for what this project actually uses |
@@ -719,6 +726,11 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 - [x] **Federation between domain membranes shipped — `federation/`, see its own README for the full account.** Two membranes on the *same* DHT were already fully interlinked before this pass (nothing restricts a `Critique`/`AntibodyPattern` from crossing domains, and `get_cross_domain_critiques`, Phase 4, already surfaces exactly that) — "federation" only means something once there's an actual boundary to cross: two conductors that genuinely share no network. Holochain gives no native way for one DHT to see another's; the only way across is an external process that connects to both, the same shape the Twitter bridge already is. New `FederationRecord` entry type (integrity zome): a membrane's own witness that it recognizes a specific membrane on a different network — one-sided by construction, authorable only by that membrane's own `creator` (validated on-chain), the remote side necessarily an opaque out-of-band reference, the same honest limitation `BridgeRecord.twitter_id` already has for Twitter. `record_federation`/`get_federation_records_for` (coordinator zome) mirror this codebase's established CRUD shape; no SWO temporal friction here — declaring federation with several networks in succession isn't the flooding pattern friction exists to slow. **Mutual federation is never a stored fact on either DHT** — neither network can see the other's data to confirm reciprocation, so it's derived, fresh, by `federation/federate.mjs` connecting to both conductors and independently checking both directions.
   **A real bug, the exact class this project's own history is already full of, caught in my own new test harness while verifying this:** `FederationRecord.local_membrane` is an `EntryHash`, but a first attempt fed it `create_membrane`'s own return value — its `ActionHash` — straight through, which fails with a real `Deserialize` error from the integrity zome (a strongly-typed field rejecting the wrong Holochain hash-type prefix), not a silent wrong answer. Fixed by recovering the Membrane's real `EntryHash` via `get_membranes()` + decode, the same pattern this codebase's other live-verification harnesses already use — documented explicitly in `federation/README.md` so a future user doesn't repeat it.
   **Verified live, not just wired — against two genuinely separate `hc sandbox` conductors**, different ports, different sandbox data directories, different agent keys, not one conductor pretending to be two: a real membrane on each side, federated via `federate.mjs` — both `FederationRecord`s created, `MUTUAL FEDERATION CONFIRMED` reported, matching a direct independent read-back of both conductors. `--check-only` re-verification (no new writes) reported the same confirmed result. A negative case — two real membranes that were never federated with each other — correctly reported `NOT mutually federated`, not a false positive from the mere existence of *some* `FederationRecord` on either side. A genuinely nonexistent hash queried against the wrong network surfaced a real `"Membrane not found."` error from the DHT itself, rather than a silently wrong `false`.
+- [ ] **Model interior/exterior explicitly — every entry type in this DNA is currently public.** A grep for `EntryVisibility::Private` across `dna/` returns nothing: `Claim`, `Critique`, `Evidence`, `Constitution`, `Mew` and the rest are all published to the DHT in full. That is a real gap against this design's own stated foundation (§4.3): an agent's interior is supposed to sit behind an event horizon by construction, crossing only through a deliberate act of promising, and privacy here is instead the absence of a feature rather than a modelled boundary.
+
+  Holochain does support this directly — `EntryVisibility::Private` keeps an entry's *content* on the author's own source chain while still publishing its action to the DHT, so peers can see that an agent committed something of that type without seeing what. That is close to the right shape: the fact of a disclosure is public, its content is the agent's own until promised. **Unverified against a live conductor**, and given this codebase's record — every real defect in Phase 5 hid in exactly the host-call behaviour unit tests cannot reach — the exact visibility semantics should be confirmed on a real DHT before anything is built on them.
+
+  **What is genuinely undecided, and why this is not just a config change:** which entry types should be private, and whether a private entry is even the right primitive. Candidates are drafts, raw `Evidence` before an agent chooses to stand behind it, and private reasoning attached to a `Critique` — but a `Claim` that stays private is not a claim in this protocol's sense, and a `Critique` nobody can read cross-checks nothing (§4.3: status is relational, so a private critique contributes no status). A plausible shape is a private *draft* type that a deliberate action promotes into its public counterpart, which makes the promise explicit as an action rather than implicit in a visibility flag. That needs designing, not configuring, and per this project's standing rule it should wait on a stated need rather than be built because the philosophy suggests it.
 - [ ] Academic validation study
 
 ---
