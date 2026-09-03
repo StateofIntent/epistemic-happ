@@ -24,6 +24,21 @@
 // Prereqs: scripts/sandbox.sh start (CLEAN — this exhausts the hourly
 // friction budget deliberately), and `npm run build` in agent-sdk/.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: rethrowing a friction refusal as a plain Error instead of FrictionLimitError.
+//   Result: three FAILs — the error is no longer typed, carries no budget, and no longer says that nothing buys past the limit.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { createRequire } from 'node:module';
 
 const requireFromSdk = createRequire(new URL('../../agent-sdk/package.json', import.meta.url));

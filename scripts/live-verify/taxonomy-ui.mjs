@@ -31,6 +31,21 @@
 // Prereqs: a CLEAN sandbox (scripts/sandbox.sh clean && start) and a UI
 // build — scripts/pack-webhapp.sh does both builds in the right order.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: reverting Critique.species to a hardcoded null; separately, sorting the species tree by adoption.
+//   Result: one FAIL for the first (adoption stays 0 -> 0) and three for the second (the ranked leaderboard Invariant #1 refuses).
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';

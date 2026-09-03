@@ -27,6 +27,21 @@
 // Prereqs: scripts/sandbox.sh start (clean), `npx vite build` in
 // mobile-ui/.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: sizing nodes by depth instead of a uniform NODE_RADIUS.
+//   Result: one FAIL — 'every node has an identical radius', i.e. Invariant #1 asserted through geometry rather than through a number.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';

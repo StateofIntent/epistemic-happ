@@ -27,6 +27,21 @@
 // Prereqs: scripts/sandbox.sh start (clean), `npx vite build` in
 // mobile-ui/, and a rebuilt/repacked hApp.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: adding error-box to the ungrounded badge and rewording it as 'UNVERIFIED'.
+//   Result: three FAILs — but only after this file's check was strengthened. It previously asserted that .grounding.ungrounded EXISTED, which stays true when an error class is added alongside it, so the injected regression left that check green.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -128,8 +143,21 @@ async function main() {
     // this claim would report ungrounded.
     check('a claim published with evidence reports as grounded', /^Grounded/.test(gText));
     check('a claim published without evidence reports as not grounded', /^Not grounded/.test(uText));
+    // NOT styled as an error, which is a stronger claim than "has the
+    // ungrounded class". This used to assert only that
+    // .grounding.ungrounded existed — a class that stays present when an
+    // error class is added ALONGSIDE it, so the check passed while the
+    // badge was rendered in error styling. Caught by adding error-box to
+    // the same element and watching this stay green. An ungrounded claim
+    // is a valid, unremarkable state: the protocol lets a claim exist, be
+    // critiqued and be exported with no grounding at all, so framing it
+    // as a defect is the client inventing a standard the DNA never set.
+    const ungroundedBadge = ungrounded.locator('[data-testid="grounding"]');
+    const uClass = await ungroundedBadge.getAttribute('class') ?? '';
     check('ungrounded is not styled as an error — it is a valid state',
-      await ungrounded.locator('.grounding.ungrounded').count() === 1);
+      /\bungrounded\b/.test(uClass) && !/error|warn|danger|invalid/i.test(uClass));
+    check('and is not worded as a deficiency either',
+      !/unverified|invalid|missing|fails|must/i.test(uText));
 
     log('\n=== Retracting your own claim ===');
     await ungrounded.getByRole('button', { name: 'Retract this claim', exact: true }).click();
