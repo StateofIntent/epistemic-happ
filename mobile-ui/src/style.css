@@ -639,3 +639,56 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-size: 0.8rem;
   line-height: 1.35;
 }
+
+/* --- Write affordances for state that was previously read-only ---
+ *
+ * Both are deliberately quiet. Reinforcing and flagging are real acts
+ * with real records behind them, but neither is the routine path
+ * through this interface — critiquing content is — and styling them
+ * loudly would invite the reflexive click that produces exactly the
+ * unexplained flags and un-thought-through reinforcements this protocol
+ * has no use for. */
+.reinforce-button {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.reinforce-button:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.reinforce-error {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--danger-text);
+}
+
+.flag-affordance {
+  margin-top: 0.5rem;
+}
+
+.flag-affordance > .link-button {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.flag-affordance > .link-button:hover {
+  opacity: 1;
+}
+
+.flag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+}
+
+.flag-form textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
