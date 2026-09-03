@@ -605,6 +605,68 @@ npm start
 5. **Generate trace:** Call `generate_worldline_trace` to index your history
 6. **Export N4L:** Call `export_to_n4l` to get text for SSTorytime
 
+### 6.9 Package the Installable Bundle
+
+Everything above builds this protocol for *the person who has the source
+tree*. This step builds it for everyone else: a single
+`epistemic-resonance-happ.webhapp` containing the DNA, the hApp, and the
+practitioner UI, which a Holochain Launcher installs on its own.
+
+```bash
+cd epistemic-happ
+scripts/pack-webhapp.sh
+```
+
+That one script replaces §6.2, §6.3, a UI build, and a zip step, in that
+order — see its header for why each of the four has a constraint that is
+not guessable and was learned the expensive way. The output is
+gitignored on purpose: the bundle to hand someone is the one just built,
+not a stale copy found in the tree.
+
+**Installing it.** Open a Holochain Launcher, choose to install a hApp
+from a file, and select the `.webhapp`. The Launcher creates the agent
+key, installs the DNA, and serves the UI itself.
+
+**What changes when it is installed, and why that needed code.** A
+Launcher-installed UI runs in a genuinely different environment from the
+one every other instruction in this section produces, and the difference
+is not cosmetic:
+
+| | Developing against your own conductor | Installed from the `.webhapp` |
+|---|---|---|
+| Who issues the app auth token | the UI, over the Admin API | the Launcher, before the UI loads |
+| Admin API reachable from UI code | yes | **never** |
+| Who signs zome calls | the UI, with credentials it authorized | the Launcher's own host signer |
+| Connection settings shown | admin URL, app URL, app id | none — there is nothing to ask |
+
+The middle row is the load-bearing one. The UI's original connect flow
+opened an `AdminWebsocket` as its *first* action, so inside a Launcher
+it would have thrown before rendering a single screen — a dead bundle,
+not a degraded one. `mobile-ui/src/holochain.ts` now detects the host
+environment and takes a path that never touches the Admin API; its
+header comment documents both shapes in full.
+
+**How far this is verified, and where that stops.**
+`scripts/live-verify/launcher-packaging.mjs` runs the UI against a live
+conductor with a launcher environment injected, and confirms it connects
+with no user action, renders no connect form, publishes a claim that an
+independent client then reads back off the DHT, and does all of it with
+its saved admin URL pointed at a dead port — so a successful connection
+is positive evidence the Admin API was never opened, rather than an
+assumption. That harness was checked against a negative control: with
+launcher detection forced off, it fails, which is the only reason its
+passing means anything.
+
+What is **not** verified: no real Holochain Launcher is installed in
+this environment, so the bundle has never been installed by one. The
+harness reproduces what a Launcher injects — the environment and a
+host-side signer that lives outside the page — and is faithful in the
+respect that decides this code path, but it is a stand-in. Two things
+follow from that honestly: the `.webhapp` packs, unpacks and contains
+what it should (checked directly, by unpacking it), and the UI works
+under a faithful simulation of the host; a genuine first install is the
+next real verification gap, and it is this one, not a hidden one.
+
 ---
 
 ## 7. The Theory in Plain Language
@@ -750,6 +812,15 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   The event horizon is already implemented, in the strongest available form: `create_entry` **is** the deliberate act of promising, and an agent's unpublished reasoning, drafts and raw observations are not hidden on the DHT but absent from it. The boundary is modelled as commit-or-don't, which is exactly §4.3's "becomes visible only through what the agent voluntarily promises to expose." Nothing to build.
 
+- [x] **Installable `.webhapp` bundle shipped — the artifact someone who is not us needs in order to run this at all.** `scripts/pack-webhapp.sh` builds `epistemic-resonance-happ.webhapp` from `web-happ.yaml`: DNA, hApp, and the practitioner UI in the one file a Holochain Launcher installs. See §6.9 for the full account. This was the piece the previous pass explicitly sequenced itself *before* ("inviting participants onto a network whose stated guarantees have not been verified is the wrong order") — so it is now in the order that pass intended.
+
+  **Packaging was not the whole of it; packaging surfaced a bug that would have made the bundle dead on arrival.** The UI's connect flow opened an `AdminWebsocket` as its very first action. The Holochain Launcher **never** exposes the Admin API to UI code — so an installed bundle would have thrown before rendering a single screen. This was not a hidden defect: `mobile-ui/src/holochain.ts`'s own header comment had described the admin-auth dance as "a real, working shape for this project's current stage, not the final production auth model," and the Phase 4 changelog entry above says the same thing in the same words. It was correctly documented and correctly harmless right up until the moment this bundle existed, at which point the documented simplification became a defect without a line of code changing. `holochain.ts` now detects the host environment and takes a Launcher path that opens no `AdminWebsocket`, issues no token, and authorizes no signing credentials (the host signs); the connect form is not rendered at all under a host, because there is nothing to ask.
+
+  **Three smaller things packaging surfaced, all of the same family — assumptions that were true only because the app was served at an origin root it now no longer controls.** Vite's default `base: '/'` emitted absolute `/assets/…` references; `public/manifest.webmanifest` declared an absolute `start_url` and icon `src`; and the service worker precached `['/', '/manifest.webmanifest', '/icon.svg']` with `cache.addAll`, which is all-or-nothing — one 404 among them rejects the install and the worker never activates, turning a missing icon into no service worker at all. All four are now relative, and the precache tolerates per-entry failure. None of these could be *confirmed* broken without a real Launcher; each is the choice that is correct under both origins rather than the one verified correct in the untested case, and `vite.config.ts` says so in those terms.
+
+  **Verified live, and the harness checked against a negative control.** `scripts/live-verify/launcher-packaging.mjs` runs the real production bundle in a Playwright Chromium with a launcher environment and a host-side zome-call signer injected, against a live `hc sandbox` conductor. It connects with no user action and no connect form, publishes a `Claim` that an independent client then reads back off the DHT, and does it all with the saved admin URL pointed at a dead port — so connecting *at all* is positive evidence the Admin API was never opened, not an assumption. Because a suite that passes on its first run has proven nothing yet, launcher detection was then forced off and the harness re-run: it fails, which is the only reason its passing means anything. The existing direct-admin harness (`evidence-retraction-ui.mjs`) still passes unchanged, confirming the relative-path changes did not break the developer path. The `.webhapp` was unpacked and inspected directly rather than trusted from a zero exit code — `index.html` at the archive root, the DNA inside the hApp.
+
+  **The real limit, stated rather than implied away:** no Holochain Launcher is installed in this environment, so this bundle has never been installed by one. The harness reproduces what a Launcher injects and is faithful in the respect that decides the code path, but it is a stand-in. A genuine first install is this project's next real integration gap — the same species of gap live-conductor verification was before it was closed, and named here for the same reason.
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.
