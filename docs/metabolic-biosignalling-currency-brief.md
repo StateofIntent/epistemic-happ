@@ -932,8 +932,8 @@ around the mutual-credit ledger, which no longer exists. They are
 recorded here as closed-by-removal rather than deleted, so that a reader
 who remembers them knows they were answered rather than forgotten.
 
-One item below is now decided; one remains genuinely open. Neither is
-currency work:
+Both items below are now decided. Neither was currency work, and neither
+needed building:
 
 1. ~~**The claim/critique friction asymmetry.**~~ **Decided: not a
    defect, left unchanged.** `create_claim` carries no friction while
@@ -966,17 +966,42 @@ currency work:
    lens there — the containment strategy README §2.3 already describes
    for floods generally — not friction on `create_claim`.
 
-2. **Whether burst tolerance is wanted.** Rolling-window caps bound
-   burst and sustained throughput at the same number. A token bucket
-   with capacity above its refill rate would let an agent who has been
-   idle spend a burst — plausibly a better fit for how epistemic work
-   actually happens — while still bounding sustained rate. This can be
-   done per-limit, with no unified budget and therefore no
-   substitutability. Worth doing only if someone reports actually
-   hitting the caps; there is no such report today.
+2. ~~**Whether burst tolerance is wanted.**~~ **Decided: no, and the
+   premise was wrong.** This item claimed rolling-window caps "bound
+   burst and sustained throughput at the same number." They do not.
+   `count_recent_actions_since_checkpoint` counts matching actions at or
+   after `window_start` and rejects at the limit, so **an agent may
+   already spend all 20 in a single second** and then go quiet. Burst is
+   fully available today.
 
-What is left open is small, local, and conditional on a felt need —
-which is the lesson the rest of this document exists to record. Item 1
-is a worked example of that lesson in the other direction: investigating
-the mechanism rather than the description turned an apparent defect into
-a rule worth stating and keeping.
+   What a token bucket with capacity above its refill rate would
+   actually add is *banking*: accumulating unused allowance across
+   windows so that a later single hour can exceed 20. That is not a
+   neutral convenience — **it is the flooder's pattern.** Idle quietly,
+   accumulate, dump at once. The one behaviour the change enables is the
+   one a flood limit exists to prevent, and it belongs to the same
+   family as the substitutability that ruled out unified capacity (§7.2
+   / status banner): an agent converting inactivity into extra reach on
+   someone else's surface.
+
+   It would also cost a data-model change. Sound banking needs carried
+   per-agent state — each action recording its post-spend bucket level,
+   validated inductively against the previous one, the same technique
+   §4.2 identifies for the balance fix — which is DNA-breaking across
+   four budgets in two zomes. Against that, if a cap ever genuinely felt
+   tight, **raising a constant is one line.** Twenty thoughtful
+   critiques in an hour is roughly one every three minutes, already past
+   plausible sustained output, and no one has reported hitting any cap.
+
+**Nothing in this document is now open.** Both items resolved the same
+way and for the same reason: investigating the mechanism rather than the
+description showed the existing design was already correct, and in both
+cases the description was what needed fixing. Item 1 turned an apparent
+defect into a rule worth stating and keeping; item 2 turned a claimed
+limitation into a property the current design already has, plus one it
+deliberately should not.
+
+That is the lesson the rest of this document exists to record, arrived
+at from the other direction: the discipline that stops a mechanism being
+built without a felt need also, applied honestly, keeps finding that the
+felt need is not there.
