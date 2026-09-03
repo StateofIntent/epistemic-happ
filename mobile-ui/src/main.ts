@@ -7,6 +7,7 @@ import {
   type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros,
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
+  type Constitution,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -69,6 +70,8 @@ const membersByMembrane = new Map<string, Uint8Array[]>();
 const healthByMembrane = new Map<string, DiscourseHealth>();
 /** membrane entryHash (b64) -> critiques authored from other domains */
 const crossDomainByMembrane = new Map<string, CrossDomainCritique[]>();
+/** whether the founding form is open */
+let foundingOpen = false;
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -761,7 +764,15 @@ function renderMembranesTab(): HTMLElement {
   loadBtn.textContent = 'Load domains';
   loadBtn.onclick = () => loadMembranes();
   row.appendChild(loadBtn);
+  const foundBtn = document.createElement('button');
+  foundBtn.className = 'link-button';
+  foundBtn.dataset.testid = 'found-toggle';
+  foundBtn.textContent = foundingOpen ? 'Cancel' : 'Found a domain';
+  foundBtn.onclick = () => { foundingOpen = !foundingOpen; render(); };
+  row.appendChild(foundBtn);
   section.appendChild(row);
+
+  if (foundingOpen) section.appendChild(renderFoundingForm());
 
   const list = document.createElement('div');
   list.className = 'claim-list';
@@ -769,13 +780,159 @@ function renderMembranesTab(): HTMLElement {
     const empty = document.createElement('p');
     empty.className = 'hint';
     empty.textContent =
-      'No domains loaded. A domain is founded with a Constitution — ' +
-      'this screen reads and joins them; founding one is not yet built here ' +
-      '(see domains/bootstrap.mjs).';
+      'No domains loaded. Load them, or found one — it costs nothing, but you ' +
+      'state what you promise and what the domain asks of others. ' +
+      '(domains/bootstrap.mjs founds them from templates in bulk.)';
     list.appendChild(empty);
   }
   for (const membrane of membranes) list.appendChild(renderMembraneCard(membrane));
   section.appendChild(list);
+
+  return section;
+}
+
+/** Founding a domain: publish a Constitution, then create a Membrane
+ * referencing it.
+ *
+ * This is where "accountable rather than costly" stops being a design
+ * note and becomes something a user does. There is no fee, no stake and
+ * no token — instead a founder states, under their own key, what they
+ * promise, and states what the domain will demand of anyone working in
+ * it. The form keeps those two visibly separate because conflating them
+ * is the easy mistake: the first is a commitment you are held to, the
+ * second is a condition you set for others.
+ *
+ * Both are enforced by DHT validation, not merely by this form — a
+ * Membrane with no required promises, or one referencing a constitution
+ * that is not the founder's own, is rejected by the integrity zome. */
+function renderFoundingForm(): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'founding-form';
+  section.dataset.testid = 'founding-form';
+
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent =
+    'Founding a domain costs nothing. Instead you state what you promise, '
+    + 'and what the domain will ask of anyone who works in it.';
+  section.appendChild(intro);
+
+  // --- Part one: what the founder promises -------------------------
+  const mine = document.createElement('fieldset');
+  const mineLegend = document.createElement('legend');
+  mineLegend.textContent = 'What you promise';
+  mine.appendChild(mineLegend);
+  const mineHint = document.createElement('p');
+  mineHint.className = 'hint';
+  mineHint.textContent =
+    'Published as your own Constitution, under your key. You are held to this.';
+  mine.appendChild(mineHint);
+  const promiseInput = document.createElement('input');
+  promiseInput.type = 'text';
+  promiseInput.placeholder = 'e.g. distinguish observation from inference';
+  promiseInput.dataset.testid = 'founder-promise';
+  mine.appendChild(promiseInput);
+  section.appendChild(mine);
+
+  // --- Part two: what the domain demands ---------------------------
+  const theirs = document.createElement('fieldset');
+  const theirsLegend = document.createElement('legend');
+  theirsLegend.textContent = 'What the domain asks of participants';
+  theirs.appendChild(theirsLegend);
+  const theirsHint = document.createElement('p');
+  theirsHint.className = 'hint';
+  theirsHint.textContent =
+    'One per line. This is the entry condition others see before joining — '
+    + 'the alternative to charging them.';
+  theirs.appendChild(theirsHint);
+
+  const domainInput = document.createElement('input');
+  domainInput.type = 'text';
+  domainInput.placeholder = 'Domain name, e.g. LumbarRehab';
+  domainInput.dataset.testid = 'founding-domain';
+  theirs.appendChild(domainInput);
+
+  const descInput = document.createElement('textarea');
+  descInput.placeholder = 'What is this domain for?';
+  descInput.dataset.testid = 'founding-description';
+  theirs.appendChild(descInput);
+
+  const requiredInput = document.createElement('textarea');
+  requiredInput.placeholder = 'Required promises, one per line';
+  requiredInput.dataset.testid = 'founding-required';
+  theirs.appendChild(requiredInput);
+  section.appendChild(theirs);
+
+  // Founding is permanent. Entries here are immutable and there is no
+  // deletion in this protocol, so saying so before the button is the
+  // honest thing rather than a confirmation dialog after it.
+  const permanence = document.createElement('p');
+  permanence.className = 'permanence-note';
+  permanence.dataset.testid = 'permanence-note';
+  permanence.textContent =
+    'Both entries are permanent. Nothing in this protocol is deleted — a domain '
+    + 'you found stays founded, under your name.';
+  section.appendChild(permanence);
+
+  const error = document.createElement('p');
+  error.className = 'error-box';
+  error.dataset.testid = 'founding-error';
+  error.hidden = true;
+  section.appendChild(error);
+
+  const submit = document.createElement('button');
+  submit.textContent = 'Found this domain';
+  submit.dataset.testid = 'founding-submit';
+  submit.onclick = async () => {
+    if (!connection) return;
+    error.hidden = true;
+    submit.disabled = true;
+
+    const promise = promiseInput.value.trim();
+    const domain = domainInput.value.trim();
+    const required = requiredInput.value.split('\n').map((p) => p.trim()).filter(Boolean);
+
+    // Checked here only to give a better message than the zome's; the
+    // integrity zome rejects both cases regardless of this form.
+    if (!promise || !domain || required.length === 0) {
+      error.hidden = false;
+      error.textContent =
+        'A domain needs a name, at least one promise from you, and at least one '
+        + 'it asks of others.';
+      submit.disabled = false;
+      return;
+    }
+
+    try {
+      const constitution: Constitution = {
+        agent: connection.myAgentPubKey,
+        promises: [{ action: promise, domain, modality: null }],
+        conditions: [],
+        published_at: Math.floor(Date.now() / 1000),
+        expires_at: null,
+      };
+      const constitutionHash = await connection.callZome<Uint8Array>(
+        'publish_constitution', constitution,
+      );
+      await connection.callZome('create_membrane', {
+        domain,
+        description: descInput.value.trim(),
+        required_promises: required,
+        validation_rules_hash: null,
+        creator: connection.myAgentPubKey,
+        created_at: Math.floor(Date.now() / 1000),
+        constitution: constitutionHash,
+      });
+      foundingOpen = false;
+      await loadMembranes();
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+  section.appendChild(submit);
 
   return section;
 }

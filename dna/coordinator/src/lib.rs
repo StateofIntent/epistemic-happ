@@ -1183,6 +1183,16 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
     // and declare at least one required promise. On its own this
     // coordinator-side check is advisory only — same two-layer shape as
     // SWO temporal friction elsewhere in this file.
+    //
+    // That description was FALSE when written and is now true.
+    // validate_membrane checked only creator-matches-author and a
+    // non-empty domain, so neither the constitution nor the promises had
+    // any DHT-side enforcement at all and a client bypassing this
+    // function could found a domain with no stated demands and a
+    // constitution hash pointing at nothing. The checks below were the
+    // whole of the "accountable rather than costly" mechanism while
+    // being documented as an invariant. The integrity zome now enforces
+    // all three; see its own note in validate_membrane.
     if membrane.required_promises.is_empty() {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Membrane must declare at least one required_promise.".into()
@@ -1201,6 +1211,28 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
         )));
     }
 
+    create_entry(EntryTypes::Membrane(membrane))
+}
+
+/// Creates a Membrane WITHOUT create_membrane's pre-checks, so the
+/// integrity zome's own enforcement can be verified against a real
+/// conductor rather than asserted.
+///
+/// This exists for the same reason and on the same terms as
+/// SynapticLink's own bypass probe: create_membrane refuses an
+/// unaccountable Membrane before the entry is ever built, so a test
+/// calling it proves only that the COORDINATOR refuses — which is
+/// precisely the confusion that let validate_membrane go without these
+/// checks while a comment claimed it had them. Testing the courtesy and
+/// reporting it as enforcement is how that gap survived.
+///
+/// Not an attack surface: every call that a custom client could make to
+/// gain something is rejected by validate_membrane, which is the point.
+/// If this ever SUCCEEDS with empty required_promises or a constitution
+/// that is not the caller's own, the accountability has regressed to
+/// coordinator-side courtesy again.
+#[hdk_extern]
+pub fn attempt_unaccountable_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
     create_entry(EntryTypes::Membrane(membrane))
 }
 
@@ -2824,6 +2856,38 @@ pub struct GetDiscourseHealthPayload {
     pub conductance_policy: Option<ConductancePolicy>,
 }
 
+/// Abstract-to-embodied ratio for a domain's critiques.
+///
+/// Split out as pure logic so its edge cases can be tested directly —
+/// the same treatment bridge_link_type_for and distinct_other_domains
+/// already get — because the one that matters is invisible from inside
+/// get_discourse_health's host calls.
+///
+/// THE EDGE CASE THIS FIXES. `experiential == 0` used to yield
+/// `f32::MAX` unconditionally, which trips the > 3.0 warning. That is
+/// right when there IS abstract discourse and nothing embodied to
+/// ground it, and wrong when there are simply no critiques at all: a
+/// freshly founded domain announced "discourse becoming detached from
+/// practice" before anyone had said anything. Two different situations
+/// were being collapsed into one sentinel.
+///
+/// It was invisible until the UI surfaced discourse health, and then
+/// obvious in the first screenshot of a domain founded through the new
+/// flow. A warning that fires on every new domain is also a warning
+/// people learn to ignore, which costs more than the false positive.
+fn discourse_ratio(logical_count: u32, experiential_count: u32) -> f32 {
+    if experiential_count > 0 {
+        logical_count as f32 / experiential_count as f32
+    } else if logical_count > 0 {
+        // Real abstract discourse with no embodied report grounding it.
+        f32::MAX
+    } else {
+        // No critiques at all. Nothing has drifted from practice,
+        // because nothing has happened yet.
+        0.0
+    }
+}
+
 #[hdk_extern]
 pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<DiscourseHealth> {
     let membrane_record = get(payload.membrane, GetOptions::default())?
@@ -2913,11 +2977,7 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         }
     }
 
-    let ratio = if experiential_count > 0 {
-        logical_count as f32 / experiential_count as f32
-    } else {
-        f32::MAX
-    };
+    let ratio = discourse_ratio(logical_count, experiential_count);
 
     let warning = if ratio > 3.0 {
         Some("Discourse becoming detached from practice. More experiential data needed.".into())
@@ -4260,6 +4320,31 @@ mod tests {
 
         assert!(grounded);
         assert_eq!(path, vec![fixture_entry_hash(evidence)]);
+    }
+
+    // --- discourse_ratio ----------------------------------------------------
+
+    #[test]
+    fn discourse_ratio_is_zero_when_there_are_no_critiques_at_all() {
+        // The case that shipped broken: a freshly founded domain warned
+        // that its discourse had detached from a practice nobody had
+        // started. Nothing has happened, so nothing has drifted.
+        assert_eq!(discourse_ratio(0, 0), 0.0);
+        assert!(discourse_ratio(0, 0) <= 3.0, "must not trip the drift warning");
+    }
+
+    #[test]
+    fn discourse_ratio_is_max_for_abstract_discourse_with_no_embodied_report() {
+        // Still the right answer: there IS discourse, and none of it is
+        // grounded in anyone's practice.
+        assert_eq!(discourse_ratio(5, 0), f32::MAX);
+        assert!(discourse_ratio(5, 0) > 3.0, "must trip the drift warning");
+    }
+
+    #[test]
+    fn discourse_ratio_divides_when_both_are_present() {
+        assert_eq!(discourse_ratio(4, 1), 4.0);
+        assert_eq!(discourse_ratio(3, 3), 1.0);
     }
 
     // --- HRR: bind/unbind/superpose (OpenZoo, README §2.5) ---------------

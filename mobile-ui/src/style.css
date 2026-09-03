@@ -509,3 +509,56 @@ button:disabled { opacity: 0.6; cursor: default; }
 .claim-card > .link-button + .link-button {
   margin-left: 0.9rem;
 }
+
+/* --- Founding a domain ------------------------------------------------
+   The two fieldsets are visually distinct on purpose: "what you promise"
+   and "what the domain asks of others" are different commitments, and
+   conflating them is the easy mistake here. */
+
+.founding-form {
+  margin: 0.8rem 0;
+  padding: 0.8rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 6px;
+}
+
+.founding-form fieldset {
+  margin: 0 0 0.8rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 5px;
+}
+
+.founding-form legend {
+  padding: 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.founding-form .hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+}
+
+.founding-form input,
+.founding-form textarea {
+  width: 100%;
+  margin-bottom: 0.45rem;
+  box-sizing: border-box;
+}
+
+.founding-form textarea {
+  min-height: 3.4rem;
+}
+
+.permanence-note {
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid #8e44ad;
+  background: rgba(142, 68, 173, 0.08);
+  border-radius: 4px;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
