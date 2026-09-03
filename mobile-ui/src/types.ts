@@ -139,3 +139,38 @@ export interface CrossDomainCritique {
   critique_author: Uint8Array;
   critiquer_home_domains: string[];
 }
+
+// --- Founding a domain -------------------------------------------------
+//
+// Two entries, in order: a Constitution (what the FOUNDER promises, under
+// their own key) and then a Membrane referencing it (what the DOMAIN
+// demands of anyone working in it). Those are different things and the
+// founding UI keeps them visibly apart, because conflating "what I
+// promise" with "what I require of others" is the easiest mistake to make
+// here and the protocol treats them as distinct.
+
+export interface Promise {
+  action: string;
+  domain: string;
+  /** Optional receptor mode this promise is scoped to. Left null by the
+   * founding flow — a promise about how one works is rarely specific to
+   * one mode of critique. */
+  modality: CritiqueMode | null;
+}
+
+export interface Condition {
+  condition_type: string;
+  parameters: string[];
+}
+
+export interface Constitution {
+  agent: Uint8Array;
+  /** At least one is required by validation. */
+  promises: Promise[];
+  /** Carried into N4L export but given no protocol meaning — left empty
+   * by the founding flow rather than inventing a UI for a field nothing
+   * reads. */
+  conditions: Condition[];
+  published_at: number;
+  expires_at: number | null;
+}

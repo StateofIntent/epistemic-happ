@@ -164,6 +164,17 @@ async function main() {
 
     log('\n=== Discourse health (unlocked by membranes) ===');
     await card.locator('[data-testid="discourse-health"]').waitFor({ timeout: 20000 });
+    // Routine detail is collapsed on a first run by progressive
+    // disclosure (onboarding.ts), so it has to be opened before it can
+    // be asserted on. This script predates that change and silently
+    // began failing when it landed, because only the new script was
+    // re-run at the time — the whole live-verify suite is the unit that
+    // needs running, not the one file a change is about.
+    const toggle = card.locator('[data-testid="health-toggle"]');
+    if (await toggle.count() > 0 && /Show/i.test(await toggle.innerText())) {
+      await toggle.click();
+      await card.locator('[data-testid="health-totals"]').waitFor({ timeout: 20000 });
+    }
     const health = await card.locator('[data-testid="discourse-health"]').innerText();
     log(`  ${health.replace(/\n/g, ' | ')}`);
     check('totals render', /1 claim/.test(health) && /5 critiques/.test(health));

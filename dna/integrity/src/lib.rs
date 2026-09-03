@@ -859,6 +859,51 @@ fn validate_membrane(membrane: &Membrane, action: &Create) -> ExternResult<Valid
     if membrane.domain.is_empty() {
         return Ok(ValidateCallbackResult::Invalid("Membrane domain cannot be empty.".into()));
     }
+
+    // ACCOUNTABILITY, ACTUALLY ENFORCED. Founding a domain here was made
+    // accountable rather than costly (README §2.6): instead of charging
+    // a fee, a founder must have published their own Constitution and
+    // must state what the domain demands of its participants.
+    //
+    // Until this was added, none of that was enforced DHT-side. The
+    // coordinator's create_membrane checked all three and its comment
+    // claimed to be "mirroring validate_membrane's DHT-enforced rule
+    // (the real enforcement layer, unbypassable by a custom client)" —
+    // and this function checked neither the constitution nor the
+    // promises, so a client bypassing the coordinator could found a
+    // domain with no stated demands and a constitution hash pointing at
+    // nothing. The accountability was a coordinator-side courtesy while
+    // being documented as an invariant. Same shape as the burn tier's
+    // own false claim: a pre-check asserting a validation twin that did
+    // not exist.
+    //
+    // must_get_valid_record is the right primitive here for the reason
+    // the friction checks already use it: it is a DETERMINISTIC
+    // dependency fetch, so every validating peer resolves the same
+    // constitution or defers, rather than disagreeing based on what each
+    // happens to have gossiped.
+    if membrane.required_promises.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Membrane must declare at least one required_promise — a domain states what it \
+             demands of its participants rather than charging them to enter.".into()
+        ));
+    }
+
+    let record = must_get_valid_record(membrane.constitution.clone())?;
+    let constitution: Option<Constitution> = record.entry().to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?;
+    let Some(constitution) = constitution else {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Membrane's constitution hash does not resolve to a Constitution entry.".into()
+        ));
+    };
+    if constitution.agent != membrane.creator {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Membrane's constitution must be the creator's own published Constitution — a founder \
+             is accountable under promises they made themselves.".into()
+        ));
+    }
+
     Ok(ValidateCallbackResult::Valid)
 }
 
