@@ -8,6 +8,11 @@ import {
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
 } from './types';
+import {
+  hasSeen, markSeen, markDone, nextStep,
+  domainDetailExpanded, setDomainDetailExpanded,
+  CONCEPT_NOTES, type Concept,
+} from './onboarding';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -68,6 +73,7 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 
 function render() {
   app.innerHTML = '';
+  conceptNoteShownThisPass = false;
   app.appendChild(renderHeader());
   if (!connection) {
     app.appendChild(renderConnectScreen());
@@ -105,6 +111,14 @@ function renderHeader(): HTMLElement {
     meta.appendChild(disconnectBtn);
     header.appendChild(meta);
     if (frictionStatus) header.appendChild(renderFrictionMeter(frictionStatus));
+    const localNote = renderConceptNote('local-conductor');
+    if (localNote) header.appendChild(localNote);
+    // The budget bar is meaningless without knowing what it bounds, so
+    // its note appears the first time the bar itself does.
+    if (frictionStatus) {
+      const frictionNote = renderConceptNote('friction-budget');
+      if (frictionNote) header.appendChild(frictionNote);
+    }
   }
   return header;
 }
@@ -200,6 +214,7 @@ function renderConnectScreen(): HTMLElement {
     try {
       connection = await HolochainConnection.connect(newConfig);
       saveConfig(newConfig);
+      markDone('connected');
       render();
       void loadFrictionStatus();
     } catch (err) {
@@ -212,6 +227,63 @@ function renderConnectScreen(): HTMLElement {
 
   section.appendChild(form);
   return section;
+}
+
+// --- Progressive disclosure ------------------------------------------
+//
+// See onboarding.ts for the model and, importantly, for the line it must
+// not cross: this stages EXPLANATION and ROUTINE DETAIL only. Epistemic
+// state attached to a claim under evaluation is never staged, collapsed
+// or deferred — a newcomer must see the same artifact an expert sees
+// (README.md §4.4).
+
+/** At most one unseen concept note is rendered per pass. Reset by
+ * render() before each rebuild.
+ *
+ * Without this, a first run showed three notes at once — the budget bar,
+ * a domain's required promises, and discourse health all introduce
+ * themselves on the same screen. Three explanations delivered
+ * simultaneously is contextual help, not progressive disclosure: it
+ * recreates exactly the wall of concepts this module exists to break up.
+ * One at a time, in the order they are encountered on screen; dismissing
+ * it brings the next. */
+let conceptNoteShownThisPass = false;
+
+/** A concept's first-encounter note, rendered where the concept itself
+ * appears and dismissed permanently once read. Returns null after that,
+ * so this costs nothing on every subsequent render. */
+function renderConceptNote(concept: Concept): HTMLElement | null {
+  if (hasSeen(concept)) return null;
+  if (conceptNoteShownThisPass) return null;
+  conceptNoteShownThisPass = true;
+
+  const note = document.createElement('aside');
+  note.className = 'concept-note';
+  note.dataset.testid = `concept-${concept}`;
+
+  const text = document.createElement('p');
+  text.textContent = CONCEPT_NOTES[concept];
+  note.appendChild(text);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'link-button';
+  dismiss.textContent = 'Got it';
+  dismiss.onclick = () => { markSeen(concept); render(); };
+  note.appendChild(dismiss);
+
+  return note;
+}
+
+/** One suggested next action, or nothing once the user is under way.
+ * Never a checklist — a backlog of suggestions is not onboarding. */
+function renderNextStep(): HTMLElement | null {
+  const step = nextStep();
+  if (!step) return null;
+  const hint = document.createElement('div');
+  hint.className = 'next-step';
+  hint.dataset.testid = step.testId;
+  hint.textContent = step.text;
+  return hint;
 }
 
 // --- Tabs -----------------------------------------------------------------
@@ -238,6 +310,8 @@ function renderTabs(): HTMLElement {
 
   const content = document.createElement('main');
   content.className = 'tab-content';
+  const step = renderNextStep();
+  if (step) content.appendChild(step);
   content.appendChild(
     activeTab === 'browse' ? renderBrowseTab()
       : activeTab === 'membranes' ? renderMembranesTab()
@@ -411,6 +485,8 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
         // with a floor so it never becomes unreadable.
         strength.style.opacity = String(Math.max(0.35, Math.min(1, conductance)));
         item.appendChild(strength);
+        const note = renderConceptNote('conductance');
+        if (note) item.appendChild(note);
       }
       const text = document.createElement('p');
       text.textContent = critique.entry.content;
@@ -422,6 +498,9 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   const form = document.createElement('form');
   form.className = 'critique-form';
   const modeSelect = document.createElement('select');
+  const modeNote = renderConceptNote('typed-critiques');
+  if (modeNote) form.appendChild(modeNote);
+
   for (const mode of CRITIQUE_MODES) {
     const opt = document.createElement('option');
     opt.value = mode;
@@ -461,6 +540,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     };
     try {
       await connection.callZome('create_critique', critique);
+      markDone('wrote-critique');
       textarea.value = '';
       await loadCritiques(claim);
       // Every critique spends a unit of the SWO budget (create_critique
@@ -482,6 +562,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
 async function loadClaims(domain: string) {
   if (!connection || !domain) return;
   currentDomain = domain;
+  markDone('browsed-domain');
   const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
   claims = decodeRecords<Claim>(records);
   critiquesByClaim.clear();
@@ -537,6 +618,7 @@ async function loadFrictionStatus() {
 async function loadCritiques(claim: DecodedRecord<Claim>) {
   if (!connection) return;
   const key = b64(claim.entryHash);
+  markDone('read-critiques');
   const records = await connection.callZome<any[]>('get_critiques_for', claim.entryHash);
   const decoded = decodeRecords<Critique>(records);
   critiquesByClaim.set(key, decoded);
@@ -577,6 +659,7 @@ async function loadConductances(claim: DecodedRecord<Claim>, critiques: DecodedR
 
 async function loadMembranes() {
   if (!connection) return;
+  markDone('viewed-domains');
   const records = await connection.callZome<any[]>('get_membranes', null);
   membranes = decodeRecords<Membrane>(records);
   membersByMembrane.clear();
@@ -692,6 +775,8 @@ function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
       promises.appendChild(li);
     }
     card.appendChild(promises);
+    const note = renderConceptNote('required-promises');
+    if (note) card.appendChild(note);
   }
 
   const members = membersByMembrane.get(key);
@@ -731,14 +816,53 @@ function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
 
 /** The protocol's own aggregate over a domain. Everything shown is
  * computed by the DNA and identical for every viewer — no client-side
- * inference, per README.md §4.4. */
+ * inference, per README.md §4.4.
+ *
+ * PROGRESSIVE DISCLOSURE, AND ITS LIMIT. The totals, ratio and mode
+ * distribution are routine detail: informative, but not urgent, and a
+ * newcomer meeting them alongside required promises, member counts and
+ * cross-domain structure on one card is meeting too much at once. They
+ * collapse behind a toggle, and once a user opens it they stay open for
+ * good (onboarding.ts's setDomainDetailExpanded) — disclosure that runs
+ * one way rather than re-hiding what someone asked to see.
+ *
+ * THE WARNING NEVER COLLAPSES. It is not routine detail; it is the
+ * protocol actively saying this domain's discourse has drifted from
+ * practice. Progressive disclosure may defer routine detail, never an
+ * active signal — hiding one behind a fold a newcomer has not opened
+ * would mean the people least able to notice the drift are the ones the
+ * interface tells last. */
 function renderDiscourseHealth(health: DiscourseHealth): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'discourse-health';
   wrap.dataset.testid = 'discourse-health';
 
+  // Active signal — always rendered, before and regardless of the fold.
+  if (health.warning) {
+    const warn = document.createElement('div');
+    warn.className = 'health-warning';
+    warn.dataset.testid = 'health-warning';
+    warn.textContent = health.warning;
+    wrap.appendChild(warn);
+  }
+
+  const expanded = domainDetailExpanded();
+
+  const toggle = document.createElement('button');
+  toggle.className = 'link-button detail-toggle';
+  toggle.dataset.testid = 'health-toggle';
+  toggle.textContent = expanded ? 'Hide discourse detail' : 'Show discourse detail';
+  toggle.onclick = () => { setDomainDetailExpanded(!expanded); render(); };
+  wrap.appendChild(toggle);
+
+  if (!expanded) return wrap;
+
+  const note = renderConceptNote('discourse-health');
+  if (note) wrap.appendChild(note);
+
   const totals = document.createElement('div');
   totals.className = 'health-totals';
+  totals.dataset.testid = 'health-totals';
   totals.textContent =
     `${health.total_claims} claim${health.total_claims === 1 ? '' : 's'} · ` +
     `${health.total_critiques} critique${health.total_critiques === 1 ? '' : 's'} · ` +
@@ -759,14 +883,6 @@ function renderDiscourseHealth(health: DiscourseHealth): HTMLElement {
       dist.appendChild(chip);
     }
     wrap.appendChild(dist);
-  }
-
-  if (health.warning) {
-    const warn = document.createElement('div');
-    warn.className = 'health-warning';
-    warn.dataset.testid = 'health-warning';
-    warn.textContent = health.warning;
-    wrap.appendChild(warn);
   }
 
   return wrap;
