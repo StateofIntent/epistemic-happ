@@ -475,6 +475,58 @@ pub enum LinkTypes {
                             // stays fully present in the record but
                             // becomes invisible to conductance-weighted
                             // traversal.
+
+    // Domain index
+    DomainToClaim,          // domain anchor ("domain_<name>") -> Claim
+                            // ActionHash. THE BY-DOMAIN INDEX, and the
+                            // reason it exists is worth stating in full,
+                            // because its absence was this protocol's
+                            // most consequential defect to date.
+                            //
+                            // get_claims_by_domain used to be a
+                            // `query(ChainQueryFilter)`, which scans the
+                            // CALLING AGENT'S OWN SOURCE CHAIN and never
+                            // the DHT. Browsing a domain therefore
+                            // returned only your own claims — in a
+                            // protocol whose whole purpose is agents
+                            // cross-checking each OTHER's disclosures.
+                            // It survived because every conductor this
+                            // project verified against ran one agent,
+                            // and on one agent a chain query and a DHT
+                            // query are indistinguishable.
+                            //
+                            // NOT MembraneToClaim, which is declared
+                            // above and still unused. A Claim's `domain`
+                            // is free text and a Membrane need not exist
+                            // for it — the practitioner UI publishes
+                            // into unfounded domains as a matter of
+                            // course. Indexing by Membrane would have
+                            // left exactly those claims unfindable,
+                            // which is the same bug with extra steps.
+                            //
+                            // APPENDED, never inserted: LinkTypes are
+                            // identified by their position in this enum,
+                            // so inserting a variant renumbers every
+                            // later one and silently reinterprets links
+                            // already written under the old numbering.
+    TaxonomyToSpecies,      // the single taxonomy anchor -> CritiqueSpecies
+                            // ActionHash. Same defect, same fix, one
+                            // scale smaller: get_all_critique_species was
+                            // also a source-chain query, so the "shared,
+                            // evolving vocabulary of critique types" was
+                            // in fact each agent's private list, and the
+                            // starter taxonomies domains/bootstrap.mjs
+                            // seeds were visible only to whoever ran it.
+                            //
+                            // ONE GLOBAL ANCHOR, not one per domain: a
+                            // CritiqueSpecies has no domain field, and
+                            // deliberately so — a species like
+                            // "SampleSizeCritique" is meant to be
+                            // adoptable across membranes, which is what
+                            // makes it a shared vocabulary rather than
+                            // local jargon. Scoping the index per domain
+                            // would quietly re-fragment exactly what the
+                            // type exists to keep common.
 }
 
 // ============================================================================
@@ -1288,6 +1340,32 @@ fn count_recent_actions_since_checkpoint(
         .count())
 }
 
+/// The anchor a Claim's by-domain index entry hangs from.
+///
+/// DUPLICATED, DELIBERATELY, in the coordinator zome as
+/// `domain_anchor_hash`. The two crates share no library — this project
+/// is two crates with no workspace (see `happ.yaml`'s own note) — and
+/// this codebase already duplicates the friction constants across the
+/// same boundary for the same reason, each side carrying a "must match
+/// the other zome's" comment. **If either copy changes, the other must
+/// change identically**, or every `DomainToClaim` link the coordinator
+/// writes will fail the validation below: the coordinator would derive
+/// one anchor and validation would recompute a different one.
+///
+/// The string shape mirrors the coordinator's existing
+/// `agent_anchor_hash` (`"agent_{}"`) exactly, so the two anchors cannot
+/// collide and neither needs a separate namespace scheme.
+fn domain_anchor_hash(domain: &str) -> ExternResult<EntryHash> {
+    Path::from(format!("domain_{}", domain)).path_entry_hash()
+}
+
+/// The single anchor every `CritiqueSpecies` is indexed from. Same
+/// duplication contract as `domain_anchor_hash` above — the coordinator
+/// carries an identical copy and the two must not diverge.
+fn taxonomy_anchor_hash() -> ExternResult<EntryHash> {
+    Path::from("critique_species".to_string()).path_entry_hash()
+}
+
 fn validate_create_link(
     base_address: AnyLinkableHash,
     target_address: AnyLinkableHash,
@@ -1489,6 +1567,107 @@ fn validate_create_link(
                  just how fast links can be created.",
                 recent_count, ATTESTATION_GRANT_WINDOW_SECS_VALIDATION, ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION
             )));
+        }
+    } else if link_type == LinkTypes::DomainToClaim {
+        // The by-domain index. An index is only worth reading if a false
+        // entry cannot be written into it, so all three properties below
+        // are enforced here rather than trusted from create_claim — the
+        // coordinator is a convenience, never the authority (§5, and the
+        // lesson PR #44's audit recorded: a rule is enforced only where
+        // validate runs).
+
+        // 1. The target must be a real Claim creation. Without this the
+        //    index could be stuffed with links to anything at all, and a
+        //    reader following them would get entries of arbitrary type.
+        let target_action_hash = ActionHash::try_from(target_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("DomainToClaim target must be an ActionHash.".into()))
+        })?;
+        let target_record = must_get_valid_record(target_action_hash).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("DomainToClaim target record not found.".into()))
+        })?;
+        let claim = match target_record.entry().to_app_option::<Claim>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "DomainToClaim target is not a Claim.".into()
+                ))
+            }
+        };
+
+        // 2. The anchor must be the one THIS claim's own domain derives.
+        //    Otherwise any claim could be indexed under any domain, and
+        //    a domain's index would be a list of whatever anyone chose
+        //    to file there — the exact failure the read fix is meant to
+        //    end, arriving by a different route.
+        let expected_anchor = domain_anchor_hash(&claim.domain)?;
+        let declared_anchor = EntryHash::try_from(base_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("DomainToClaim base must be an EntryHash anchor.".into()))
+        })?;
+        if declared_anchor != expected_anchor {
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "DomainToClaim base anchor does not match the claim's own domain ({:?}). \
+                 A claim may only be indexed under the domain it declares.",
+                claim.domain
+            )));
+        }
+
+        // 3. Author binding (§5.2), consistent with every other link
+        //    that records a voluntary act: only the claim's own author
+        //    indexes it. A third party filing someone else's claim into
+        //    a domain index is unbounded by that claim's author's own
+        //    friction budget, which would make the index a flooding
+        //    surface answerable to nobody.
+        if claim.author != action.author {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A DomainToClaim link may only be created by the claim's own author.".into()
+            ));
+        }
+        // No separate friction budget here on purpose: this link is
+        // created once per Claim, by create_claim, and Claim creation
+        // already carries its own SWO limit. A second budget would bound
+        // the same act twice at different thresholds, and the one that
+        // bound first would be the only one that ever spoke.
+    } else if link_type == LinkTypes::TaxonomyToSpecies {
+        // The taxonomy index. Two of DomainToClaim's three properties
+        // apply; the third does not, and the difference is the point.
+        let target_action_hash = ActionHash::try_from(target_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("TaxonomyToSpecies target must be an ActionHash.".into()))
+        })?;
+        let target_record = must_get_valid_record(target_action_hash).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("TaxonomyToSpecies target record not found.".into()))
+        })?;
+        let species = match target_record.entry().to_app_option::<CritiqueSpecies>() {
+            Ok(Some(s)) => s,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "TaxonomyToSpecies target is not a CritiqueSpecies.".into()
+                ))
+            }
+        };
+
+        // There is only one anchor, so "the right anchor" is a fixed
+        // value rather than one derived from the target. Still checked:
+        // without it the link type could be hung off any base at all and
+        // the index would simply be one of several competing lists.
+        let expected_anchor = taxonomy_anchor_hash()?;
+        let declared_anchor = EntryHash::try_from(base_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("TaxonomyToSpecies base must be an EntryHash anchor.".into()))
+        })?;
+        if declared_anchor != expected_anchor {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TaxonomyToSpecies base is not the taxonomy anchor.".into()
+            ));
+        }
+
+        // Author binding, against the species' own declared proposer —
+        // the field CritiqueSpecies carries in place of the `author` a
+        // Claim has. Same rule as DomainToClaim, reading a differently
+        // named field, which is exactly the kind of near-miss PR #44's
+        // audit warned looks like an omission at a glance.
+        if species.proposer != action.author {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TaxonomyToSpecies link may only be created by the species' own proposer.".into()
+            ));
         }
     }
     Ok(ValidateCallbackResult::Valid)

@@ -10,9 +10,25 @@
 // conductor bypasses the service worker entirely regardless.
 const CACHE_NAME = 'epistemic-mobile-ui-v1';
 
+// Relative, not '/'-rooted. Inside a worker these resolve against the
+// worker's own script URL, i.e. the app's directory — which is the same
+// thing as the origin root when served by `vite preview`, and is NOT the
+// same thing once this UI ships inside a .webhapp and a host decides
+// where to serve it (the same reason vite.config.ts sets `base: './'`).
+// Rooted paths would 404 in that case.
+const SHELL = ['./', './manifest.webmanifest', './icon.svg'];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg']))
+    // Deliberately NOT cache.addAll: addAll is all-or-nothing, so a
+    // single 404 among the shell entries rejects the whole install and
+    // the worker never activates — turning a missing icon into "no
+    // service worker at all". Precaching is an optimization here (the
+    // fetch handler below falls back to the network for anything
+    // uncached), so each entry is allowed to fail on its own.
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(SHELL.map((url) => cache.add(url).catch(() => {})))
+    )
   );
   self.skipWaiting();
 });

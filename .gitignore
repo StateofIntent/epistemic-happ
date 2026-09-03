@@ -32,6 +32,14 @@ dist/
 # README.md §6.2-6.3). Rebuildable from source; not meant to be committed.
 /dna/*.dna
 /*.happ
+# The installable bundle and the zipped UI it embeds (produced by
+# scripts/pack-webhapp.sh — see README.md §6.7). Ignored for the same
+# reason as the .happ above: both are rebuilt from source by that one
+# script, and a committed copy is a copy that goes stale silently. The
+# bundle to hand someone is the one that script just built, not one
+# found in the tree.
+/*.webhapp
+/mobile-ui/dist.zip
 
 # hc sandbox bookkeeping (created by `hc sandbox generate`/`run`, or by
 # scripts/sandbox.sh — see README.md §6.6). Point at a throwaway conductor

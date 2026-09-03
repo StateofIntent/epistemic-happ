@@ -630,6 +630,68 @@ npm start
 5. **Generate trace:** Call `generate_worldline_trace` to index your history
 6. **Export N4L:** Call `export_to_n4l` to get text for SSTorytime
 
+### 6.9 Package the Installable Bundle
+
+Everything above builds this protocol for *the person who has the source
+tree*. This step builds it for everyone else: a single
+`epistemic-resonance-happ.webhapp` containing the DNA, the hApp, and the
+practitioner UI, which a Holochain Launcher installs on its own.
+
+```bash
+cd epistemic-happ
+scripts/pack-webhapp.sh
+```
+
+That one script replaces §6.2, §6.3, a UI build, and a zip step, in that
+order — see its header for why each of the four has a constraint that is
+not guessable and was learned the expensive way. The output is
+gitignored on purpose: the bundle to hand someone is the one just built,
+not a stale copy found in the tree.
+
+**Installing it.** Open a Holochain Launcher, choose to install a hApp
+from a file, and select the `.webhapp`. The Launcher creates the agent
+key, installs the DNA, and serves the UI itself.
+
+**What changes when it is installed, and why that needed code.** A
+Launcher-installed UI runs in a genuinely different environment from the
+one every other instruction in this section produces, and the difference
+is not cosmetic:
+
+| | Developing against your own conductor | Installed from the `.webhapp` |
+|---|---|---|
+| Who issues the app auth token | the UI, over the Admin API | the Launcher, before the UI loads |
+| Admin API reachable from UI code | yes | **never** |
+| Who signs zome calls | the UI, with credentials it authorized | the Launcher's own host signer |
+| Connection settings shown | admin URL, app URL, app id | none — there is nothing to ask |
+
+The middle row is the load-bearing one. The UI's original connect flow
+opened an `AdminWebsocket` as its *first* action, so inside a Launcher
+it would have thrown before rendering a single screen — a dead bundle,
+not a degraded one. `mobile-ui/src/holochain.ts` now detects the host
+environment and takes a path that never touches the Admin API; its
+header comment documents both shapes in full.
+
+**How far this is verified, and where that stops.**
+`scripts/live-verify/launcher-packaging.mjs` runs the UI against a live
+conductor with a launcher environment injected, and confirms it connects
+with no user action, renders no connect form, publishes a claim that an
+independent client then reads back off the DHT, and does all of it with
+its saved admin URL pointed at a dead port — so a successful connection
+is positive evidence the Admin API was never opened, rather than an
+assumption. That harness was checked against a negative control: with
+launcher detection forced off, it fails, which is the only reason its
+passing means anything.
+
+What is **not** verified: no real Holochain Launcher is installed in
+this environment, so the bundle has never been installed by one. The
+harness reproduces what a Launcher injects — the environment and a
+host-side signer that lives outside the page — and is faithful in the
+respect that decides this code path, but it is a stand-in. Two things
+follow from that honestly: the `.webhapp` packs, unpacks and contains
+what it should (checked directly, by unpacking it), and the UI works
+under a faithful simulation of the host; a genuine first install is the
+next real verification gap, and it is this one, not a hidden one.
+
 ---
 
 ## 7. The Theory in Plain Language
@@ -760,6 +822,31 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **Verified live, not just built:** every screen (Connect → Browse → New Claim → add Critique → config persists across reload) was driven end to end by a real, Playwright-controlled Chromium (the system's own `/usr/bin/chromium`, not a bundled download) against a real `hc sandbox` conductor — ten checks, all passing, run against both the Vite dev server and the actual production `dist/` build via `vite preview`, confirming the fix above holds in the real shipped artifact and not just the dev server's own module graph. A real `Claim` was published, appeared correctly in the browse list with its confidence level, and a real `Critique` added to it rendered with the correct mode and content — the complete practitioner loop, against real DHT data, not a fixture. Screenshotted at a 390×844 (iPhone-class) viewport to confirm the layout actually reads as mobile, not just responds to a media query in principle — one real layout defect surfaced this way (the header title wrapped awkwardly against the connection-status text at that width) and was fixed, re-verified against the same ten checks afterward.
 
 ### Phase 5: Generalization
+- [x] **THE PRIMARY BROWSE PATH WAS CHAIN-LOCAL — five reads could not see other agents at all; two are now fixed.** Found while scoping the critique-taxonomy UI, proven with two real agents, and the most consequential defect this project has surfaced to date. Now specified in `SPEC.md` §10.0.
+
+  `get_claims_by_domain` is built on `query(ChainQueryFilter)`, which by Holochain's definition scans **the calling agent's own source chain and never the DHT**. So **on any network with more than one agent, browsing a domain returns only your own claims.** For a protocol whose entire purpose is independent agents cross-checking one another's disclosures, that is close to a contradiction of the premise: §4.3's account requires agents to *find* each other's claims in order to critique them, and the ordinary entry point cannot.
+
+  The same shape affects `get_critiques_by_mode`, `get_membranes`, `get_all_critique_species` and `get_all_constitutions`. So the "shared, evolving vocabulary of critique types" that the taxonomy roadmap item describes is in fact each agent's private list, and `domains/bootstrap.mjs`'s 11 seeded `CritiqueSpecies` are visible only to the agent that ran it.
+
+  **The data is not missing — only unfindable.** Others' claims are fully present on the DHT, gossiped and reachable: `get_claims_by_agent` (link-based) retrieves the very same entries the domain read cannot see. Nothing is lost; there is simply no by-domain index.
+
+  **Why it survived this long, which is the part worth learning from.** Every conductor this project has verified against ran exactly one agent, and on one agent a chain query and a DHT query are behaviourally identical. Both shapes take a filter and return `Vec<Record>`; nothing in a signature distinguishes them. Every live-verification harness in `scripts/live-verify/`, all of them genuinely exercising a real conductor, was structurally incapable of noticing — this is the sharpest instance yet of the pattern §9 keeps recording, where correct-looking code is fine in the environment it is tested in and wrong in the one it is for. It is the same family as the Launcher bug (an admin-auth flow that worked everywhere except where it would actually ship), one layer deeper.
+
+  **Proven, not inferred:** `scripts/live-verify/read-scope.mjs` installs a second agent on the same conductor and pairs every chain-local read with a link-based read of the *same* entry by the *same* agent at the *same* moment — `get_claims_by_agent` returns the claim while `get_claims_by_domain` returns nothing, `get_agent_constitution` finds the constitution while `get_all_constitutions` does not. That pairing is what rules out "not yet gossiped" and turns an observed zero into evidence. Twelve checks, three of them controls.
+
+  **THE FIX, and the two design decisions inside it.** `create_claim` now writes a `DomainToClaim` link from a domain anchor (`Path::from("domain_<name>")`), and `get_claims_by_domain` reads that index instead of the caller's chain. `create_critique_species`/`get_all_critique_species` got the same treatment via a single `TaxonomyToSpecies` anchor, because that read blocked the taxonomy UI this was found while scoping.
+
+  *Not `MembraneToClaim`*, the declared-but-unused link type that looked like the obvious candidate. A Claim's `domain` is free text and a Membrane need not exist for it — the practitioner UI publishes into unfounded domains as a matter of course — so indexing by Membrane would have left exactly those claims unfindable: the same bug with extra steps. A domain anchor covers every claim regardless.
+
+  *No chain-query fallback*, deliberately, and this is the decision worth keeping. Unioning the link read with the old query looks like belt-and-braces and would in fact restore the exact blindness that hid the bug: on a single-agent conductor the fallback returns your own claims whether or not the index works, so a broken index would go on passing every test forever. The read is link-only so that a failure to index is a failure someone can see.
+
+  **An index is only worth reading if it cannot be poisoned**, so validation enforces three properties rather than trusting `create_claim`: the target must resolve to a real `Claim`; the base anchor must be the one that claim's *own declared domain* derives (or any claim could be filed under any domain — the same failure arriving by another route); and the link author must be the claim's author (§5.2, since a third party filing others' claims is bounded by nobody's friction budget). All three are proven refused, live, through a new `attempt_false_domain_index` prober in the same spirit as `attempt_unaccountable_membrane` — and each refusal is confirmed to come from **DHT validation**, not a coordinator guard, which is the distinction PR #44's audit established as the only one that counts.
+
+  **Verified live with two agents:** `scripts/live-verify/domain-index.mjs`, 14 checks. Both agents see both claims in a shared domain; an unused domain reads empty rather than erroring; all three poisoning attempts are refused by validation; the index is confirmed unchanged afterwards; and — the taxonomy's real test — agent 2 adopts a species agent 1 proposed and the adoption count reads 1, which is the shared vocabulary actually being shared. `read-scope.mjs` was updated to assert the *corrected* behaviour for the two fixed reads rather than being retired, so it stays the live map of `SPEC.md` §10.0 and goes red if either index regresses. 77 unit tests still pass (67 coordinator + 10 integrity).
+
+  **Three reads remain chain-local, deliberately:** `get_critiques_by_mode`, `get_membranes`, `get_all_constitutions`. Each would be one global index over an unbounded, ever-growing set, and whether that firehose should exist at all is a real design question — unlike "the claims in this domain" and "the vocabulary of critique types", which are bounded and obviously wanted. Named in `SPEC.md` §10.0 rather than left to be rediscovered.
+
+  **Migration:** there isn't one, and there cannot be. Changing the integrity zome changes the DNA hash, so a fixed conductor is a different network from a pre-fix one — Holochain offers no in-place migration across that boundary. For a protocol with no deployed network this costs nothing today; it is recorded because it will not be free later, and `SPEC.md` §11's own note that no protocol version or migration path is defined is now a gap with a worked example attached.
 - [x] **Protocol specification document shipped — `SPEC.md`, at the repo root.** Deliberately a different genre from this document: `README.md` is the narrative account (the *why* — philosophy, code walkthrough, changelog); `SPEC.md` is the precise, implementation-agnostic *what, exactly* — every entry type's field-level schema, every link type's real base→target direction and tag content, every validation rule (author binding, referential integrity, the scale-invariant target cross-check, SWO temporal friction's exact windows/counts), the Ten Invariants restated as binding conformance requirements, the HRR encoding scheme (dimension, symbol derivation, both versioned `binding_key` strings), the N4L export mapping, and a complete zome function reference (51 externs) — precise enough that an independent implementation, in a different language or off Holochain entirely, could target compatibility without reading a line of this project's Rust.
   **Verification, for a document, meant something different here: not build/test, but line-by-line cross-checking every claim against the actual source rather than against memory of it** — the same discipline this project applies to code, applied to documentation instead. That pass caught and fixed six real, would-have-been-wrong claims before publishing: `CritiqueToSpecies` and `SpeciesToParent`'s *names* both read as the inverse of their actual `create_link` base→target direction (verified from the real call sites, not inferred from the name); `CritiqueToEvidence`, `ClaimToEvidence`, and `MembraneToClaim` are declared in `LinkTypes` but never actually created or read by any current coordinator function — an easy, plausible-sounding mistake to make from the enum alone, caught only by grepping for real usage; `ClaimToRetraction` turned out to serve two distinct semantic purposes depending on which entry is its base, undocumented anywhere before now; and `AgentToMembrane`/`AttestationGrant`'s link targets and tag contents were subtly different from what a first pass assumed (an agent *anchor*, not a raw `AgentPubKey`, for the former; a real membership-action hash carried in the tag, not an empty tag, for the latter). `SPEC.md` states the corrected, verified facts and flags the naming/direction mismatches explicitly so a future reader doesn't repeat the same inference.
   **Not done in this pass, stated in the document itself** (§11): no automated check keeps `SPEC.md` in sync with `dna/` as the implementation evolves — it is a manually maintained snapshot of the commit noted at its own top, and there is no protocol-wide version number or migration path defined for a genuinely breaking future change. Both are named as real, open gaps in the spec's own text, not silently left unstated.
@@ -775,6 +862,15 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   The event horizon is already implemented, in the strongest available form: `create_entry` **is** the deliberate act of promising, and an agent's unpublished reasoning, drafts and raw observations are not hidden on the DHT but absent from it. The boundary is modelled as commit-or-don't, which is exactly §4.3's "becomes visible only through what the agent voluntarily promises to expose." Nothing to build.
 
+- [x] **Installable `.webhapp` bundle shipped — the artifact someone who is not us needs in order to run this at all.** `scripts/pack-webhapp.sh` builds `epistemic-resonance-happ.webhapp` from `web-happ.yaml`: DNA, hApp, and the practitioner UI in the one file a Holochain Launcher installs. See §6.9 for the full account. This was the piece the previous pass explicitly sequenced itself *before* ("inviting participants onto a network whose stated guarantees have not been verified is the wrong order") — so it is now in the order that pass intended.
+
+  **Packaging was not the whole of it; packaging surfaced a bug that would have made the bundle dead on arrival.** The UI's connect flow opened an `AdminWebsocket` as its very first action. The Holochain Launcher **never** exposes the Admin API to UI code — so an installed bundle would have thrown before rendering a single screen. This was not a hidden defect: `mobile-ui/src/holochain.ts`'s own header comment had described the admin-auth dance as "a real, working shape for this project's current stage, not the final production auth model," and the Phase 4 changelog entry above says the same thing in the same words. It was correctly documented and correctly harmless right up until the moment this bundle existed, at which point the documented simplification became a defect without a line of code changing. `holochain.ts` now detects the host environment and takes a Launcher path that opens no `AdminWebsocket`, issues no token, and authorizes no signing credentials (the host signs); the connect form is not rendered at all under a host, because there is nothing to ask.
+
+  **Three smaller things packaging surfaced, all of the same family — assumptions that were true only because the app was served at an origin root it now no longer controls.** Vite's default `base: '/'` emitted absolute `/assets/…` references; `public/manifest.webmanifest` declared an absolute `start_url` and icon `src`; and the service worker precached `['/', '/manifest.webmanifest', '/icon.svg']` with `cache.addAll`, which is all-or-nothing — one 404 among them rejects the install and the worker never activates, turning a missing icon into no service worker at all. All four are now relative, and the precache tolerates per-entry failure. None of these could be *confirmed* broken without a real Launcher; each is the choice that is correct under both origins rather than the one verified correct in the untested case, and `vite.config.ts` says so in those terms.
+
+  **Verified live, and the harness checked against a negative control.** `scripts/live-verify/launcher-packaging.mjs` runs the real production bundle in a Playwright Chromium with a launcher environment and a host-side zome-call signer injected, against a live `hc sandbox` conductor. It connects with no user action and no connect form, publishes a `Claim` that an independent client then reads back off the DHT, and does it all with the saved admin URL pointed at a dead port — so connecting *at all* is positive evidence the Admin API was never opened, not an assumption. Because a suite that passes on its first run has proven nothing yet, launcher detection was then forced off and the harness re-run: it fails, which is the only reason its passing means anything. The existing direct-admin harness (`evidence-retraction-ui.mjs`) still passes unchanged, confirming the relative-path changes did not break the developer path. The `.webhapp` was unpacked and inspected directly rather than trusted from a zero exit code — `index.html` at the archive root, the DNA inside the hApp.
+
+  **The real limit, stated rather than implied away:** no Holochain Launcher is installed in this environment, so this bundle has never been installed by one. The harness reproduces what a Launcher injects and is faithful in the respect that decides the code path, but it is a stand-in. A genuine first install is this project's next real integration gap — the same species of gap live-conductor verification was before it was closed, and named here for the same reason.
 - [x] **Two read-only surfaces made read-write — the asymmetry the coverage count was hiding.** "Surface the epistemic state" was being tracked by how many coordinator functions had a screen, and that metric concealed a sharper problem than coverage: two functions were surfaced for *reading* while their write counterparts were not.
 
   `get_effective_conductance` was surfaced; **`reinforce_synaptic_link` was not** — the UI displayed a connection's strength and offered no way to strengthen it, while conductance's entire meaning is decay unless reinforced (§2.6). A client that only reads that number describes a process it lets nobody take part in. `get_antibody_patterns_for` was surfaced; **`publish_antibody_pattern` was not** — the UI showed what others had flagged and let the practitioner flag nothing, making the reader a spectator of §4.2's immune response rather than a participant in it.
