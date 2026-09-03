@@ -885,3 +885,40 @@ button:disabled { opacity: 0.6; cursor: default; }
   opacity: 0.5;
   font-style: italic;
 }
+
+/* --- Expertise assertions ---------------------------------------------
+   The badge must not read as a credential. It is styled like the
+   retraction and antibody notices — an annotation ON a claim — rather
+   than like a verified marker, because what it says is "this is
+   self-asserted and carries no standing", and Invariant #1 means it must
+   never look like the opposite. No check mark, no accent colour, no
+   pill. */
+
+.expertise-badge {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  opacity: 0.75;
+  border-left: 3px solid rgba(127, 127, 127, 0.45);
+}
+
+.expertise-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.expertise-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.expertise-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
