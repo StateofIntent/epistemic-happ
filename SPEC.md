@@ -274,7 +274,15 @@ For every entry type carrying an `author`/`agent`/`creator`/`proposer` field, th
 ### 5.3 Referential integrity
 Every field typed as an `EntryHash` reference to another entry (`evidence_hashes`, `source_mew`, `linked_claim`, `target_claim`, `replacement_claim`, `parent_species`, `mew_hash`, `linked_holochain_claim`) MUST resolve to a real, existing entry at validation time, except where noted otherwise in §2.
 
-**`Critique.evidence_hashes` is the one remaining exception** — populated but not independently cross-checked. (`Claim.evidence_hashes` *is* checked; the asymmetry is real and undocumented as intentional.) `Membrane.constitution` was previously the second exception and is now cross-checked, both that it resolves and that it belongs to the creator — see §5.8a.
+**`Critique.evidence_hashes` is the one remaining exception** — populated but not independently cross-checked, while `Claim.evidence_hashes` is. **That asymmetry is correct, and the reason is worth stating so it is not repeatedly re-flagged as an oversight.**
+
+The check on `Claim` exists to keep a *traversal* well-formed, not to police honesty: `get_grounding_path` recurses through a claim's `evidence_hashes`, so a hash that resolves to nothing would be a dead end mid-walk. It is deliberately weak in exactly the way that purpose implies — it requires the hash to resolve to *some* entry, not to an `Evidence` entry, precisely so a claim may cite another claim and grounding can keep walking back.
+
+Nothing traverses `Critique.evidence_hashes`. Grounding never enters a critique; the field is read only by N4L export and by clients that display it. So a dangling hash there produces a dangling reference in an export and nothing else — no protocol decision rests on it.
+
+Tightening it would also cost something real. `must_get_entry` is a deterministic dependency fetch, so validation *defers* until the dependency is available. Requiring one per cited hash would gate validation of this protocol's most frequent act on the propagation of everything it cites, in exchange for no protection. A conforming implementation SHOULD leave it unchecked for the same reason.
+
+`Membrane.constitution` was previously the second exception and is now cross-checked, both that it resolves and that it belongs to the creator — see §5.8a.
 
 ### 5.4 `Critique` target cross-check
 `Critique.target_type` MUST equal the *actual* DHT-derived type of the entry `Critique.target` resolves to. The validator independently fetches `target` and determines its real type by attempting to deserialize it as each of the five `CritiqueTargetType` candidates in turn — a caller cannot spoof `target_type` to something other than what `target` really is. `target` MUST downcast to an `EntryHash` (an `Agent` or `External`-kind `AnyLinkableHash` is rejected outright — nothing critiquable is addressed that way).
