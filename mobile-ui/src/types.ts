@@ -140,6 +140,34 @@ export interface Membrane {
 
 /** get_discourse_health — an aggregate over a Membrane's own domain.
  * Protocol-computed and identical for every viewer. */
+/** An opt-in trust lens the CALLER aims — never a protocol verdict.
+ *
+ * README.md §4.4's first constraint turns on this distinction. The
+ * protocol deliberately computes no canonical, comparative reputation
+ * (Invariant #1), and `get_attestation_weight` was removed for
+ * approaching one. What exists instead is this: a policy supplied
+ * explicitly, per call, by whoever wants it, so two callers legitimately
+ * get different answers because they asked different questions.
+ *
+ * A UI may expose it, remember a chosen one, and adapt around it. What
+ * it must never do is apply one by default or leave it applied
+ * invisibly — that is the client recomputing in the browser exactly what
+ * the protocol declined to compute. Hence `attestation_policy: null` is
+ * the default everywhere in this app, and an active lens is rendered
+ * unmissably with the unfiltered figures beside it. */
+export interface AttestationPolicy {
+  /** The trusted root set an attester must belong to. `null` means no
+   * restriction — any agent's SynapticLink counts, and min_attestations
+   * is the only real constraint. Distinct from omitting the whole policy
+   * at the call site, which skips attestation filtering entirely. */
+  require_attestation_from: Uint8Array[] | null;
+  /** How many distinct (direct-or-transitive) attesters are required. */
+  min_attestations: number;
+  /** Hops of transitive attestation to allow. `null`/0/1 all mean "no
+   * transitivity". Ignored when require_attestation_from is null. */
+  max_attestation_depth: number | null;
+}
+
 export interface DiscourseHealth {
   domain: string;
   abstract_to_embodied_ratio: number;
