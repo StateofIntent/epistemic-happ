@@ -361,6 +361,10 @@ All windows are rolling (not fixed calendar buckets) and per-agent (global acros
 
 Every row is an absolute cutoff. Nothing in this protocol can be bought past — `SynapticLink` briefly had a purchasable middle tier and no longer does (§5.11).
 
+**Which acts appear in this table, and which do not, follows one rule.** Friction applies to acts that write onto a base another agent owns, or that move a signal shared between agents — and to nothing else. Every row above does one or both: `Critique` and `AntibodyPattern` attach to someone else's target, `SynapticLink` does the same while carrying conductance, `Reinforcement` moves a conductance value others read, and `AttestationGrant` writes about another agent into a membrane's trust graph. `Claim`, `Mew`, `Retraction`, `Constitution` and `Evidence` are unlimited because each only extends its own author's anchor and touches no one else's surface.
+
+This is Invariant #2 (no imposition) expressed as rate limits: an agent may fill their own shelf freely, and writing on someone else's shelf is metered. It is deliberately **not** a judgement that asserting is cheaper than disagreeing — `Critique`'s cap exists to close a bypass of `SynapticLink`'s, since every critique creates a conductance edge, not because critique is held to be costlier speech. A conforming implementation adding a new entry type SHOULD apply friction on this basis: ask what surface the act writes to, not how expensive it feels.
+
 **What this is not**: none of the above raises the cost of creating a new agent identity — an unlimited number of fresh agents can each independently spend their own full budget. This is documented in this codebase as *spam defense*, explicitly distinct from *sybil resistance*, which remains open (see README.md §2.3 for the full discussion and the local-topology mitigation that is available without it).
 
 ## 7. Invariants

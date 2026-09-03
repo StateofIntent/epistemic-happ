@@ -90,16 +90,25 @@
 > plus vouching (`AttestationGrant`). Accountability-not-cost is the
 > stance this codebase took for domain creation, and it generalises.
 >
-> **One real asymmetry surfaced while answering the question,** and is
-> left open rather than silently fixed: `create_claim` carries no
-> friction at all, while `Critique` is capped at 20/hour. The protocol
-> currently rate-limits disagreement but not assertion. That may be
-> deliberate — a claim stands alone, a critique attaches to someone
-> else's work — but for a protocol whose stated value is epistemic
-> rigour, a ratio favouring assertion over critique deserves a
-> deliberate decision. If any act should cost more relative to another,
-> this is the candidate, and the fix is a cap on claims, not a unified
-> budget.
+> **One apparent asymmetry surfaced while answering the question, was
+> investigated, and turned out not to be one.** `create_claim` carries
+> no friction while `Critique` is capped at 20/hour. Stated as "the
+> protocol rate-limits disagreement but not assertion" that sounds like
+> a value judgement about speech acts, and it was briefly recorded that
+> way — but the mechanism encodes a different and better rule. Friction
+> applies to acts that write onto a base another agent owns, or that
+> move a signal shared between agents, and to nothing else: `Critique`,
+> `SynapticLink` and `AntibodyPattern` attach to someone else's target;
+> `Reinforcement` moves a conductance value others read;
+> `AttestationGrant` writes about another agent into a membrane's trust
+> graph. `Claim`, `Mew`, `Retraction`, `Constitution` and `Evidence` are
+> unlimited because each only extends its own author's anchor.
+> `Critique`'s cap exists specifically to close a bypass of
+> `SynapticLink`'s — every critique creates a conductance edge — not
+> because critique is held to be costlier speech. **That is Invariant #2
+> (no imposition) expressed as rate limits: fill your own shelf freely,
+> writing on someone else's shelf is metered.** Left unchanged
+> deliberately; see §8.
 
 **Status:** supersedes an earlier, informal brief of the same name that
 circulated outside this repository. This version is written *from* the
@@ -817,17 +826,39 @@ around the mutual-credit ledger, which no longer exists. They are
 recorded here as closed-by-removal rather than deleted, so that a reader
 who remembers them knows they were answered rather than forgotten.
 
-Two things are genuinely open, and neither is currency work:
+One item below is now decided; one remains genuinely open. Neither is
+currency work:
 
-1. **The claim/critique friction asymmetry.** `create_claim` carries no
-   friction at all, while `Critique` is capped at 20 per hour. The
-   protocol therefore rate-limits disagreement but not assertion. This
-   is the one real act-cost question the capacity analysis surfaced (see
-   the status banner at the top). It may be deliberate and correct — a
-   claim stands alone, a critique attaches to someone else's work — but
-   for a protocol whose stated value is epistemic rigour, a ratio
-   favouring assertion over critique deserves a decision rather than an
-   inheritance. If it needs fixing, the fix is a cap on claims.
+1. ~~**The claim/critique friction asymmetry.**~~ **Decided: not a
+   defect, left unchanged.** `create_claim` carries no friction while
+   `Critique` is capped at 20 per hour, which was recorded here as
+   "the protocol rate-limits disagreement but not assertion" — a true
+   description carrying a false implication. Investigating the
+   mechanism rather than the description showed a consistent rule
+   underneath: **friction applies to acts that write onto a base
+   another agent owns, or that move a signal shared between agents, and
+   to nothing else.**
+
+   Every frictioned act qualifies. `Critique` and `AntibodyPattern`
+   attach to someone else's target; `SynapticLink` does the same while
+   carrying conductance; `Reinforcement` moves a conductance value
+   others read; `AttestationGrant` writes about another agent into a
+   membrane's trust graph. Every unfrictioned act — `Claim`, `Mew`,
+   `Retraction`, `Constitution`, `Evidence` — only extends its own
+   author's anchor. `Critique`'s cap exists explicitly to close a
+   bypass of `SynapticLink`'s (its own section comment says so: every
+   critique creates a conductance edge), never as a judgement that
+   critique is costlier speech.
+
+   That rule is Invariant #2 — no imposition — expressed as rate
+   limits, and it is already applied consistently. Capping claims would
+   break it, and would rate-limit the generative act this protocol most
+   wants abundant, to address a flood nobody has reported on a network
+   nobody has deployed. **Residual acknowledged:** claim-flooding is
+   possible and would pollute the unfiltered `get_claims_by_domain`
+   listing. If that ever matters, the correct shape is a read-layer
+   lens there — the containment strategy README §2.3 already describes
+   for floods generally — not friction on `create_claim`.
 
 2. **Whether burst tolerance is wanted.** Rolling-window caps bound
    burst and sustained throughput at the same number. A token bucket
@@ -838,6 +869,8 @@ Two things are genuinely open, and neither is currency work:
    substitutability. Worth doing only if someone reports actually
    hitting the caps; there is no such report today.
 
-Both are small, local, and independent of anything removed. Neither
-should be started without the corresponding felt need, which is the
-lesson the rest of this document exists to record.
+What is left open is small, local, and conditional on a felt need —
+which is the lesson the rest of this document exists to record. Item 1
+is a worked example of that lesson in the other direction: investigating
+the mechanism rather than the description turned an apparent defect into
+a rule worth stating and keeping.
