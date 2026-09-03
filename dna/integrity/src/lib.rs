@@ -630,9 +630,39 @@ fn validate_retraction(retraction: &Retraction, action: &Create) -> ExternResult
     if retraction.author != action.author {
         return Ok(ValidateCallbackResult::Invalid("Retraction author must match action author.".into()));
     }
-    // Target claim must exist.
-    if must_get_entry(retraction.target_claim.clone()).is_err() {
+    // Target claim must exist, AND must be this agent's own.
+    //
+    // A retraction says "I no longer stand by this claim, and here is
+    // why" — this entry type's own doc comment above, and SPEC.md §2.3,
+    // both describe it as the AUTHOR withdrawing. Until this check
+    // existed, only the signature was verified: anyone could publish a
+    // Retraction of anyone's claim and it validated. Clients render
+    // retractions against the claim, so a third party could make someone
+    // else's claim appear withdrawn while its author still stood by it —
+    // misrepresenting another agent's epistemic position on a shared
+    // graph, which is what Invariant #2 exists to prevent.
+    //
+    // Same class as validate_membrane's gap: a property the
+    // specification states and validation did not enforce. Found while
+    // building the retraction UI, because the interface had to decide
+    // whether to say "retracted by its author" and could not honestly
+    // claim it.
+    let Ok(target) = must_get_entry(retraction.target_claim.clone()) else {
         return Ok(ValidateCallbackResult::Invalid("Retraction target claim not found.".into()));
+    };
+    let claim: Option<Claim> = target.content.as_app_entry()
+        .and_then(|bytes| Claim::try_from(bytes.clone().into_sb()).ok());
+    let Some(claim) = claim else {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Retraction target must be a Claim.".into()
+        ));
+    };
+    if claim.author != retraction.author {
+        return Ok(ValidateCallbackResult::Invalid(
+            "A Retraction can only be published by the claim's own author — it records that the \
+             author no longer stands by it, not that someone else disagrees. Use a Critique for \
+             that.".into()
+        ));
     }
     if retraction.reason.is_empty() {
         return Ok(ValidateCallbackResult::Invalid("Retraction reason cannot be empty.".into()));

@@ -7,7 +7,7 @@ import {
   type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros,
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
-  type Constitution,
+  type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -72,6 +72,10 @@ const healthByMembrane = new Map<string, DiscourseHealth>();
 const crossDomainByMembrane = new Map<string, CrossDomainCritique[]>();
 /** whether the founding form is open */
 let foundingOpen = false;
+/** claim entryHash (b64) -> whether its evidence chain reaches Evidence */
+const groundingByClaim = new Map<string, GroundingPath>();
+/** claim entryHash (b64) -> whether its retract form is open */
+const retractingClaims = new Set<string>();
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -400,8 +404,29 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     const banner = document.createElement('div');
     banner.className = 'retraction-banner';
     banner.dataset.testid = 'retraction-banner';
+    // "by its author" is now guaranteed rather than asserted: validation
+    // requires a Retraction to come from the claim's own author. This
+    // banner said it unconditionally before that check existed, which
+    // would have been a false statement about someone else's position
+    // had a third party retracted.
     banner.textContent = `Retracted by its author — ${retraction.entry.reason}`;
     card.appendChild(banner);
+  }
+
+  // Whether this claim's evidence chain reaches a real Evidence entry.
+  // An ungrounded claim is NOT invalid and this gates nothing — the
+  // protocol lets a claim exist, be critiqued and be exported with no
+  // grounding at all. Shown because a reader may want to know, never to
+  // rank one claim above another.
+  const grounding = groundingByClaim.get(key);
+  if (grounding) {
+    const badge = document.createElement('div');
+    badge.className = grounding.grounded ? 'grounding grounded' : 'grounding ungrounded';
+    badge.dataset.testid = 'grounding';
+    badge.textContent = grounding.grounded
+      ? `Grounded — evidence chain reaches a source in ${grounding.path.length} step${grounding.path.length === 1 ? '' : 's'}`
+      : 'Not grounded — no cited evidence chain reaches a source';
+    card.appendChild(badge);
   }
 
   // AntibodyPattern flags announce themselves. The kind and rationale
@@ -458,6 +483,25 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   // recursive fan-out of zome calls, and because most reading does not
   // need it: the list is the primary view and this is the one that can
   // show depth.
+  // Retracting is offered only on your own claims, because validation
+  // now permits only that — offering it on someone else's would be an
+  // affordance the protocol refuses.
+  const isMine = connection
+    && b64(claim.entry.author) === b64(connection.myAgentPubKey);
+  if (isMine && retractions.length === 0) {
+    const retractBtn = document.createElement('button');
+    retractBtn.className = 'link-button';
+    retractBtn.dataset.testid = 'retract-toggle';
+    retractBtn.textContent = retractingClaims.has(key) ? 'Cancel retraction' : 'Retract this claim';
+    retractBtn.onclick = () => {
+      if (retractingClaims.has(key)) retractingClaims.delete(key);
+      else retractingClaims.add(key);
+      render();
+    };
+    card.appendChild(retractBtn);
+    if (retractingClaims.has(key)) card.appendChild(renderRetractForm(claim));
+  }
+
   const graphOpen = graphOpenClaims.has(key);
   const graphBtn = document.createElement('button');
   graphBtn.className = 'link-button';
@@ -483,6 +527,74 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   }
 
   return card;
+}
+
+/** Retracting your own claim.
+ *
+ * A retraction is not a deletion — nothing here is deleted. It is a new
+ * entry recording that you no longer stand by something you said, and
+ * why, and the claim stays fully readable underneath it. That is why the
+ * reason is required rather than optional: the record is the point.
+ *
+ * Offered only on your own claims, matching what validation permits.
+ * Retracting someone else's claim is not a weaker form of disagreeing
+ * with it — the mechanism for that is a typed Critique. */
+function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
+  const key = b64(claim.entryHash);
+  const form = document.createElement('div');
+  form.className = 'retract-form';
+  form.dataset.testid = 'retract-form';
+
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent =
+    'This does not delete the claim — it stays readable, annotated with '
+    + 'your reason. Say why you no longer stand by it.';
+  form.appendChild(hint);
+
+  const reason = document.createElement('textarea');
+  reason.placeholder = 'Why are you withdrawing this?';
+  reason.dataset.testid = 'retract-reason';
+  form.appendChild(reason);
+
+  const error = document.createElement('p');
+  error.className = 'error-box';
+  error.dataset.testid = 'retract-error';
+  error.hidden = true;
+  form.appendChild(error);
+
+  const submit = document.createElement('button');
+  submit.textContent = 'Retract';
+  submit.dataset.testid = 'retract-submit';
+  submit.onclick = async () => {
+    if (!connection) return;
+    error.hidden = true;
+    if (!reason.value.trim()) {
+      error.hidden = false;
+      error.textContent = 'A reason is required — the record is the point of a retraction.';
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await connection.callZome('create_retraction', {
+        target_claim: claim.entryHash,
+        reason: reason.value.trim(),
+        replacement_claim: null,
+        author: connection.myAgentPubKey,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
+      retractingClaims.delete(key);
+      await loadClaims(currentDomain);
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+  form.appendChild(submit);
+
+  return form;
 }
 
 function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
@@ -627,12 +739,14 @@ async function loadClaimEpistemicState() {
   await Promise.all(claims.map(async (claim) => {
     const key = b64(claim.entryHash);
     try {
-      const [antibodies, retractions] = await Promise.all([
+      const [antibodies, retractions, grounding] = await Promise.all([
         conn.callZome<any[]>('get_antibody_patterns_for', claim.entryHash),
         conn.callZome<any[]>('get_retractions_for_claim', claim.entryHash),
+        conn.callZome<GroundingPath>('get_grounding_path', claim.entryHash),
       ]);
       antibodiesByClaim.set(key, decodeRecords<AntibodyPattern>(antibodies));
       retractionsByClaim.set(key, decodeRecords<Retraction>(retractions));
+      groundingByClaim.set(key, grounding);
     } catch {
       // A failed epistemic read must never take the claim list down with
       // it — the claim is still real and still readable without its
@@ -1275,6 +1389,7 @@ function renderNewClaimTab(): HTMLElement {
   const contentArea = document.createElement('textarea');
   contentArea.required = true;
   contentArea.placeholder = 'What are you asserting?';
+  contentArea.dataset.testid = 'new-claim-content';
   contentLabel.appendChild(contentArea);
 
   const domainLabel = document.createElement('label');
@@ -1283,6 +1398,7 @@ function renderNewClaimTab(): HTMLElement {
   domainInput.type = 'text';
   domainInput.required = true;
   domainInput.placeholder = 'e.g. LumbarRehab';
+  domainInput.dataset.testid = 'new-claim-domain';
   domainInput.value = currentDomain;
   domainLabel.appendChild(domainInput);
 
@@ -1315,10 +1431,50 @@ function renderNewClaimTab(): HTMLElement {
   successBox.className = 'success-box';
   successBox.hidden = true;
 
+  // Evidence, cited at publication.
+  //
+  // It has to be here rather than added later: entries are immutable, so
+  // a Claim's evidence_hashes are fixed the moment it is published and
+  // there is no "attach evidence afterwards". Publishing creates the
+  // Evidence entry first, then the Claim citing it — which is also what
+  // makes get_grounding_path able to answer anything at all. Optional:
+  // an ungrounded claim is perfectly valid here, just visibly ungrounded.
+  const evidenceFieldset = document.createElement('fieldset');
+  evidenceFieldset.className = 'evidence-fieldset';
+  const evidenceLegend = document.createElement('legend');
+  evidenceLegend.textContent = 'Evidence (optional)';
+  evidenceFieldset.appendChild(evidenceLegend);
+  const evidenceHint = document.createElement('p');
+  evidenceHint.className = 'hint';
+  evidenceHint.textContent =
+    'Cited when the claim is published and fixed from then on — entries are '
+    + 'immutable, so evidence cannot be attached later. A claim without it is '
+    + 'still valid, just visibly ungrounded.';
+  evidenceFieldset.appendChild(evidenceHint);
+  const evidenceContent = document.createElement('textarea');
+  evidenceContent.placeholder = 'What is the evidence? Leave blank to publish without any.';
+  evidenceContent.dataset.testid = 'evidence-content';
+  evidenceFieldset.appendChild(evidenceContent);
+  const evidenceTypeSelect = document.createElement('select');
+  evidenceTypeSelect.dataset.testid = 'evidence-type';
+  for (const t of EVIDENCE_TYPES) {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    evidenceTypeSelect.appendChild(opt);
+  }
+  evidenceFieldset.appendChild(evidenceTypeSelect);
+  const evidenceUrl = document.createElement('input');
+  evidenceUrl.type = 'text';
+  evidenceUrl.placeholder = 'Source URL (optional)';
+  evidenceUrl.dataset.testid = 'evidence-url';
+  evidenceFieldset.appendChild(evidenceUrl);
+
   form.appendChild(contentLabel);
   form.appendChild(domainLabel);
   form.appendChild(confidenceLabel);
   form.appendChild(tagsLabel);
+  form.appendChild(evidenceFieldset);
   form.appendChild(submitBtn);
   form.appendChild(errorBox);
   form.appendChild(successBox);
@@ -1329,12 +1485,37 @@ function renderNewClaimTab(): HTMLElement {
     errorBox.hidden = true;
     successBox.hidden = true;
     submitBtn.disabled = true;
+    // Evidence first: the Claim cites it by hash, so it must exist
+    // before the claim that references it.
+    const evidenceHashes: Uint8Array[] = [];
+    if (evidenceContent.value.trim()) {
+      try {
+        // create_evidence returns the ENTRY hash, which is what
+        // Claim.evidence_hashes takes and what grounding walks. It used
+        // to return the ActionHash — the one hash unusable for the
+        // purpose — and was changed rather than worked around here.
+        const evidenceHash = await connection.callZome<Uint8Array>('create_evidence', {
+          content: evidenceContent.value.trim(),
+          evidence_type: evidenceTypeSelect.value as EvidenceType,
+          source_url: evidenceUrl.value.trim() || null,
+          author: connection.myAgentPubKey,
+          timestamp: Math.floor(Date.now() / 1000),
+        });
+        evidenceHashes.push(evidenceHash);
+      } catch (err) {
+        errorBox.hidden = false;
+        errorBox.textContent = `Evidence could not be recorded: ${err}`;
+        submitBtn.disabled = false;
+        return;
+      }
+    }
+
     const claim: Claim = {
       content: contentArea.value,
       domain: domainInput.value.trim(),
       author: connection.myAgentPubKey,
       timestamp: nowMicros(),
-      evidence_hashes: [],
+      evidence_hashes: evidenceHashes,
       confidence: confidenceSelect.value as Claim['confidence'],
       semantic_tags: tagsInput.value.split(',').map((t) => t.trim()).filter(Boolean),
       source_mew: null,

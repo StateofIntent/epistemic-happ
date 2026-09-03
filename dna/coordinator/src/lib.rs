@@ -988,9 +988,23 @@ pub fn get_antibody_patterns_for(target: AnyDhtHash) -> ExternResult<Vec<Record>
 // EVIDENCE FUNCTIONS
 // ============================================================================
 
+/// Returns the EntryHash, not the ActionHash.
+///
+/// Evidence is only ever referenced by EntryHash — `Claim.evidence_hashes`
+/// is a `Vec<EntryHash>`, and get_grounding_path walks those. Returning
+/// the ActionHash, as this did, handed callers the one hash they cannot
+/// use for the single purpose evidence has, and left them to recover the
+/// right one themselves.
+///
+/// This codebase has already paid for that shape once: the federation
+/// work fed create_membrane's ActionHash return value straight into a
+/// FederationRecord's EntryHash field and got a Deserialize error out of
+/// the integrity zome. Same trap, same fix — hand back the hash the
+/// field actually takes.
 #[hdk_extern]
-pub fn create_evidence(evidence: Evidence) -> ExternResult<ActionHash> {
-    create_entry(EntryTypes::Evidence(evidence))
+pub fn create_evidence(evidence: Evidence) -> ExternResult<EntryHash> {
+    create_entry(EntryTypes::Evidence(evidence.clone()))?;
+    hash_entry(&evidence)
 }
 
 // Accepts either hash type — see get_claim's comment above for why.
