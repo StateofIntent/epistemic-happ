@@ -46,6 +46,21 @@
 // Prereqs: scripts/sandbox.sh start (clean), and scripts/pack-webhapp.sh
 // (this loads the same built bundle that script zips into the .webhapp).
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: restoring the pre-packaging admin-first connect path.
+//   Result: one FAIL — but only after this file replaced a bare waitForSelector with a real diagnosis. The regression previously surfaced as 'waiting for locator(friction-meter)', which reads like a flaky selector rather than 'the UI took a path a Launcher does not offer'.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType, signZomeCall } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -210,9 +225,33 @@ async function main() {
     await page.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'domcontentloaded' });
 
     // No click anywhere in this harness. If the UI needed a button, this
-    // wait would time out — which is itself the assertion.
-    await page.waitForSelector('[data-testid="friction-meter"]', { timeout: 25000 });
-    check('the UI connects with no user action and no connect form', true);
+    // wait times out — which IS the assertion, but a bare TimeoutError
+    // names this file's line number and not the thing that broke. Caught
+    // during the negative-evidence pass: restoring the pre-packaging
+    // admin-first connect made this harness go red with nothing but
+    // "waiting for locator(friction-meter)", which reads like a flaky
+    // selector rather than "the UI took a path a Launcher does not
+    // offer". Same opaque-diagnosis fix as read-scope's firstOrFail.
+    let connectedWithoutAction = true;
+    try {
+      await page.waitForSelector('[data-testid="friction-meter"]', { timeout: 25000 });
+    } catch {
+      connectedWithoutAction = false;
+      log('');
+      log('  The UI never reached a connected state in a launcher environment.');
+      log('  The launcher injects a token and app port and exposes NO admin');
+      log('  interface, so this is what happens when the connect path opens an');
+      log('  AdminWebsocket instead of using what the host provided — the exact');
+      log('  bug packaging surfaced. Check HolochainConnection.connect still');
+      log('  branches on launcherEnvPresent() before taking the admin path.');
+      log('');
+    }
+    check('the UI connects with no user action and no connect form',
+      connectedWithoutAction);
+    if (!connectedWithoutAction) {
+      log(`\n${failures} CHECK(S) FAILED`);
+      process.exit(1);
+    }
     check('no connect form is rendered at all',
       await page.locator('.connect-form').count() === 0);
     check('the dead admin URL was never used — connecting succeeded anyway',

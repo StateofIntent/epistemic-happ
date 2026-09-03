@@ -19,6 +19,21 @@
 // Prereqs: scripts/sandbox.sh start (clean), and `npx vite build` in
 // mobile-ui/.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: removing the one-note-at-a-time gate in renderConceptNote.
+//   Result: four FAILs — every unseen note renders at once, the wall of explanation progressive disclosure exists to prevent.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';

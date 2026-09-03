@@ -59,4 +59,17 @@ Follow the shape the existing files share, and two conventions that carry most o
 - **Pair every negative result with a positive control.** A read returning zero proves nothing on its own; the entry might simply not have gossiped. `read-scope.mjs` pairs each chain-local read with a link-based read of the *same* entry by the *same* agent at the *same* moment, which is what turns an observed zero into evidence. Without the control it is an anecdote.
 - **Prefer an independent client's confirmation over the UI's own word.** `write-symmetry.mjs` reads the raised conductance back with a separate connection rather than trusting the number on screen, which is what would catch the UI rendering an optimistic local value.
 
+### Negative evidence
+
+**Every harness here has been watched failing, and each one records how in its own header** under `NEGATIVE EVIDENCE` — what was broken, and which checks went red. That block is the evidence for the rule below; without it "check that it can fail" is a convention nobody can confirm was followed, which is what it was until the whole suite was swept.
+
+Two of the seventeen were **not** caught by their own assertions on the first attempt, and both had the same shape — a check whose *label* claimed more than its assertion tested:
+
+- `founding-ui` said "permanence is stated before the button, not confirmed after it" and asserted `count() === 1`. That is presence, not order. Moving the note below the button left it green. Now compared with `compareDocumentPosition`.
+- `evidence-retraction-ui` said "ungrounded is not styled as an error" and asserted that `.grounding.ungrounded` existed. That class stays present when an error class is added *alongside* it, so styling the badge as an error left it green. Now asserts the absence of error classes and of deficiency wording.
+
+A third, `launcher-packaging`, caught its regression but reported it as a bare `waiting for locator(friction-meter)` timeout — true, and useless. It now says what that means.
+
+This is what the sweep was for. A green suite tells you nothing about assertions that cannot go red, and reading them will not reliably reveal it: both weak checks above look correct, and their labels describe the strong version.
+
 And check that a new harness can actually fail. `affordance-surfacing.mjs` passed on its first run, which proved nothing until the feature was disabled and the harness observed going red. A suite that has only ever been green has not been shown to test anything.

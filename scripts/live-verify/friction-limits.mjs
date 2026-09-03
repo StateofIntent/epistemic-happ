@@ -25,6 +25,21 @@
 // resumed conductor carrying earlier critiques starts partway into the
 // budget and makes every count below wrong.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: raising the coordinator's CRITIQUE_MAX_PER_WINDOW to 25 while validation's stays 20.
+//   Result: two FAILs — the refusal arrives from the SynapticLink budget instead of the Critique one, which is exactly the layer distinction this file exists to prove.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 
 const ADMIN_URL = 'ws://localhost:8889';

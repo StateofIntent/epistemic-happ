@@ -32,6 +32,21 @@
 // resumed sandbox holding pre-fix data is a different network and will
 // not do.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: the same EntryHash::try_from revert.
+//   Result: three named FAILs — agent 2 sees 0 claims where it must see 2 (PR #53).
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 
 const ADMIN_URL = 'ws://localhost:8889';

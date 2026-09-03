@@ -24,6 +24,21 @@
 // Prereqs: scripts/sandbox.sh start (clean), `npx vite build` in
 // mobile-ui/, and a rebuilt/repacked hApp.
 // ============================================================================
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+// This directory's own rule is that a harness which has only ever been
+// green has not been shown to test anything. Recorded here, rather than
+// only in a merged PR, so it is readable at the point someone runs this
+// file.
+//
+//   Regression injected: appending the permanence note AFTER the submit button.
+//   Result: one FAIL — but only after this file's check was strengthened. It previously asserted count() === 1, which is presence, not order: the injected regression left it GREEN. Now compared with compareDocumentPosition.
+//
+// Re-check it the same way if you change what this file asserts: inject,
+// watch it go red, restore, watch it go green.
+// ---------------------------------------------------------------------------
+
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -99,8 +114,23 @@ async function main() {
       legends.length === 2
       && /what you promise/i.test(legends[0])
       && /asks of participants/i.test(legends[1]));
+    // ORDER, not merely presence. This check used to assert count() === 1,
+    // which is what its own label says it is NOT checking: a note moved
+    // below the submit button still counts 1, and the warning then
+    // arrives after the irreversible act rather than before it. Caught by
+    // deliberately deferring the note's append and watching this stay
+    // green — the negative-evidence pass this suite's own convention asks
+    // for. compareDocumentPosition is used rather than reading offsets,
+    // so it is unaffected by layout, wrapping or viewport size.
+    const permanenceBeforeButton = await page.evaluate(() => {
+      const note = document.querySelector('[data-testid="permanence-note"]');
+      const btn = document.querySelector('[data-testid="founding-submit"]');
+      if (!note || !btn) return false;
+      // DOCUMENT_POSITION_FOLLOWING (4) means btn comes after note.
+      return (note.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
     check('permanence is stated before the button, not confirmed after it',
-      await page.locator('[data-testid="permanence-note"]').count() === 1);
+      permanenceBeforeButton);
 
     // Incomplete founding is refused with a usable message.
     await page.locator('[data-testid="founding-domain"]').fill(DOMAIN);
