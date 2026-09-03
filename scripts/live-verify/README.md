@@ -28,12 +28,10 @@ Where a precondition can be checked cheaply, the harness checks it and says so p
 
 `hc dna pack dna/ && hc app pack .` after any Rust change; `npm run build` in `mobile-ui/` after any UI change — or `scripts/pack-webhapp.sh`, which does all of it in the right order. A harness marked **browser** serves the production `dist/` via `vite preview`, so a stale build means you are verifying the previous version of the UI and everything will pass.
 
-The five rows marked † arrive with PRs #45–#49 and are not present on `main` until those land. They are listed now because this table is the thing someone reads before running anything, and a table that silently omits half the suite is the same failure mode as a rule stated only per-file.
-
 | Harness | Needs | Agents | What it proves |
 |---|---|---|---|
-| `read-scope` † | — | **2** | Which reads see the DHT and which see only the caller's own chain |
-| `domain-index` † | — | **2** | The by-domain and taxonomy indexes work across agents and cannot be poisoned |
+| `read-scope` | — | **2** | Which reads see the DHT and which see only the caller's own chain |
+| `domain-index` | — | **2** | The by-domain and taxonomy indexes work across agents and cannot be poisoned |
 | `friction-limits` | — | 1 | SWO temporal friction is enforced by validation, not coordinator courtesy |
 | `agent-sdk` | — | 1 | The agent SDK's surface against a live conductor |
 | `hud-layer` | browser | 1 | Discourse health, conductance, antibody flags rendered from real state |
@@ -42,9 +40,9 @@ The five rows marked † arrive with PRs #45–#49 and are not present on `main`
 | `graph-ui` | browser | 1 | Spatial navigation of the critique tree |
 | `onboarding-ui` | browser | 1 | Progressive disclosure staging |
 | `evidence-retraction-ui` | browser | 1 | Evidence, grounding, author-only retraction |
-| `affordance-surfacing` † | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
-| `write-symmetry` † | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
-| `launcher-packaging` † | browser | 1 | The UI works on the path an installed `.webhapp` actually takes |
+| `affordance-surfacing` | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
+| `write-symmetry` | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
+| `launcher-packaging` | browser | 1 | The UI works on the path an installed `.webhapp` actually takes |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
