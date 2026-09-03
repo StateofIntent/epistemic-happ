@@ -26,7 +26,9 @@ Where a precondition can be checked cheaply, the harness checks it and says so p
 
 ## What each harness needs
 
-`hc dna pack dna/ && hc app pack .` after any Rust change; `npm run build` in `mobile-ui/` after any UI change — or `scripts/pack-webhapp.sh`, which does all of it in the right order. A harness marked **browser** serves the production `dist/` via `vite preview`, so a stale build means you are verifying the previous version of the UI and everything will pass.
+`scripts/pack-webhapp.sh` after any change — it builds the zomes, packs the DNA and hApp, builds the UI and packs the bundle, in that order.
+
+Doing it by hand needs all four steps: `cargo build --release --target wasm32-unknown-unknown` in `dna/integrity` **and** `dna/coordinator` *before* `hc dna pack dna/ && hc app pack .`, plus `npm run build` in `mobile-ui/`. **`hc dna pack` compiles nothing** — it packages the wasm already on disk, so packing without building first yields a freshly timestamped bundle around stale code, and every harness here will happily verify the previous build and pass. That is not hypothetical: it is how a deliberately broken `get_claims_by_domain` was observed passing this entire suite. The same trap applies to the UI — a harness marked **browser** serves the production `dist/` via `vite preview`, so a stale `npm run build` means you are verifying the previous version of the UI and everything will pass.
 
 | Harness | Needs | Agents | What it proves |
 |---|---|---|---|

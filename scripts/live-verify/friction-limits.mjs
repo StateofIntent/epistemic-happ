@@ -41,6 +41,25 @@ function log(...args) {
   console.log(...args);
 }
 
+// A SETUP read coming back empty is the regression itself, not a bug in
+// this harness — but dereferencing [0] on it dies with "Cannot read
+// properties of undefined (reading 'signed_action')", which names this
+// file's line number and says nothing about the zome that returned
+// nothing. Observed for real while proving this suite catches
+// regressions. The detection was sound; the diagnosis was useless, which
+// is the opaque-failure mode this directory's README argues against.
+const firstOrFail = (records, fn, expected) => {
+  if (Array.isArray(records) && records.length > 0) return records[0];
+  log(`\n  SETUP FAILED: ${fn} returned ${Array.isArray(records) ? '0 records' : String(records)}`);
+  log(`  Expected ${expected}, published by this harness moments ago.`);
+  log('  This is a real failure of the zome, not of the harness.');
+  log('  If the code looks correct, the conductor is probably running a');
+  log('  STALE BUILD: hc dna pack packages the wasm on disk rather than');
+  log('  compiling it. Rebuild with scripts/pack-webhapp.sh, then');
+  log('  scripts/sandbox.sh clean && scripts/sandbox.sh start.');
+  process.exit(1);
+};
+
 function errText(e) {
   return String(e?.data?.data ?? e?.message ?? e);
 }
@@ -92,7 +111,8 @@ async function main() {
     source_mew: null,
   });
   const claimRecords = await callZome('get_claims_by_domain', domain);
-  const targetEntryHash = claimRecords[0].signed_action.hashed.content.entry_hash;
+  const targetEntryHash = firstOrFail(claimRecords, 'get_claims_by_domain',
+    "the claim this harness seeded into its domain").signed_action.hashed.content.entry_hash;
   log('  got the claim\'s EntryHash.\n');
 
   const makeCritique = (n) => callZome('create_critique', {
