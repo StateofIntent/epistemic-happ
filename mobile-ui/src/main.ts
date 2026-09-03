@@ -6,6 +6,7 @@ import {
 import {
   type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros,
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
+  type Membrane, type DiscourseHealth, type CrossDomainCritique,
 } from './types';
 
 // ============================================================================
@@ -35,6 +36,20 @@ const antibodiesByClaim = new Map<string, DecodedRecord<AntibodyPattern>[]>();
 const retractionsByClaim = new Map<string, DecodedRecord<Retraction>[]>();
 /** critique actionHash (b64) -> effective conductance of its SynapticLink */
 const conductanceByCritique = new Map<string, number>();
+
+// --- Membranes -------------------------------------------------------
+// A domain is a free-text string on a Claim; a Membrane is that domain
+// founded as a real entry, with a description and the promises it
+// demands. get_discourse_health and get_cross_domain_critiques are both
+// anchored to a Membrane rather than a domain name, which is why they
+// could not be surfaced until this existed.
+let membranes: DecodedRecord<Membrane>[] = [];
+/** membrane entryHash (b64) -> its joined members */
+const membersByMembrane = new Map<string, Uint8Array[]>();
+/** membrane entryHash (b64) -> protocol-computed discourse aggregate */
+const healthByMembrane = new Map<string, DiscourseHealth>();
+/** membrane entryHash (b64) -> critiques authored from other domains */
+const crossDomainByMembrane = new Map<string, CrossDomainCritique[]>();
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -201,7 +216,7 @@ function renderConnectScreen(): HTMLElement {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'new-claim';
+type Tab = 'browse' | 'membranes' | 'new-claim';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -209,7 +224,9 @@ function renderTabs(): HTMLElement {
 
   const nav = document.createElement('nav');
   nav.className = 'tab-bar';
-  const tabs: Array<[Tab, string]> = [['browse', 'Browse'], ['new-claim', 'New Claim']];
+  const tabs: Array<[Tab, string]> = [
+    ['browse', 'Browse'], ['membranes', 'Domains'], ['new-claim', 'New Claim'],
+  ];
   for (const [tab, label] of tabs) {
     const btn = document.createElement('button');
     btn.textContent = label;
@@ -221,7 +238,11 @@ function renderTabs(): HTMLElement {
 
   const content = document.createElement('main');
   content.className = 'tab-content';
-  content.appendChild(activeTab === 'browse' ? renderBrowseTab() : renderNewClaimTab());
+  content.appendChild(
+    activeTab === 'browse' ? renderBrowseTab()
+      : activeTab === 'membranes' ? renderMembranesTab()
+        : renderNewClaimTab(),
+  );
   wrap.appendChild(content);
 
   return wrap;
@@ -550,6 +571,219 @@ async function loadConductances(claim: DecodedRecord<Claim>, critiques: DecodedR
     }
   }));
   render();
+}
+
+// --- Membranes (Domains) tab ------------------------------------------
+
+async function loadMembranes() {
+  if (!connection) return;
+  const records = await connection.callZome<any[]>('get_membranes', null);
+  membranes = decodeRecords<Membrane>(records);
+  membersByMembrane.clear();
+  healthByMembrane.clear();
+  crossDomainByMembrane.clear();
+  render();
+  void loadMembraneState();
+}
+
+/** Members, discourse health and cross-domain critiques for every listed
+ * membrane. Same degradation rule the claim badges use: each read is
+ * caught on its own, so a membrane whose aggregate fails still lists. */
+async function loadMembraneState() {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(membranes.map(async (membrane) => {
+    const key = b64(membrane.entryHash);
+    try {
+      const members = await conn.callZome<Uint8Array[]>('get_membrane_members', membrane.entryHash);
+      membersByMembrane.set(key, members);
+    } catch { /* a membrane with no readable member list still lists */ }
+    try {
+      // Both policies omitted deliberately. They are lenses the CALLER
+      // aims (README.md §4.4) — supplying one silently on the user's
+      // behalf would be this client stating a trust policy the user
+      // never chose. Omitted, the aggregate counts everything.
+      const health = await conn.callZome<DiscourseHealth>('get_discourse_health', {
+        membrane: membrane.entryHash,
+        attestation_policy: null,
+        conductance_policy: null,
+      });
+      healthByMembrane.set(key, health);
+    } catch { /* aggregate unavailable — the membrane still renders */ }
+    try {
+      const cross = await conn.callZome<CrossDomainCritique[]>(
+        'get_cross_domain_critiques', membrane.entryHash,
+      );
+      crossDomainByMembrane.set(key, cross);
+    } catch { /* reading lens unavailable — never load-bearing */ }
+  }));
+  render();
+}
+
+async function joinMembrane(membrane: DecodedRecord<Membrane>) {
+  if (!connection) return;
+  await connection.callZome('join_membrane', membrane.entryHash);
+  const members = await connection.callZome<Uint8Array[]>(
+    'get_membrane_members', membrane.entryHash,
+  );
+  membersByMembrane.set(b64(membrane.entryHash), members);
+  render();
+}
+
+function renderMembranesTab(): HTMLElement {
+  const section = document.createElement('section');
+
+  const row = document.createElement('div');
+  row.className = 'search-row';
+  const loadBtn = document.createElement('button');
+  loadBtn.textContent = 'Load domains';
+  loadBtn.onclick = () => loadMembranes();
+  row.appendChild(loadBtn);
+  section.appendChild(row);
+
+  const list = document.createElement('div');
+  list.className = 'claim-list';
+  if (membranes.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent =
+      'No domains loaded. A domain is founded with a Constitution — ' +
+      'this screen reads and joins them; founding one is not yet built here ' +
+      '(see domains/bootstrap.mjs).';
+    list.appendChild(empty);
+  }
+  for (const membrane of membranes) list.appendChild(renderMembraneCard(membrane));
+  section.appendChild(list);
+
+  return section;
+}
+
+function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
+  const key = b64(membrane.entryHash);
+  const card = document.createElement('article');
+  card.className = 'claim-card';
+  card.dataset.testid = 'membrane-card';
+
+  const title = document.createElement('h2');
+  title.className = 'membrane-domain';
+  title.textContent = membrane.entry.domain;
+  card.appendChild(title);
+
+  const desc = document.createElement('p');
+  desc.className = 'claim-content';
+  desc.textContent = membrane.entry.description;
+  card.appendChild(desc);
+
+  const meta = document.createElement('div');
+  meta.className = 'claim-meta';
+  meta.textContent = `founded by ${short(membrane.entry.creator)}`;
+  card.appendChild(meta);
+
+  // What this domain demands of anyone working in it. This is the
+  // "accountable rather than costly" mechanism — a domain states its
+  // promises instead of charging a fee to enter.
+  if (membrane.entry.required_promises.length > 0) {
+    const promises = document.createElement('ul');
+    promises.className = 'promise-list';
+    promises.dataset.testid = 'required-promises';
+    for (const promise of membrane.entry.required_promises) {
+      const li = document.createElement('li');
+      li.textContent = promise;
+      promises.appendChild(li);
+    }
+    card.appendChild(promises);
+  }
+
+  const members = membersByMembrane.get(key);
+  if (members) {
+    const me = connection ? b64(connection.myAgentPubKey) : '';
+    const joined = members.some((m) => b64(m) === me);
+    const row = document.createElement('div');
+    row.className = 'membrane-members';
+    const count = document.createElement('span');
+    count.dataset.testid = 'member-count';
+    count.textContent = `${members.length} member${members.length === 1 ? '' : 's'}`;
+    row.appendChild(count);
+    if (joined) {
+      const badge = document.createElement('span');
+      badge.className = 'joined-badge';
+      badge.dataset.testid = 'joined-badge';
+      badge.textContent = 'joined';
+      row.appendChild(badge);
+    } else {
+      const joinBtn = document.createElement('button');
+      joinBtn.className = 'link-button';
+      joinBtn.textContent = 'Join domain';
+      joinBtn.onclick = () => joinMembrane(membrane);
+      row.appendChild(joinBtn);
+    }
+    card.appendChild(row);
+  }
+
+  const health = healthByMembrane.get(key);
+  if (health) card.appendChild(renderDiscourseHealth(health));
+
+  const cross = crossDomainByMembrane.get(key);
+  if (cross && cross.length > 0) card.appendChild(renderCrossDomain(cross));
+
+  return card;
+}
+
+/** The protocol's own aggregate over a domain. Everything shown is
+ * computed by the DNA and identical for every viewer — no client-side
+ * inference, per README.md §4.4. */
+function renderDiscourseHealth(health: DiscourseHealth): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'discourse-health';
+  wrap.dataset.testid = 'discourse-health';
+
+  const totals = document.createElement('div');
+  totals.className = 'health-totals';
+  totals.textContent =
+    `${health.total_claims} claim${health.total_claims === 1 ? '' : 's'} · ` +
+    `${health.total_critiques} critique${health.total_critiques === 1 ? '' : 's'} · ` +
+    `abstract:embodied ${health.abstract_to_embodied_ratio.toFixed(2)}`;
+  wrap.appendChild(totals);
+
+  // The five CritiqueModes are non-fungible means of knowing (Invariant
+  // #4), so the distribution is shown as five named counts rather than
+  // summed into one number.
+  if (health.critique_mode_distribution.length > 0) {
+    const dist = document.createElement('div');
+    dist.className = 'mode-distribution';
+    dist.dataset.testid = 'mode-distribution';
+    for (const [mode, count] of health.critique_mode_distribution) {
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip';
+      chip.textContent = `${mode} ${count}`;
+      dist.appendChild(chip);
+    }
+    wrap.appendChild(dist);
+  }
+
+  if (health.warning) {
+    const warn = document.createElement('div');
+    warn.className = 'health-warning';
+    warn.dataset.testid = 'health-warning';
+    warn.textContent = health.warning;
+    wrap.appendChild(warn);
+  }
+
+  return wrap;
+}
+
+/** A reading lens, shown as one: which critiques here came from agents
+ * whose own claims live in other domains. It gates nothing and scores
+ * nothing — it reports real structure (README.md §9, Phase 4). */
+function renderCrossDomain(cross: CrossDomainCritique[]): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'cross-domain';
+  wrap.dataset.testid = 'cross-domain';
+  const domains = [...new Set(cross.flatMap((c) => c.critiquer_home_domains))];
+  wrap.textContent =
+    `${cross.length} critique${cross.length === 1 ? '' : 's'} from agents whose ` +
+    `claims live elsewhere${domains.length ? ` (${domains.join(', ')})` : ''}`;
+  return wrap;
 }
 
 // --- New Claim tab ----------------------------------------------------

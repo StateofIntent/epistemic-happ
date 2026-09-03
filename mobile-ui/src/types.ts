@@ -93,3 +93,49 @@ export interface Retraction {
   author: Uint8Array;
   timestamp: number;
 }
+
+// --- Membranes: domains as founded things ------------------------------
+//
+// A Membrane is what makes a domain more than a free-text string on a
+// Claim — it has a founder, a description, and the promises it demands
+// of anyone working in it. Several reads are anchored to a Membrane
+// rather than a domain name for exactly that reason (see
+// GetDiscourseHealthPayload's own comment in the coordinator zome):
+// the aggregate is scoped to something that actually exists on the DHT.
+
+export interface Membrane {
+  domain: string;
+  description: string;
+  required_promises: string[];
+  validation_rules_hash: Uint8Array | null;
+  creator: Uint8Array;
+  created_at: number;
+  /** The founder's own published Constitution — a Membrane cannot be
+   * created without one, which is how domain creation was made
+   * accountable rather than costly. */
+  constitution: Uint8Array;
+}
+
+/** get_discourse_health — an aggregate over a Membrane's own domain.
+ * Protocol-computed and identical for every viewer. */
+export interface DiscourseHealth {
+  domain: string;
+  abstract_to_embodied_ratio: number;
+  /** Set by the protocol when the ratio exceeds 3.0 — discourse drifting
+   * away from practice. Not a score, and not about any agent. */
+  warning: string | null;
+  total_claims: number;
+  total_critiques: number;
+  /** Arrives as [mode, count] pairs — serde's representation of the
+   * Rust Vec<(CritiqueMode, u32)>. */
+  critique_mode_distribution: [CritiqueMode, number][];
+}
+
+/** get_cross_domain_critiques — a reading lens, never a gate. Reports
+ * which critiques in a membrane came from agents whose own claims live
+ * elsewhere, and which other domains those are. Scores nothing. */
+export interface CrossDomainCritique {
+  critique_action: Uint8Array;
+  critique_author: Uint8Array;
+  critiquer_home_domains: string[];
+}
