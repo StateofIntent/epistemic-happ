@@ -4,10 +4,12 @@
 >
 > Everything from §2 onward describes a mutual-credit ledger —
 > `MutualCreditTransfer`, `CreditBurn`, `get_credit_balance`, and a real
-> countersigning flow — that no longer exists in this codebase. The
-> document is kept because what was learned building and removing it is
-> more valuable than the code was, and because §7.1's three defects are
-> a standing lesson about what unit tests cannot reach.
+> countersigning flow — that no longer exists in this codebase, along
+> with the graded attestation walk of §4.4 (`get_attestation_weight`),
+> which was removed separately and for its own reason. The document is
+> kept because what was learned building and removing them is more
+> valuable than the code was, and because §7.1's three defects are a
+> standing lesson about what unit tests cannot reach.
 >
 > **Why it was removed.** Three findings, in the order they landed:
 >
@@ -423,7 +425,37 @@ situation rather than creating it. But the honest description of this
 layer today is a working, verified ledger awaiting a mechanism that
 needs it.
 
-### 4.4 The "cascading" property — `WeightedAttestationPolicy`
+### 4.4 The "cascading" property — `WeightedAttestationPolicy` (ALSO REMOVED)
+
+> **Status: removed.** `get_attestation_weight` and
+> `WeightedAttestationPolicy` no longer exist. The decisive reason was
+> not this section's fidelity problems (below) but a defect found by
+> re-reading the traversal: `weighted_direct_attesters_of` collected
+> attesters in unsorted `get_links` order, and the shared,
+> first-path-wins `visited` set then decided which paths contributed at
+> all. So the function could return **different numbers to two callers
+> passing identical inputs**. That is undeclared nondeterminism, and it
+> is a different and worse thing than the deliberate caller-scoping this
+> section is proud of: `is_agent_attested` differs between observers
+> because they *chose different roots*, which is exactly what Invariant
+> #1 intends; this differed for reasons nobody declared, which invites a
+> caller to treat the number as stable when it is not.
+>
+> It was fixable — sort the traversal, memoize per (node, depth) so all
+> paths contribute deterministically — so this was a judgement about
+> unused code rather than a condemnation. The function had no caller,
+> had never been run against a conductor, and existed to serve this
+> layer's cascading-trust story, which was itself removed. The fix, plus
+> a live verification pass, plus a re-decision on the MeritRank framing,
+> would all have been spent on code nobody called. `is_agent_attested`
+> still answers the trust question in a form that is used, correct, and
+> genuinely caller-scoped.
+>
+> **If a graded variant is wanted later**, build it for the caller that
+> wants it, and make it deterministic for fixed inputs from the start.
+> The rest of this section is kept as the record of what it was and what
+> was wrong with it.
+
 
 This is what the informal brief's single-hop burn coupling didn't have,
 and what the research pass (§2) was aimed at finding a real precedent
