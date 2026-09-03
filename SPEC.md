@@ -108,11 +108,11 @@ A domain's sovereign, promise-bearing boundary. Not required to exist for a `Cla
 |---|---|---|
 | `domain` | `String` | MUST be non-empty |
 | `description` | `String` | |
-| `required_promises` | `Vec<String>` | |
+| `required_promises` | `Vec<String>` | MUST be non-empty (§5.8a) — a domain states what it demands of participants rather than charging them to enter |
 | `validation_rules_hash` | `Option<EntryHash>` | Not independently validated |
 | `creator` | `AgentPubKey` | MUST equal the creating action's author |
 | `created_at` | `u64` | |
-| `constitution` | `ActionHash` | The creator's own published `Constitution` — required (not optional); not independently validated to resolve or belong to `creator` at the DHT-validation layer (accountability by requiring the field to be populated, not a cross-check) |
+| `constitution` | `ActionHash` | The creator's own published `Constitution`. MUST resolve to a real `Constitution` entry, and that entry's `agent` MUST equal `creator` (§5.8a). **This was previously specified as populated-but-not-cross-checked**, which was accurate — the rule existed only as a coordinator-side courtesy while a code comment described it as DHT-enforced. It is now genuinely enforced |
 
 ### 2.8 `Constitution`
 An agent's voluntary, published promises — Promise Theory made explicit in the DHT.
@@ -272,7 +272,9 @@ Any `RegisterDelete` operation is **rejected outright** — `ValidateCallbackRes
 For every entry type carrying an `author`/`agent`/`creator`/`proposer` field, that field MUST equal the actual authoring action's real author. This is checked independently by every validator (listed per-type in §2) — never trusted from the entry's own claimed value alone.
 
 ### 5.3 Referential integrity
-Every field typed as an `EntryHash` reference to another entry (`evidence_hashes`, `source_mew`, `linked_claim`, `target_claim`, `replacement_claim`, `parent_species`, `mew_hash`, `linked_holochain_claim`) MUST resolve to a real, existing entry at validation time, except where noted otherwise in §2 (`Critique.evidence_hashes` and `Membrane.constitution` are the two documented exceptions — populated but not independently cross-checked to resolve/match).
+Every field typed as an `EntryHash` reference to another entry (`evidence_hashes`, `source_mew`, `linked_claim`, `target_claim`, `replacement_claim`, `parent_species`, `mew_hash`, `linked_holochain_claim`) MUST resolve to a real, existing entry at validation time, except where noted otherwise in §2.
+
+**`Critique.evidence_hashes` is the one remaining exception** — populated but not independently cross-checked. (`Claim.evidence_hashes` *is* checked; the asymmetry is real and undocumented as intentional.) `Membrane.constitution` was previously the second exception and is now cross-checked, both that it resolves and that it belongs to the creator — see §5.8a.
 
 ### 5.4 `Critique` target cross-check
 `Critique.target_type` MUST equal the *actual* DHT-derived type of the entry `Critique.target` resolves to. The validator independently fetches `target` and determines its real type by attempting to deserialize it as each of the five `CritiqueTargetType` candidates in turn — a caller cannot spoof `target_type` to something other than what `target` really is. `target` MUST downcast to an `EntryHash` (an `Agent` or `External`-kind `AnyLinkableHash` is rejected outright — nothing critiquable is addressed that way).
@@ -290,6 +292,16 @@ Identical mechanism and requirement to §5.4, applied to `AntibodyPattern.target
 - `checksum` MUST be exactly 32 bytes.
 - If `expires_at` is `Some`, it MUST be `> created_at`.
 - If `trace_payload` is `Some`, it MUST be ≤ 65,536 bytes.
+
+### 5.8a `Membrane` creation — the accountability rule
+
+- `required_promises` MUST be non-empty.
+- `constitution` MUST resolve to a real `Constitution` entry (via `must_get_valid_record`, a deterministic dependency fetch, so every validating peer resolves the same entry or defers rather than disagreeing).
+- That `Constitution`'s own `agent` MUST equal the `Membrane`'s `creator` — a founder is accountable under promises they made themselves.
+
+Together these are the "accountable rather than costly" mechanism: founding a domain has no fee, stake or token, and instead requires a published commitment of one's own plus a stated condition of entry for others.
+
+**Recorded because the gap is instructive:** none of the above was enforced at the DHT layer until recently. All three checks lived only in the coordinator's `create_membrane`, whose comment described itself as *"mirroring validate_membrane's DHT-enforced rule (the real enforcement layer, unbypassable by a custom client)"* — while `validate_membrane` checked only author-matching and a non-empty domain. A client bypassing the coordinator could found a domain demanding nothing, citing a constitution hash pointing at anything. A conforming implementation MUST enforce these in validation, not in a client-facing function.
 
 ### 5.8 `Constitution` structural constraints
 - `promises` MUST be non-empty.
@@ -344,6 +356,18 @@ Every link type not named in §5.11–§5.14 (including `TargetToCritique`, `Tar
 
 ### 5.18 `FederationRecord` creation
 In addition to the non-empty `remote_network_label`/`remote_membrane_ref` requirements (§2.14): `local_membrane` MUST resolve to a real `Membrane` entry, and the creating agent MUST equal that `Membrane`'s own `creator` field — only a membrane's own founder may declare federation on its behalf, the same governance principle that already gates who can found the membrane at all (§5's `Membrane` author-binding rule, §5.2). No SWO temporal friction — see §10.14 for why.
+
+### 5.21 Coordinator courtesies that are NOT validation rules
+
+Audit result, recorded because the distinction has been got wrong twice in this codebase and both times a comment asserted enforcement that did not exist (§5.8a, and the `SynapticLink` burn tier removed earlier).
+
+Every coordinator-side refusal was checked against what the integrity zome actually dispatches. The five SWO friction limits (§6) are all genuinely enforced — each constant is used inside a reachable branch of `validate_critique`, `validate_antibody_pattern` or `validate_create_link`. `Claim.source_mew` resolution is enforced, and promoting another agent's `Mew` is blocked by the author-matching rule rather than by the coordinator's own check.
+
+**One coordinator guard has no validation counterpart, and this is correct:** `assert_expertise` refuses to build an expertise `Claim` citing a `WorldlineTrace` that is not the caller's own. The entry it produces is an ordinary `Claim`, so `validate_claim` governs it and has no notion of traces. A client bypassing the coordinator can therefore author an expertise claim citing anyone's trace.
+
+That is a courtesy rather than a gap, for a reason specific to what expertise is here: an expertise assertion is deliberately a self-asserted `Claim`, critiquable like any other, and `expertise_tags` is explicitly an informal, non-authoritative index. Nothing in the protocol grants it standing, so there is nothing for a forged one to obtain. It is recorded here so that a future mechanism which *does* give expertise claims weight knows it would have to add the validation first — the guard it might otherwise assume exists is not there.
+
+**The rule this audit suggests generally:** a coordinator check is a courtesy unless a reachable validation branch enforces the same predicate. A comment is not enforcement, and a constant's existence is not its use.
 
 ## 6. Rate Limits (SWO Temporal Friction) — Consolidated
 
