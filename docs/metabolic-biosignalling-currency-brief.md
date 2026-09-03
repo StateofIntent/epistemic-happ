@@ -59,6 +59,12 @@
 > energy itself transferable, the one thing metabolism does not do. The
 > metaphor predicted the failure.
 >
+> **On how far that licenses the metaphor, see §5.1** — which records
+> the limit (it may rule things out; it may not specify anything) and
+> one live tension it creates, namely that the purinergic cascade
+> *inverts* its signal while this protocol deliberately has no inverting
+> signal at all.
+>
 > **It was nevertheless not built,** because the question it was made
 > conditional on was then actually answered, and the answer was no.
 > *Which act should cost more than another, that separately tuned flat
@@ -662,6 +668,54 @@ without this context could otherwise reintroduce it:
    kind** (Invariant #1, §3) — new for this pass specifically, since
    none of the research sources that motivated §1–5 above raised this
    risk the way SourceCred/EigenTrust's own designs directly do.
+
+### 5.1 On the metaphor's authority, and the one tension it creates
+
+The biological metaphor earned real credit in this work: it *predicted*
+the currency layer's failure. Energy is local, what crosses a membrane
+is signal, and the layer that made energy itself transferable is the one
+that broke. That is a genuine diagnostic result, not decoration.
+
+It is also exactly the point at which a metaphor becomes dangerous,
+because the next move — letting it *propose* a mechanism rather than
+rule one out — is how the burn tier happened in the first place. SWO's
+burn-to-deploy is an Arbitrum L3 pattern that was applied here by
+analogy, and unwinding it took the better part of this document. **The
+metaphor has earned the right to rule things out. It has not earned the
+right to specify anything.** Every removal recorded here was licensed by
+empirical harm, with the metaphor only setting direction; that split
+should hold.
+
+**The concrete test case, recorded because a future session will hit
+it.** The purinergic story is sharper than "ATP becomes signal." Once
+outside the cell, ATP is enzymatically degraded *as it travels* — CD39
+hydrolyses ATP→ADP→AMP, CD73 converts AMP→adenosine — and adenosine acts
+on an entirely different receptor family (P1, not P2), with effects that
+often **oppose** ATP's: pro-inflammatory ATP becomes immunosuppressive
+adenosine. So the biological signal does not merely fade with distance
+and time. It *inverts*.
+
+This protocol deliberately has **no inverting signal.** The "synaptic
+plasticity" roadmap item (README §9) considered exactly that — an
+explicit "this doesn't resonate" link, the LTD-like inverse of
+`reinforce_synaptic_link` — and rejected it: wired into the same
+effective-conductance computation, it would function as a disguised
+downvote on a critique's *strength* rather than its *content*, which is
+the canonical comparative signal Invariant #1 rules out. The typed
+`Critique` mechanism is this protocol's answer to "I disagree"
+(Invariant #4: every critique is typed, never flattened to a single
+bit), and a second untyped one-bit channel that also moves a number
+would undercut it.
+
+So biology inverts and this protocol refuses to. **That tension is
+recorded as an observation and is explicitly not a reason to revisit the
+decision.** The refusal was reasoned from an invariant; a biological
+analogy does not override an invariant, and noticing a correspondence is
+not evidence for building one. Anyone who arrives here reasoning "the
+biology says signals invert, so we should have a negative signal" has
+made precisely the move this section exists to prevent — and would owe,
+at minimum, the independent Invariant #1 analysis that README §9 already
+says such a revisit would require.
 
 ---
 
