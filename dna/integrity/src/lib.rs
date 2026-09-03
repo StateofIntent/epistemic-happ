@@ -1093,8 +1093,11 @@ const ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION: usize = 5; // must match coor
 // SynapticLink, Critique creation carries its own hard 20/hour cap with
 // no burn tier, and that cap is checked first — while the one client
 // that COULD reach it, by hand-crafting CreateLink actions, got ten
-// extra links for burns that nothing funds, since a burn's balance is
-// unenforceable on an agent-centric DHT. A plain hard limit is stricter
+// extra links for burns that nothing funds, since no balance check was
+// ever implemented (an earlier version of this note said a balance is
+// unenforceable on an agent-centric DHT — overstated; countersigning
+// made every transfer chain-local, so what was missing was a bound on
+// the fold, not the possibility of one). A plain hard limit is stricter
 // against that client as well as simpler.
 //
 // The ledger (MutualCreditTransfer, CreditBurn, countersigning,

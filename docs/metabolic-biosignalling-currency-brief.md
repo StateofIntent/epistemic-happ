@@ -27,9 +27,16 @@
 >    construction — unlike `AttestationPolicy`, whose answers are
 >    caller-scoped and so legitimately differ between observers.
 >
-> A defect with a fix argues for fixing. A defect in a mechanism with no
-> consumer, on a substrate where its central invariant (a checkable
-> balance) is unachievable, argues for removal.
+> A defect with a fix argues for fixing; a defect in a mechanism with no
+> consumer argues for removal. Points 2 and 3 are what decided it.
+>
+> Point 3's balance gap was *originally* recorded as a fourth reason and
+> as structurally impossible on this substrate. That was overstated and
+> has been corrected in §4.2: countersigning put every transfer on both
+> parties' chains, so a balance here was a chain-local fold — the same
+> shape as the friction limits that work fine. What remained was an
+> unbounded walk nobody designed a bound for, plus fork exposure that
+> friction shares. The removal stands on 2 and 3 without it.
 >
 > **What was proposed to replace it, and then rejected as well:
 > non-transferable regenerating capacity.** One per-agent budget, spent
@@ -411,18 +418,63 @@ choice it did make, and reads as a genuine, thematically apt property of
 a *metabolic* currency rather than a financial one: it models
 regeneration, not debt.
 
-**KNOWN GAP, stated explicitly rather than silently assumed away, same
-as the informal brief's own gap-disclosure convention:** neither
-`validate_credit_transfer` nor `validate_credit_burn` checks that the
-sender actually has sufficient balance to cover the amount. Holochain's
-agent-centric, eventually-consistent DHT has no cheap way to check a
-live, globally-agreed balance at validation time — the same reason
-Circles and every other real mutual-credit system enforces balance/
-credit limits socially or client-side, not via a global validator check.
-An unbounded negative balance is possible today. If this needs
-tightening, the honest fix is a per-pair credit limit checked against
-both parties' own chains via `must_get_agent_activity`, not a pretend
-global balance check this substrate can't actually make atomic.
+**KNOWN GAP, stated explicitly rather than silently assumed away:**
+neither `validate_credit_transfer` nor `validate_credit_burn` checked
+that the spender actually had sufficient balance. An unbounded negative
+balance was possible, and this was demonstrated by accident — the
+burn-friction verification took an agent from `0` to `-50` and nothing
+objected.
+
+**A correction to how this gap was originally described, because the
+first version overstated it into an impossibility.** It was recorded
+here, and echoed into `SPEC.md` and `README.md`, as structural: that an
+agent-centric, partition-tolerant DHT simply cannot check a balance,
+because a transfer between B and A is authored on *B's* chain, so
+validating A's spend would need an unbounded set of other agents'
+chains that may not have propagated. That reasoning is correct for
+ordinary mutual credit. **It is wrong about the design actually built
+here, because countersigning puts every transfer on *both* parties'
+chains.** The live pass showed it directly: a single transfer produced
+two distinct action hashes, one committed by each party, which is also
+why `get_credit_balance` read `-10` and `+10` from each agent's *own*
+anchor. There is an irony in it — countersigning was added to close the
+double-spend hole, and incidentally would have made balances chain-local
+too.
+
+So a balance here was a fold over the agent's own chain: countersigned
+transfers where they are `from` or `to`, plus their own single-signer
+burns. That is the same *shape* as SWO temporal friction (§5.10), which
+is enforceable on exactly this substrate — bounded to one chain,
+walkable deterministically by `must_get_agent_activity`, and unhideable
+by the author.
+
+What genuinely remained was narrower than "impossible", and worth
+stating precisely so nobody concludes from this document that balances
+can never be enforced on Holochain:
+
+1. **An unbounded fold.** Friction bounds its walk with a
+   `WorldlineTrace` checkpoint plus a flat fallback cap; a balance has
+   no such bound and would walk to genesis, which is a real DoS surface
+   and is why every other walk in this codebase is bounded. The known
+   answer is to carry a running total in each balance-affecting entry
+   and validate it inductively against the immediately preceding one,
+   making each check O(1). That is standard technique and real design
+   work, and nobody did it. It was never attempted or measured here, so
+   this is stated as a known approach rather than a verified one.
+2. **Fork-based double-spend.** An agent forks their chain and spends
+   the same standing on each branch. This genuinely does require global
+   consensus to *prevent*, which the substrate deliberately refuses.
+   But **SWO friction has identical exposure** — fork the chain, get two
+   budgets — so forks do not distinguish a balance from a limit. Both
+   rest on forks being detectable after the fact rather than prevented.
+
+The honest summary is therefore: the balance check was **not designed**,
+not impossible. The alternative named at the time — per-pair credit
+limits checked against both parties' chains via `must_get_agent_activity`
+— remains a real option, and buys a bilateral bound rather than a
+balance. None of this changes the removal decision (see the status
+banner): the ledger went for having no consumer and for exposing a
+canonical per-agent scalar, neither of which this correction touches.
 
 ### 4.3 Coupling to SWO friction — built, then removed
 
@@ -450,8 +502,8 @@ opened at exactly the count where making another `Critique` had already
 become impossible. And it was **a net loss**: the one client that could
 reach it — one hand-crafting `CreateLink` actions outside
 `create_critique` — got ten extra links from it, paid for with burns
-that nothing funds, since `validate_credit_burn` cannot check a balance
-(§4.2's KNOWN GAP). A plain hard limit is strictly stricter against that
+that nothing funded, since `validate_credit_burn` performed no balance
+check at all (§4.2's KNOWN GAP). A plain hard limit is strictly stricter against that
 client, and simpler: two constants and a burn-summing chain scan came
 out of each zome.
 
@@ -802,9 +854,9 @@ Option 1 is the additive shape of the same idea and remains available
 later, but shares option 4's blocker.
 
 That blocker decided it: every option that keeps or extends the tier
-assumes a burn is a cost, and it isn't. Balances are unenforceable at
-validation time (§4.2's KNOWN GAP), so a burn is currently free to
-issue — verified accidentally by this very test, which took an agent
+assumes a burn is a cost, and it isn't. No balance check was implemented
+(§4.2's KNOWN GAP — and note that gap was narrower than first recorded),
+so a burn is free to issue — verified accidentally by this very test, which took an agent
 from a balance of `0` to `-50` with nothing objecting. Keeping the tier
 therefore preserved a ten-link loophole for the only party able to reach
 it while offering honest agents nothing. Option 3 is strictly stricter
