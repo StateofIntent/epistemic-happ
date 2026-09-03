@@ -28,6 +28,10 @@ import {
 // ============================================================================
 
 let connection: HolochainConnection | null = null;
+/** Why the automatic Launcher connection failed, if it did. Only ever
+ * set on the hosted path, where there is no form for the practitioner to
+ * retry from and so no other place this could be reported. */
+let hostedConnectError: string | null = null;
 let currentDomain = '';
 let claims: DecodedRecord<Claim>[] = [];
 
@@ -181,6 +185,24 @@ function renderConnectScreen(): HTMLElement {
   const config = loadConfig();
   const section = document.createElement('section');
   section.className = 'connect-screen';
+
+  // Under the Launcher there is nothing to ask and nothing to configure:
+  // the host chose the app interface port and issued the token, and the
+  // Admin API this form's fields describe is not reachable from here at
+  // all (holochain.ts's header, shape 1). Showing the form anyway would
+  // be asking the practitioner to supply values that would then be
+  // ignored — so the only thing rendered on this path is the state of
+  // an attempt already in flight, or the reason one failed.
+  if (HolochainConnection.isHosted()) {
+    const status = document.createElement('p');
+    status.className = 'hint';
+    status.textContent = hostedConnectError
+      ? `Could not reach the conductor this app was launched by. ${hostedConnectError}`
+      : 'Connecting to the conductor that launched this app…';
+    if (hostedConnectError) status.classList.add('error-box');
+    section.appendChild(status);
+    return section;
+  }
 
   const form = document.createElement('form');
   form.className = 'connect-form';
@@ -1547,10 +1569,39 @@ function renderNewClaimTab(): HTMLElement {
 
 render();
 
+// Under a Launcher, connecting needs no input from the practitioner, so
+// waiting for them to press a button they have no information to fill in
+// would be pure friction. Fire it immediately and re-render when it
+// settles, either way — the connect screen above renders both the
+// in-flight and the failed state of exactly this call.
+if (HolochainConnection.isHosted()) {
+  void (async () => {
+    try {
+      connection = await HolochainConnection.connect(loadConfig());
+      markDone('connected');
+      render();
+      void loadFrictionStatus();
+    } catch (err) {
+      hostedConnectError = err instanceof Error ? err.message : String(err);
+      render();
+    }
+  })();
+}
+
 if ('serviceWorker' in navigator) {
-  // Registered from the app's own origin root — see public/sw.js.
-  // Failure here (e.g. served over plain http on a LAN IP, where
-  // service workers are restricted to localhost/https) is non-fatal:
-  // the app still works, it just isn't installable/offline-capable.
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  // Registered RELATIVE to this document, not from the origin root —
+  // same reason vite.config.ts sets `base: './'` (see its comment): once
+  // this UI ships inside a .webhapp, the host chooses the origin and the
+  // UI is not guaranteed to sit at its root. `./sw.js` also scopes the
+  // worker to the app's own directory, which is what is wanted either
+  // way. Failure here (e.g. served over plain http on a LAN IP, where
+  // service workers are restricted to localhost/https, or a host whose
+  // custom protocol does not permit workers at all) is non-fatal: the
+  // app still works, it just isn't installable/offline-capable.
+  // Plain relative string on purpose, NOT `new URL('sw.js',
+  // import.meta.url)`: Vite treats that second form as a build-time
+  // asset reference and resolves it against src/, where sw.js does not
+  // live (it is a public/ file, copied verbatim). A plain './sw.js'
+  // resolves at runtime against the document, which is what is meant.
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
 }

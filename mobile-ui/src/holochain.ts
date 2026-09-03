@@ -8,19 +8,57 @@
 // see the bridge's own comments for the two real bugs (missing Origin
 // header, unauthorized signing credentials) that made this non-obvious.
 //
-// One deliberate simplification, stated plainly rather than left
-// implicit: a real multi-user deployment of a Holochain hApp UI is
-// normally loaded by the Holochain Launcher, which issues the app
-// auth token itself — the UI never touches an AdminWebsocket. This
-// client instead does the admin-auth dance directly, the same way the
-// Twitter bridge and this project's own live-verification harnesses
-// do, because it's meant to run against a practitioner's own locally
-// running conductor (scripts/sandbox.sh, or a real `hc` install), not
-// a production multi-tenant deployment. That's a real, working shape
-// for this project's current stage, not the final production auth
-// model.
+// TWO CONNECTION SHAPES, because this UI now ships in two ways and they
+// are not the same environment. `connect()` below picks between them by
+// asking the client library, never by configuration:
+//
+//   1. LAUNCHER (`launcherEnvPresent()` below — the Holochain Launcher,
+//      or any host injecting `window.__HC_LAUNCHER_ENV__`). This is the path a
+//      `.webhapp` installed by someone else actually takes. The host
+//      has already issued the app authentication token and chosen the
+//      app interface port, and injects both; `AppWebsocket.connect()`
+//      with no arguments reads them itself. Critically, the Launcher
+//      NEVER exposes the Admin API to UI code — so on this path there
+//      is no AdminWebsocket, no `issueAppAuthenticationToken`, and no
+//      `authorizeSigningCredentials`. Zome calls are signed by the
+//      host's own injected signer (`__HC_ZOME_CALL_SIGNER__`), which
+//      the client library's callZome transform prefers over its own
+//      in-page signing whenever it is present.
+//
+//      Getting this wrong is not a degraded experience, it is a dead
+//      bundle: the admin-auth flow below would throw at its very first
+//      line inside a Launcher, before any screen could render.
+//
+//   2. DIRECT ADMIN (everything else — a browser pointed at a
+//      practitioner's own conductor, `scripts/sandbox.sh`, the
+//      live-verification harnesses). No host issues anything, so this
+//      UI does the admin-auth dance itself, mirroring the bridge.
+//      Appropriate for developing against your own local conductor;
+//      still not a production multi-tenant auth model, and still not
+//      what an installed `.webhapp` uses.
 import { AdminWebsocket, AppWebsocket, CellType, type AppClient, type CellId } from '@holochain/client';
 import { decode } from '@msgpack/msgpack';
+
+/** The sentinel a Holochain Launcher injects onto `window` before
+ * loading a hApp's UI, carrying the app interface port and the app
+ * authentication token it has already issued.
+ *
+ * @holochain/client 0.17.1 has its own `isLauncher()` using exactly this
+ * name, but does not re-export it: `lib/index.d.ts` re-exports only
+ * `api`, `hdk`, `types` and `utils`, not `environments/`. Rather than
+ * deep-import a path the package's `exports` map does not expose (which
+ * would break on any repackaging, and is not a supported entry point),
+ * the one-line check is written out here. This is safe to duplicate
+ * precisely because the name is not the library's private detail but
+ * the HOST's contract — `AppWebsocket.connect()` keys its own
+ * url-and-token discovery off the very same `window.__HC_LAUNCHER_ENV__`
+ * that this reads, so the two cannot disagree about whether a Launcher
+ * is present. Confirmed against the installed 0.17.1 source. */
+const LAUNCHER_ENV_KEY = '__HC_LAUNCHER_ENV__';
+
+function launcherEnvPresent(): boolean {
+  return typeof window !== 'undefined' && LAUNCHER_ENV_KEY in window;
+}
 
 export interface ConductorConfig {
   adminUrl: string;
@@ -78,7 +116,38 @@ export class HolochainConnection {
     this.myAgentPubKey = myAgentPubKey;
   }
 
+  /** True when a host (the Holochain Launcher) is supplying the app
+   * connection, meaning this UI must not ask the user for URLs it will
+   * not use and must not reach for an Admin API it cannot have. */
+  static isHosted(): boolean {
+    return launcherEnvPresent();
+  }
+
   static async connect(config: ConductorConfig): Promise<HolochainConnection> {
+    if (launcherEnvPresent()) return HolochainConnection.connectViaLauncher(config);
+    return HolochainConnection.connectViaAdmin(config);
+  }
+
+  /** Launcher path — see this file's header, shape (1). Everything the
+   * connection needs is injected by the host; the only thing this
+   * method may legitimately do is ask for it. */
+  private static async connectViaLauncher(config: ConductorConfig): Promise<HolochainConnection> {
+    // No url and no token argument on purpose: AppWebsocket.connect
+    // reads APP_INTERFACE_PORT and APP_INTERFACE_TOKEN out of the
+    // injected launcher environment itself, and passing our own would
+    // override the host's with values this UI has no way to know.
+    const client = await AppWebsocket.connect();
+
+    // client.myPubKey comes from the AppInfo the host's own token was
+    // issued against — the authoritative answer to "who am I" here.
+    // The admin path below has to dig the same key out of a cell id
+    // only because it enumerates cells for signing authorization,
+    // which this path must not do.
+    return new HolochainConnection(client, config, client.myPubKey);
+  }
+
+  /** Direct-admin path — see this file's header, shape (2). */
+  private static async connectViaAdmin(config: ConductorConfig): Promise<HolochainConnection> {
     // bridge/src/index.ts's own connect() passes an explicit
     // `wsClientOptions.origin` because Node's `ws` client sends no
     // Origin header by default, which a real conductor rejects even
