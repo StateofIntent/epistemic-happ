@@ -8,7 +8,7 @@ import {
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
-  ANTIBODY_PATTERN_KINDS,
+  ANTIBODY_PATTERN_KINDS, type CritiqueSpecies,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -90,6 +90,32 @@ const groundingByClaim = new Map<string, GroundingPath>();
 const retractingClaims = new Set<string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
 const flaggingClaims = new Set<string>();
+// --- Critique taxonomy ------------------------------------------------
+// The evolving vocabulary of critique *kinds*. CritiqueMode is the
+// protocol's fixed five-variant axis; a CritiqueSpecies is the open one
+// a domain authors for itself, and domains/climate.json and
+// nutrition.json each seed a real two-level set that no screen could
+// show until now.
+//
+// NOT SORTED BY ADOPTION, ANYWHERE, AND THAT IS DELIBERATE. The
+// coordinator exposes get_critique_species_adoption_count as a
+// *singular* read — one hash in, one count out — and its own doc comment
+// records why there is intentionally no "all species ranked by
+// adoption": that would recreate the comparative leaderboard Invariant
+// #1 and README.md §4.4's first constraint exist to refuse. Ranking
+// client-side by the number would reintroduce it one layer up and be
+// exactly the "lens that aims itself" §4.4 names. So the tree renders in
+// taxonomy order — parents, then their children — and the count is shown
+// beside each species as a fact about it, never as its position.
+let critiqueSpecies: DecodedRecord<CritiqueSpecies>[] = [];
+/** species entryHash (b64) -> live adoption count, counted from real
+ * CritiqueToSpecies links at query time. Absent while in flight or if
+ * the read failed; the UI says "adoption unavailable" rather than 0,
+ * because 0 is a real and different answer. */
+const adoptionBySpecies = new Map<string, number>();
+/** whether the propose-a-species form is open */
+let proposingSpecies = false;
+
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -270,6 +296,11 @@ function renderConnectScreen(): HTMLElement {
       markDone('connected');
       render();
       void loadFrictionStatus();
+      // The critique form's species picker reads critiqueSpecies, and a
+      // practitioner reaches that form without ever opening the taxonomy
+      // tab. Loaded once on connect so the vocabulary is offered where
+      // it is actually used, not only where it is browsed.
+      void loadTaxonomy().catch(() => { /* tab shows its own empty state */ });
     } catch (err) {
       errorBox.hidden = false;
       errorBox.textContent = err instanceof Error ? err.message : String(err);
@@ -341,7 +372,7 @@ function renderNextStep(): HTMLElement | null {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'membranes' | 'new-claim';
+type Tab = 'browse' | 'membranes' | 'taxonomy' | 'new-claim';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -350,7 +381,8 @@ function renderTabs(): HTMLElement {
   const nav = document.createElement('nav');
   nav.className = 'tab-bar';
   const tabs: Array<[Tab, string]> = [
-    ['browse', 'Browse'], ['membranes', 'Domains'], ['new-claim', 'New Claim'],
+    ['browse', 'Browse'], ['membranes', 'Domains'],
+    ['taxonomy', 'Critique Types'], ['new-claim', 'New Claim'],
   ];
   for (const [tab, label] of tabs) {
     const btn = document.createElement('button');
@@ -368,7 +400,8 @@ function renderTabs(): HTMLElement {
   content.appendChild(
     activeTab === 'browse' ? renderBrowseTab()
       : activeTab === 'membranes' ? renderMembranesTab()
-        : renderNewClaimTab(),
+        : activeTab === 'taxonomy' ? renderTaxonomyTab()
+          : renderNewClaimTab(),
   );
   wrap.appendChild(content);
 
@@ -950,7 +983,39 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     form.appendChild(reason);
   }
 
+  // The species picker — the write half of the taxonomy surface. Without
+  // it `species` was hardcoded null at the one place a critique is
+  // created, so every species read 0 adoptions forever and the taxonomy
+  // was a vocabulary nobody could speak. This is the same read/write
+  // asymmetry the reinforcement work closed, in a different subsystem.
+  //
+  // OPTIONAL BY DESIGN. `Critique.species` is `Option<EntryHash>` in the
+  // integrity zome and nothing validates its presence, so requiring one
+  // here would be the UI inventing a rule the protocol does not enforce
+  // — README.md §4.4's first constraint. It stays a free choice, and
+  // "No specific type" is a real, first-class answer rather than a
+  // placeholder.
+  const speciesSelect = document.createElement('select');
+  speciesSelect.dataset.testid = 'critique-species-select';
+  const anySpecies = document.createElement('option');
+  anySpecies.value = '';
+  anySpecies.textContent = 'No specific type';
+  speciesSelect.appendChild(anySpecies);
+  for (const sp of critiqueSpecies) {
+    const opt = document.createElement('option');
+    opt.value = b64(sp.entryHash);
+    opt.textContent = sp.entry.name;
+    speciesSelect.appendChild(opt);
+  }
+  // Hidden only when the taxonomy is genuinely empty — nothing to pick
+  // from is structurally impossible to act on, which is §4.5's rule for
+  // hiding rather than disabling. A spent budget disables (above); an
+  // empty vocabulary has nothing to offer at all.
+  if (critiqueSpecies.length === 0) speciesSelect.hidden = true;
+  if (blocked) speciesSelect.disabled = true;
+
   form.appendChild(modeSelect);
+  form.appendChild(speciesSelect);
   form.appendChild(textarea);
   form.appendChild(submitBtn);
   form.appendChild(errorBox);
@@ -969,7 +1034,9 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       timestamp: nowMicros(),
       replication_attempted: false,
       evidence_hashes: [],
-      species: null,
+      species: speciesSelect.value
+        ? critiqueSpecies.find((sp) => b64(sp.entryHash) === speciesSelect.value)?.entryHash ?? null
+        : null,
     };
     try {
       await connection.callZome('create_critique', critique);
@@ -1173,6 +1240,227 @@ async function joinMembrane(membrane: DecodedRecord<Membrane>) {
   );
   membersByMembrane.set(b64(membrane.entryHash), members);
   render();
+}
+
+// --- Critique taxonomy tab -------------------------------------------
+
+/** The whole taxonomy, then each species' live adoption count.
+ *
+ * Two reads, not one, because the protocol deliberately offers no
+ * combined "species with counts" call (see the note on critiqueSpecies).
+ * The counts are fetched per species and each is caught on its own, the
+ * same degradation rule the claim badges and membrane aggregates use: a
+ * species whose count read fails still lists, showing that its adoption
+ * is unavailable rather than silently showing zero. */
+async function loadTaxonomy() {
+  if (!connection) return;
+  markDone('viewed-taxonomy');
+  const records = await connection.callZome<any[]>('get_all_critique_species', null);
+  critiqueSpecies = decodeRecords<CritiqueSpecies>(records);
+  adoptionBySpecies.clear();
+  render();
+  void loadAdoptionCounts();
+}
+
+async function loadAdoptionCounts() {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(critiqueSpecies.map(async (species) => {
+    try {
+      // The count is keyed by ENTRY hash, not action hash — the link base
+      // is the species entry itself (CritiqueToSpecies), and passing the
+      // action hash returns a confident, wrong zero rather than an error.
+      const count = await conn.callZome<number>(
+        'get_critique_species_adoption_count', species.entryHash,
+      );
+      adoptionBySpecies.set(b64(species.entryHash), count);
+    } catch {
+      // Left absent rather than set to 0 — see adoptionBySpecies.
+    }
+  }));
+  render();
+}
+
+/** Children of a species, by entry hash. The DHT has SpeciesToParent
+ * links, but there is no coordinator read that walks them, so the tree
+ * is reassembled client-side from each species' own parent_species
+ * field — which every species carries and which validation already
+ * constrains. Purely structural: no ordering judgement is applied. */
+function childrenOf(parentKey: string | null): DecodedRecord<CritiqueSpecies>[] {
+  return critiqueSpecies.filter((s) => {
+    const parent = s.entry.parent_species;
+    return parentKey === null ? !parent : !!parent && b64(parent) === parentKey;
+  });
+}
+
+function renderTaxonomyTab(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'taxonomy-tab';
+
+  const intro = document.createElement('p');
+  intro.className = 'tab-intro';
+  intro.textContent =
+    'The vocabulary of critique this community has authored. A critique '
+    + 'mode is fixed by the protocol; a species is not — anyone may propose one, '
+    + 'and it earns standing only by being used.';
+  wrap.appendChild(intro);
+
+  const proposeBtn = document.createElement('button');
+  proposeBtn.className = 'secondary';
+  proposeBtn.dataset.testid = 'propose-species-toggle';
+  proposeBtn.textContent = proposingSpecies ? 'Cancel' : 'Propose a critique type';
+  proposeBtn.onclick = () => { proposingSpecies = !proposingSpecies; render(); };
+  wrap.appendChild(proposeBtn);
+  if (proposingSpecies) wrap.appendChild(renderProposeSpeciesForm());
+
+  if (critiqueSpecies.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.dataset.testid = 'taxonomy-empty';
+    empty.textContent =
+      'No critique types have been proposed yet. A domain template '
+      + '(domains/climate.json, domains/nutrition.json) seeds a set, or propose one above.';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'species-tree';
+  list.dataset.testid = 'species-tree';
+  // Roots first, each followed by its own children — taxonomy order, not
+  // adoption order. See the note on critiqueSpecies for why that is a
+  // constraint rather than a default.
+  for (const root of childrenOf(null)) {
+    list.appendChild(renderSpeciesCard(root, 0));
+    for (const child of childrenOf(b64(root.entryHash))) {
+      list.appendChild(renderSpeciesCard(child, 1));
+    }
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function renderSpeciesCard(species: DecodedRecord<CritiqueSpecies>, depth: number): HTMLElement {
+  const card = document.createElement('article');
+  card.className = depth > 0 ? 'species-card child' : 'species-card';
+  card.dataset.testid = 'species-card';
+  card.dataset.species = species.entry.name;
+
+  const head = document.createElement('div');
+  head.className = 'species-head';
+
+  const name = document.createElement('h3');
+  name.className = 'species-name';
+  name.textContent = species.entry.name;
+  head.appendChild(name);
+
+  // The count is stated as a fact about this species, never as a rank.
+  // "adoption unavailable" and "0 critiques" are different answers and
+  // are rendered differently on purpose.
+  const key = b64(species.entryHash);
+  const adoption = document.createElement('span');
+  adoption.className = 'species-adoption';
+  adoption.dataset.testid = 'species-adoption';
+  if (adoptionBySpecies.has(key)) {
+    const n = adoptionBySpecies.get(key)!;
+    adoption.textContent = n === 1 ? 'used by 1 critique' : `used by ${n} critiques`;
+  } else {
+    adoption.textContent = 'adoption unavailable';
+    adoption.classList.add('unavailable');
+  }
+  head.appendChild(adoption);
+  card.appendChild(head);
+
+  if (species.entry.required_evidence.length > 0) {
+    const req = document.createElement('ul');
+    req.className = 'species-evidence';
+    const label = document.createElement('li');
+    label.className = 'species-evidence-label';
+    label.textContent = 'A critique of this type must cite:';
+    req.appendChild(label);
+    for (const item of species.entry.required_evidence) {
+      const li = document.createElement('li');
+      li.textContent = item;
+      req.appendChild(li);
+    }
+    card.appendChild(req);
+  }
+
+  const proposer = document.createElement('p');
+  proposer.className = 'species-proposer';
+  proposer.textContent = `proposed by ${short(species.entry.proposer)}`;
+  card.appendChild(proposer);
+
+  return card;
+}
+
+function renderProposeSpeciesForm(): HTMLElement {
+  const form = document.createElement('form');
+  form.className = 'propose-species-form';
+  form.dataset.testid = 'propose-species-form';
+
+  const nameInput = document.createElement('input');
+  nameInput.placeholder = 'Name, e.g. SampleSizeCritique';
+  nameInput.required = true;
+  nameInput.dataset.testid = 'species-name-input';
+
+  // Parent is optional: a species may be a root of its own. Only roots
+  // are offered, so the tree stays the two levels the render walks.
+  const parentSelect = document.createElement('select');
+  parentSelect.dataset.testid = 'species-parent-select';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'No parent (a new root type)';
+  parentSelect.appendChild(none);
+  for (const root of childrenOf(null)) {
+    const opt = document.createElement('option');
+    opt.value = b64(root.entryHash);
+    opt.textContent = `Child of ${root.entry.name}`;
+    parentSelect.appendChild(opt);
+  }
+
+  const evidenceInput = document.createElement('input');
+  evidenceInput.placeholder = 'Evidence a critique of this type must cite (one per line, optional)';
+  evidenceInput.dataset.testid = 'species-evidence-input';
+
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.textContent = 'Propose';
+  const errorBox = document.createElement('div');
+  errorBox.className = 'error-box';
+  errorBox.hidden = true;
+
+  form.append(nameInput, parentSelect, evidenceInput, submit, errorBox);
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!connection) return;
+    errorBox.hidden = true;
+    submit.disabled = true;
+    const parentKey = parentSelect.value;
+    const parent = parentKey
+      ? critiqueSpecies.find((sp) => b64(sp.entryHash) === parentKey)?.entryHash ?? null
+      : null;
+    try {
+      await connection.callZome('create_critique_species', {
+        name: nameInput.value,
+        parent_species: parent,
+        required_evidence: evidenceInput.value
+          .split('\n').map((l) => l.trim()).filter((l) => l.length > 0),
+        proposer: connection.myAgentPubKey,
+        created_at: nowMicros(),
+      });
+      proposingSpecies = false;
+      await loadTaxonomy();
+    } catch (err) {
+      errorBox.hidden = false;
+      errorBox.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+
+  return form;
 }
 
 function renderMembranesTab(): HTMLElement {
@@ -1865,6 +2153,11 @@ if (HolochainConnection.isHosted()) {
       markDone('connected');
       render();
       void loadFrictionStatus();
+      // Same reason as the manual connect path above: the species picker
+      // lives in the critique form, which a Launcher-installed user
+      // reaches without visiting the taxonomy tab. Both connect paths
+      // load it, or the picker is empty on exactly the path that ships.
+      void loadTaxonomy().catch(() => { /* tab shows its own empty state */ });
     } catch (err) {
       hostedConnectError = err instanceof Error ? err.message : String(err);
       render();

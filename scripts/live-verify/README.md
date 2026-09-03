@@ -45,6 +45,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `affordance-surfacing` | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
 | `write-symmetry` | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
 | `launcher-packaging` | browser | 1 | The UI works on the path an installed `.webhapp` actually takes |
+| `taxonomy-ui` | browser | 1 | The critique vocabulary renders as a tree, is writable, and is never ranked |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 

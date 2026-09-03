@@ -692,3 +692,91 @@ button:disabled { opacity: 0.6; cursor: default; }
   min-height: 4.5rem;
   resize: vertical;
 }
+
+/* --- Critique taxonomy ------------------------------------------------
+   The tree is indented by depth and nothing else. There is deliberately
+   no visual weighting by adoption — no size, colour or ordering derived
+   from the count — because that would be the comparative ranking
+   README.md §4.4 and Invariant #1 refuse, reintroduced as styling. The
+   count is rendered as plain text beside the name, the same for every
+   species. */
+
+.taxonomy-tab .tab-intro {
+  opacity: 0.8;
+  margin-bottom: 0.75rem;
+}
+
+.species-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.species-card {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+}
+
+/* Children are indented and share the parent's border colour rather than
+   being tinted differently — the relationship is structural, not a
+   status. */
+.species-card.child {
+  margin-left: 1.25rem;
+  border-left-width: 3px;
+}
+
+.species-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.species-name {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.species-adoption {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* "adoption unavailable" is not "0 critiques" and must not read like it. */
+.species-adoption.unavailable {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+.species-evidence {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.species-evidence-label {
+  list-style: none;
+  margin-left: -1.1rem;
+  opacity: 0.7;
+}
+
+.species-proposer {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  opacity: 0.55;
+}
+
+.propose-species-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+}

@@ -58,7 +58,8 @@ export type Milestone =
   | 'read-critiques'
   | 'wrote-critique'
   | 'wrote-claim'
-  | 'viewed-domains';
+  | 'viewed-domains'
+  | 'viewed-taxonomy';
 
 interface OnboardingState {
   seen: Concept[];
