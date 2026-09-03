@@ -9,6 +9,10 @@ import {
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
 } from './types';
 import {
+  layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
+  type CritiqueNode,
+} from './graph';
+import {
   hasSeen, markSeen, markDone, nextStep,
   domainDetailExpanded, setDomainDetailExpanded,
   CONCEPT_NOTES, type Concept,
@@ -41,6 +45,16 @@ const antibodiesByClaim = new Map<string, DecodedRecord<AntibodyPattern>[]>();
 const retractionsByClaim = new Map<string, DecodedRecord<Retraction>[]>();
 /** critique actionHash (b64) -> effective conductance of its SynapticLink */
 const conductanceByCritique = new Map<string, number>();
+
+// --- Critique structure (spatial view) --------------------------------
+// A Critique is itself a valid critique target, so disagreement here is
+// a tree rather than a flat list — and the critique panel only ever
+// fetches depth 1. These hold the deeper structure for the claims whose
+// graph the user has actually opened.
+/** claim entryHash (b64) -> its full critique tree */
+const critiqueTreeByClaim = new Map<string, CritiqueNode[]>();
+/** claim entryHash (b64) -> whether the spatial view is open */
+const graphOpenClaims = new Set<string>();
 
 // --- Membranes -------------------------------------------------------
 // A domain is a free-text string on a Claim; a Membrane is that domain
@@ -436,8 +450,33 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   };
   card.appendChild(toggleBtn);
 
+  // The spatial view sits beside the list rather than replacing it —
+  // see graph.ts. It is opt-in per claim because building the tree is a
+  // recursive fan-out of zome calls, and because most reading does not
+  // need it: the list is the primary view and this is the one that can
+  // show depth.
+  const graphOpen = graphOpenClaims.has(key);
+  const graphBtn = document.createElement('button');
+  graphBtn.className = 'link-button';
+  graphBtn.dataset.testid = 'graph-toggle';
+  graphBtn.textContent = graphOpen ? 'Hide structure' : 'View critique structure';
+  graphBtn.onclick = async () => {
+    if (graphOpen) {
+      graphOpenClaims.delete(key);
+      render();
+    } else {
+      graphOpenClaims.add(key);
+      render();
+      if (!critiqueTreeByClaim.has(key)) await loadCritiqueTree(claim);
+    }
+  };
+  card.appendChild(graphBtn);
+
   if (isExpanded) {
     card.appendChild(renderCritiquePanel(claim));
+  }
+  if (graphOpen) {
+    card.appendChild(renderCritiqueGraph(claim));
   }
 
   return card;
@@ -899,6 +938,171 @@ function renderCrossDomain(cross: CrossDomainCritique[]): HTMLElement {
   wrap.textContent =
     `${cross.length} critique${cross.length === 1 ? '' : 's'} from agents whose ` +
     `claims live elsewhere${domains.length ? ` (${domains.join(', ')})` : ''}`;
+  return wrap;
+}
+
+// --- Spatial view of a claim's critique structure ---------------------
+//
+// See graph.ts for why this exists and why it is SVG rather than canvas.
+// In short: critiques of critiques are real structure the flat list
+// cannot show, and SVG keeps the result focusable, labelled and
+// keyboard-reachable rather than trading accessibility for pixels.
+
+const MAX_TREE_DEPTH = 3;
+
+/** Fetches a claim's critique tree, recursively, bounded by depth.
+ *
+ * Bounded because fan-out is unbounded in principle: every critique can
+ * itself be critiqued, so an unlimited walk on a busy claim is an
+ * unbounded number of zome calls fired from a UI thread. Three levels is
+ * enough to see the shape of an argument; the list view remains the
+ * complete record. */
+async function loadCritiqueTree(claim: DecodedRecord<Claim>) {
+  if (!connection) return;
+  const conn = connection;
+
+  const fetchLevel = async (
+    targetHash: Uint8Array, depth: number,
+  ): Promise<CritiqueNode[]> => {
+    if (depth > MAX_TREE_DEPTH) return [];
+    const records = await conn.callZome<any[]>('get_critiques_for', targetHash);
+    const critiques = decodeRecords<Critique>(records);
+    return Promise.all(critiques.map(async (critique) => {
+      let conductance: number | null = null;
+      try {
+        const linkHash = await conn.callZome<Uint8Array | null>('find_synaptic_link', {
+          base: targetHash, target_action: critique.actionHash,
+        });
+        if (linkHash) {
+          conductance = await conn.callZome<number>('get_effective_conductance', linkHash);
+        }
+      } catch {
+        // An unreadable conductance renders as a plain edge, never as a
+        // missing node — the structure matters more than its weight.
+      }
+      return {
+        entryHash: critique.entryHash,
+        actionHash: critique.actionHash,
+        entry: critique.entry,
+        conductance,
+        children: await fetchLevel(critique.entryHash, depth + 1),
+      };
+    }));
+  };
+
+  const tree = await fetchLevel(claim.entryHash, 1);
+  critiqueTreeByClaim.set(b64(claim.entryHash), tree);
+  render();
+}
+
+/** The graph itself.
+ *
+ * Every node is a real, focusable SVG element with its own accessible
+ * label, so this is navigable by keyboard and readable by a screen
+ * reader — which is the whole reason it is not a canvas. The plain-text
+ * list below it is not a fallback but a peer view: it carries the same
+ * nodes in the same order, and remains the primary way to read them. */
+function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
+  const key = b64(claim.entryHash);
+  const wrap = document.createElement('div');
+  wrap.className = 'critique-graph';
+  wrap.dataset.testid = 'critique-graph';
+
+  const tree = critiqueTreeByClaim.get(key);
+  if (tree === undefined) {
+    const loading = document.createElement('p');
+    loading.className = 'hint';
+    loading.textContent = 'Reading the critique structure…';
+    wrap.appendChild(loading);
+    return wrap;
+  }
+
+  const total = countNodes(tree);
+  const depth = maxDepth(tree);
+
+  const summary = document.createElement('p');
+  summary.className = 'graph-summary';
+  summary.dataset.testid = 'graph-summary';
+  summary.textContent = total === 0
+    ? 'No critiques yet — nothing has engaged with this claim.'
+    : `${total} critique${total === 1 ? '' : 's'}, ${depth} level${depth === 1 ? '' : 's'} deep`
+      + (depth > 1 ? ' — critiques of critiques the list view cannot show.' : '.');
+  wrap.appendChild(summary);
+
+  if (total === 0) return wrap;
+
+  const { nodes, edges, width, height } = layoutTree(key, claim.entry.content, tree);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('role', 'group');
+  svg.setAttribute('aria-label',
+    `Critique structure: ${total} critiques across ${depth} levels`);
+  svg.classList.add('graph-svg');
+
+  for (const edge of edges) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', String(edge.x1));
+    line.setAttribute('y1', String(edge.y1));
+    line.setAttribute('x2', String(edge.x2));
+    line.setAttribute('y2', String(edge.y2));
+    line.setAttribute('class', 'graph-edge');
+    // Conductance as opacity: the protocol's own value, shown as a
+    // visual attribute exactly as the list shows it. Floored so a faded
+    // connection stays visible — a weak critique is still present.
+    const strength = edge.conductance ?? 1;
+    line.setAttribute('stroke-opacity', String(Math.max(0.25, Math.min(1, strength))));
+    svg.appendChild(line);
+  }
+
+  for (const node of nodes) {
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', String(node.x));
+    circle.setAttribute('cy', String(node.y));
+    // Uniform radius, deliberately. Sizing by conductance or by how much
+    // engagement a node attracted would be this client asserting which
+    // critique matters more — the canonical comparative signal
+    // Invariant #1 forbids. Size carries no information here.
+    circle.setAttribute('r', String(NODE_RADIUS));
+    circle.setAttribute('class', `graph-node ${node.kind}`);
+    circle.setAttribute('tabindex', '0');
+    circle.setAttribute('role', 'button');
+    const label = node.kind === 'claim'
+      ? `Claim: ${node.content}`
+      : `${node.mode} critique at level ${node.depth}: ${node.content}`;
+    circle.setAttribute('aria-label', label);
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = label;
+    circle.appendChild(title);
+    svg.appendChild(circle);
+  }
+
+  wrap.appendChild(svg);
+
+  // The same nodes as text, in the same order. Not a fallback — the
+  // readable peer of the picture, and the thing a screen reader or a
+  // keyboard user actually works through.
+  const list = document.createElement('ol');
+  list.className = 'graph-node-list';
+  list.dataset.testid = 'graph-node-list';
+  // Built from the tree in reading order, NOT from the placed nodes —
+  // layout emits those post-order, which reads the argument backwards.
+  // See flattenPreOrder's own comment.
+  for (const { node, depth } of flattenPreOrder(tree)) {
+    const li = document.createElement('li');
+    li.style.marginLeft = `${(depth - 1) * 0.9}rem`;
+    li.dataset.depth = String(depth);
+    const mode = document.createElement('span');
+    mode.className = 'critique-mode';
+    mode.textContent = node.entry.critique_mode;
+    li.appendChild(mode);
+    const text = document.createElement('span');
+    text.textContent = ` ${node.entry.content}`;
+    li.appendChild(text);
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
+
   return wrap;
 }
 
