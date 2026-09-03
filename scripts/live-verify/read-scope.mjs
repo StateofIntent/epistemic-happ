@@ -15,8 +15,21 @@
 // purpose is cross-agent critique, in which nobody can find anybody
 // else's claims.
 //
-// This harness settles that question with two real agents on one
-// conductor rather than by reasoning about the HDK's contract.
+// This harness settled that question with two real agents on one
+// conductor rather than by reasoning about the HDK's contract, and now
+// keeps the answer honest as the reads get fixed one at a time.
+//
+// TWO ARE FIXED: get_claims_by_domain and get_all_critique_species now
+// read DHT indexes (DomainToClaim, TaxonomyToSpecies) and the checks
+// below assert the CORRECTED behaviour — they are the regression guard
+// for those indexes, and go red if an index write or read ever breaks.
+//
+// THREE REMAIN chain-local, and the checks below still assert that,
+// because an accurate map of a partly-fixed system is worth more than
+// one that implies the whole class is done: get_critiques_by_mode,
+// get_membranes, get_all_constitutions. Each raises its own design
+// question about whether a global firehose index should exist at all —
+// see SPEC §10.0.
 //
 // THE CONTROL IS THE WHOLE DESIGN. A read returning zero for agent 2
 // proves nothing on its own — the entry might simply not have gossiped
@@ -160,17 +173,24 @@ async function main() {
   log(`  get_claims_by_agent  (get_links, DHT)   -> ${viaLinks.length}`);
   check('CONTROL: the claim IS present and reachable for agent 2', viaLinks.length === 1);
 
+  // FIXED — was 0, is now 1. get_claims_by_domain reads the
+  // DomainToClaim index rather than the caller's own chain. Kept here,
+  // asserting the CORRECTED behaviour, so this file stays the live map
+  // of SPEC §10.0 rather than a museum piece: if the index write or read
+  // ever regresses, this is the check that goes red.
   const viaQuery = await agent2.call('get_claims_by_domain', DOMAIN);
-  log(`  get_claims_by_domain (query, own chain) -> ${viaQuery.length}`);
-  check('get_claims_by_domain does NOT see another agent\'s claim', viaQuery.length === 0);
+  log(`  get_claims_by_domain (DomainToClaim, DHT) -> ${viaQuery.length}`);
+  check('FIXED: get_claims_by_domain DOES see another agent\'s claim', viaQuery.length === 1);
 
   const critiques = await agent2.call('get_critiques_for', claimEntryHash);
   log(`  get_critiques_for    (get_links, DHT)   -> ${critiques.length}`);
   check('CONTROL: critiques on that claim ARE visible to agent 2', critiques.length === 1);
 
+  // FIXED alongside it, same pattern via TaxonomyToSpecies.
   const species = await agent2.call('get_all_critique_species', null);
-  log(`  get_all_critique_species (query)        -> ${species.length}`);
-  check('get_all_critique_species does NOT see another agent\'s species', species.length === 0);
+  log(`  get_all_critique_species (TaxonomyToSpecies, DHT) -> ${species.length}`);
+  check('FIXED: get_all_critique_species DOES see another agent\'s species',
+    species.length === 1);
 
   const byMode = await agent2.call('get_critiques_by_mode', 'Logical');
   log(`  get_critiques_by_mode (query)           -> ${byMode.length}`);
