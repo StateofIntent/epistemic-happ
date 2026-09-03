@@ -1,5 +1,66 @@
 # Metabolic Biosignalling Currency Layer — Design Brief v2
 
+> ## STATUS: THE LAYER DESCRIBED BELOW WAS BUILT, VERIFIED, AND THEN REMOVED
+>
+> Everything from §2 onward describes a mutual-credit ledger —
+> `MutualCreditTransfer`, `CreditBurn`, `get_credit_balance`, and a real
+> countersigning flow — that no longer exists in this codebase. The
+> document is kept because what was learned building and removing it is
+> more valuable than the code was, and because §7.1's three defects are
+> a standing lesson about what unit tests cannot reach.
+>
+> **Why it was removed.** Three findings, in the order they landed:
+>
+> 1. The burn-to-extend tier coupling this ledger to `SynapticLink`
+>    friction was **unreachable** by any honest client (§7.2), and worse
+>    than inert — it granted ten extra links to the one client that
+>    could reach it, for burns nothing funded. Removed first.
+> 2. That left the ledger with **no consumer at all**. Nothing in the
+>    protocol read `get_credit_balance` to make a decision.
+> 3. `get_credit_balance` was a **canonical per-agent scalar**, identical
+>    for every caller because the demurrage half-life is a protocol
+>    constant, over an agent set any client can enumerate with
+>    `get_membrane_members`. That is Invariant #1's leaderboard,
+>    prevented only by the protocol declining to sort rather than by
+>    construction — unlike `AttestationPolicy`, whose answers are
+>    caller-scoped and so legitimately differ between observers.
+>
+> A defect with a fix argues for fixing. A defect in a mechanism with no
+> consumer, on a substrate where its central invariant (a checkable
+> balance) is unachievable, argues for removal.
+>
+> **What replaces it: non-transferable regenerating capacity.** A
+> per-agent budget, spent at differing rates by differing acts,
+> refilling over time, that cannot move between agents. This dissolves
+> every problem above rather than mitigating them: no transfers means no
+> double-spend and no global balance question, each agent's own chain is
+> authoritative and verifiable exactly as friction checks already are,
+> and — decisively — it never needs to answer a question about another
+> agent, so it has no leaderboard surface at all.
+>
+> **The biology is why, and it is diagnostic rather than decorative.**
+> Cells do not trade ATP. Metabolic energy is local; what crosses a
+> membrane is signal — and when ATP itself crosses one it *stops being
+> energy and becomes signal* (purinergic signalling). Cells do share
+> substrates, but through a circulatory commons, never as a bilateral
+> debt: no cell owes another cell energy. This protocol's signalling
+> layers — `SynapticLink` conductance, `Critique`, `AttestationGrant` —
+> are the parts that work. The currency layer made energy itself
+> transferable, which is the one thing metabolism does not do, and took
+> on a distributed-systems problem in exchange for a property biology
+> never asked for. The metaphor predicted the failure.
+>
+> **Capacity is named as the direction and deliberately not built.** Its
+> per-action rates encode which acts should cost more than others, and
+> that is a design judgement needing a stated need rather than an
+> invented one. Building a mechanism for structural reasons rather than
+> a felt need is precisely how the burn tier went wrong. The open
+> question is therefore: *which act do you want to cost more than
+> another, that separately tuned flat caps cannot already express?*
+> Until that has an answer, flat caps plus accountability
+> (`Constitution`/`required_promises`) plus vouching (`AttestationGrant`)
+> are the cost model, and they may simply be sufficient.
+
 **Status:** supersedes an earlier, informal brief of the same name that
 circulated outside this repository. This version is written *from* the
 actual, compiling, tested code in `dna/coordinator/src/lib.rs` and

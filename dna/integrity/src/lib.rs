@@ -1,5 +1,4 @@
 use hdi::prelude::*;
-use std::collections::HashSet;
 
 // ============================================================================
 // ENTRY TYPES
@@ -216,92 +215,7 @@ pub struct FederationRecord {
     pub created_at: u64,
 }
 
-// ============================================================================
-// METABOLIC BIOSIGNALLING CURRENCY — slow reserve layer
-//
-// The "Token/cost layer" roadmap item Membrane's own doc comment above
-// points to. Two entry types, not one, because they carry different
-// consent requirements:
-//
-//   MutualCreditTransfer moves standing from one agent to another, so
-//   BOTH parties must consent — see below, and this zome's `validate`
-//   dispatcher for the countersigning enforcement (an entry that reaches
-//   validation as a plain, non-countersigned `Entry::App` is rejected
-//   outright; see the header comment there for why this can't be
-//   checked from inside a normal per-entry-type validate_* function).
-//   Real reference precedent: holochain-open-dev/community-mutual-credit
-//   and a minimal implementation by vanarchist both document
-//   countersigning as the fix for a Holochain-specific attack —
-//   because Holochain has no global consensus, an agent could otherwise
-//   roll back their own local chain and double-spend. A prior,
-//   uncountersigned draft of this entry type (recorded in
-//   docs/metabolic-biosignalling-currency-brief.md) named this
-//   explicitly as its top open gap; this is that gap closed.
-//
-//   CreditBurn destroys the burning agent's OWN standing — no other
-//   party's consent is needed to spend your own value, so it's an
-//   ordinary single-signer entry, the same shape every other entry type
-//   in this zome already uses. Making a burn a real entry rather than a
-//   same-call parameter (an earlier draft's design) is what would let
-//   any future cost mechanism verify it independently: a claimed burn
-//   that exists only as a function argument can't be checked by anyone;
-//   a burn that is its own validated, chain-scanned entry can. No such
-//   mechanism reads burns today — see the REMOVED note beside this
-//   zome's friction constants.
-//
-// Both decay rather than delete when read (get_credit_balance,
-// coordinator zome) — Invariant #6 ("nothing is deleted — only
-// witnessed or atrophied") and #9 ("death is required") applied to
-// value the same way conductance decay (above) already applies them to
-// connection strength. Precedent: Silvio Gesell's 1906 Freigeld design,
-// tested at Wörgl in 1932, still running today as the Chiemgauer —
-// currency that loses value the longer it sits unspent, rather than
-// accruing like gold, on the reasoning that money should behave like an
-// organic good (or a hormone: metabolized/cleared over time whether
-// used or not) rather than a static store.
-//
-// Neither entry type computes or exposes anything comparative across
-// agents — a balance is always read for one specific agent, on that
-// agent's own request or a caller's explicit choice to look, never
-// ranked against anyone else's. This keeps the whole layer inside
-// Invariant #1 the same way AttestationPolicy and ConductancePolicy
-// already do: raw, real, signed history: yes; a protocol-computed
-// leaderboard: never.
-// ============================================================================
 
-/// A countersigned transfer of standing from `from` to `to`. Both
-/// agents must accept the same countersigning session before this entry
-/// can be committed — see this zome's `validate` dispatcher.
-#[hdk_entry_helper]
-#[derive(Clone, PartialEq)]
-pub struct MutualCreditTransfer {
-    pub from: AgentPubKey,
-    pub to: AgentPubKey,
-    pub amount: f32,
-    /// e.g. "adoption", "critique_quality" — an open, non-authoritative
-    /// label for why the transfer happened, the same "informal, not
-    /// authoritative" status WorldlineTrace.expertise_tags already has.
-    pub reason: String,
-    pub timestamp: u64,
-}
-
-/// A single agent destroying some of their own standing — no
-/// counterparty, so no countersigning: nobody else's consent is needed
-/// to spend what's yours. `reason` is an open, non-authoritative label
-/// distinguishing what the burn was for; **no reason string carries any
-/// protocol-level meaning.** One once did ("burn_friction", read by the
-/// SynapticLink burn-to-extend tier) — that tier was removed after a
-/// live pass showed it unreachable, so a burn's only effect today is on
-/// the burning agent's own get_credit_balance. See the REMOVED note
-/// beside this zome's friction constants.
-#[hdk_entry_helper]
-#[derive(Clone, PartialEq)]
-pub struct CreditBurn {
-    pub agent: AgentPubKey,
-    pub amount: f32,
-    pub reason: String,
-    pub timestamp: u64,
-}
 
 /// An agent's constitution - their voluntary promises.
 /// Makes Promise Theory explicit in the DHT, not just implicit in validation rules.
@@ -538,18 +452,6 @@ pub enum LinkTypes {
                                   // confirmed externally, not derivable
                                   // from this DHT alone.
 
-    // Metabolic biosignalling currency — see MutualCreditTransfer/
-    // CreditBurn's own doc comment above. Both link types run the same
-    // agent-anchor discoverability pattern AgentToClaim/AgentToMew
-    // already establish: base = agent_anchor_hash (coordinator zome),
-    // target = the entry's own hash. AgentToCreditTransfer is created
-    // twice per transfer — once from each party's own anchor, each
-    // independently, after each party's own countersigned commit —
-    // for bilateral discoverability; AgentToCreditBurn once, since a
-    // burn only ever has the one party.
-    AgentToCreditTransfer,
-    AgentToCreditBurn,
-
     // Synaptic / Hebbian links
     SynapticLink,
     Reinforcement,          // SynapticLink's own ActionHash -> reinforcing
@@ -599,8 +501,6 @@ pub enum EntryTypes {
     ExternalCritique(ExternalCritique),
     AntibodyPattern(AntibodyPattern),
     FederationRecord(FederationRecord),
-    MutualCreditTransfer(MutualCreditTransfer),
-    CreditBurn(CreditBurn),
 }
 
 // ============================================================================
@@ -609,53 +509,6 @@ pub enum EntryTypes {
 
 #[hdk_extern]
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
-    // MutualCreditTransfer's countersigning requirement has to be
-    // checked against the RAW Entry, before `.flattened()` below
-    // unwraps a CounterSign-wrapped entry down to just the decoded app
-    // struct — `OpEntry::CreateEntry`'s `app_entry` looks identical
-    // whether or not a real countersigning session produced it, so
-    // once flattened there is no way left to tell a genuinely
-    // countersigned commit apart from a plain, single-signer
-    // `Entry::App` that merely happens to decode to the same struct.
-    // See MutualCreditTransfer's own doc comment (ENTRY TYPES, above)
-    // for the reference precedent this closes the gap against.
-    if let Op::StoreEntry(StoreEntry { action, entry }) = &op {
-        if let EntryCreationAction::Create(create) = &action.hashed.content {
-            if let EntryType::App(app_entry_def) = &create.entry_type {
-                if let Ok(Some(EntryTypes::MutualCreditTransfer(transfer))) =
-                    EntryTypes::deserialize_from_type(app_entry_def.zome_index, app_entry_def.entry_index, entry)
-                {
-                    return Ok(match entry {
-                        Entry::CounterSign(session_data, _) => {
-                            let signing: HashSet<AgentPubKey> = session_data
-                                .preflight_request
-                                .signing_agents
-                                .iter()
-                                .map(|(agent, _roles)| agent.clone())
-                                .collect();
-                            let expected: HashSet<AgentPubKey> =
-                                [transfer.from.clone(), transfer.to.clone()].into_iter().collect();
-                            if signing == expected && session_data.preflight_request.signing_agents.len() == 2 {
-                                validate_credit_transfer(&transfer, create)?
-                            } else {
-                                ValidateCallbackResult::Invalid(
-                                    "MutualCreditTransfer's countersigning session must be signed by \
-                                     exactly its `from` and `to` agents, no one else.".into()
-                                )
-                            }
-                        }
-                        _ => ValidateCallbackResult::Invalid(
-                            "MutualCreditTransfer must be committed as part of a countersigning session \
-                             accepted by both `from` and `to` — a plain, single-signer commit is rejected \
-                             unconditionally regardless of its content. This is real, DHT-side enforcement, \
-                             not a client-side courtesy.".into()
-                        ),
-                    });
-                }
-            }
-        }
-    }
-
     match op.flattened::<EntryTypes, LinkTypes>()? {
         FlatOp::StoreEntry(store_entry) => validate_store_entry(store_entry),
         FlatOp::RegisterUpdate(_) => Ok(ValidateCallbackResult::Valid),
@@ -690,16 +543,6 @@ fn validate_store_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCall
                 EntryTypes::ExternalCritique(ext) => validate_external_critique(&ext, &action),
                 EntryTypes::AntibodyPattern(pattern) => validate_antibody_pattern(&pattern, &action),
                 EntryTypes::FederationRecord(record) => validate_federation_record(&record, &action),
-                // In normal control flow MutualCreditTransfer never
-                // reaches this arm — `validate` (above) intercepts it
-                // from the raw Op::StoreEntry before flattening, since
-                // the countersigning check needs the raw Entry envelope
-                // flattening discards. Handled here too, calling the
-                // exact same content checks, purely so this match stays
-                // exhaustive and correct if that ever changes rather
-                // than silently passing.
-                EntryTypes::MutualCreditTransfer(transfer) => validate_credit_transfer(&transfer, &action),
-                EntryTypes::CreditBurn(burn) => validate_credit_burn(&burn, &action),
             }
         }
         _ => Ok(ValidateCallbackResult::Valid),
@@ -1060,67 +903,6 @@ fn validate_federation_record(record: &FederationRecord, action: &Create) -> Ext
     Ok(ValidateCallbackResult::Valid)
 }
 
-// --- MutualCreditTransfer validation ---
-//
-// The countersigning check (does a real, two-party session actually
-// back this entry?) happens in `validate` before this is ever reached —
-// see that function's header comment. What's left here is ordinary
-// content validation, the same shape every other validate_* function in
-// this file already has: KNOWN GAP, stated explicitly rather than
-// silently assumed away — this does NOT check that `from` actually has
-// sufficient balance to cover `amount`. Holochain's agent-centric,
-// eventually-consistent DHT has no cheap way to check a live, globally-
-// agreed balance at validation time (the same reason Circles and every
-// other real mutual-credit system enforces balance/credit limits
-// socially or client-side, not via a global validator check) — an
-// unbounded negative balance is possible today. If this needs
-// tightening, the honest fix is a per-pair credit limit checked against
-// the two parties' own chains via must_get_agent_activity, not a
-// pretend global balance check this substrate can't actually make
-// atomic.
-fn validate_credit_transfer(transfer: &MutualCreditTransfer, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if transfer.from == transfer.to {
-        return Ok(ValidateCallbackResult::Invalid(
-            "MutualCreditTransfer cannot transfer to yourself — use CreditBurn to destroy your own \
-             standing instead.".into()
-        ));
-    }
-    if transfer.from != action.author && transfer.to != action.author {
-        return Ok(ValidateCallbackResult::Invalid(
-            "MutualCreditTransfer's action author must be one of the two named parties.".into()
-        ));
-    }
-    if !transfer.amount.is_finite() || transfer.amount <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid(
-            "MutualCreditTransfer amount must be a positive, finite number.".into()
-        ));
-    }
-    if transfer.reason.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("MutualCreditTransfer reason cannot be empty.".into()));
-    }
-    Ok(ValidateCallbackResult::Valid)
-}
-
-// --- CreditBurn validation ---
-//
-// No countersigning: destroying your own standing needs no one else's
-// consent, so this is an ordinary single-signer entry like every other
-// type in this file except MutualCreditTransfer. Same balance-check gap
-// as MutualCreditTransfer above, and the same reasoning — see that
-// function's comment.
-fn validate_credit_burn(burn: &CreditBurn, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if burn.agent != action.author {
-        return Ok(ValidateCallbackResult::Invalid("CreditBurn agent must match action author.".into()));
-    }
-    if !burn.amount.is_finite() || burn.amount <= 0.0 {
-        return Ok(ValidateCallbackResult::Invalid("CreditBurn amount must be a positive, finite number.".into()));
-    }
-    if burn.reason.is_empty() {
-        return Ok(ValidateCallbackResult::Invalid("CreditBurn reason cannot be empty.".into()));
-    }
-    Ok(ValidateCallbackResult::Valid)
-}
-
 // --- Constitution Validation ---
 fn validate_constitution(constitution: &Constitution, action: &Create) -> ExternResult<ValidateCallbackResult> {
     if constitution.agent != action.author {
@@ -1301,30 +1083,43 @@ const ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION: i64 = 30 * 24 * 3600;
 const ATTESTATION_GRANT_WINDOW_SECS_VALIDATION: i64 = 7 * 24 * 3600;
 const ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION: usize = 5; // must match coordinator's limit
 
-// REMOVED: the burn-to-extend-friction tier. SynapticLink creation used
-// to be free below 20, purchasable up to a hard ceiling of 30 against
-// verified CreditBurns, and refused at 30. It was removed after being
-// driven against a real conductor, which established that no honest
-// client could ever reach it: create_critique is the only way to create
-// a SynapticLink, Critique creation carries its own 20/hour cap with no
-// burn tier, and that cap is checked first — so the purchasable tier
-// opened at exactly the count where creating another Critique had
-// already become impossible.
+// REMOVED: the burn-to-extend-friction tier, and with it the whole
+// mutual-credit ledger it was the only consumer of.
 //
-// Worse than merely unreachable, it was a net loss. The one client that
-// COULD reach it — one hand-crafting CreateLink actions outside
-// create_critique — got ten extra links out of it, paid for with burns
-// that nothing funds, since validate_credit_burn cannot check a balance
-// on an eventually-consistent DHT (see MutualCreditTransfer's KNOWN GAP
-// below). A plain hard limit is therefore strictly STRICTER against the
-// only party who could reach the tier, as well as simpler.
+// SynapticLink creation was once free below 20, purchasable up to a
+// ceiling of 30 against verified CreditBurns, and refused at 30. Driving
+// it against a real conductor established that no honest client could
+// reach the paid tier — create_critique is the only way to create a
+// SynapticLink, Critique creation carries its own hard 20/hour cap with
+// no burn tier, and that cap is checked first — while the one client
+// that COULD reach it, by hand-crafting CreateLink actions, got ten
+// extra links for burns that nothing funds, since a burn's balance is
+// unenforceable on an agent-centric DHT. A plain hard limit is stricter
+// against that client as well as simpler.
 //
-// The ledger itself is untouched: MutualCreditTransfer, CreditBurn and
-// get_credit_balance all remain, and remain the substrate for a real
-// cost coupling once per-pair credit limits make a burn cost something.
-// What was removed is the coupling, not the currency. See
-// docs/metabolic-biosignalling-currency-brief.md §7.2 for the full
-// account and the four options that were weighed.
+// The ledger (MutualCreditTransfer, CreditBurn, countersigning,
+// get_credit_balance) was then removed too. It had no other consumer,
+// and get_credit_balance was a canonical per-agent scalar that any
+// client could enumerate via get_membrane_members and sort — Invariant
+// #1's leaderboard, preserved only by the protocol declining to build
+// it rather than by construction.
+//
+// The direction that replaces it is non-transferable regenerating
+// capacity: a per-agent budget, spent at different rates by different
+// acts, refilling over time, that CANNOT move between agents. That
+// dissolves the enforcement problem (no transfers, so no double-spend
+// and no global balance question — each agent's own chain is
+// authoritative, verifiable exactly as this file's friction checks
+// already are) and it never needs to answer questions about other
+// agents, so it has no leaderboard surface at all. The biology says the
+// same thing: cells do not trade ATP, and ATP that does cross a
+// membrane stops being energy and becomes signal. Signal crossing
+// membranes is what SynapticLink and Critique already are.
+//
+// Not built here: its per-action rates encode which acts should cost
+// more than others, which is a design judgement that needs a stated
+// need rather than an invented one. See
+// docs/metabolic-biosignalling-currency-brief.md.
 
 /// Pure arithmetic core of AttestationGrant's tenure check: has enough
 /// time elapsed between the referenced AgentToMembrane join action and
@@ -1751,112 +1546,4 @@ mod tests {
         assert!(tenure_satisfied(join_at, grant_at, 0));
     }
 
-    // --- validate_credit_transfer -------------------------------------
-
-    fn fixture_transfer(from: AgentPubKey, to: AgentPubKey, amount: f32, reason: &str) -> MutualCreditTransfer {
-        MutualCreditTransfer { from, to, amount, reason: reason.into(), timestamp: 0 }
-    }
-
-    #[test]
-    fn credit_transfer_rejects_self_transfer() {
-        let a = fixture_agent_pubkey(1);
-        let transfer = fixture_transfer(a.clone(), a.clone(), 5.0, "adoption");
-        let action = fixture_create(a, 0);
-        assert!(matches!(
-            validate_credit_transfer(&transfer, &action).unwrap(),
-            ValidateCallbackResult::Invalid(_)
-        ));
-    }
-
-    #[test]
-    fn credit_transfer_rejects_author_not_a_party() {
-        let from = fixture_agent_pubkey(1);
-        let to = fixture_agent_pubkey(2);
-        let stranger = fixture_agent_pubkey(99);
-        let transfer = fixture_transfer(from, to, 5.0, "adoption");
-        let action = fixture_create(stranger, 0);
-        assert!(matches!(
-            validate_credit_transfer(&transfer, &action).unwrap(),
-            ValidateCallbackResult::Invalid(_)
-        ));
-    }
-
-    #[test]
-    fn credit_transfer_accepts_author_as_either_party() {
-        let from = fixture_agent_pubkey(1);
-        let to = fixture_agent_pubkey(2);
-        let transfer = fixture_transfer(from.clone(), to.clone(), 5.0, "adoption");
-
-        let as_from = fixture_create(from, 0);
-        assert_eq!(validate_credit_transfer(&transfer, &as_from).unwrap(), ValidateCallbackResult::Valid);
-
-        let as_to = fixture_create(to, 0);
-        assert_eq!(validate_credit_transfer(&transfer, &as_to).unwrap(), ValidateCallbackResult::Valid);
-    }
-
-    #[test]
-    fn credit_transfer_rejects_non_positive_or_non_finite_amount() {
-        let from = fixture_agent_pubkey(1);
-        let to = fixture_agent_pubkey(2);
-        let action = fixture_create(from.clone(), 0);
-        for bad_amount in [0.0f32, -5.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            let transfer = fixture_transfer(from.clone(), to.clone(), bad_amount, "adoption");
-            assert!(
-                matches!(validate_credit_transfer(&transfer, &action).unwrap(), ValidateCallbackResult::Invalid(_)),
-                "amount {bad_amount} should have been rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn credit_transfer_rejects_empty_reason() {
-        let from = fixture_agent_pubkey(1);
-        let to = fixture_agent_pubkey(2);
-        let transfer = fixture_transfer(from.clone(), to, 5.0, "");
-        let action = fixture_create(from, 0);
-        assert!(matches!(
-            validate_credit_transfer(&transfer, &action).unwrap(),
-            ValidateCallbackResult::Invalid(_)
-        ));
-    }
-
-    // --- validate_credit_burn -------------------------------------------
-
-    #[test]
-    fn credit_burn_rejects_agent_not_matching_author() {
-        let agent = fixture_agent_pubkey(1);
-        let someone_else = fixture_agent_pubkey(2);
-        let burn = CreditBurn { agent, amount: 5.0, reason: "burn_friction".into(), timestamp: 0 };
-        let action = fixture_create(someone_else, 0);
-        assert!(matches!(validate_credit_burn(&burn, &action).unwrap(), ValidateCallbackResult::Invalid(_)));
-    }
-
-    #[test]
-    fn credit_burn_accepts_well_formed_self_burn() {
-        let agent = fixture_agent_pubkey(1);
-        let burn = CreditBurn { agent: agent.clone(), amount: 5.0, reason: "burn_friction".into(), timestamp: 0 };
-        let action = fixture_create(agent, 0);
-        assert_eq!(validate_credit_burn(&burn, &action).unwrap(), ValidateCallbackResult::Valid);
-    }
-
-    #[test]
-    fn credit_burn_rejects_non_positive_or_non_finite_amount() {
-        let agent = fixture_agent_pubkey(1);
-        let action = fixture_create(agent.clone(), 0);
-        for bad_amount in [0.0f32, -1.0, f32::NAN, f32::INFINITY] {
-            let burn = CreditBurn { agent: agent.clone(), amount: bad_amount, reason: "x".into(), timestamp: 0 };
-            assert!(
-                matches!(validate_credit_burn(&burn, &action).unwrap(), ValidateCallbackResult::Invalid(_)),
-                "amount {bad_amount} should have been rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn credit_burn_rejects_empty_reason() {
-        let agent = fixture_agent_pubkey(1);
-        let burn = CreditBurn { agent: agent.clone(), amount: 5.0, reason: "".into(), timestamp: 0 };
-        let action = fixture_create(agent, 0);
-        assert!(matches!(validate_credit_burn(&burn, &action).unwrap(), ValidateCallbackResult::Invalid(_)));
-    }
 }

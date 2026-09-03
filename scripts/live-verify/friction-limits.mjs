@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 // ============================================================================
-// scripts/live-verify/burn-friction.mjs — asserts that SynapticLink
-// friction is an ABSOLUTE limit that burned credit cannot buy past
-// (SPEC.md §5.11).
+// scripts/live-verify/friction-limits.mjs — asserts that SWO temporal
+// friction is an ABSOLUTE per-agent limit (SPEC.md §5.11, §6): 20
+// critiques, and therefore 20 SynapticLinks, per rolling hour, with no
+// way to exceed it.
 //
-// This script was originally written to verify a burn-to-extend tier
-// (free below 20, purchasable to a ceiling of 30 against CreditBurns
-// tagged "burn_friction"). Running it is what established that the tier
-// was unreachable — create_critique is the only way to create a
+// This script has an instructive history. It was written to verify a
+// burn-to-extend tier (free below 20, purchasable to a ceiling of 30
+// against CreditBurns). Running it is what established the tier was
+// unreachable: create_critique is the only way to create a
 // SynapticLink, Critique creation carries its own hard 20/hour cap with
-// no burn tier, and that cap is checked first — and the tier was
-// subsequently removed (see docs/metabolic-biosignalling-currency-brief
-// .md §4.3 and §7.2).
+// no burn tier, and that cap is checked first. The tier was removed,
+// and then the mutual-credit ledger it was the only consumer of was
+// removed too. See docs/metabolic-biosignalling-currency-brief.md.
 //
-// It is kept, retargeted, because the property it now asserts is the
-// one that must not silently regress: that credit buys no throughput
-// anywhere in this protocol. If a future change reintroduces a paid
-// tier, the burn below will start buying something and these checks
-// will fail — which is exactly when someone should be made to re-read
-// §7.2 before proceeding.
+// It is kept because the property it asserts is the one that must not
+// silently regress: throughput in this protocol is not purchasable by
+// any means. If a future change makes it purchasable, these checks
+// start failing, which is exactly when someone should be made to read
+// that brief before proceeding.
 //
 // Prereqs: scripts/sandbox.sh start, against a CLEAN sandbox — friction
 // is a rolling one-hour window over the agent's own source chain, so a
@@ -31,9 +31,7 @@ const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
 
-const CRITIQUE_MAX_PER_WINDOW = 20;   // SPEC.md §6
 const SYNAPTIC_LINK_LIMIT = 20;       // SPEC.md §5.11 — absolute
-const BURN_AMOUNT = 50.0;             // far more than any former tier asked for
 
 function nowMicros() {
   return Date.now() * 1000;
@@ -81,10 +79,10 @@ async function main() {
   // target must downcast to an EntryHash of a real entry (SPEC §5.4),
   // so the Claim's entry_hash is read back rather than reusing
   // create_claim's ActionHash return value.
-  const domain = `BurnFriction${Date.now()}`;
+  const domain = `FrictionLimits${Date.now()}`;
   log(`Creating a target Claim in domain ${domain} ...`);
   await callZome('create_claim', {
-    content: 'Target claim for burn-friction verification.',
+    content: 'Target claim for friction-limit verification.',
     domain,
     author: myAgent,
     timestamp: nowMicros(),
@@ -101,7 +99,7 @@ async function main() {
     target: targetEntryHash,
     target_type: 'Claim',
     critique_mode: 'Logical',
-    content: `Burn-friction verification critique #${n}.`,
+    content: `Friction-limit verification critique #${n}.`,
     author: myAgent,
     timestamp: nowMicros(),
     replication_attempted: false,
@@ -145,51 +143,35 @@ async function main() {
   // SynapticLink needs (20 + 1 - 20) * 5.0 = 5.0 of burned credit;
   // this burns ten times that, so nothing below can be blamed on
   // having under-paid.
-  const burnAmount = BURN_AMOUNT;
-  log(`=== Attempting to buy headroom: burning ${burnAmount} ===`);
-  // Asserted as a delta, not against an absolute threshold: this agent
-  // may carry standing from an earlier script run on the same
-  // conductor, and a threshold check would then pass on that prior
-  // balance alone, whether or not this burn registered at all.
-  const balanceBefore = await callZome('get_credit_balance', myAgent);
-  await callZome('create_credit_burn', { amount: burnAmount, reason: 'burn_friction' });
-  const balanceAfter = await callZome('get_credit_balance', myAgent);
-  const delta = balanceBefore - balanceAfter;
-  log(`  get_credit_balance: ${balanceBefore} -> ${balanceAfter} (delta ${delta})`);
-  check(`the burn debited ~${burnAmount}`, delta >= burnAmount - 0.01 && delta <= burnAmount + 0.01);
-
-  let afterBurnRefusal = null;
+  // The limit must stay refused on a retry, not merely on first
+  // contact — a budget that quietly reopens would be just as broken as
+  // one that could be bought past.
+  log('=== The limit holds on retry ===');
+  let retryRefusal = null;
   try {
     await makeCritique(created + 1);
   } catch (e) {
-    afterBurnRefusal = errText(e);
+    retryRefusal = errText(e);
   }
-  check('the next critique is STILL refused after a large burn', afterBurnRefusal !== null);
-  log(`  refusal: ${afterBurnRefusal?.slice(0, 240)}`);
-  check('and it is still the Critique budget refusing it',
-    /Critique/i.test(afterBurnRefusal ?? '') && !/SynapticLink/i.test(afterBurnRefusal ?? ''));
+  check('a second attempt past the limit is also refused', retryRefusal !== null);
+  check('and it is refused by the same friction budget',
+    /Critique/i.test(retryRefusal ?? '') && /friction/i.test(retryRefusal ?? ''));
 
   log(`
 === What this establishes ===
-Credit buys no throughput. The limit is absolute: 20 critiques (and
-therefore 20 SynapticLinks) per rolling hour, and burning ${burnAmount}
--- far more than the removed burn tier ever asked for -- moves it not at
-all.
+Throughput is capped absolutely at ${SYNAPTIC_LINK_LIMIT} per rolling hour per agent, and
+nothing reopens it early. There is no mechanism in this protocol for
+buying past it: the burn-to-extend tier that once existed was removed
+as unreachable, and the mutual-credit ledger it was the only consumer of
+was removed with it.
 
-A burn-to-extend tier used to sit between 20 and a ceiling of 30. It was
-removed after this script established it was unreachable: create_critique
-is the only caller of create_synaptic_link, Critique creation carries its
-own hard 20/hour cap with no burn tier, and that cap is checked first, so
-the paid tier opened at exactly the count where another Critique had
-already become impossible. It was also a net loss -- the one client that
-could reach it, by hand-crafting CreateLink actions, got ten extra links
-for burns that nothing funds, since balance is unenforceable at
-validation time. A plain hard limit is stricter against that client.
-
-The ledger is untouched: MutualCreditTransfer, CreditBurn and
-get_credit_balance all still work (see credit-transfer.mjs), and the burn
-above really did debit the balance. It simply buys nothing. See
-docs/metabolic-biosignalling-currency-brief.md §4.3 and §7.2.
+What replaces the idea of a cost layer is non-transferable regenerating
+capacity — a per-agent budget spent at different rates by different
+acts, refilling over time, that cannot move between agents. It is named
+as the direction and deliberately not built: its per-action rates encode
+which acts should cost more than others, and that needs a stated need
+rather than an invented one. See
+docs/metabolic-biosignalling-currency-brief.md.
 `);
 
   log(`${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
