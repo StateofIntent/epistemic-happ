@@ -31,6 +31,28 @@ export interface Claim {
   source_mew: Uint8Array | null;
 }
 
+/** A named kind of critique — the vocabulary of *how* one disagrees,
+ * which this protocol lets a domain evolve rather than fixing in the
+ * DNA. `CritiqueMode` is the fixed, five-variant axis; a species is the
+ * open, domain-authored one, and `domains/climate.json` and
+ * `nutrition.json` each ship a real two-level set.
+ *
+ * NOTE the absence of an adoption count on this interface. It is not an
+ * oversight and must not be "fixed": the integrity zome deliberately
+ * removed a stored `adoption_count` because it was a number the proposer
+ * set to whatever they liked, with nothing validating or incrementing
+ * it. The real figure is derived at query time by
+ * get_critique_species_adoption_count, which counts actual
+ * CritiqueToSpecies links — so it is read separately, per species, and
+ * held in adoptionBySpecies rather than on the record. */
+export interface CritiqueSpecies {
+  name: string;
+  parent_species: Uint8Array | null;
+  required_evidence: string[];
+  proposer: Uint8Array;
+  created_at: number;
+}
+
 export interface Critique {
   target: Uint8Array;
   target_type: 'Claim';
