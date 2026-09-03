@@ -8,6 +8,8 @@ This connects **directly** to a conductor's Admin and App WebSocket APIs from th
 
 Scope of this first increment: browse `Claim`s by domain, publish a `Claim`, view and add `Critique`s on a claim. It does not cover Membranes, discourse health, AntibodyPatterns, or HRR queries — those are real gaps, not oversights, left for a later pass.
 
+**Before extending this UI, read `README.md` §4.4.** It states two constraints that any client for this protocol must respect and that ordinary UI instincts violate: a UI may be a lens the *user* aims but must not infer a credibility ordering and present it as neutral (Invariant #1 is a protocol invariant, and a client can reintroduce in the browser exactly what the protocol declined to compute); and while chrome may adapt per user, the artifact under evaluation must not, because cross-checking presupposes that two agents looked at the same thing. `README.md` §9 scopes the highest-leverage work here — this UI calls 4 of 56 coordinator functions, so nearly all the epistemic state the backend computes is currently invisible.
+
 ## Prerequisites
 
 - Node.js 18+ and npm
