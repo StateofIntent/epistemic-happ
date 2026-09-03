@@ -922,3 +922,56 @@ button:disabled { opacity: 0.6; cursor: default; }
   gap: 0.25rem;
   font-size: 0.8rem;
 }
+
+/* --- Author constitutions and the mode breakdown ----------------------
+   Neither is styled as a score. The promise list is a disclosure to read
+   against, not a rating; the mode counts are the reader's own tally, not
+   a comparison with anyone. Nothing here gets a bar, a percentage or a
+   colour scale, because all three read as ranking and there is nothing
+   to rank against — the mode read cannot even see another agent. */
+
+.author-constitution {
+  margin-top: 0.35rem;
+}
+
+.author-constitution .promise-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+}
+
+.mode-breakdown {
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.mode-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.mode-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.mode-count {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* "not loaded" must not read as zero. */
+.mode-count.unknown {
+  font-style: italic;
+  opacity: 0.5;
+}

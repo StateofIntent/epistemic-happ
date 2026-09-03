@@ -9,6 +9,7 @@ import {
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
+  type CritiqueMode,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -90,6 +91,39 @@ const groundingByClaim = new Map<string, GroundingPath>();
 const retractingClaims = new Set<string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
 const flaggingClaims = new Set<string>();
+// --- Author constitutions ---------------------------------------------
+// What an agent has publicly promised about how they work. §4.3's account
+// of how a claim's status emerges requires agents cross-checking one
+// another's disclosures, and a promise is the disclosure being checked
+// against — so this is the one piece of context that makes a critique of
+// someone's method a comparison rather than an opinion.
+//
+// Read per author, on request, never eagerly: get_agent_constitution is
+// a DHT read per agent, and a claim list of twenty would otherwise fire
+// twenty of them for context nobody asked to see.
+/** author pubkey (b64) -> their current constitution, or null if they
+ * have published none. Absent means not asked or still in flight, which
+ * is deliberately distinct from null. */
+const constitutionByAuthor = new Map<string, Constitution | null>();
+/** author pubkey (b64) -> whether their promises are expanded */
+const constitutionOpen = new Set<string>();
+
+// --- My critiques by mode ---------------------------------------------
+// CHAIN-LOCAL BY SPECIFICATION, and the UI must say so. SPEC §10.0 names
+// get_critiques_by_mode as one of three reads left chain-local on
+// purpose — a global index over every critique of a given mode would be
+// an unbounded firehose whose desirability is an unanswered design
+// question. So this returns THE CALLER'S OWN critiques and nothing else.
+//
+// A screen labelled "Logical critiques" over that data would be a plain
+// falsehood, and worse than not surfacing it: a practitioner would read
+// an empty result as "nobody critiques this way" when it means "I don't".
+// Every label here says "your own", and the empty state says it too.
+/** CritiqueMode -> the caller's own critiques in that mode */
+const myCritiquesByMode = new Map<CritiqueMode, DecodedRecord<Critique>[]>();
+/** whether the by-mode breakdown has been requested */
+let modeBreakdownOpen = false;
+
 /** whether the expertise-assertion form is open */
 let expertiseFormOpen = false;
 
@@ -599,6 +633,7 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   meta.className = 'claim-meta';
   meta.textContent = `${claim.entry.confidence} confidence · by ${short(claim.entry.author)}`;
   card.appendChild(meta);
+  card.appendChild(renderAuthorConstitution(claim.entry.author));
 
   // An expertise assertion is an ordinary Claim and must read as one.
   //
@@ -1403,6 +1438,111 @@ async function joinMembrane(membrane: DecodedRecord<Membrane>) {
   render();
 }
 
+// --- Author constitutions ---------------------------------------------
+
+/** Load one author's constitution on request. */
+async function loadConstitution(author: Uint8Array) {
+  if (!connection) return;
+  const key = b64(author);
+  try {
+    const constitution = await connection.callZome<Constitution | null>(
+      'get_agent_constitution', author,
+    );
+    constitutionByAuthor.set(key, constitution ?? null);
+  } catch {
+    // Left ABSENT rather than set to null. null is a real answer — "this
+    // agent has published no constitution" — and rendering a failed read
+    // as that answer would assert something nobody checked.
+  }
+  render();
+}
+
+/** "What this author promises" — get_agent_constitution.
+ *
+ * Collapsed by default and loaded only when opened. §4.3 is why it
+ * exists at all: a claim's status is supposed to emerge from agents
+ * cross-checking one another's disclosures, and the promise is the
+ * disclosure being checked against. Without it, a methodological
+ * critique is one person's opinion of another's method; with it, it is a
+ * comparison against something the author put on the record.
+ *
+ * NOTHING IS INFERRED FROM ITS ABSENCE. An agent who has published no
+ * constitution is shown as exactly that, with no adverse framing: there
+ * is no protocol rule requiring one, and a UI that made its absence look
+ * like a deficiency would be scoring agents on a field the protocol
+ * never asked them to fill — §4.4's first constraint, arriving through
+ * the back door. */
+function renderAuthorConstitution(author: Uint8Array): HTMLElement {
+  const key = b64(author);
+  const wrap = document.createElement('div');
+  wrap.className = 'author-constitution';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'link-button';
+  toggle.dataset.testid = 'constitution-toggle';
+  const open = constitutionOpen.has(key);
+  toggle.textContent = open ? 'Hide what this author promises' : 'What this author promises';
+  toggle.onclick = () => {
+    if (open) constitutionOpen.delete(key);
+    else {
+      constitutionOpen.add(key);
+      if (!constitutionByAuthor.has(key)) void loadConstitution(author);
+    }
+    render();
+  };
+  wrap.appendChild(toggle);
+  if (!open) return wrap;
+
+  const body = document.createElement('div');
+  body.dataset.testid = 'constitution-body';
+
+  if (!constitutionByAuthor.has(key)) {
+    body.textContent = 'Loading…';
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  const constitution = constitutionByAuthor.get(key) ?? null;
+  if (constitution === null) {
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.dataset.testid = 'constitution-none';
+    // Neutral by design — see this function's header.
+    none.textContent =
+      'This author has not published a constitution. Nothing requires one, '
+      + 'and its absence says nothing about their claims.';
+    body.appendChild(none);
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'promise-list';
+  list.dataset.testid = 'author-promises';
+  for (const promise of constitution.promises) {
+    const li = document.createElement('li');
+    li.textContent = promise.modality
+      ? `${promise.action} — in ${promise.domain}, for ${promise.modality} critique`
+      : `${promise.action} — in ${promise.domain}`;
+    list.appendChild(li);
+  }
+  body.appendChild(list);
+
+  const meta = document.createElement('p');
+  meta.className = 'hint';
+  meta.dataset.testid = 'constitution-meta';
+  // Stated because a promise is a commitment made AT a time, and a
+  // reader comparing conduct against it needs to know which window it
+  // covers. get_agent_constitution already filters out expired ones.
+  meta.textContent = constitution.expires_at
+    ? `Published ${new Date(constitution.published_at * 1000).toISOString().slice(0, 10)}, expires ${new Date(constitution.expires_at * 1000).toISOString().slice(0, 10)}.`
+    : `Published ${new Date(constitution.published_at * 1000).toISOString().slice(0, 10)}. No expiry.`;
+  body.appendChild(meta);
+
+  wrap.appendChild(body);
+  return wrap;
+}
+
 // --- Trust lenses -----------------------------------------------------
 
 /** Re-read a membrane's discourse health THROUGH the user's aimed lens,
@@ -1712,6 +1852,97 @@ function childrenOf(parentKey: string | null): DecodedRecord<CritiqueSpecies>[] 
   });
 }
 
+/** The caller's own critiques, tallied by CritiqueMode.
+ *
+ * One read per mode, because get_critiques_by_mode takes one mode. Five
+ * source-chain queries is cheap; the reason it is not a single call is
+ * that the protocol offers no "all modes at once" read, and inventing a
+ * client-side aggregate over five chain-local reads would not make the
+ * result any less chain-local. */
+async function loadMyCritiquesByMode() {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(CRITIQUE_MODES.map(async (mode) => {
+    try {
+      const records = await conn.callZome<any[]>('get_critiques_by_mode', mode);
+      myCritiquesByMode.set(mode, decodeRecords<Critique>(records));
+    } catch {
+      // Absent, not zero — see the note on myCritiquesByMode.
+    }
+  }));
+  render();
+}
+
+/** The fixed axis of critique, beside the open one.
+ *
+ * CritiqueMode is the protocol's five-variant, non-extensible axis;
+ * CritiqueSpecies is the domain-authored one above. Showing them on one
+ * screen is the only place the difference between the two is legible.
+ *
+ * EVERY LABEL HERE SAYS "YOUR OWN", AND THAT IS NOT MODESTY. SPEC §10.0
+ * specifies get_critiques_by_mode as chain-local: it returns the
+ * caller's own critiques and cannot see anyone else's. A heading reading
+ * "Logical critiques" over that data would be false, and falser still in
+ * its empty state — a practitioner would read zero as "nobody critiques
+ * this way" when it means "I have not". This is the same read-scope
+ * honesty the read-scope harness exists to defend, applied at the point
+ * where the number is rendered rather than where it is fetched. */
+function renderModeBreakdown(): HTMLElement {
+  const wrap = document.createElement('section');
+  wrap.className = 'mode-breakdown';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'link-button';
+  toggle.dataset.testid = 'mode-breakdown-toggle';
+  toggle.textContent = modeBreakdownOpen
+    ? 'Hide your critiques by mode' : 'Show your own critiques by mode';
+  toggle.onclick = () => {
+    modeBreakdownOpen = !modeBreakdownOpen;
+    if (modeBreakdownOpen && myCritiquesByMode.size === 0) void loadMyCritiquesByMode();
+    render();
+  };
+  wrap.appendChild(toggle);
+  if (!modeBreakdownOpen) return wrap;
+
+  const scope = document.createElement('p');
+  scope.className = 'hint';
+  scope.dataset.testid = 'mode-scope-note';
+  scope.textContent =
+    'These are your own critiques only. This read is chain-local by specification '
+    + '(SPEC §10.0) — it cannot see anyone else\u2019s, so a zero here means you have '
+    + 'not used that mode, not that nobody has.';
+  wrap.appendChild(scope);
+
+  const list = document.createElement('ul');
+  list.className = 'mode-list';
+  list.dataset.testid = 'mode-list';
+  for (const mode of CRITIQUE_MODES) {
+    const li = document.createElement('li');
+    li.className = 'mode-row';
+    li.dataset.mode = mode;
+
+    const name = document.createElement('span');
+    name.textContent = mode;
+    li.appendChild(name);
+
+    const count = document.createElement('span');
+    count.className = 'mode-count';
+    count.dataset.testid = 'mode-count';
+    const records = myCritiquesByMode.get(mode);
+    if (records) {
+      count.textContent = records.length === 1
+        ? 'you have written 1' : `you have written ${records.length}`;
+    } else {
+      count.textContent = 'not loaded';
+      count.classList.add('unknown');
+    }
+    li.appendChild(count);
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
 function renderTaxonomyTab(): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'taxonomy-tab';
@@ -1723,6 +1954,11 @@ function renderTaxonomyTab(): HTMLElement {
     + 'mode is fixed by the protocol; a species is not — anyone may propose one, '
     + 'and it earns standing only by being used.';
   wrap.appendChild(intro);
+
+  // The fixed axis first, then the open one — a reader needs to know
+  // which of the two they are looking at, and the fixed one is the
+  // shorter, more familiar list.
+  wrap.appendChild(renderModeBreakdown());
 
   const proposeBtn = document.createElement('button');
   proposeBtn.className = 'secondary';

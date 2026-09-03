@@ -48,6 +48,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `taxonomy-ui` | browser | 1 | The critique vocabulary renders as a tree, is writable, and is never ranked |
 | `trust-lenses` | browser | **2** | A trust lens is never on by default, always visible, and its effect legible |
 | `expertise-ui` | browser | **2** | An expertise assertion is findable by strangers, and reads as self-asserted |
+| `mode-and-constitution` | browser | **3** | A chain-local read is never shown as global, and absence is never scored |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
