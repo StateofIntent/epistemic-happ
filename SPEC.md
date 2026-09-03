@@ -198,27 +198,6 @@ A membrane's own, one-sided witness that it recognizes a specific membrane on a 
 | `author` | `AgentPubKey` | MUST equal the creating action's author, AND MUST equal `local_membrane`'s own `creator` field (§5.18) — only a membrane's own founder may declare federation on its behalf |
 | `created_at` | `u64` | |
 
-### 2.15 `MutualCreditTransfer`
-A transfer of standing from one agent to another on the protocol's internal mutual-credit ledger. There is no project token and no external tradable asset; this ledger is entirely DHT-native. **This is the only entry type in this protocol that MUST be countersigned** — see §5.19.
-
-| Field | Type | Notes |
-|---|---|---|
-| `from` | `AgentPubKey` | The agent whose standing decreases |
-| `to` | `AgentPubKey` | The agent whose standing increases. MUST NOT equal `from` (§5.19) |
-| `amount` | `f32` | MUST be positive and finite |
-| `reason` | `String` | MUST be non-empty. An open, non-authoritative label (e.g. `"adoption"`), the same informal status `WorldlineTrace.expertise_tags` has — no validation gives any particular value meaning |
-| `timestamp` | `u64` | Unix seconds. The basis for this transaction's own demurrage decay (§10.15) |
-
-### 2.16 `CreditBurn`
-A single agent destroying some of their own standing. No counterparty, therefore no countersigning: nobody else's consent is needed to spend what is yours.
-
-| Field | Type | Notes |
-|---|---|---|
-| `agent` | `AgentPubKey` | MUST equal the creating action's author (§5.20) |
-| `amount` | `f32` | MUST be positive and finite |
-| `reason` | `String` | MUST be non-empty. An open, non-authoritative label — **no reason string carries protocol-level meaning.** One did (`"burn_friction"`, read by the since-removed `SynapticLink` burn tier, §5.11); today a burn's only effect is on the burning agent's own balance |
-| `timestamp` | `u64` | Unix seconds |
-
 ## 3. Enumerations
 
 Every enumeration below is a plain Rust enum (`#[derive(Serialize, Deserialize)]`, no custom representation attributes) — on the wire (Holochain's msgpack payload encoding) each unit variant serializes as its bare variant name string (e.g. `"Moderate"`, `"Logical"`), not an integer or a tagged object. An implementation in another language MUST reproduce this exact string representation to interoperate.
@@ -277,8 +256,6 @@ Every row is a Holochain typed link (`#[hdk_link_types]`). "Base → Target" giv
 | `SynapticLink` | A `Critique`'s target → the critique's own `ActionHash` | 4-byte LE `f32` initial conductance | See §2.13, §5.11 |
 | `Reinforcement` | A `SynapticLink`'s own `CreateLink` `ActionHash` → the reinforcing agent | — | See §5.12 |
 | `MembraneToFederationRecord` | `Membrane` → `FederationRecord` | `remote_network_label` (raw bytes) | See §2.14, §5.18, §10.14 |
-| `AgentToCreditTransfer` | Agent anchor → `MutualCreditTransfer` (`ActionHash`) | — | **Both** parties to a transfer link it from their own anchor, so an agent's own anchor carries every transfer they were party to. Written by a *separate* zome call from the transfer itself (§10.15) — an index, not the record |
-| `AgentToCreditBurn` | Agent anchor → `CreditBurn` (`ActionHash`) | — | See §10.15 |
 
 "Agent anchor" is `path_entry_hash()` of the `Path` constructed from the string `agent_{agent_pub_key}` — a deterministic per-agent anchor point, not a stored entry of its own.
 
@@ -336,7 +313,9 @@ This bounds *per-identity throughput only* — it does not raise the cost of cre
 - `LinkTag` MUST be at least 4 bytes (the `f32` initial conductance).
 - Subject to SWO temporal friction (§5.10, §6): 20 per rolling hour per agent, an absolute limit. There is deliberately no way to buy past it.
 
-**Historical note, because the tier was specified here and an implementer may have built it.** A burn-to-extend tier once sat here: free below 20, purchasable up to a hard ceiling of 30 against `CreditBurn`s tagged `"burn_friction"`, refused at 30. It was removed after live verification showed it was unreachable by any honest client — `create_critique` is the only way to create a `SynapticLink`, `Critique` creation carries its own hard 20-per-hour cap (§5.15) with no burn tier, and that cap is checked first, so the paid tier opened at exactly the count where creating another `Critique` had already become impossible. It also *weakened* the limit for the one client that could reach it (one authoring `CreateLink` actions directly), granting ten extra links for burns that nothing funds, since balance is not checkable at validation time (§5.19's KNOWN GAP). A conforming implementation MUST NOT reintroduce it without first making burns cost something.
+**Historical note, because a burn-to-extend tier was specified here in an earlier revision and an implementer may have built it.** That tier made creation free below 20, purchasable up to a ceiling of 30 against `CreditBurn`s tagged `"burn_friction"`, and refused at 30. It was removed after live verification showed no honest client could reach it — `create_critique` is the only way to create a `SynapticLink`, `Critique` creation carries its own hard 20-per-hour cap (§5.15) with no burn tier, and that cap is checked first, so the paid tier opened at exactly the count where creating another `Critique` had already become impossible. It also *weakened* the limit for the one client that could reach it (one authoring `CreateLink` actions directly), granting ten extra links for burns that nothing funded, since balance is not checkable at validation time on an agent-centric DHT.
+
+The mutual-credit ledger that tier was the only consumer of (`MutualCreditTransfer`, `CreditBurn`, `get_credit_balance`, and the countersigning flow around them) was subsequently removed from this protocol entirely. **Throughput here is not purchasable by any mechanism, and a conforming implementation MUST NOT make it so.** The named direction for any future cost layer is non-transferable regenerating capacity — a per-agent budget, spent at differing rates by differing acts, refilling over time, that cannot move between agents — which is verifiable from an agent's own chain exactly as the limits in this section already are, and which never needs to answer questions about other agents.
 
 ### 5.12 `Reinforcement` creation
 - Target MUST be an `AgentPubKey`, and MUST equal the creating action's own author — an agent can only reinforce as themselves, never on another agent's behalf.
@@ -363,23 +342,6 @@ Every link type not named in §5.11–§5.14 (including `TargetToCritique`, `Tar
 
 ### 5.18 `FederationRecord` creation
 In addition to the non-empty `remote_network_label`/`remote_membrane_ref` requirements (§2.14): `local_membrane` MUST resolve to a real `Membrane` entry, and the creating agent MUST equal that `Membrane`'s own `creator` field — only a membrane's own founder may declare federation on its behalf, the same governance principle that already gates who can found the membrane at all (§5's `Membrane` author-binding rule, §5.2). No SWO temporal friction — see §10.14 for why.
-
-### 5.19 `MutualCreditTransfer` creation
-- The entry **MUST** be committed as part of a countersigning session. This is checked against the raw `Entry` before HDI's `.flattened()` would discard the envelope: a plain, single-signer `Entry::App` is rejected unconditionally, regardless of its content, and only an `Entry::CounterSign` is considered further. A conforming implementation cannot satisfy this by constructing a well-formed payload; it must produce a genuinely countersigned commit.
-- The session's `signing_agents` MUST be exactly `{from, to}` — exactly two, no more, no fewer, no one else.
-- `from` MUST NOT equal `to` (a self-transfer is meaningless; §2.16's `CreditBurn` is the mechanism for reducing your own standing).
-- The creating action's author MUST be one of the two named parties.
-- `amount` MUST be positive and finite; `reason` MUST be non-empty.
-- No SWO temporal friction: countersigning already requires a willing counterparty, which is a stronger throughput bound than a rate limit.
-
-**Why countersigning is normative rather than a convention**: Holochain has no global consensus, so an agent could otherwise roll back their own source chain and re-spend the same standing. Requiring both parties to sign the same session is what makes a transfer independently verifiable by any validator. This is the same fix `holochain-open-dev/community-mutual-credit` documents for the same attack.
-
-**KNOWN GAP, stated rather than assumed away**: neither §5.19 nor §5.20 checks that an agent has sufficient balance to cover the amount. An agent-centric, eventually-consistent DHT has no cheap way to check a live, globally-agreed balance at validation time — the same reason Circles and other real mutual-credit systems enforce credit limits socially or client-side rather than via a global validator check. **An unbounded negative balance is possible.** The honest fix, if this ledger ever needs to hold real stakes, is a per-pair credit limit checked against both parties' own chains via `must_get_agent_activity` — not a pretend global balance check this substrate cannot make atomic.
-
-### 5.20 `CreditBurn` creation
-- `agent` MUST equal the creating action's author — an agent can only burn their own standing.
-- `amount` MUST be positive and finite; `reason` MUST be non-empty.
-- No countersigning (no counterparty) and no SWO temporal friction of its own.
 
 ## 6. Rate Limits (SWO Temporal Friction) — Consolidated
 
@@ -601,34 +563,6 @@ Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_has
 | `get_federation_records_for` | `membrane: AnyDhtHash` | `Vec<Record>` — one-sided: every `FederationRecord` this membrane has itself authored, never anything about whether the remote side has reciprocated |
 
 Two independently-run Holochain networks share no DHT — one cannot query the other's data, so a `FederationRecord` can only ever record what the *local* membrane has declared. Mutual/"federated" status is not a value either network computes or stores; it is derived externally by a bridge process (`federation/federate.mjs`) that connects to both conductors and independently checks both directions — the same correlative-witness shape §2.4/`BridgeRecord` already establishes for the Twitter bridge, applied to a second network instead of a non-Holochain platform. See `federation/README.md` for the verified, live, two-conductor account.
-
-### 10.15 Metabolic Currency (mutual credit)
-| Function | Payload | Returns |
-|---|---|---|
-| `propose_credit_transfer` | `MutualCreditTransfer` | `PreflightRequest` — commits nothing and moves no value |
-| `accept_credit_transfer` | `PreflightRequest` | `PreflightRequestAcceptance` — locks the caller's own chain for the session window (5 minutes) |
-| `finalize_credit_transfer` | `FinalizeCreditTransferPayload { transfer: MutualCreditTransfer, responses: Vec<PreflightResponse> }` | `ActionHash` |
-| `link_credit_transfer` | `action_hash: ActionHash` | `ActionHash` — indexes a finalized transfer under the caller's own agent anchor |
-| `create_credit_burn` | `CreateCreditBurnPayload { amount: f32, reason: String }` | `ActionHash` |
-| `get_credit_balance` | `agent: AgentPubKey` | `f32` |
-| `attempt_uncountersigned_credit_transfer` | `MutualCreditTransfer` | `ActionHash` — **always fails**; see below |
-
-**A transfer takes four calls, and the shape is normative, not incidental.** `propose` → both parties `accept` → the two signed `PreflightResponse`s are exchanged → each party `finalize`s with **both** responses → each party `link`s. Two constraints force this:
-
-1. A countersigned entry embeds the whole session, so neither party can build its own half from its own response alone. Both responses MUST be passed to `finalize`, ordered to match the request's `signing_agents` (`from`, then `to`).
-2. A source chain inside a countersigning session accepts the session entry and **nothing else**, so the index link (§4) cannot be written in the same call and MUST be a separate one, made after the session releases the chain.
-
-Transporting the `PreflightRequest` and the `PreflightResponse`s between the two agents' clients is deliberately unspecified — `call_remote`, a signal, or an out-of-band channel all conform, the same way this protocol never prescribes how a UI moves a claim's hash between screens.
-
-The consequence of (2), stated plainly: a transfer whose `finalize` succeeded but whose `link_credit_transfer` never happened is a real, valid, countersigned entry on both chains that simply does not appear in that agent's `get_credit_balance`. Nothing is lost — the link is an index, not the record — and calling `link_credit_transfer` later with the same action hash repairs it.
-
-`attempt_uncountersigned_credit_transfer` commits a `MutualCreditTransfer` as a plain, single-signer entry, which §5.19 rejects unconditionally. It exists so that rejection can be verified against a real conductor rather than only asserted in a unit test. It is not an attack surface: it cannot produce a valid entry by construction. If it ever succeeds, the DHT-side enforcement this layer depends on has regressed.
-
-`get_credit_balance` replays one named agent's own transfers and burns, found via their own anchor's links, applying demurrage decay **per individual transaction** rather than to a running total — `amount × 2^(-elapsed_secs / 2592000)`, a 30-day half-life — so one very old transaction cannot distort how fast the whole balance fades. Precedent: Gesell's 1906 Freigeld, tested at Wörgl in 1932, still running as the Chiemgauer.
-
-Because decay applies per-transaction to debits as well as credits, **a burn's effect on a balance recovers over time.** This is deliberate: it models metabolic regeneration rather than permanent debt.
-
-`get_credit_balance` **always answers for one specific, named agent, on request.** It never returns a sorted list, a ranking, or a comparison, per Invariant #1 (§7). A conforming implementation MUST NOT add one.
 
 ## 11. Versioning & Change Process
 

@@ -13,17 +13,7 @@ crate-type = ["cdylib", "rlib"]
 # ranges let them resolve to different physical hdi instances, which
 # then made cargo treat structurally-identical types (e.g. EntryHash) as
 # incompatible across the crate boundary. Confirmed against a real build.
-# "unstable-countersigning" is required for MutualCreditTransfer's
-# countersigning flow (propose_credit_transfer/accept_credit_transfer/
-# finalize_credit_transfer — see METABOLIC BIOSIGNALLING CURRENCY,
-# src/lib.rs). The feature name is upstream Holochain's own — as of hdk
-# 0.4.4, countersigning is a real, shipped, working mechanism (used by
-# the reference mutual-credit implementations this feature is built
-# against — see that section's own comment) but is still gated as
-# "unstable" by the Holochain project itself, meaning its API surface
-# hasn't been stabilized across future hdk versions the way plain
-# create_entry has. Worth knowing before bumping the hdk pin above.
-hdk = { version = "=0.4.4", features = ["unstable-countersigning"] }
+hdk = "=0.4.4"
 serde = { version = "1.0", features = ["derive"] }
 epistemic_integrity = { path = "../integrity" }
 sha2 = "0.10"
