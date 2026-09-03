@@ -5,6 +5,7 @@ import {
 } from './holochain';
 import {
   type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros,
+  type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
 } from './types';
 
 // ============================================================================
@@ -18,6 +19,22 @@ import {
 let connection: HolochainConnection | null = null;
 let currentDomain = '';
 let claims: DecodedRecord<Claim>[] = [];
+
+// --- Epistemic state (README.md §9's "surface what the backend already
+// computes"). Held in the same in-memory store the claim/critique lists
+// already use, so render() stays synchronous and never blocks on a zome
+// call — reads happen once, asynchronously, and rendering reads memory.
+//
+// Everything here is protocol-computed and identical for every viewer,
+// which is what keeps it inside §4.4's constraints. This client infers
+// nothing, ranks nothing, and reorders nothing on the strength of it.
+let frictionStatus: SynapticFrictionStatus | null = null;
+/** claim entryHash (b64) -> AntibodyPatterns flagged against it */
+const antibodiesByClaim = new Map<string, DecodedRecord<AntibodyPattern>[]>();
+/** claim entryHash (b64) -> Retractions its author has published */
+const retractionsByClaim = new Map<string, DecodedRecord<Retraction>[]>();
+/** critique actionHash (b64) -> effective conductance of its SynapticLink */
+const conductanceByCritique = new Map<string, number>();
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -69,11 +86,43 @@ function renderHeader(): HTMLElement {
     const disconnectBtn = document.createElement('button');
     disconnectBtn.className = 'link-button';
     disconnectBtn.textContent = 'Disconnect';
-    disconnectBtn.onclick = () => { connection = null; claims = []; render(); };
+    disconnectBtn.onclick = () => { connection = null; claims = []; frictionStatus = null; render(); };
     meta.appendChild(disconnectBtn);
     header.appendChild(meta);
+    if (frictionStatus) header.appendChild(renderFrictionMeter(frictionStatus));
   }
   return header;
+}
+
+/** The SWO budget as a depleting meter rather than an error the user
+ * discovers by hitting it. get_synaptic_link_friction_status already
+ * returned recent_count/limit/window_secs/blocked before this UI ever
+ * asked — see README.md §9. */
+function renderFrictionMeter(status: SynapticFrictionStatus): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'friction-meter';
+  wrap.dataset.testid = 'friction-meter';
+
+  const remaining = Math.max(0, status.limit - status.recent_count);
+  const minutes = Math.round(status.window_secs / 60);
+
+  const label = document.createElement('span');
+  label.className = 'friction-label';
+  label.textContent = status.blocked
+    ? `Critique budget spent — resets within ${minutes} min`
+    : `Critique budget ${remaining}/${status.limit} left this ${minutes} min`;
+  wrap.appendChild(label);
+
+  const bar = document.createElement('div');
+  bar.className = 'friction-bar';
+  const fill = document.createElement('div');
+  fill.className = status.blocked ? 'friction-fill blocked' : 'friction-fill';
+  const usedPct = status.limit === 0 ? 0 : Math.min(100, (status.recent_count / status.limit) * 100);
+  fill.style.width = `${usedPct}%`;
+  bar.appendChild(fill);
+  wrap.appendChild(bar);
+
+  return wrap;
 }
 
 // --- Connect screen -----------------------------------------------------
@@ -137,6 +186,7 @@ function renderConnectScreen(): HTMLElement {
       connection = await HolochainConnection.connect(newConfig);
       saveConfig(newConfig);
       render();
+      void loadFrictionStatus();
     } catch (err) {
       errorBox.hidden = false;
       errorBox.textContent = err instanceof Error ? err.message : String(err);
@@ -229,6 +279,38 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   meta.textContent = `${claim.entry.confidence} confidence · by ${short(claim.entry.author)}`;
   card.appendChild(meta);
 
+  // Retraction is an additive act here, never a deletion (Invariant:
+  // entries are immutable), so a retracted claim stays fully readable —
+  // it is annotated, not hidden. Preserving disagreement rather than
+  // resolving it is the point.
+  const retractions = retractionsByClaim.get(key) ?? [];
+  for (const retraction of retractions) {
+    const banner = document.createElement('div');
+    banner.className = 'retraction-banner';
+    banner.dataset.testid = 'retraction-banner';
+    banner.textContent = `Retracted by its author — ${retraction.entry.reason}`;
+    card.appendChild(banner);
+  }
+
+  // AntibodyPattern flags announce themselves. The kind and rationale
+  // are shown verbatim, with the flagging agent named: this is one
+  // agent's typed accusation, not a protocol verdict, and displaying it
+  // as anything more would be the client inventing authority the DNA
+  // never granted.
+  const antibodies = antibodiesByClaim.get(key) ?? [];
+  for (const pattern of antibodies) {
+    const flag = document.createElement('div');
+    flag.className = 'antibody-flag';
+    flag.dataset.testid = 'antibody-flag';
+    const kind = document.createElement('strong');
+    kind.textContent = pattern.entry.kind;
+    flag.appendChild(kind);
+    const detail = document.createElement('span');
+    detail.textContent = ` flagged by ${short(pattern.entry.author)} — ${pattern.entry.rationale}`;
+    flag.appendChild(detail);
+    card.appendChild(flag);
+  }
+
   if (claim.entry.semantic_tags.length > 0) {
     const tags = document.createElement('div');
     tags.className = 'tag-row';
@@ -290,6 +372,25 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       modeLabel.className = 'critique-mode';
       modeLabel.textContent = critique.entry.critique_mode;
       item.appendChild(modeLabel);
+
+      // Conductance renders as a visual attribute and deliberately does
+      // NOT reorder the list. It scores a SynapticLink — a critique's
+      // resonance over time — never an agent (README.md §2.6), so it is
+      // safe to show; but sorting by it would let the client bury weakly
+      // resonant critiques, which is the interface quietly resolving a
+      // disagreement the protocol preserves on purpose.
+      const conductance = conductanceByCritique.get(b64(critique.actionHash));
+      if (conductance !== undefined) {
+        const strength = document.createElement('span');
+        strength.className = 'conductance';
+        strength.dataset.testid = 'conductance';
+        strength.title = `Effective conductance ${conductance.toFixed(2)} — decay- and reinforcement-weighted strength of this connection, computed fresh at read time`;
+        strength.textContent = `⟿ ${conductance.toFixed(2)}`;
+        // Opacity tracks strength so a faded connection reads as faded,
+        // with a floor so it never becomes unreadable.
+        strength.style.opacity = String(Math.max(0.35, Math.min(1, conductance)));
+        item.appendChild(strength);
+      }
       const text = document.createElement('p');
       text.textContent = critique.entry.content;
       item.appendChild(text);
@@ -341,6 +442,10 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       await connection.callZome('create_critique', critique);
       textarea.value = '';
       await loadCritiques(claim);
+      // Every critique spends a unit of the SWO budget (create_critique
+      // creates a SynapticLink), so the meter is re-read rather than
+      // decremented locally — the conductor's own count is authoritative.
+      void loadFrictionStatus();
     } catch (err) {
       errorBox.hidden = false;
       errorBox.textContent = err instanceof Error ? err.message : String(err);
@@ -360,14 +465,90 @@ async function loadClaims(domain: string) {
   claims = decodeRecords<Claim>(records);
   critiquesByClaim.clear();
   expandedClaims.clear();
+  antibodiesByClaim.clear();
+  retractionsByClaim.clear();
   render();
+  // Epistemic state is fetched after the claims are already on screen,
+  // so a slow or failing read degrades the badges rather than the list.
+  void loadClaimEpistemicState();
+}
+
+/** AntibodyPattern flags and Retractions for every claim currently
+ * listed. Fetched per claim because both are link queries anchored to a
+ * specific target; the count is bounded by what a domain actually holds,
+ * and results land in the store rather than blocking any render. */
+async function loadClaimEpistemicState() {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(claims.map(async (claim) => {
+    const key = b64(claim.entryHash);
+    try {
+      const [antibodies, retractions] = await Promise.all([
+        conn.callZome<any[]>('get_antibody_patterns_for', claim.entryHash),
+        conn.callZome<any[]>('get_retractions_for_claim', claim.entryHash),
+      ]);
+      antibodiesByClaim.set(key, decodeRecords<AntibodyPattern>(antibodies));
+      retractionsByClaim.set(key, decodeRecords<Retraction>(retractions));
+    } catch {
+      // A failed epistemic read must never take the claim list down with
+      // it — the claim is still real and still readable without its
+      // badges, so this degrades silently rather than throwing.
+    }
+  }));
+  render();
+}
+
+/** This agent's own SWO budget for the current window. One call, no
+ * arguments, and it reads only the caller's own source chain — see
+ * SynapticFrictionStatus's own comment in types.ts. */
+async function loadFrictionStatus() {
+  if (!connection) return;
+  try {
+    frictionStatus = await connection.callZome<SynapticFrictionStatus>(
+      'get_synaptic_link_friction_status', null,
+    );
+    render();
+  } catch {
+    frictionStatus = null;
+  }
 }
 
 async function loadCritiques(claim: DecodedRecord<Claim>) {
   if (!connection) return;
   const key = b64(claim.entryHash);
   const records = await connection.callZome<any[]>('get_critiques_for', claim.entryHash);
-  critiquesByClaim.set(key, decodeRecords<Critique>(records));
+  const decoded = decodeRecords<Critique>(records);
+  critiquesByClaim.set(key, decoded);
+  render();
+  void loadConductances(claim, decoded);
+}
+
+/** Effective conductance for each critique's own SynapticLink — the
+ * decay- and reinforcement-weighted strength of the connection, computed
+ * fresh at read time by the protocol (README.md §2.6).
+ *
+ * Two calls per critique: find_synaptic_link recovers the link's own
+ * ActionHash (create_critique returns the Critique's hash, not the
+ * link's), then get_effective_conductance scores it. Only runs for a
+ * claim the user has actually expanded, so the fan-out is bounded by
+ * what is on screen. */
+async function loadConductances(claim: DecodedRecord<Claim>, critiques: DecodedRecord<Critique>[]) {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(critiques.map(async (critique) => {
+    try {
+      const linkHash = await conn.callZome<Uint8Array | null>('find_synaptic_link', {
+        base: claim.entryHash,
+        target_action: critique.actionHash,
+      });
+      if (!linkHash) return;
+      const conductance = await conn.callZome<number>('get_effective_conductance', linkHash);
+      conductanceByCritique.set(b64(critique.actionHash), conductance);
+    } catch {
+      // Same degradation rule as above: a critique with no conductance
+      // reading renders without one rather than not rendering.
+    }
+  }));
   render();
 }
 
