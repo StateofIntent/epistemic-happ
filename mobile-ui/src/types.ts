@@ -174,3 +174,32 @@ export interface Constitution {
   published_at: number;
   expires_at: number | null;
 }
+
+// --- Evidence and grounding --------------------------------------------
+
+export type EvidenceType =
+  | 'Study' | 'CaseReport' | 'Video' | 'Image' | 'Text' | 'Measurement';
+
+export const EVIDENCE_TYPES: EvidenceType[] = [
+  'Study', 'CaseReport', 'Video', 'Image', 'Text', 'Measurement',
+];
+
+export interface Evidence {
+  content: string;
+  evidence_type: EvidenceType;
+  source_url: string | null;
+  author: Uint8Array;
+  timestamp: number;
+}
+
+/** get_grounding_path — whether a claim's evidence chain reaches a real
+ * Evidence entry, and the path walked to find out.
+ *
+ * An ungrounded claim is NOT invalid and nothing gates on this: a claim
+ * can exist, be critiqued and be exported with no grounding at all. This
+ * makes that visible to a reader who asks, and never blocks anything —
+ * the same read-layer, opt-in shape as AttestationPolicy. */
+export interface GroundingPath {
+  path: Uint8Array[];
+  grounded: boolean;
+}

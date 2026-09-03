@@ -562,3 +562,51 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-size: 0.76rem;
   line-height: 1.4;
 }
+
+/* --- Grounding, retraction, evidence ---------------------------------- */
+
+.grounding {
+  margin-top: 0.5rem;
+  font-size: 0.76rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Grounded and ungrounded are DISTINCT, not better and worse. An
+   ungrounded claim is perfectly valid here and nothing gates on it, so
+   neither state is styled as an error. */
+.grounding.grounded {
+  background: rgba(30, 132, 73, 0.10);
+  color: #1e8449;
+}
+
+.grounding.ungrounded {
+  background: rgba(127, 127, 127, 0.12);
+  opacity: 0.85;
+}
+
+.retract-form,
+.evidence-fieldset {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.28);
+  border-radius: 5px;
+}
+
+.retract-form textarea,
+.evidence-fieldset textarea,
+.evidence-fieldset input,
+.evidence-fieldset select {
+  width: 100%;
+  margin-bottom: 0.45rem;
+  box-sizing: border-box;
+}
+
+.evidence-fieldset legend {
+  padding: 0 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
