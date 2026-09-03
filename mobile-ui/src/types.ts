@@ -203,3 +203,17 @@ export interface GroundingPath {
   path: Uint8Array[];
   grounded: boolean;
 }
+
+/** Every AntibodyPatternKind the integrity zome defines, in its own
+ * declaration order (dna/integrity/src/lib.rs). Serialized as the bare
+ * variant name, the same shape CRITIQUE_MODES already uses for
+ * CritiqueMode — the coordinator deserializes these straight into the
+ * Rust enum, so a value not in this list is a runtime error, not a
+ * lenient fallback. */
+export const ANTIBODY_PATTERN_KINDS: AntibodyPatternKind[] = [
+  'SpamFlood',
+  'SybilCluster',
+  'Plagiarism',
+  'CoordinatedManipulation',
+  'Impersonation',
+];

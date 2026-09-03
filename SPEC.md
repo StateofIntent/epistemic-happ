@@ -240,7 +240,7 @@ Every row is a Holochain typed link (`#[hdk_link_types]`). "Base → Target" giv
 | `CritiqueToEvidence` | *(declared, unused)* | — | Declared in `LinkTypes` but not created or read by any current coordinator function |
 | `ClaimToEvidence` | *(declared, unused)* | — | Declared in `LinkTypes` but not created or read by any current coordinator function |
 | `CritiqueToSpecies` | `CritiqueSpecies` (`EntryHash`) → `Critique` | `"adopts"` (literal string) | **Name is the inverse of its actual direction** — the base is the species, not the critique; verify against `create_critique`/`get_critique_species_adoption_count` rather than the name alone. The real, query-time basis for adoption counting (§10.6) |
-| `MembraneToClaim` | *(declared, unused)* | — | Declared in `LinkTypes` but not created or read by any current coordinator function |
+| `MembraneToClaim` | *(declared, unused)* | — | Declared in `LinkTypes` but not created or read by any current coordinator function. Considered and **rejected** as the by-domain index (`DomainToClaim` below): a `Claim`'s `domain` is free text and a `Membrane` need not exist for it, so a Membrane-keyed index would leave claims in unfounded domains unfindable — the same defect §10.0 describes, reached another way |
 | `AgentToMembrane` | `Membrane` (`EntryHash`) → the joining agent's own anchor (not the raw `AgentPubKey` directly — see below) | Raw 36-byte `AgentPubKey` | The real agent identity lives in the tag, cross-checked against it (§5.13); target is an agent anchor, same construction as §4's closing note |
 | `AttestationGrant` | `Membrane` (`EntryHash`) → candidate agent (`AgentPubKey`, directly — not an anchor) | The granter's own `my_membership_action` `ActionHash`, raw 36 bytes | See §5.14 — a costed (tenure- and budget-gated) act of vouching; the tag is what tenure validation independently re-fetches and checks |
 | `AgentToConstitution` | Agent anchor → `Constitution` | `"constitution"` | |
@@ -256,6 +256,8 @@ Every row is a Holochain typed link (`#[hdk_link_types]`). "Base → Target" giv
 | `SynapticLink` | A `Critique`'s target → the critique's own `ActionHash` | 4-byte LE `f32` initial conductance | See §2.13, §5.11 |
 | `Reinforcement` | A `SynapticLink`'s own `CreateLink` `ActionHash` → the reinforcing agent | — | See §5.12 |
 | `MembraneToFederationRecord` | `Membrane` → `FederationRecord` | `remote_network_label` (raw bytes) | See §2.14, §5.18, §10.14 |
+| `DomainToClaim` | Domain anchor → `Claim` `ActionHash` | — (empty) | **The by-domain index.** Anchor is `path_entry_hash()` of `Path::from("domain_{domain}")`. Tag deliberately empty: the domain is already the anchor, so repeating it in the tag would be a second copy validation must keep honest for no reader's benefit. Written by `create_claim`, read by `get_claims_by_domain`. See §10.0 |
+| `TaxonomyToSpecies` | Taxonomy anchor → `CritiqueSpecies` `ActionHash` | — (empty) | **The critique-taxonomy index.** One global anchor, `path_entry_hash()` of `Path::from("critique_species")` — `CritiqueSpecies` has no domain field on purpose, since a species is meant to be adoptable across membranes. Written by `create_critique_species`, read by `get_all_critique_species`. See §10.0 |
 
 "Agent anchor" is `path_entry_hash()` of the `Path` constructed from the string `agent_{agent_pub_key}` — a deterministic per-agent anchor point, not a stored entry of its own.
 
@@ -505,20 +507,26 @@ The reads below divide into two kinds, and their signatures do not distinguish t
 
 Chain-local is the *correct* scope for some of these, and saying so matters as much as naming the gap: `generate_worldline_trace` and `sample_period` index the caller's own history by definition, `export_to_n4l` exports the caller's own records, and `get_unbridged_claims`/`get_unbridged_mews` exist so a bridge can publish *its own* agent's backlog. Nothing is wrong there.
 
-The problem is the remainder, where chain-local scope contradicts the function's evident purpose: **`get_claims_by_domain`**, **`get_critiques_by_mode`**, **`get_membranes`**, **`get_all_critique_species`**, and **`get_all_constitutions`**.
+The problem is the remainder, where chain-local scope contradicts the function's evident purpose. **Two of those five are now fixed; three remain.**
 
-The consequence is blunt, and applies to `get_claims_by_domain` above all, since browsing a domain is the ordinary entry point into this protocol: **on a network with more than one agent, browsing a domain returns only your own claims.** Others' claims are fully present on the DHT, gossiped and reachable — `get_claims_by_agent` retrieves the very same entries — but no function offered here finds them by domain. `get_all_critique_species` has the same shape, so a "shared, evolving vocabulary of critique types" is in fact each agent's private list; `get_membranes` shows only membranes you founded; `get_all_constitutions` only your own.
+**Fixed — these are DHT-wide as of this revision.** `get_claims_by_domain` reads `LinkTypes::DomainToClaim` from a domain anchor (`Path::from("domain_<name>")`), and `get_all_critique_species` reads `LinkTypes::TaxonomyToSpecies` from the single taxonomy anchor (`Path::from("critique_species")`). `create_claim` and `create_critique_species` write those links respectively. **Both reads are link-only with no chain-query fallback, and that is normative rather than incidental:** a union with the old query would return the caller's own records whether or not the index worked, which on a single-agent conductor — the only kind this protocol had ever been tested on — would let a broken index go on passing every test. That fallback is precisely what would have hidden this defect, and an implementation must not add one.
+
+Validation enforces three properties on `DomainToClaim`, and an implementation that omits them has an index rather than a trustworthy one: the target must resolve to a real `Claim`; the base anchor must be the one that claim's *own declared domain* derives (otherwise any claim may be filed under any domain); and the link author must be the claim's author (§5.2 author binding — a third party filing others' claims is bounded by nobody's friction budget). `TaxonomyToSpecies` enforces the analogous three, with `CritiqueSpecies.proposer` in place of `Claim.author` and a fixed anchor in place of a derived one.
+
+**Still chain-local, and still contradicting their own names:** **`get_critiques_by_mode`**, **`get_membranes`**, and **`get_all_constitutions`**. These were left unfixed deliberately rather than overlooked. Each would be a single global index over an unbounded, ever-growing set — every critique of a given mode, every membrane, every agent's constitution — and whether such a firehose should exist at all is a design question this specification has not answered, unlike "the claims in this domain" and "the vocabulary of critique types", which are bounded and obviously wanted. An implementation should treat these three as chain-local by specification.
+
+The consequence, for the historical record and because it explains the shape of the fix: before the two indexes existed, **on a network with more than one agent, browsing a domain returned only your own claims** — the ordinary entry point into a protocol whose entire purpose is agents cross-checking each other. The data was never missing, only unfindable: `get_claims_by_agent` retrieved the very same entries the domain read could not see.
 
 **Why this survived to now:** every conductor this project has ever verified against ran exactly one agent, and on one agent the two kinds are indistinguishable in behaviour. It is a genuine gap in the specified protocol, not a client bug, and is confirmed live with two real agents by `scripts/live-verify/read-scope.mjs` — the same claim being invisible to `get_claims_by_domain` while `get_claims_by_agent` returns it for the same agent at the same moment, which is what rules out "not yet gossiped".
 
-**The fix is not designed here**, but the shape is already half-present: `LinkTypes::MembraneToClaim` is declared in the integrity zome and, as §9's own audit recorded, is never created or read by any coordinator function. A domain-anchored link written at `create_claim` time and read by `get_claims_by_domain` is the obvious candidate. Until that exists, an implementation targeting compatibility should treat the four functions named above as chain-local by specification, and clients should not present them as views of the network.
+**Confirmed live, with controls**, by `scripts/live-verify/read-scope.mjs`: two real agents on one conductor, every chain-local read paired with a link-based read of the *same* entry by the *same* agent at the *same* moment, so an observed zero cannot be explained by "not yet gossiped". That harness now asserts the corrected behaviour for the two fixed reads and the still-chain-local behaviour for the other three, making it the executable form of this section. `scripts/live-verify/domain-index.mjs` covers the indexes themselves, including three attempts to poison the by-domain index — a claim filed under a domain it does not declare, a third party filing someone else's claim, and a non-`Claim` target — each performed for real through the `attempt_false_domain_index` prober and each observed being refused by validation.
 
 ### 10.1 Claim
 | Function | Payload | Returns |
 |---|---|---|
 | `create_claim` | `Claim` | `ActionHash` |
 | `get_claim` | `hash: AnyDhtHash` | `Option<Claim>` |
-| `get_claims_by_domain` | `domain: String` | `Vec<Record>` |
+| `get_claims_by_domain` | `domain: String` | `Vec<Record>` — DHT-wide via `DomainToClaim` (§10.0) |
 | `get_claims_by_agent` | `agent: AgentPubKey` | `Vec<Record>` |
 
 ### 10.2 Critique
@@ -526,7 +534,7 @@ The consequence is blunt, and applies to `get_claims_by_domain` above all, since
 |---|---|---|
 | `create_critique` | `Critique` | `ActionHash` |
 | `get_critiques_for` | `target: AnyDhtHash` | `Vec<Record>` |
-| `get_critiques_by_mode` | `mode: CritiqueMode` | `Vec<Record>` |
+| `get_critiques_by_mode` | `mode: CritiqueMode` | `Vec<Record>` — **chain-local** (§10.0) |
 | `get_synaptic_link_friction_status` | `()` | `SynapticFrictionStatus { recent_count: usize, limit: usize, window_secs: i64, blocked: bool }` |
 | `find_synaptic_link` | `FindSynapticLinkPayload { base: AnyDhtHash, target_action: ActionHash }` | `Option<ActionHash>` |
 | `reinforce_synaptic_link` | `synaptic_link_action: ActionHash` | `ActionHash` |
@@ -549,16 +557,16 @@ The consequence is blunt, and applies to `get_claims_by_domain` above all, since
 | Function | Payload | Returns |
 |---|---|---|
 | `create_membrane` | `Membrane` | `ActionHash` |
-| `get_membranes` | — | `Vec<Record>` |
+| `get_membranes` | — | `Vec<Record>` — **chain-local** (§10.0) |
 | `join_membrane` | `membrane: AnyDhtHash` | `ActionHash` |
 | `get_membrane_members` | `membrane: AnyDhtHash` | `Vec<AgentPubKey>` |
 | `get_my_membership_action` | `membrane: AnyDhtHash` | `Option<ActionHash>` |
 | `publish_constitution` | `Constitution` | `ActionHash` |
 | `get_agent_constitution` | `agent: AgentPubKey` | `Option<Constitution>` |
-| `get_all_constitutions` | — | `Vec<Record>` |
+| `get_all_constitutions` | — | `Vec<Record>` — **chain-local** (§10.0) |
 | `create_critique_species` | `CritiqueSpecies` | `ActionHash` |
 | `get_critique_species` | `hash: AnyDhtHash` | `Option<CritiqueSpecies>` |
-| `get_all_critique_species` | — | `Vec<Record>` |
+| `get_all_critique_species` | — | `Vec<Record>` — DHT-wide via `TaxonomyToSpecies` (§10.0) |
 | `get_critique_species_adoption_count` | `species_hash: EntryHash` | `usize` — live count of real `CritiqueToSpecies` links, not a stored field |
 
 ### 10.6 Worldline / HRR (worldline binding)

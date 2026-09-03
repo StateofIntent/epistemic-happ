@@ -8,6 +8,7 @@ import {
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
+  ANTIBODY_PATTERN_KINDS,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -50,6 +51,13 @@ const antibodiesByClaim = new Map<string, DecodedRecord<AntibodyPattern>[]>();
 const retractionsByClaim = new Map<string, DecodedRecord<Retraction>[]>();
 /** critique actionHash (b64) -> effective conductance of its SynapticLink */
 const conductanceByCritique = new Map<string, number>();
+/** critique actionHash (b64) -> the ActionHash of its own SynapticLink.
+ *
+ * loadConductances already resolves this (find_synaptic_link, because
+ * create_critique returns the Critique's hash and not the link's) and
+ * used to throw it away after scoring. Reinforcing needs exactly that
+ * hash, so it is kept rather than resolved a second time. */
+const linkHashByCritique = new Map<string, Uint8Array>();
 
 // --- Critique structure (spatial view) --------------------------------
 // A Critique is itself a valid critique target, so disagreement here is
@@ -80,6 +88,8 @@ let foundingOpen = false;
 const groundingByClaim = new Map<string, GroundingPath>();
 /** claim entryHash (b64) -> whether its retract form is open */
 const retractingClaims = new Set<string>();
+/** claim entryHash (b64) -> whether its antibody-flag form is open */
+const flaggingClaims = new Set<string>();
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
@@ -470,6 +480,23 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     card.appendChild(flag);
   }
 
+  // The write half of those flags. get_antibody_patterns_for was
+  // surfaced; publish_antibody_pattern was not — so this UI could show
+  // what others had flagged and gave the practitioner no way to flag
+  // anything themselves. §4.2's immune-system account has every agent
+  // producing antibodies; a client that only renders other people's
+  // makes the reader a spectator of an immune response they are
+  // supposed to be part of.
+  //
+  // WHAT THIS IS NOT, and the microcopy below says so plainly: it is not
+  // a report button and there is no moderator behind it. Publishing a
+  // pattern removes nothing, hides nothing, and summons nobody — the
+  // claim stays exactly as readable afterwards (Invariant #6). It adds
+  // one attributable, typed entry saying THIS AGENT recognises THIS
+  // structural pattern here. Language implying otherwise would promise
+  // an authority the protocol deliberately does not have.
+  card.appendChild(renderFlagAffordance(claim));
+
   if (claim.entry.semantic_tags.length > 0) {
     const tags = document.createElement('div');
     tags.className = 'tag-row';
@@ -493,6 +520,17 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     } else {
       expandedClaims.add(key);
       render();
+      // Re-read the budget every time a critique panel OPENS — not
+      // inside loadCritiques, which the cache check below skips on a
+      // re-open. The gate on this panel's form is only as honest as this
+      // number, and the limit is a ROLLING WINDOW: a status read at
+      // connect time keeps saying "blocked" for as long as the tab stays
+      // open, minutes after the window has moved on and the conductor
+      // would accept a critique again. A stale block refuses, on the
+      // UI's behalf, something the protocol permits — the very failure
+      // this gate exists to prevent, inverted. Opening the panel is the
+      // moment the number matters, so it is the moment to refresh it.
+      void loadFrictionStatus();
       if (!critiquesByClaim.has(key)) {
         await loadCritiques(claim);
       }
@@ -561,6 +599,120 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
  * Offered only on your own claims, matching what validation permits.
  * Retracting someone else's claim is not a weaker form of disagreeing
  * with it — the mechanism for that is a typed Critique. */
+/** The "flag a structural pattern" affordance: a toggle, and the form it
+ * opens. Kept collapsed by default because flagging is the rare act, not
+ * the routine one — critiquing content is the ordinary path and should
+ * stay visually dominant. That is presentation density, which §4.4
+ * explicitly permits adapting; the claim and its existing flags render
+ * identically for everyone regardless. */
+function renderFlagAffordance(claim: DecodedRecord<Claim>): HTMLElement {
+  const key = b64(claim.entryHash);
+  const wrap = document.createElement('div');
+  wrap.className = 'flag-affordance';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'link-button';
+  toggle.dataset.testid = 'flag-toggle';
+  toggle.textContent = flaggingClaims.has(key) ? 'Cancel' : 'Flag a pattern';
+  toggle.onclick = () => {
+    if (flaggingClaims.has(key)) flaggingClaims.delete(key);
+    else flaggingClaims.add(key);
+    render();
+  };
+  wrap.appendChild(toggle);
+
+  if (!flaggingClaims.has(key)) return wrap;
+
+  const form = document.createElement('form');
+  form.className = 'flag-form';
+  form.dataset.testid = 'flag-form';
+
+  const note = document.createElement('p');
+  note.className = 'hint';
+  // Stating the limits is not a disclaimer, it is the accurate
+  // description — see the comment at the call site.
+  note.textContent =
+    'An AntibodyPattern flags a structural or behavioural pattern (spam, a sybil ' +
+    'ring, plagiarism) rather than whether the claim is right — that is what a ' +
+    'critique is for. It is published under your name, removes nothing, and hides ' +
+    'nothing: the claim stays exactly as readable as it is now.';
+  form.appendChild(note);
+
+  const kindSelect = document.createElement('select');
+  kindSelect.dataset.testid = 'flag-kind';
+  for (const kind of ANTIBODY_PATTERN_KINDS) {
+    const opt = document.createElement('option');
+    opt.value = kind;
+    opt.textContent = kind;
+    kindSelect.appendChild(opt);
+  }
+  form.appendChild(kindSelect);
+
+  const rationale = document.createElement('textarea');
+  rationale.dataset.testid = 'flag-rationale';
+  rationale.placeholder = 'Why this pattern — what you actually observed.';
+  // Deliberately NOT `required`, matching renderRetractForm above. The
+  // native constraint would block submission with the browser's generic
+  // "Please fill out this field", and the whole point of the message the
+  // submit handler raises instead is that it says WHY an unexplained
+  // flag is useless here. Same reasoning, same shape, in both forms.
+  form.appendChild(rationale);
+
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.dataset.testid = 'flag-submit';
+  submit.textContent = 'Publish flag';
+  form.appendChild(submit);
+
+  const error = document.createElement('div');
+  error.className = 'error-box';
+  error.dataset.testid = 'flag-error';
+  error.hidden = true;
+  form.appendChild(error);
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!connection) return;
+    error.hidden = true;
+    // A rationale is required for the same reason a retraction's is: the
+    // record is the point. An untyped, unexplained flag is exactly the
+    // flat "downvote" this protocol exists to not have.
+    if (!rationale.value.trim()) {
+      error.hidden = false;
+      error.textContent = 'A rationale is required — an unexplained flag records nothing usable.';
+      return;
+    }
+    submit.disabled = true;
+    try {
+      // Not gated on friction, for the same reason the reinforce button
+      // above is not: publish_antibody_pattern has its own SWO limit
+      // (check_antibody_pattern_friction) with no status function
+      // exposed to re-derive it from, and §4.5's third rule forbids
+      // gating on state this client cannot know.
+      await connection.callZome('publish_antibody_pattern', {
+        target: claim.entryHash,
+        target_type: 'Claim',
+        kind: kindSelect.value,
+        rationale: rationale.value.trim(),
+        author: connection.myAgentPubKey,
+        timestamp: nowMicros(),
+      });
+      flaggingClaims.delete(key);
+      // Re-read so the new flag appears exactly as everyone else will
+      // see it, rather than as a locally-constructed optimistic copy.
+      await loadClaimEpistemicState();
+      render();
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err instanceof Error ? err.message : String(err);
+      submit.disabled = false;
+    }
+  };
+
+  wrap.appendChild(form);
+  return wrap;
+}
+
 function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
   const key = b64(claim.entryHash);
   const form = document.createElement('div');
@@ -661,6 +813,66 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
         // with a floor so it never becomes unreadable.
         strength.style.opacity = String(Math.max(0.35, Math.min(1, conductance)));
         item.appendChild(strength);
+
+        // The write half of the same number. get_effective_conductance
+        // was surfaced; reinforce_synaptic_link was not — so this UI
+        // could show a connection's strength and offered no way to
+        // strengthen it, which is a read-only surface on a read-write
+        // protocol. Reinforcement is what conductance is FOR: without
+        // it every link decays toward zero on the same half-life, so a
+        // client that only reads the number describes a process it
+        // gives nobody any way to take part in.
+        //
+        // Legitimate under §4.4 because reinforcing scores a
+        // SynapticLink, never an agent (README.md §2.6), and because it
+        // is the user's own attributable act rather than something this
+        // client infers on their behalf. It deliberately does NOT
+        // reorder the list, for the same reason the conductance display
+        // above doesn't.
+        const linkHash = linkHashByCritique.get(b64(critique.actionHash));
+        if (linkHash) {
+          const reinforceBtn = document.createElement('button');
+          reinforceBtn.className = 'link-button reinforce-button';
+          reinforceBtn.dataset.testid = 'reinforce';
+          reinforceBtn.textContent = 'Reinforce';
+          reinforceBtn.title =
+            'Record that this connection resonates with you. Raises its effective ' +
+            'conductance, which decays again over time unless reinforced.';
+          // NOT gated on friction, unlike the critique form. Reinforcement
+          // has its own SWO limit (check_reinforcement_friction), but the
+          // coordinator exposes no status function for it the way
+          // get_synaptic_link_friction_status exposes the critique
+          // budget — so this UI cannot re-derive the conductor's answer,
+          // and §4.5's third rule applies: never gate on unknown state.
+          // Guessing would refuse what the protocol permits. The refusal
+          // is surfaced honestly below instead, and the coordinator's own
+          // message already explains itself ("intentional friction, not a
+          // reputation judgment — try again later").
+          reinforceBtn.onclick = async () => {
+            if (!connection) return;
+            reinforceBtn.disabled = true;
+            reinforceBtn.textContent = 'Reinforcing…';
+            try {
+              await connection.callZome('reinforce_synaptic_link', linkHash);
+              // Re-read rather than incrementing locally: effective
+              // conductance is computed fresh at read time from decay
+              // plus every reinforcement, so the conductor's number is
+              // the only correct one — and seeing it actually move is
+              // the whole point of offering the action.
+              await loadConductances(claim, list);
+            } catch (err) {
+              reinforceBtn.disabled = false;
+              reinforceBtn.textContent = 'Reinforce';
+              const msg = document.createElement('span');
+              msg.className = 'reinforce-error';
+              msg.dataset.testid = 'reinforce-error';
+              msg.textContent = err instanceof Error ? err.message : String(err);
+              item.appendChild(msg);
+            }
+          };
+          item.appendChild(reinforceBtn);
+        }
+
         const note = renderConceptNote('conductance');
         if (note) item.appendChild(note);
       }
@@ -692,6 +904,51 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   const errorBox = document.createElement('div');
   errorBox.className = 'error-box';
   errorBox.hidden = true;
+
+  // State-driven affordance surfacing (see the note above renderHeader):
+  // every critique creates a SynapticLink, and create_synaptic_link is
+  // the ONE coordinator path that spends the SWO budget (verified: it
+  // has a single call site, in create_critique). So a spent budget makes
+  // this exact form's submit certain to fail, and the UI already knows
+  // it — get_synaptic_link_friction_status computes `blocked` from the
+  // same count, over the same window, off the same source chain that
+  // check_synaptic_link_friction uses to refuse. This is not a guess
+  // about what the conductor will do; it is the same derivation.
+  //
+  // DISABLED AND EXPLAINED, NOT HIDDEN — the distinction matters, and it
+  // is the reason this differs from the retract affordance above, which
+  // IS hidden. Retraction on someone else's claim is structurally
+  // impossible for this agent: offering it would be noise, and its
+  // absence tells no lie. A spent budget is this agent's own transient
+  // state, five minutes from being false. Hiding the form would conceal
+  // a protocol rule the practitioner needs to see in order to plan
+  // around it, and README.md §4.4's first constraint is precisely about
+  // an interface that adapts while concealing that it is adapting. So
+  // the form stays visibly present, visibly unavailable, and says why.
+  const blocked = frictionStatus?.blocked === true;
+  if (blocked) {
+    // Never gate on unknown state: frictionStatus is null when the read
+    // failed or has not returned yet, and `?.blocked === true` is false
+    // in both cases. Guessing "blocked" from missing information would
+    // refuse an action the protocol would have allowed, which is a worse
+    // failure than the opaque error this whole change exists to remove.
+    submitBtn.disabled = true;
+    textarea.disabled = true;
+    modeSelect.disabled = true;
+    form.classList.add('affordance-blocked');
+
+    const reason = document.createElement('p');
+    reason.className = 'affordance-reason';
+    reason.dataset.testid = 'critique-blocked-reason';
+    const minutes = Math.round((frictionStatus?.window_secs ?? 0) / 60);
+    // Same words as the meter in the header, deliberately: the user
+    // should recognise the sentence they have been watching deplete,
+    // not read a second, differently-worded account of one rule.
+    reason.textContent =
+      `Critique budget spent — resets within ${minutes} min. ` +
+      `This is an absolute limit; nothing lifts it early.`;
+    form.appendChild(reason);
+  }
 
   form.appendChild(modeSelect);
   form.appendChild(textarea);
@@ -784,10 +1041,36 @@ async function loadClaimEpistemicState() {
 async function loadFrictionStatus() {
   if (!connection) return;
   try {
-    frictionStatus = await connection.callZome<SynapticFrictionStatus>(
+    const next = await connection.callZome<SynapticFrictionStatus>(
       'get_synaptic_link_friction_status', null,
     );
-    render();
+    // Re-render ONLY when the number actually moved.
+    //
+    // render() rebuilds app.innerHTML wholesale, so every render throws
+    // away any DOM the user is currently interacting with — including a
+    // half-typed critique. That was tolerable while this read happened
+    // once at connect time; it stopped being tolerable when the budget
+    // began refreshing whenever a critique panel opens, which is exactly
+    // when someone is about to start typing into that panel.
+    //
+    // Found the expensive way: a live harness filled the critique
+    // textarea, this read returned between the fill and the submit, the
+    // re-render replaced the textarea with an empty one, and the
+    // critique was silently never created — no error, no budget spent,
+    // just nothing. A person typing would have seen their text vanish.
+    //
+    // The deeper flaw is the wholesale rebuild itself, and this does not
+    // fix it: loadCritiques and loadConductances still each call
+    // render() unconditionally, so the race is narrowed, not closed.
+    // Closing it properly is the "local-first in-memory mirror" pattern
+    // in README.md §4.5 — render from memory, patch what changed — which
+    // is a real piece of work and not this one.
+    const changed = frictionStatus === null
+      || frictionStatus.recent_count !== next.recent_count
+      || frictionStatus.blocked !== next.blocked
+      || frictionStatus.limit !== next.limit;
+    frictionStatus = next;
+    if (changed) render();
   } catch {
     frictionStatus = null;
   }
@@ -825,6 +1108,7 @@ async function loadConductances(claim: DecodedRecord<Claim>, critiques: DecodedR
       if (!linkHash) return;
       const conductance = await conn.callZome<number>('get_effective_conductance', linkHash);
       conductanceByCritique.set(b64(critique.actionHash), conductance);
+      linkHashByCritique.set(b64(critique.actionHash), linkHash);
     } catch {
       // Same degradation rule as above: a critique with no conductance
       // reading renders without one rather than not rendering.

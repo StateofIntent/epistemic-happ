@@ -318,6 +318,26 @@ pub fn create_claim(claim: Claim) -> ExternResult<ActionHash> {
         LinkTag::new(claim.domain.as_bytes().to_vec()),
     )?;
 
+    // Index it under its domain, so agents other than this one can
+    // actually find it. Before this link existed, get_claims_by_domain
+    // was a source-chain query and browsing a domain returned only your
+    // own claims — see LinkTypes::DomainToClaim's own comment in the
+    // integrity zome for the full account.
+    //
+    // The domain is NOT carried in the tag: unlike AgentToClaim above,
+    // where the tag's domain is the only way a by-agent reader knows
+    // which domain a claim belongs to, here the domain is already the
+    // anchor. Repeating it in the tag would be a second copy that
+    // validation would then have to keep honest, for no reader's
+    // benefit.
+    let domain_anchor = domain_anchor_hash(&claim.domain)?;
+    create_link(
+        domain_anchor,
+        action_hash.clone(),
+        LinkTypes::DomainToClaim,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+
     // Emit signal for bridge service. The bridge needs this claim's
     // EntryHash — not just its ActionHash — to later record a
     // BridgeRecord link keyed the same way every other claim link is
@@ -354,18 +374,37 @@ pub fn get_claim(hash: AnyDhtHash) -> ExternResult<Option<Claim>> {
     }
 }
 
+/// Every Claim published in `domain`, BY ANY AGENT — read from the DHT
+/// via the domain anchor, not from the caller's own source chain.
+///
+/// This was a `query(ChainQueryFilter)` until the `DomainToClaim` index
+/// existed, which meant it scanned only the calling agent's own chain
+/// and so returned only that agent's claims. Browsing a domain showed
+/// you your own work and nobody else's, in a protocol built on agents
+/// cross-checking each OTHER — see `LinkTypes::DomainToClaim` in the
+/// integrity zome for the full account and how it went unnoticed.
+///
+/// DELIBERATELY NO CHAIN-QUERY FALLBACK. Unioning the link read with the
+/// old query would look like belt-and-braces and would in fact restore
+/// the exact blindness that hid the original bug: on a single-agent
+/// conductor — which is every conductor this project tests against — the
+/// fallback returns the caller's own claims whether or not the index
+/// works at all, so a broken or unwritten link would go on passing every
+/// test. The read is link-only so that a failure to index is a failure
+/// anyone can see.
 #[hdk_extern]
 pub fn get_claims_by_domain(domain: String) -> ExternResult<Vec<Record>> {
-    let mut claims = Vec::new();
-    // Query all Claim entries and filter by domain.
-    let filter = ChainQueryFilter::new()
-        .include_entries(true)
-        .entry_type(EntryType::App(UnitEntryTypes::Claim.try_into()?));
+    let anchor = domain_anchor_hash(&domain)?;
+    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::DomainToClaim)?.build())?;
 
-    let records = query(filter)?;
-    for record in records {
-        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
-            if claim.domain == domain {
+    let mut claims = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            // A link whose target no longer resolves is skipped rather
+            // than erroring the whole read: one unavailable claim should
+            // degrade a domain listing, not empty it. Same shape as
+            // get_claims_by_agent directly below.
+            if let Some(record) = get(hash, GetOptions::default())? {
                 claims.push(record);
             }
         }
@@ -1250,6 +1289,37 @@ pub fn attempt_unaccountable_membrane(membrane: Membrane) -> ExternResult<Action
     create_entry(EntryTypes::Membrane(membrane))
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FalseDomainIndexPayload {
+    pub claim_action: ActionHash,
+    pub domain: String,
+}
+
+/// Negative-path prober for the by-domain index, in the same spirit as
+/// `attempt_unaccountable_membrane` above: it does exactly what a hostile
+/// or buggy client would do, so that DHT validation can be observed
+/// refusing it rather than assumed to.
+///
+/// An index is only worth reading if false entries cannot be written into
+/// it. Two ways to try: file a claim under a domain it does not declare,
+/// or file someone else's claim. This one call covers both — pass a
+/// mismatched `domain` for the first, or call it as a different agent
+/// with the correct `domain` for the second.
+///
+/// If this ever SUCCEEDS, `get_claims_by_domain` has silently become a
+/// list of whatever anyone chose to file there, and the read fix it
+/// exists to serve is worth nothing.
+#[hdk_extern]
+pub fn attempt_false_domain_index(payload: FalseDomainIndexPayload) -> ExternResult<ActionHash> {
+    let anchor = domain_anchor_hash(&payload.domain)?;
+    create_link(
+        anchor,
+        payload.claim_action,
+        LinkTypes::DomainToClaim,
+        LinkTag::new(Vec::<u8>::new()),
+    )
+}
+
 #[hdk_extern]
 pub fn get_membranes() -> ExternResult<Vec<Record>> {
     let filter = ChainQueryFilter::new()
@@ -1364,6 +1434,18 @@ pub fn get_federation_records_for(membrane: AnyDhtHash) -> ExternResult<Vec<Reco
 pub fn create_critique_species(species: CritiqueSpecies) -> ExternResult<ActionHash> {
     let action_hash = create_entry(EntryTypes::CritiqueSpecies(species.clone()))?;
 
+    // Index it, so every agent's taxonomy is one taxonomy. Without this
+    // get_all_critique_species reads only the caller's own chain, and a
+    // species proposed by anyone else is invisible — see
+    // LinkTypes::TaxonomyToSpecies in the integrity zome.
+    let taxonomy_anchor = taxonomy_anchor_hash()?;
+    create_link(
+        taxonomy_anchor,
+        action_hash.clone(),
+        LinkTypes::TaxonomyToSpecies,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+
     // Link to parent species if exists.
     if let Some(parent) = species.parent_species {
         create_link(
@@ -1389,12 +1471,28 @@ pub fn get_critique_species(hash: AnyDhtHash) -> ExternResult<Option<CritiqueSpe
     }
 }
 
+/// Every `CritiqueSpecies` any agent has proposed — read from the DHT
+/// via the taxonomy anchor, not from the caller's own source chain.
+///
+/// Was a `query(ChainQueryFilter)`, which made the shared vocabulary of
+/// critique types each agent's private list: the starter taxonomies
+/// `domains/bootstrap.mjs` seeds were visible only to whoever ran it. No
+/// chain-query fallback, for the same reason `get_claims_by_domain` has
+/// none — see its comment.
 #[hdk_extern]
 pub fn get_all_critique_species() -> ExternResult<Vec<Record>> {
-    let filter = ChainQueryFilter::new()
-        .include_entries(true)
-        .entry_type(EntryType::App(UnitEntryTypes::CritiqueSpecies.try_into()?));
-    query(filter)
+    let anchor = taxonomy_anchor_hash()?;
+    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::TaxonomyToSpecies)?.build())?;
+
+    let mut species = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                species.push(record);
+            }
+        }
+    }
+    Ok(species)
 }
 
 /// Live, per-species adoption count — how many real Critiques have
@@ -3144,6 +3242,30 @@ pub fn get_cross_domain_critiques(membrane: AnyDhtHash) -> ExternResult<Vec<Cros
 
 fn agent_anchor_hash(agent: &AgentPubKey) -> ExternResult<EntryHash> {
     let path = Path::from(format!("agent_{}", agent));
+    Ok(path.path_entry_hash()?)
+}
+
+/// The anchor a Claim's by-domain index entry hangs from — the base of
+/// every `DomainToClaim` link.
+///
+/// MUST MATCH the integrity zome's own `domain_anchor_hash` byte for
+/// byte. The two crates share no library (two crates, no workspace — see
+/// `happ.yaml`), so this is duplicated the same way the friction
+/// constants already are across the same boundary. If the format string
+/// here and the one there ever diverge, every link this zome writes will
+/// be rejected by validation, because the coordinator would derive one
+/// anchor and validation would recompute a different one and compare.
+fn domain_anchor_hash(domain: &str) -> ExternResult<EntryHash> {
+    let path = Path::from(format!("domain_{}", domain));
+    Ok(path.path_entry_hash()?)
+}
+
+/// The single anchor every `CritiqueSpecies` is indexed from. Must match
+/// the integrity zome's `taxonomy_anchor_hash` exactly — see
+/// `domain_anchor_hash` above for why this is duplicated rather than
+/// shared.
+fn taxonomy_anchor_hash() -> ExternResult<EntryHash> {
+    let path = Path::from("critique_species".to_string());
     Ok(path.path_entry_hash()?)
 }
 
