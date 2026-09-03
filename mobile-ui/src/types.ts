@@ -213,6 +213,48 @@ export interface Condition {
   parameters: string[];
 }
 
+/** One period of an agent's own history — the EXACT, lossless record.
+ *
+ * This matters for how the UI must present it. HRR resonance
+ * (PeriodResonance below) is approximate by construction and the
+ * coordinator is explicit that it "never substitutes for
+ * get_agent_worldline_trace's own period_boundaries, which remain the
+ * exact, lossless answer". So boundaries are the primary rendering and
+ * resonance is a probe layered over them, never the other way round. */
+export interface PeriodBoundary {
+  start_time: number;
+  end_time: number;
+  sample_action: Uint8Array;
+  domain_tag: string;
+  entry_count: number;
+}
+
+export interface WorldlineTrace {
+  agent: Uint8Array;
+  period_boundaries: PeriodBoundary[];
+  expertise_tags: string[];
+  /** The superposed HRR vector, or null for a chain with nothing to
+   * compress. Never rendered directly — it is 2048 opaque bytes. */
+  trace_payload: Uint8Array | null;
+  binding_key: Uint8Array | null;
+  checksum: Uint8Array;
+  created_at: number;
+  expires_at: number | null;
+}
+
+/** One approximate hit from unbinding the trace vector against a domain.
+ *
+ * `similarity` is a HINT, not a fact, and the coordinator says so in as
+ * many words: "A high similarity score is a hint worth checking, not a
+ * claim of fact". The UI's job is to make the checking possible rather
+ * than to present the number as a verdict — every hit is paired with the
+ * exact PeriodBoundary it points at, and with sample_period to open that
+ * window's real records. */
+export interface PeriodResonance {
+  period_index: number;
+  similarity: number;
+}
+
 export interface Constitution {
   agent: Uint8Array;
   /** At least one is required by validation. */

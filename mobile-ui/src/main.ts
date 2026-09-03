@@ -9,7 +9,7 @@ import {
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
-  type CritiqueMode,
+  type CritiqueMode, type WorldlineTrace, type PeriodResonance,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -123,6 +123,43 @@ const constitutionOpen = new Set<string>();
 const myCritiquesByMode = new Map<CritiqueMode, DecodedRecord<Critique>[]>();
 /** whether the by-mode breakdown has been requested */
 let modeBreakdownOpen = false;
+
+// --- Worldline (HRR) --------------------------------------------------
+// An agent's own source chain compressed into one vector, indexed by
+// time. README §2.5's account of what this layer is permitted to be is
+// the whole design here: "a receiver, not a truth engine".
+//
+// TWO KINDS OF ANSWER, AND THEY MUST NOT BE CONFUSED ON SCREEN.
+// period_boundaries is EXACT and lossless — the real windows, their
+// domain tags and entry counts. Resonance is APPROXIMATE by
+// construction, and query_worldline_resonance's own doc comment says a
+// high similarity "is a hint worth checking, not a claim of fact" and
+// that it "never substitutes for get_agent_worldline_trace's own
+// period_boundaries". So boundaries render first and always; resonance
+// is a probe layered over them; and every hit is shown against the exact
+// boundary it points at, with sample_period available to open that
+// window's real records. Making the hint checkable is the difference
+// between honouring that rule and reciting it.
+//
+// YOUR OWN WORLDLINE ONLY, IN THIS INCREMENT, AND FOR A REASON. The
+// coordinator accepts any AgentPubKey, and offering a "how strongly does
+// this agent resonate with domain X" probe over other people would hand
+// every client a per-agent scalar that get_membrane_members makes
+// enumerable and sortable — which is exactly the leaderboard §9 records
+// removing get_credit_balance to avoid, arriving by another route. The
+// protocol permitting a read does not oblige a UI to offer it.
+/** this agent's own most recent trace, or null if none has been made */
+let myWorldline: WorldlineTrace | null = null;
+/** whether the trace has been read at all yet */
+let worldlineLoaded = false;
+/** whether the stored checksum verifies — absent while unasked */
+let worldlineChecksumOk: boolean | null = null;
+/** the last resonance probe: the tag asked, and what came back */
+let resonanceProbe: { tag: string; hits: PeriodResonance[] } | null = null;
+/** period index -> the real records inside that window, once opened */
+const sampledPeriods = new Map<number, number>();
+/** which period indices have their sample expanded */
+const openPeriods = new Set<number>();
 
 /** whether the expertise-assertion form is open */
 let expertiseFormOpen = false;
@@ -546,7 +583,7 @@ function renderNextStep(): HTMLElement | null {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'membranes' | 'taxonomy' | 'new-claim';
+type Tab = 'browse' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -556,7 +593,8 @@ function renderTabs(): HTMLElement {
   nav.className = 'tab-bar';
   const tabs: Array<[Tab, string]> = [
     ['browse', 'Browse'], ['membranes', 'Domains'],
-    ['taxonomy', 'Critique Types'], ['new-claim', 'New Claim'],
+    ['taxonomy', 'Critique Types'], ['worldline', 'Worldline'],
+    ['new-claim', 'New Claim'],
   ];
   for (const [tab, label] of tabs) {
     const btn = document.createElement('button');
@@ -575,7 +613,8 @@ function renderTabs(): HTMLElement {
     activeTab === 'browse' ? renderBrowseTab()
       : activeTab === 'membranes' ? renderMembranesTab()
         : activeTab === 'taxonomy' ? renderTaxonomyTab()
-          : renderNewClaimTab(),
+          : activeTab === 'worldline' ? renderWorldlineTab()
+            : renderNewClaimTab(),
   );
   wrap.appendChild(content);
 
@@ -1799,6 +1838,318 @@ async function vouchFor(membrane: DecodedRecord<Membrane>, candidate: Uint8Array
   } catch (err) {
     onError(err instanceof Error ? err.message : String(err));
   }
+}
+
+// --- Worldline tab ----------------------------------------------------
+
+async function loadWorldline() {
+  if (!connection) return;
+  const conn = connection;
+  worldlineLoaded = true;
+  try {
+    myWorldline = await conn.callZome<WorldlineTrace | null>(
+      'get_agent_worldline_trace', conn.myAgentPubKey,
+    ) ?? null;
+  } catch {
+    myWorldline = null;
+  }
+  render();
+  // The checkpoint hash is what verify_trace_checksum needs, and the
+  // trace itself does not carry its own ActionHash.
+  try {
+    const checkpoint = await conn.callZome<Uint8Array | null>(
+      'get_my_latest_worldline_checkpoint', null,
+    );
+    if (checkpoint) {
+      worldlineChecksumOk = await conn.callZome<boolean>('verify_trace_checksum', checkpoint);
+    }
+  } catch {
+    // Left null — "not checked" is not "failed", and rendering a failed
+    // read as a failed checksum would accuse the trace of being corrupt.
+  }
+  render();
+}
+
+/** Generate a fresh trace over this agent's own chain. */
+async function makeWorldline(onError: (m: string) => void) {
+  if (!connection) return;
+  try {
+    await connection.callZome('generate_worldline_trace', {
+      period_granularity_secs: 3600,
+      expertise_tags: [],
+      expires_at: null,
+    });
+    worldlineChecksumOk = null;
+    resonanceProbe = null;
+    sampledPeriods.clear();
+    openPeriods.clear();
+    await loadWorldline();
+  } catch (err) {
+    onError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Probe the trace vector for a domain tag — the approximate half. */
+async function probeResonance(tag: string) {
+  if (!connection || !myWorldline) return;
+  const conn = connection;
+  try {
+    const hits = await conn.callZome<PeriodResonance[]>('query_worldline_resonance', {
+      agent: conn.myAgentPubKey,
+      domain_tag: tag,
+      // period_boundaries' length is the natural bound; the function
+      // deliberately never reads that field itself, so the caller
+      // supplies it. Asking for more than exist wastes work and invites
+      // hits at indices with no boundary to check them against.
+      max_periods: myWorldline.period_boundaries.length,
+    });
+    resonanceProbe = { tag, hits };
+  } catch {
+    resonanceProbe = { tag, hits: [] };
+  }
+  render();
+}
+
+/** Open one period's real records — the "check the hint" affordance. */
+async function samplePeriod(index: number) {
+  if (!connection || !myWorldline) return;
+  const boundary = myWorldline.period_boundaries[index];
+  if (!boundary) return;
+  try {
+    const records = await connection.callZome<any[]>('sample_period', boundary);
+    sampledPeriods.set(index, records.length);
+  } catch {
+    // absent, not zero
+  }
+  render();
+}
+
+function renderWorldlineTab(): HTMLElement {
+  const wrap = document.createElement('section');
+  wrap.className = 'worldline-tab';
+
+  const intro = document.createElement('p');
+  intro.className = 'tab-intro';
+  intro.dataset.testid = 'worldline-intro';
+  intro.textContent =
+    'Your own history, compressed into one vector and indexed by time. '
+    + 'This is an index of when you worked, never a reading of what you said — '
+    + 'nothing here scores a claim, an agent, or you.';
+  wrap.appendChild(intro);
+
+  if (!worldlineLoaded) {
+    void loadWorldline();
+    const loading = document.createElement('p');
+    loading.className = 'hint';
+    loading.textContent = 'Reading your worldline…';
+    wrap.appendChild(loading);
+    return wrap;
+  }
+
+  const errBox = document.createElement('div');
+  errBox.className = 'error-box';
+  errBox.dataset.testid = 'worldline-error';
+  errBox.hidden = true;
+
+  const makeBtn = document.createElement('button');
+  makeBtn.className = 'secondary';
+  makeBtn.dataset.testid = 'worldline-generate';
+  makeBtn.textContent = myWorldline ? 'Regenerate from my chain' : 'Generate my worldline';
+  makeBtn.onclick = () => {
+    errBox.hidden = true;
+    void makeWorldline((m) => { errBox.hidden = false; errBox.textContent = m; });
+  };
+  wrap.appendChild(makeBtn);
+  wrap.appendChild(errBox);
+
+  if (!myWorldline) {
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.dataset.testid = 'worldline-none';
+    none.textContent =
+      'You have no worldline yet. Generating one scans your own source chain and '
+      + 'compresses it — it publishes nothing about anyone else, and reads nothing '
+      + 'from anyone else.';
+    wrap.appendChild(none);
+    return wrap;
+  }
+
+  // --- The EXACT half, first and unconditionally ----------------------
+  const exact = document.createElement('div');
+  exact.className = 'worldline-exact';
+  exact.dataset.testid = 'worldline-exact';
+
+  const exactHead = document.createElement('h3');
+  exactHead.textContent = 'Your periods — the exact record';
+  exact.appendChild(exactHead);
+
+  const integrity = document.createElement('p');
+  integrity.className = 'hint';
+  integrity.dataset.testid = 'worldline-checksum';
+  integrity.textContent = worldlineChecksumOk === true
+    ? 'Checksum verifies — this trace is intact.'
+    : worldlineChecksumOk === false
+      ? 'Checksum does NOT verify — this trace has been altered since it was written.'
+      : 'Checksum not checked.';
+  exact.appendChild(integrity);
+
+  if (myWorldline.period_boundaries.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.dataset.testid = 'worldline-no-periods';
+    empty.textContent =
+      'This trace covers no periods — your chain had nothing to compress when it was made. '
+      + 'That is an empty answer, not a failure.';
+    exact.appendChild(empty);
+  } else {
+    const list = document.createElement('ol');
+    list.className = 'period-list';
+    list.dataset.testid = 'period-list';
+    myWorldline.period_boundaries.forEach((b, i) => {
+      const li = document.createElement('li');
+      li.className = 'period-row';
+      li.dataset.period = String(i);
+
+      const when = document.createElement('span');
+      when.className = 'period-when';
+      when.textContent = `${new Date(b.start_time * 1000).toISOString().slice(0, 16).replace('T', ' ')} · ${b.domain_tag}`;
+      li.appendChild(when);
+
+      const count = document.createElement('span');
+      count.className = 'period-count';
+      count.dataset.testid = 'period-count';
+      count.textContent = `${b.entry_count} ${b.entry_count === 1 ? 'entry' : 'entries'}`;
+      li.appendChild(count);
+
+      // sample_period is what turns any hint about this window into
+      // something checkable against the chain itself.
+      const open = document.createElement('button');
+      open.className = 'link-button';
+      open.dataset.testid = 'period-sample';
+      const sampled = sampledPeriods.get(i);
+      open.textContent = openPeriods.has(i) && sampled !== undefined
+        ? `${sampled} record${sampled === 1 ? '' : 's'} in this window`
+        : 'Show what is in this window';
+      open.onclick = () => {
+        openPeriods.add(i);
+        if (!sampledPeriods.has(i)) void samplePeriod(i);
+        else render();
+      };
+      li.appendChild(open);
+      list.appendChild(li);
+    });
+    exact.appendChild(list);
+  }
+  wrap.appendChild(exact);
+
+  // --- The APPROXIMATE half, layered over it --------------------------
+  wrap.appendChild(renderResonanceProbe());
+  return wrap;
+}
+
+/** The resonance probe. Everything here is framed as a hint because the
+ * coordinator says it is one; the value of the screen is that each hint
+ * lands next to the exact period it points at. */
+function renderResonanceProbe(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'resonance';
+
+  const head = document.createElement('h3');
+  head.textContent = 'Probe by domain — every period, ranked, approximate';
+  wrap.appendChild(head);
+
+  const caveat = document.createElement('p');
+  caveat.className = 'hint';
+  caveat.dataset.testid = 'resonance-caveat';
+  // WHAT THIS LIST IS, STATED PLAINLY, because the shape is not what a
+  // reader assumes. query_worldline_resonance scores EVERY period index
+  // and sorts them — it applies no threshold and filters nothing, so a
+  // probe for a tag with no relationship to this chain still returns a
+  // full ranked list, just with low scores throughout. Rendering that
+  // identically to a set of matches would let a meaningless probe read
+  // as findings, which is the "truth engine" reading README §2.5
+  // forbids, arriving through presentation rather than through the
+  // number. Found by probing a nonsense tag and getting a confident-
+  // looking list back.
+  caveat.textContent =
+    'Unbinding is lossy by construction, and this ranks every one of your periods '
+    + 'rather than selecting matches — there is no threshold, so a tag unrelated to '
+    + 'your work still returns a full list, just with low scores. A high score is a '
+    + 'hint worth checking, not a claim of fact: the periods above are the exact '
+    + 'answer, and every row below points at one you can open.';
+  wrap.appendChild(caveat);
+
+  const form = document.createElement('form');
+  form.className = 'resonance-form';
+  form.dataset.testid = 'resonance-form';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.required = true;
+  input.placeholder = 'Domain tag, e.g. LumbarRehab';
+  input.dataset.testid = 'resonance-tag';
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.dataset.testid = 'resonance-submit';
+  submit.textContent = 'Probe';
+  form.append(input, submit);
+  form.onsubmit = (e) => { e.preventDefault(); void probeResonance(input.value.trim()); };
+  wrap.appendChild(form);
+
+  if (!resonanceProbe) return wrap;
+
+  if (resonanceProbe.hits.length === 0) {
+    // Three distinct causes — no trace, an empty payload, a foreign
+    // binding key — and the coordinator returns empty rather than
+    // erroring for all of them, calling both "nothing resonates" and
+    // "nothing to resonate with" legitimate answers. So this must not
+    // read as a failure.
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.dataset.testid = 'resonance-empty';
+    // The empty return has exactly four causes in the coordinator, and
+    // "your tag matched nothing" is NOT among them — every period is
+    // always scored. An empty list means there was nothing to resonate
+    // WITH: no trace, a null payload, or a binding key this build cannot
+    // interpret. Wording it as a failed search would describe a
+    // mechanism that does not exist.
+    none.textContent =
+      `No periods came back for "${resonanceProbe.tag}". This is not a failed match — `
+      + 'every period is always scored — it means there was nothing to probe: no trace, '
+      + 'a trace with nothing superposed into it, or one written under a different '
+      + 'binding scheme. An answer, not an error.';
+    wrap.appendChild(none);
+    return wrap;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'resonance-list';
+  list.dataset.testid = 'resonance-list';
+  for (const hit of resonanceProbe.hits) {
+    const li = document.createElement('li');
+    li.className = 'resonance-row';
+    li.dataset.period = String(hit.period_index);
+
+    const label = document.createElement('span');
+    const boundary = myWorldline?.period_boundaries[hit.period_index];
+    // Paired with the EXACT boundary it points at. A rank with no
+    // referent is the "truth engine" reading §2.5 forbids; a rank
+    // beside the real window is a lead.
+    label.textContent = boundary
+      ? `Period ${hit.period_index} — ${boundary.domain_tag}, ${boundary.entry_count} entries`
+      : `Period ${hit.period_index} — no boundary recorded at this index`;
+    li.appendChild(label);
+
+    const score = document.createElement('span');
+    score.className = 'resonance-score';
+    score.dataset.testid = 'resonance-score';
+    score.textContent = `~${hit.similarity.toFixed(2)}`;
+    score.title = 'Approximate similarity from unbinding — a hint, not a measurement';
+    li.appendChild(score);
+
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
+  return wrap;
 }
 
 // --- Critique taxonomy tab -------------------------------------------
