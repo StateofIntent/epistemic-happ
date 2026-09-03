@@ -346,6 +346,31 @@ The distinction that keeps this honest already exists in the design. `Attestatio
 
 So: claim text, its critiques, their `CritiqueMode`s, authorship and ordering should render identically for every viewer. Navigation, layout, information density, onboarding, theming and progressive disclosure may adapt freely. This constraint is peculiar to this protocol and has no analogue in software that merely presents information — a game has no requirement that two players evaluated the same artifact identically, which is exactly why borrowing wholesale from game UI practice needs this guardrail attached.
 
+### 4.5 What Transfers From Game Interfaces, and What Doesn't
+
+The guardrails above exist because the question that prompted them was a good one: game interfaces are the most refined body of practice we have for making a complex, stateful world legible to someone standing inside it, which is exactly the problem this protocol's UI has. Four patterns transfer. Two, tempting ones, do not.
+
+**Transferable — all four now built:**
+
+| Pattern | What it means here | Status |
+|---|---|---|
+| **Resource meters / HUD** | Epistemic state the protocol already computes, shown continuously rather than discovered by hitting it — the SWO critique budget as a depleting bar, effective conductance, discourse health, antibody flags | §9 Phase 4 |
+| **Spatial navigation** | The critique graph as a structure you move through, not a flat list — critiques of critiques have real depth and it should be walkable | §9 Phase 4 |
+| **Progressive disclosure** | Staging *explanation* for a newcomer, never the artifact under evaluation — §4.4's second constraint draws that line and it is not negotiable | §9 Phase 4 |
+| **State-driven affordance surfacing** | The interface shows what you *can* do right now, so you never attempt what the protocol will refuse | §9 Phase 5 |
+
+The fourth is the subtlest and was the last built, so it is worth stating what it actually requires. **An affordance may be gated only on a rule the protocol itself enforces, never on the interface's own judgement** — that is the line between surfacing a rule and quietly becoming §4.4's self-aiming lens. Gating the critique form on a spent SWO budget is legitimate because `get_synaptic_link_friction_status` derives `blocked` from the same count, the same window, and the same source chain that `check_synaptic_link_friction` refuses on; the UI is re-deriving the conductor's answer, not forming an opinion. Gating anything on inferred credibility would not be legitimate, however reasonable it looked.
+
+Two further rules follow, both learned by building it:
+
+- **Hide only what is structurally impossible; disable and explain what is merely unavailable now.** Retraction on someone else's claim is hidden, because validation permits only the author and its absence tells no lie. A spent critique budget instead leaves the form visibly present, visibly unavailable, and stating why — it is this agent's own transient state, an hour from being false, and hiding it would conceal a rule the practitioner needs in order to plan around it.
+- **Never gate on unknown state.** When the status read fails or has not returned, the action stays available. Guessing "blocked" from missing information refuses something the protocol would have allowed, which is a worse failure than the opaque error the gate exists to remove.
+
+**Not transferable, and declined deliberately:**
+
+- **Immediate-mode canvas rendering.** It costs text selection, deep linking and screen-reader access — a real regression, not a theoretical one, with LumbarRehab (a clinical rehabilitation domain) as the reference domain.
+- **A continuous tick loop.** Discourse is event-driven and mostly static. There is no world simulating itself between a claim and its critique, and a render loop would burn battery to animate nothing.
+
 ---
 
 ## 5. Code Walkthrough
@@ -750,6 +775,17 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   The event horizon is already implemented, in the strongest available form: `create_entry` **is** the deliberate act of promising, and an agent's unpublished reasoning, drafts and raw observations are not hidden on the DHT but absent from it. The boundary is modelled as commit-or-don't, which is exactly §4.3's "becomes visible only through what the agent voluntarily promises to expose." Nothing to build.
 
+- [x] **State-driven affordance surfacing shipped — the last of the four game-interface patterns, and the one that made the HUD honest.** The full list of four, with what does *not* transfer, is now written up as §4.5; it had existed only in a commit message, which is a roadmap nobody can act on.
+
+  **The gap had a sharp edge.** `frictionStatus.blocked` was read in exactly two places in `mobile-ui/src/main.ts`, both purely cosmetic — the meter's label and its bar colour. Nothing gated the action. A practitioner whose critique budget was spent still saw an enabled "Add critique" button, wrote a critique, submitted it, and got an opaque validation error from the DHT. That is verbatim the failure the HUD work was introduced to prevent ("a user who hits the 20/hour cap today gets an opaque error instead of having watched a budget deplete"). We had shipped the watching half and left the acting half: the meter depleted in front of them, and then the button lied.
+
+  The critique form is now disabled when the budget is spent, and says why. Gating it is legitimate under §4.4 for a specific reason worth keeping: `get_synaptic_link_friction_status` derives `blocked` from the same count, window and source chain that `check_synaptic_link_friction` refuses on, so the UI re-derives the conductor's own answer rather than forming an opinion. `create_synaptic_link` was confirmed to have exactly one call site (in `create_critique`), so this is the whole of the budget's surface, not one instance of it.
+
+  **Two things the build taught, both now rules in §4.5.** *Hide only what is structurally impossible; disable and explain what is merely unavailable now* — the retract affordance was already correctly hidden on other people's claims, and its comment even named the principle, but it was the only place applying it and the principle had no name. A spent budget is the opposite case: transient, and hiding it would conceal a rule the practitioner needs to plan around. And *never gate on unknown state* — a failed or pending status read leaves the action available, since guessing "blocked" from missing information refuses what the protocol would have allowed, which is the original failure inverted.
+
+  **A staleness bug found while building, not after.** The first version refreshed the budget inside `loadCritiques`, which the expand handler skips whenever the panel is already cached — so a re-opened panel kept whatever verdict it was born with. Since the limit is a *rolling* window, that meant a gate that latched: blocked at connect time, still blocked on screen an hour later, refusing on the UI's behalf something the conductor would now accept. Moved to fire whenever a panel opens.
+
+  **Verified live, with the control built into the same run:** `scripts/live-verify/affordance-surfacing.mjs` opens the panel with budget remaining and asserts the form is fully usable, then spends the entire budget from an *independent* client (so the UI reacts to conductor state it did not create), then re-opens the panel — without a reload, because closing and re-opening is what a practitioner actually does and a gate that only refreshes on reload would pass a reload-based test while staying stale in real use. The form is present but disabled, names the budget and its reset window, and clicking it raises no conductor error. Nine checks, all passing. No separate negative control was needed here: a gate that was simply always closed would fail the first check, so the two halves of one run distinguish a working gate from a stuck one.
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.

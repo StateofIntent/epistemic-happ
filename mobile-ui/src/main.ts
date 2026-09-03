@@ -471,6 +471,17 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     } else {
       expandedClaims.add(key);
       render();
+      // Re-read the budget every time a critique panel OPENS — not
+      // inside loadCritiques, which the cache check below skips on a
+      // re-open. The gate on this panel's form is only as honest as this
+      // number, and the limit is a ROLLING WINDOW: a status read at
+      // connect time keeps saying "blocked" for as long as the tab stays
+      // open, minutes after the window has moved on and the conductor
+      // would accept a critique again. A stale block refuses, on the
+      // UI's behalf, something the protocol permits — the very failure
+      // this gate exists to prevent, inverted. Opening the panel is the
+      // moment the number matters, so it is the moment to refresh it.
+      void loadFrictionStatus();
       if (!critiquesByClaim.has(key)) {
         await loadCritiques(claim);
       }
@@ -670,6 +681,51 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   const errorBox = document.createElement('div');
   errorBox.className = 'error-box';
   errorBox.hidden = true;
+
+  // State-driven affordance surfacing (see the note above renderHeader):
+  // every critique creates a SynapticLink, and create_synaptic_link is
+  // the ONE coordinator path that spends the SWO budget (verified: it
+  // has a single call site, in create_critique). So a spent budget makes
+  // this exact form's submit certain to fail, and the UI already knows
+  // it — get_synaptic_link_friction_status computes `blocked` from the
+  // same count, over the same window, off the same source chain that
+  // check_synaptic_link_friction uses to refuse. This is not a guess
+  // about what the conductor will do; it is the same derivation.
+  //
+  // DISABLED AND EXPLAINED, NOT HIDDEN — the distinction matters, and it
+  // is the reason this differs from the retract affordance above, which
+  // IS hidden. Retraction on someone else's claim is structurally
+  // impossible for this agent: offering it would be noise, and its
+  // absence tells no lie. A spent budget is this agent's own transient
+  // state, five minutes from being false. Hiding the form would conceal
+  // a protocol rule the practitioner needs to see in order to plan
+  // around it, and README.md §4.4's first constraint is precisely about
+  // an interface that adapts while concealing that it is adapting. So
+  // the form stays visibly present, visibly unavailable, and says why.
+  const blocked = frictionStatus?.blocked === true;
+  if (blocked) {
+    // Never gate on unknown state: frictionStatus is null when the read
+    // failed or has not returned yet, and `?.blocked === true` is false
+    // in both cases. Guessing "blocked" from missing information would
+    // refuse an action the protocol would have allowed, which is a worse
+    // failure than the opaque error this whole change exists to remove.
+    submitBtn.disabled = true;
+    textarea.disabled = true;
+    modeSelect.disabled = true;
+    form.classList.add('affordance-blocked');
+
+    const reason = document.createElement('p');
+    reason.className = 'affordance-reason';
+    reason.dataset.testid = 'critique-blocked-reason';
+    const minutes = Math.round((frictionStatus?.window_secs ?? 0) / 60);
+    // Same words as the meter in the header, deliberately: the user
+    // should recognise the sentence they have been watching deplete,
+    // not read a second, differently-worded account of one rule.
+    reason.textContent =
+      `Critique budget spent — resets within ${minutes} min. ` +
+      `This is an absolute limit; nothing lifts it early.`;
+    form.appendChild(reason);
+  }
 
   form.appendChild(modeSelect);
   form.appendChild(textarea);
