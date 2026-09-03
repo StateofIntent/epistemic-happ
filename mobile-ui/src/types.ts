@@ -50,3 +50,46 @@ export interface Critique {
 export function nowMicros(): number {
   return Date.now() * 1000;
 }
+
+// --- Epistemic state the protocol computes about discourse -------------
+//
+// These are read-only views the coordinator zome already exposes. They
+// are protocol-computed and identical for every viewer, which is what
+// makes them safe to surface under README.md §4.4's second constraint:
+// the artifact under evaluation renders the same for everyone. Nothing
+// here is inferred by this client.
+
+/** get_synaptic_link_friction_status — this agent's own SWO budget for
+ * the current rolling window. Agent-centric by construction: it reads
+ * the caller's own source chain, so it is never a comparative signal
+ * about anyone else. */
+export interface SynapticFrictionStatus {
+  recent_count: number;
+  limit: number;
+  window_secs: number;
+  blocked: boolean;
+}
+
+export type AntibodyPatternKind =
+  | 'SpamFlood'
+  | 'SybilCluster'
+  | 'Plagiarism'
+  | 'CoordinatedManipulation'
+  | 'Impersonation';
+
+export interface AntibodyPattern {
+  target: Uint8Array;
+  target_type: 'Claim' | 'Critique' | 'Constitution' | 'Membrane' | 'CritiqueSpecies';
+  kind: AntibodyPatternKind;
+  rationale: string;
+  author: Uint8Array;
+  timestamp: number;
+}
+
+export interface Retraction {
+  target_claim: Uint8Array;
+  reason: string;
+  replacement_claim: Uint8Array | null;
+  author: Uint8Array;
+  timestamp: number;
+}

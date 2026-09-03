@@ -275,3 +275,67 @@ button:disabled { opacity: 0.6; cursor: default; }
 /* --- New claim tab --- */
 
 .claim-form { max-width: 480px; }
+
+/* --- Epistemic state (HUD layer) -------------------------------------
+   Surfaces protocol-computed state that already existed before this UI
+   asked for it. Every value here is identical for every viewer, per
+   README.md §4.4's second constraint. */
+
+.friction-meter {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.friction-label {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.friction-bar {
+  margin-top: 0.25rem;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.25);
+  overflow: hidden;
+}
+
+.friction-fill {
+  height: 100%;
+  background: currentColor;
+  opacity: 0.55;
+  transition: width 200ms ease;
+}
+
+.friction-fill.blocked {
+  opacity: 1;
+  background: #c0392b;
+}
+
+.retraction-banner,
+.antibody-flag {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  /* Left border rather than a fill: these annotate a claim, they do not
+     replace or obscure it. The claim stays fully readable. */
+  border-left: 3px solid;
+}
+
+.retraction-banner {
+  border-left-color: #8e44ad;
+  background: rgba(142, 68, 173, 0.08);
+}
+
+.antibody-flag {
+  border-left-color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.conductance {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
