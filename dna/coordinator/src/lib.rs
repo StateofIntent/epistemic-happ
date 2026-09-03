@@ -2002,6 +2002,31 @@ pub fn assert_expertise(payload: ExpertiseAssertionPayload) -> ExternResult<Acti
         LinkTag::new(claim.domain.as_bytes().to_vec()),
     )?;
 
+    // Index it under its own domain, exactly as create_claim does.
+    //
+    // WITHOUT THIS THE WHOLE POINT OF THIS FUNCTION IS UNREACHABLE. The
+    // justification written above is that an expertise assertion IS a
+    // Claim "that anyone can critique through the existing typed
+    // CritiqueMode machinery" rather than an unaccountable field. Anyone
+    // can only critique what anyone can find, and this Claim was
+    // findable solely through get_claims_by_agent — which requires
+    // already knowing whose expertise to go looking for. Browsing
+    // "expertise/<domain>" returned nothing, verified against a live
+    // conductor before this line existed.
+    //
+    // Same omission, same shape, as the one PR #51 fixed for create_claim
+    // itself: the entry was written and the index was not, so the read
+    // worked for its author and for nobody else. It was missed there
+    // because assert_expertise builds its Claim by hand rather than
+    // calling create_claim, so it did not inherit the fix.
+    let domain_anchor = domain_anchor_hash(&claim.domain)?;
+    create_link(
+        domain_anchor,
+        action_hash.clone(),
+        LinkTypes::DomainToClaim,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+
     Ok(action_hash)
 }
 

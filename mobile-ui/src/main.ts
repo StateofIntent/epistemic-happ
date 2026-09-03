@@ -90,6 +90,9 @@ const groundingByClaim = new Map<string, GroundingPath>();
 const retractingClaims = new Set<string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
 const flaggingClaims = new Set<string>();
+/** whether the expertise-assertion form is open */
+let expertiseFormOpen = false;
+
 // --- Trust lenses (opt-in, user-aimed) --------------------------------
 // README.md §4.4's first constraint is the whole design here, not a
 // caveat on it: "If the interface is filtering, the user must have
@@ -347,6 +350,109 @@ function renderConnectScreen(): HTMLElement {
   return section;
 }
 
+/** Assert expertise in a domain — assert_expertise.
+ *
+ * It lives in the New Claim tab and nowhere else on purpose. An expertise
+ * assertion IS a Claim, published into "expertise/<domain>", critiquable
+ * through the same typed CritiqueMode machinery as anything else. Giving
+ * it a profile-shaped home of its own would present it as a property of
+ * the person rather than an assertion they made and can be challenged
+ * on — which is the distinction the coordinator's own comment says this
+ * function exists to preserve.
+ *
+ * The WorldlineTrace is generated at submit time rather than chosen.
+ * assert_expertise requires the trace to be the caller's own, and a
+ * trace is derived entirely from the caller's own source chain, so there
+ * is no meaningful choice to offer — only a stale-or-fresh one, and
+ * fresh is the honest reading of "evidenced by my history". */
+function renderExpertiseForm(): HTMLElement {
+  const wrap = document.createElement('section');
+  wrap.className = 'expertise-section';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'link-button';
+  toggle.dataset.testid = 'expertise-toggle';
+  toggle.textContent = expertiseFormOpen ? 'Cancel' : 'Assert expertise in a domain';
+  toggle.onclick = () => { expertiseFormOpen = !expertiseFormOpen; render(); };
+  wrap.appendChild(toggle);
+  if (!expertiseFormOpen) return wrap;
+
+  const form = document.createElement('form');
+  form.className = 'expertise-form';
+  form.dataset.testid = 'expertise-form';
+
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent =
+    'This publishes an ordinary claim about your own engagement in a domain, '
+    + 'evidenced by your worldline trace. It is not a credential and confers nothing — '
+    + 'anyone can critique it, and everyone will see it marked as self-asserted.';
+  form.appendChild(hint);
+
+  const domainLabel = document.createElement('label');
+  domainLabel.textContent = 'Domain';
+  const domainInput = document.createElement('input');
+  domainInput.type = 'text';
+  domainInput.required = true;
+  domainInput.placeholder = 'e.g. LumbarRehab';
+  domainInput.dataset.testid = 'expertise-domain';
+  domainLabel.appendChild(domainInput);
+  form.appendChild(domainLabel);
+
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.dataset.testid = 'expertise-submit';
+  submit.textContent = 'Publish expertise assertion';
+  form.appendChild(submit);
+
+  const errorBox = document.createElement('div');
+  errorBox.className = 'error-box';
+  errorBox.dataset.testid = 'expertise-error';
+  errorBox.hidden = true;
+  form.appendChild(errorBox);
+
+  const done = document.createElement('p');
+  done.className = 'hint';
+  done.dataset.testid = 'expertise-done';
+  done.hidden = true;
+  form.appendChild(done);
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!connection) return;
+    errorBox.hidden = true;
+    done.hidden = true;
+    submit.disabled = true;
+    const domain = domainInput.value.trim();
+    try {
+      const trace = await connection.callZome<Uint8Array>('generate_worldline_trace', {
+        period_granularity_secs: 3600,
+        expertise_tags: [domain],
+        expires_at: null,
+      });
+      await connection.callZome('assert_expertise', {
+        domain, worldline_trace_hash: trace,
+      });
+      done.hidden = false;
+      // Names where it went, because "expertise/<domain>" is a different
+      // domain from "<domain>" and a user who does not know that will
+      // look for it in the wrong place and conclude it was not published.
+      done.textContent =
+        `Published into expertise/${domain}. Browse that domain to see it — `
+        + 'and so can anyone else, which is the point.';
+      domainInput.value = '';
+    } catch (err) {
+      errorBox.hidden = false;
+      errorBox.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+
+  wrap.appendChild(form);
+  return wrap;
+}
+
 // --- Progressive disclosure ------------------------------------------
 //
 // See onboarding.ts for the model and, importantly, for the line it must
@@ -493,6 +599,27 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   meta.className = 'claim-meta';
   meta.textContent = `${claim.entry.confidence} confidence · by ${short(claim.entry.author)}`;
   card.appendChild(meta);
+
+  // An expertise assertion is an ordinary Claim and must read as one.
+  //
+  // §4.4 AGAIN, AND THIS IS THE PLACE IT WOULD BE EASIEST TO BREAK. The
+  // coordinator's own comment is explicit that its trace-ownership check
+  // is "a courtesy, not an enforced rule" — a client bypassing
+  // assert_expertise can cite anyone's WorldlineTrace — and that these
+  // claims carry NO standing. A badge that read like a credential would
+  // manufacture exactly the credibility signal Invariant #1 declines to
+  // compute, and would do it on a field nothing validates. So the marker
+  // says what this is (a self-assertion), what it is not (verified), and
+  // that it is critiquable like anything else.
+  if (claim.entry.semantic_tags.includes('expertise-assertion')) {
+    const badge = document.createElement('p');
+    badge.className = 'expertise-badge';
+    badge.dataset.testid = 'expertise-badge';
+    badge.textContent =
+      'Self-asserted expertise — not verified by anyone, and carrying no standing. '
+      + 'It is an ordinary claim: critique it like any other.';
+    card.appendChild(badge);
+  }
 
   // Retraction is an additive act here, never a deletion (Invariant:
   // entries are immutable), so a retracted claim stays fully readable —
@@ -2532,6 +2659,7 @@ function renderNewClaimTab(): HTMLElement {
   };
 
   section.appendChild(form);
+  section.appendChild(renderExpertiseForm());
   return section;
 }
 
