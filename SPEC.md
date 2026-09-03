@@ -494,6 +494,25 @@ An independent second use case: compresses one `Claim`'s local neighborhood (its
 
 Every function below is a Holochain zome extern (`role_name: "epistemic"`, `zome_name: "epistemic_coordinator"`), callable via `callZome`. Payload/return types reference the structs and enums defined in §2–§3 and this section's own inline definitions. This is a reference, not a tutorial — see `README.md` §6 for build/run instructions and `mobile-ui/src/holochain.ts` or `bridge/src/index.ts` for real, live-verified client code driving several of these end to end.
 
+### 10.0 Read scope: which reads see the DHT, and which see only your own chain
+
+**This distinction is normative and was not stated in any revision of this document before now. An implementation that ignores it will appear to work and will not.**
+
+The reads below divide into two kinds, and their signatures do not distinguish them — several of both kinds take a filter and return `Vec<Record>`.
+
+- **DHT-wide reads** resolve a hash with `get`, or follow `get_links` from a hash or anchor. They see entries authored by *any* agent. `get_claims_by_agent`, `get_critiques_for`, `get_antibody_patterns_for`, `get_retractions_for_claim`, `get_membrane_members`, `get_agent_constitution`, `get_critique_species_adoption_count` and `get_effective_conductance` are of this kind.
+- **Chain-local reads** are built on `query(ChainQueryFilter)`, which by Holochain's definition scans **the calling agent's own source chain and never the DHT**. They return only what *that agent* authored.
+
+Chain-local is the *correct* scope for some of these, and saying so matters as much as naming the gap: `generate_worldline_trace` and `sample_period` index the caller's own history by definition, `export_to_n4l` exports the caller's own records, and `get_unbridged_claims`/`get_unbridged_mews` exist so a bridge can publish *its own* agent's backlog. Nothing is wrong there.
+
+The problem is the remainder, where chain-local scope contradicts the function's evident purpose: **`get_claims_by_domain`**, **`get_critiques_by_mode`**, **`get_membranes`**, **`get_all_critique_species`**, and **`get_all_constitutions`**.
+
+The consequence is blunt, and applies to `get_claims_by_domain` above all, since browsing a domain is the ordinary entry point into this protocol: **on a network with more than one agent, browsing a domain returns only your own claims.** Others' claims are fully present on the DHT, gossiped and reachable — `get_claims_by_agent` retrieves the very same entries — but no function offered here finds them by domain. `get_all_critique_species` has the same shape, so a "shared, evolving vocabulary of critique types" is in fact each agent's private list; `get_membranes` shows only membranes you founded; `get_all_constitutions` only your own.
+
+**Why this survived to now:** every conductor this project has ever verified against ran exactly one agent, and on one agent the two kinds are indistinguishable in behaviour. It is a genuine gap in the specified protocol, not a client bug, and is confirmed live with two real agents by `scripts/live-verify/read-scope.mjs` — the same claim being invisible to `get_claims_by_domain` while `get_claims_by_agent` returns it for the same agent at the same moment, which is what rules out "not yet gossiped".
+
+**The fix is not designed here**, but the shape is already half-present: `LinkTypes::MembraneToClaim` is declared in the integrity zome and, as §9's own audit recorded, is never created or read by any coordinator function. A domain-anchored link written at `create_claim` time and read by `get_claims_by_domain` is the obvious candidate. Until that exists, an implementation targeting compatibility should treat the four functions named above as chain-local by specification, and clients should not present them as views of the network.
+
 ### 10.1 Claim
 | Function | Payload | Returns |
 |---|---|---|
