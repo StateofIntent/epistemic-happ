@@ -26,6 +26,16 @@
 #     whatever dist/ happened to contain from some earlier session. That
 #     is the failure mode this script most exists to prevent, because it
 #     produces a bundle that is wrong rather than one that errors.
+#   - THE SAME IS TRUE OF THE WASM, and this script did not do it. `hc dna
+#     pack` compiles nothing: it reads the .wasm files dna.yaml points at
+#     and packages whatever is already on disk. So a Rust change that was
+#     never `cargo build`-ed produced a freshly TIMESTAMPED .dna, .happ
+#     and .webhapp wrapping stale code, with no error anywhere. Observed
+#     for real: a deliberately broken `get_claims_by_domain` was packed
+#     this way and the whole live-verify suite passed it, because the
+#     conductor was running the previous build. A false green on a real
+#     regression, from following the documented procedure exactly. The
+#     two cargo builds below close it, and are cheap when up to date.
 #
 # Usage: scripts/pack-webhapp.sh
 # ============================================================================
@@ -43,6 +53,14 @@ if ! command -v hc >/dev/null 2>&1; then
 fi
 
 echo "==> hc $(hc --version)"
+
+# Before packing anything: compile the zomes. `hc dna pack` packages the
+# wasm it finds rather than building it, so this must come first or the
+# bundle is a fresh wrapper around old code. Ordered integrity-then-
+# coordinator because the coordinator depends on the integrity crate.
+echo "==> Building the zomes (wasm32-unknown-unknown, release)"
+( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
 
 echo "==> Packing DNA (dna/ -> dna/epistemic-dna.dna)"
 hc dna pack dna/

@@ -643,8 +643,11 @@ scripts/pack-webhapp.sh
 ```
 
 That one script replaces §6.2, §6.3, a UI build, and a zip step, in that
-order — see its header for why each of the four has a constraint that is
-not guessable and was learned the expensive way. The output is
+order — see its header for why each of them has a constraint that is not
+guessable and was learned the expensive way. It genuinely runs the §6.2
+`cargo build`s now; it did not until the live-verify suite was caught
+passing a deliberately broken zome, because `hc dna pack` packages the
+wasm on disk rather than compiling it. The output is
 gitignored on purpose: the bundle to hand someone is the one just built,
 not a stale copy found in the tree.
 

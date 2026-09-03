@@ -61,6 +61,27 @@ const check = (label, cond) => {
   else { log(`  FAIL: ${label}`); failures++; }
 };
 
+// A SETUP read coming back empty is the regression itself, not a bug in
+// this harness — but dereferencing [0] on it dies with "Cannot read
+// properties of undefined (reading 'signed_action')", which names this
+// file's line number and says nothing about the zome that returned
+// nothing. Observed for real while proving this suite catches
+// regressions: a deliberately broken get_claims_by_domain made both this
+// file and domain-index.mjs crash exactly that way. The detection was
+// sound; the diagnosis was useless, which is the opaque-failure mode
+// this directory's README argues against.
+const firstOrFail = (records, fn, expected) => {
+  if (Array.isArray(records) && records.length > 0) return records[0];
+  log(`\n  SETUP FAILED: ${fn} returned ${Array.isArray(records) ? '0 records' : String(records)}`);
+  log(`  Expected ${expected}, published by this harness moments ago.`);
+  log('  This is a real failure of the zome, not of the harness.');
+  log('  If the code looks correct, the conductor is probably running a');
+  log('  STALE BUILD: hc dna pack packages the wasm on disk rather than');
+  log('  compiling it. Rebuild with scripts/pack-webhapp.sh, then');
+  log('  scripts/sandbox.sh clean && scripts/sandbox.sh start.');
+  process.exit(1);
+};
+
 async function connectApp(admin, appId) {
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
   const app = await AppWebsocket.connect({ url: new URL(APP_URL), token, wsClientOptions: { origin: 'live-verify' } });
@@ -115,7 +136,8 @@ async function main() {
     attestation_policy: null,
   });
   const ownClaims = await agent1.call('get_claims_by_domain', DOMAIN);
-  const claimEntryHash = ownClaims[0].signed_action.hashed.content.entry_hash;
+  const claimEntryHash = firstOrFail(ownClaims, 'get_claims_by_domain',
+    "agent 1's own claim in this run's domain").signed_action.hashed.content.entry_hash;
 
   // A Constitution and the Membrane it founds, so get_all_constitutions
   // and get_membranes have something real to fail to find.

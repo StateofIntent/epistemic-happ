@@ -65,6 +65,25 @@ const check = (label, cond) => {
   else { log(`  FAIL: ${label}`); failures++; }
 };
 
+// A SETUP read coming back empty is the regression itself, not a bug in
+// this harness — but dereferencing [0] on it dies with "Cannot read
+// properties of undefined (reading 'signed_action')", which names this
+// file's line number and says nothing about the zome that returned
+// nothing. Observed for real while proving this suite catches
+// regressions. The detection was sound; the diagnosis was useless, which
+// is the opaque-failure mode this directory's README argues against.
+const firstOrFail = (records, fn, expected) => {
+  if (Array.isArray(records) && records.length > 0) return records[0];
+  log(`\n  SETUP FAILED: ${fn} returned ${Array.isArray(records) ? '0 records' : String(records)}`);
+  log(`  Expected ${expected}, published by this harness moments ago.`);
+  log('  This is a real failure of the zome, not of the harness.');
+  log('  If the code looks correct, the conductor is probably running a');
+  log('  STALE BUILD: hc dna pack packages the wasm on disk rather than');
+  log('  compiling it. Rebuild with scripts/pack-webhapp.sh, then');
+  log('  scripts/sandbox.sh clean && scripts/sandbox.sh start.');
+  process.exit(1);
+};
+
 async function zome() {
   const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: APP_ID });
@@ -166,7 +185,8 @@ async function main() {
     log('\n=== 2. The Reinforcement is really on the DHT ===');
     // Independent client, same link, resolved the same way the UI does.
     const claimRecords = await call('get_claims_by_domain', DOMAIN);
-    const claimEntryHash = claimRecords[0].signed_action.hashed.content.entry_hash;
+    const claimEntryHash = firstOrFail(claimRecords, 'get_claims_by_domain',
+      "the claim this harness seeded into its domain").signed_action.hashed.content.entry_hash;
     const critiqueRecords = await call('get_critiques_for', claimEntryHash);
     const critiqueActionHash = critiqueRecords[0].signed_action.hashed.hash;
     const linkHash = await call('find_synaptic_link', {
