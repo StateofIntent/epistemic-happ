@@ -603,6 +603,19 @@ fn validate_claim(claim: &Claim, action: &Create) -> ExternResult<ValidateCallba
             return Ok(ValidateCallbackResult::Invalid("Claim evidence hash not found.".into()));
         }
     }
+    // NOTE ON THE ASYMMETRY WITH Critique: a Claim's evidence_hashes are
+    // checked to resolve and a Critique's are not, which reads as an
+    // oversight and is not one. get_grounding_path RECURSES through a
+    // claim's evidence_hashes, so a hash resolving to nothing would be a
+    // dead end mid-traversal; this check keeps that walk well-formed. It
+    // is deliberately weak in the way that purpose implies — the hash
+    // must resolve to SOME entry, not to Evidence — so that a claim may
+    // cite another claim and grounding can keep walking back. Nothing
+    // traverses a Critique's evidence_hashes, so nothing needs the same
+    // guarantee, and adding must_get_entry there would defer validation
+    // of the protocol's most frequent act until everything it cites had
+    // propagated. See SPEC.md §5.3.
+
     // If source_mew is present, it must be a valid Mew.
     if let Some(mew_hash) = &claim.source_mew {
         if must_get_entry(mew_hash.clone()).is_err() {
