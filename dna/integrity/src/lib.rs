@@ -1104,21 +1104,29 @@ const ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION: usize = 5; // must match coor
 // #1's leaderboard, preserved only by the protocol declining to build
 // it rather than by construction.
 //
-// The direction that replaces it is non-transferable regenerating
-// capacity: a per-agent budget, spent at different rates by different
-// acts, refilling over time, that CANNOT move between agents. That
-// dissolves the enforcement problem (no transfers, so no double-spend
-// and no global balance question — each agent's own chain is
-// authoritative, verifiable exactly as this file's friction checks
-// already are) and it never needs to answer questions about other
-// agents, so it has no leaderboard surface at all. The biology says the
-// same thing: cells do not trade ATP, and ATP that does cross a
-// membrane stops being energy and becomes signal. Signal crossing
-// membranes is what SynapticLink and Critique already are.
+// A successor was proposed and then also rejected: non-transferable
+// regenerating capacity, one per-agent budget spent at differing rates
+// by differing acts. It would have dissolved the ledger's problems
+// entirely — no transfers, so no double-spend, no global balance, and
+// no need to answer questions about other agents at all — and the
+// biology argued for it, since cells do not trade ATP and ATP crossing
+// a membrane becomes signal rather than energy.
 //
-// Not built here: its per-action rates encode which acts should cost
-// more than others, which is a design judgement that needs a stated
-// need rather than an invented one. See
+// It was not built because the question it depended on was answered and
+// the answer was no: no act needs to cost more than another in a way
+// the separate caps in this file cannot already express. AttestationGrant
+// at 5/week plus a 30-day tenure bar against Reinforcement at 40/hour is
+// already a ~1000x differential. What unification would add is
+// substitutability — unspent allowance for one act becoming extra
+// allowance for another — and that is a defect here, not a feature:
+// these caps do not ration a shared resource, they each bound a distinct
+// flooding surface, so one budget makes every bound its own limit plus
+// whatever the agent declined to spend elsewhere. That is the burn
+// tier's failure shape again.
+//
+// The cost model is flat per-act caps plus accountability
+// (Constitution/required_promises) plus vouching (AttestationGrant) —
+// the model that already existed. See
 // docs/metabolic-biosignalling-currency-brief.md.
 
 /// Pure arithmetic core of AttestationGrant's tenure check: has enough

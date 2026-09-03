@@ -165,13 +165,13 @@ buying past it: the burn-to-extend tier that once existed was removed
 as unreachable, and the mutual-credit ledger it was the only consumer of
 was removed with it.
 
-What replaces the idea of a cost layer is non-transferable regenerating
-capacity — a per-agent budget spent at different rates by different
-acts, refilling over time, that cannot move between agents. It is named
-as the direction and deliberately not built: its per-action rates encode
-which acts should cost more than others, and that needs a stated need
-rather than an invented one. See
-docs/metabolic-biosignalling-currency-brief.md.
+A successor -- non-transferable regenerating capacity, one per-agent
+budget spent at differing rates by differing acts -- was proposed and
+then rejected too, because no act needs to cost more than another in a
+way these separate caps cannot already express, and unifying them would
+let unspent allowance for one act become extra allowance for another.
+The cost model is flat per-act caps plus accountability plus vouching.
+See docs/metabolic-biosignalling-currency-brief.md.
 `);
 
   log(`${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);

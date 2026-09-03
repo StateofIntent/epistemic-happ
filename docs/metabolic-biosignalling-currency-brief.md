@@ -31,37 +31,75 @@
 > consumer, on a substrate where its central invariant (a checkable
 > balance) is unachievable, argues for removal.
 >
-> **What replaces it: non-transferable regenerating capacity.** A
-> per-agent budget, spent at differing rates by differing acts,
-> refilling over time, that cannot move between agents. This dissolves
-> every problem above rather than mitigating them: no transfers means no
-> double-spend and no global balance question, each agent's own chain is
-> authoritative and verifiable exactly as friction checks already are,
-> and — decisively — it never needs to answer a question about another
-> agent, so it has no leaderboard surface at all.
+> **What was proposed to replace it, and then rejected as well:
+> non-transferable regenerating capacity.** One per-agent budget, spent
+> at differing rates by differing acts, refilling over time, unable to
+> move between agents. It dissolved every technical problem above rather
+> than mitigating them — no transfers means no double-spend and no
+> global balance question, each agent's own chain is authoritative and
+> verifiable exactly as friction checks already are, and it never needs
+> to answer a question about another agent, so it has no leaderboard
+> surface at all.
 >
-> **The biology is why, and it is diagnostic rather than decorative.**
-> Cells do not trade ATP. Metabolic energy is local; what crosses a
-> membrane is signal — and when ATP itself crosses one it *stops being
-> energy and becomes signal* (purinergic signalling). Cells do share
-> substrates, but through a circulatory commons, never as a bilateral
-> debt: no cell owes another cell energy. This protocol's signalling
-> layers — `SynapticLink` conductance, `Critique`, `AttestationGrant` —
-> are the parts that work. The currency layer made energy itself
-> transferable, which is the one thing metabolism does not do, and took
-> on a distributed-systems problem in exchange for a property biology
-> never asked for. The metaphor predicted the failure.
+> **The biology is why it was proposed, and it is diagnostic rather than
+> decorative.** Cells do not trade ATP. Metabolic energy is local; what
+> crosses a membrane is signal — and when ATP itself crosses one it
+> *stops being energy and becomes signal* (purinergic signalling). Cells
+> do share substrates, but through a circulatory commons, never as a
+> bilateral debt: no cell owes another cell energy. This protocol's
+> signalling layers — `SynapticLink` conductance, `Critique`,
+> `AttestationGrant` — are the parts that work. The currency layer made
+> energy itself transferable, the one thing metabolism does not do. The
+> metaphor predicted the failure.
 >
-> **Capacity is named as the direction and deliberately not built.** Its
-> per-action rates encode which acts should cost more than others, and
-> that is a design judgement needing a stated need rather than an
-> invented one. Building a mechanism for structural reasons rather than
-> a felt need is precisely how the burn tier went wrong. The open
-> question is therefore: *which act do you want to cost more than
-> another, that separately tuned flat caps cannot already express?*
-> Until that has an answer, flat caps plus accountability
-> (`Constitution`/`required_promises`) plus vouching (`AttestationGrant`)
-> are the cost model, and they may simply be sufficient.
+> **It was nevertheless not built,** because the question it was made
+> conditional on was then actually answered, and the answer was no.
+> *Which act should cost more than another, that separately tuned flat
+> caps cannot already express?* Nothing does:
+>
+> - **The differentiation already exists.** `AttestationGrant` at 5/week
+>   plus a 30-day tenure bar against `Reinforcement` at 40/hour is
+>   roughly a 1000× differential in sustained rate plus a hard
+>   eligibility gate. Capacity would re-encode a working judgement.
+> - **Its one genuine addition, substitutability, is a defect here.**
+>   These caps do not ration a shared resource; each bounds a distinct
+>   flooding surface at its own threshold — critique-flooding at
+>   20/hour, conductance-farming at 40/hour. Under one budget, the
+>   effective bound on any act becomes its own limit plus whatever the
+>   agent declined to spend elsewhere. That weakens every limit at once,
+>   and it is structurally the same failure as the burn tier: buying
+>   past a limit undermines what the limit protected. Building it
+>   immediately after removing that tier would have been the wrong
+>   lesson.
+> - **The finer pricing it enables is pricing this protocol should not
+>   want.** The plausible within-type candidates — costlier cross-domain
+>   critique, costlier critique of a `Constitution` — are exactly where
+>   cost does most damage. Cross-domain critique is what
+>   `get_cross_domain_critiques` exists to *reveal* as a lens that gates
+>   nothing (Invariant #2), and taxing critique of governance chills it
+>   where it matters most.
+> - **Burst tolerance does not rescue it.** The one thing rolling
+>   windows genuinely cannot express is a burst after idling. That is a
+>   property of bucket shape, not of unified budgets: each existing cap
+>   could become a token bucket independently, with no substitutability
+>   at all. Worth doing only if someone reports actually hitting the
+>   caps.
+>
+> **The cost model is therefore the one that already existed:** flat
+> per-act caps, plus accountability (`Constitution`/`required_promises`),
+> plus vouching (`AttestationGrant`). Accountability-not-cost is the
+> stance this codebase took for domain creation, and it generalises.
+>
+> **One real asymmetry surfaced while answering the question,** and is
+> left open rather than silently fixed: `create_claim` carries no
+> friction at all, while `Critique` is capped at 20/hour. The protocol
+> currently rate-limits disagreement but not assertion. That may be
+> deliberate — a claim stands alone, a critique attaches to someone
+> else's work — but for a protocol whose stated value is epistemic
+> rigour, a ratio favouring assertion over critique deserves a
+> deliberate decision. If any act should cost more relative to another,
+> this is the candidate, and the fix is a cap on claims, not a unified
+> budget.
 
 **Status:** supersedes an earlier, informal brief of the same name that
 circulated outside this repository. This version is written *from* the
@@ -770,26 +808,36 @@ something.
 
 ---
 
-## 8. Immediate next steps, in priority order
+## 8. What remains open
 
-1. **Per-pair credit limits** — promoted to the top, because everything
-   else here depends on it. Until a burn costs something, no mechanism
-   built on burns can mean anything: that is what made the burn tier
-   removable in §7.2, and it is what any future cost coupling would have
-   to solve first. Closes the balance-check gap named in §4.2. The
-   honest fix is a limit checked against both parties' own chains via
-   `must_get_agent_activity`, not a pretend global balance check this
-   substrate cannot make atomic.
-2. **Find the ledger a consumer, or accept that it is waiting for one**
-   (§4.3). With the burn coupling removed, nothing in this protocol
-   reads `get_credit_balance` to make a decision. That is worth a
-   deliberate answer rather than drift — either a mechanism that needs
-   it (the additive `Critique` burn tier of §7.2 option 1, once item 1
-   lands, is the nearest candidate), or an explicit "this is substrate,
-   parked until needed."
-3. **Multi-hop transitive settlement** (§6.1), if bilateral-only transfers
-   turn out to be too limiting in practice.
-4. **hREA migration spike** (§6.2) — worth doing before this parallel
-   implementation grows much further, specifically to check whether it
-   already solves the countersigning problem this pass solved
-   independently.
+**Everything this section previously listed is moot.** Its four items —
+per-pair credit limits, finding the ledger a consumer, multi-hop
+transitive settlement, and an hREA migration spike — were all work on or
+around the mutual-credit ledger, which no longer exists. They are
+recorded here as closed-by-removal rather than deleted, so that a reader
+who remembers them knows they were answered rather than forgotten.
+
+Two things are genuinely open, and neither is currency work:
+
+1. **The claim/critique friction asymmetry.** `create_claim` carries no
+   friction at all, while `Critique` is capped at 20 per hour. The
+   protocol therefore rate-limits disagreement but not assertion. This
+   is the one real act-cost question the capacity analysis surfaced (see
+   the status banner at the top). It may be deliberate and correct — a
+   claim stands alone, a critique attaches to someone else's work — but
+   for a protocol whose stated value is epistemic rigour, a ratio
+   favouring assertion over critique deserves a decision rather than an
+   inheritance. If it needs fixing, the fix is a cap on claims.
+
+2. **Whether burst tolerance is wanted.** Rolling-window caps bound
+   burst and sustained throughput at the same number. A token bucket
+   with capacity above its refill rate would let an agent who has been
+   idle spend a burst — plausibly a better fit for how epistemic work
+   actually happens — while still bounding sustained rate. This can be
+   done per-limit, with no unified budget and therefore no
+   substitutability. Worth doing only if someone reports actually
+   hitting the caps; there is no such report today.
+
+Both are small, local, and independent of anything removed. Neither
+should be started without the corresponding felt need, which is the
+lesson the rest of this document exists to record.
