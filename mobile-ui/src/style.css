@@ -780,3 +780,108 @@ button:disabled { opacity: 0.6; cursor: default; }
   border: 1px solid rgba(127, 127, 127, 0.3);
   border-radius: 8px;
 }
+
+/* --- Trust lenses -----------------------------------------------------
+   The banner is deliberately loud and deliberately not collapsible.
+   README.md §4.4: "If the interface is filtering, the user must have
+   chosen the filter and be able to see it." A lens that is applied but
+   easy to overlook is the failure mode that constraint describes, so
+   nothing here is styled to recede. */
+
+.lens-row {
+  margin-top: 0.6rem;
+}
+
+.lens-banner {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 2px solid rgba(180, 130, 30, 0.55);
+  border-radius: 8px;
+  background: rgba(180, 130, 30, 0.08);
+}
+
+.lens-banner-text {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+/* The delta is the part that makes the lens legible rather than merely
+   disclosed, so it is not dimmed the way secondary text elsewhere is. */
+.lens-delta {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lens-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+}
+
+.lens-roots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lens-root {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.lens-builder label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.lens-builder input[type='number'] {
+  width: 5rem;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.member-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+}
+
+/* "passes", "does not pass" and "not checked" are three different
+   answers and must not be confusable. The third is the one that would do
+   real harm if it read as the second. */
+.attested-badge {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+}
+
+.attested-badge.not-attested {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.attested-badge.unknown {
+  opacity: 0.5;
+  font-style: italic;
+}

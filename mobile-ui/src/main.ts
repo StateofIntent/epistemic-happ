@@ -8,7 +8,7 @@ import {
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
-  ANTIBODY_PATTERN_KINDS, type CritiqueSpecies,
+  ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -90,6 +90,40 @@ const groundingByClaim = new Map<string, GroundingPath>();
 const retractingClaims = new Set<string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
 const flaggingClaims = new Set<string>();
+// --- Trust lenses (opt-in, user-aimed) --------------------------------
+// README.md §4.4's first constraint is the whole design here, not a
+// caveat on it: "If the interface is filtering, the user must have
+// chosen the filter and be able to see it."
+//
+// So three rules this state exists to make enforceable:
+//
+//   1. NEVER ON BY DEFAULT. lensByMembrane is empty until a user builds
+//      a policy and applies it. Every get_discourse_health call keeps
+//      passing attestation_policy: null until then, which is the read
+//      that "hands back everything and takes no position".
+//   2. NEVER APPLIED INVISIBLY. A membrane with a lens renders a banner
+//      naming the roots, the threshold and the depth, plus a control to
+//      remove it. An active lens the user cannot see is the failure mode
+//      §4.4 describes exactly.
+//   3. THE UNFILTERED FIGURES STAY ON SCREEN. healthByMembrane keeps the
+//      neutral answer and lensedHealthByMembrane holds the filtered one,
+//      so the card can show what the lens removed rather than quietly
+//      replacing one number with another. A filter whose effect is
+//      invisible is presented as neutral even when it is disclosed.
+/** membrane entryHash (b64) -> the policy this user has aimed at it */
+const lensByMembrane = new Map<string, AttestationPolicy>();
+/** membrane entryHash (b64) -> discourse health computed WITH that lens.
+ * Held separately from healthByMembrane, which stays the unfiltered
+ * answer for as long as the lens is active. */
+const lensedHealthByMembrane = new Map<string, DiscourseHealth>();
+/** membrane entryHash (b64) -> whether the lens builder is open */
+const lensBuilderOpen = new Set<string>();
+/** "<membrane b64>|<agent b64>" -> whether that agent passes the active
+ * lens. Absent when no lens is active, or while the read is in flight —
+ * and absence renders as nothing at all rather than as "not attested",
+ * because those are different claims and only one of them was checked. */
+const attestedByMembraneAgent = new Map<string, boolean>();
+
 // --- Critique taxonomy ------------------------------------------------
 // The evolving vocabulary of critique *kinds*. CritiqueMode is the
 // protocol's fixed five-variant axis; a CritiqueSpecies is the open one
@@ -1242,6 +1276,264 @@ async function joinMembrane(membrane: DecodedRecord<Membrane>) {
   render();
 }
 
+// --- Trust lenses -----------------------------------------------------
+
+/** Re-read a membrane's discourse health THROUGH the user's aimed lens,
+ * and check each member against it.
+ *
+ * The unfiltered read in healthByMembrane is deliberately left alone.
+ * Replacing it would make the lens's effect invisible, which §4.4 treats
+ * as presenting a filtered result as neutral even when the filter is
+ * disclosed — the number would simply be different and nobody could say
+ * by how much. */
+async function applyLens(membrane: DecodedRecord<Membrane>, policy: AttestationPolicy) {
+  if (!connection) return;
+  const conn = connection;
+  const key = b64(membrane.entryHash);
+  lensByMembrane.set(key, policy);
+  lensBuilderOpen.delete(key);
+  render();
+
+  try {
+    const health = await conn.callZome<DiscourseHealth>('get_discourse_health', {
+      membrane: membrane.entryHash,
+      attestation_policy: policy,
+      conductance_policy: null,
+    });
+    lensedHealthByMembrane.set(key, health);
+  } catch {
+    // Left absent: the card says the lensed read failed rather than
+    // showing the unfiltered figure as though it were the lensed one.
+  }
+  render();
+
+  const members = membersByMembrane.get(key) ?? [];
+  await Promise.all(members.map(async (member) => {
+    try {
+      const attested = await conn.callZome<boolean>('is_agent_attested', {
+        candidate: member,
+        membrane: membrane.entryHash,
+        policy,
+      });
+      attestedByMembraneAgent.set(`${key}|${b64(member)}`, attested);
+    } catch {
+      // Absent rather than false — see attestedByMembraneAgent.
+    }
+  }));
+  render();
+}
+
+/** Remove the lens entirely and return to the neutral read. */
+function clearLens(membrane: DecodedRecord<Membrane>) {
+  const key = b64(membrane.entryHash);
+  lensByMembrane.delete(key);
+  lensedHealthByMembrane.delete(key);
+  for (const k of [...attestedByMembraneAgent.keys()]) {
+    if (k.startsWith(`${key}|`)) attestedByMembraneAgent.delete(k);
+  }
+  render();
+}
+
+/** The banner shown whenever a lens is active. This is the "be able to
+ * see it" half of §4.4's rule, and it is not collapsible on purpose. */
+function renderLensBanner(membrane: DecodedRecord<Membrane>, policy: AttestationPolicy): HTMLElement {
+  const key = b64(membrane.entryHash);
+  const banner = document.createElement('div');
+  banner.className = 'lens-banner';
+  banner.dataset.testid = 'lens-banner';
+
+  const text = document.createElement('p');
+  text.className = 'lens-banner-text';
+  const roots = policy.require_attestation_from?.length ?? 0;
+  const depth = policy.max_attestation_depth ?? 1;
+  text.textContent =
+    `Your trust lens is applied: at least ${policy.min_attestations} attester`
+    + `${policy.min_attestations === 1 ? '' : 's'} from ${roots} chosen root`
+    + `${roots === 1 ? '' : 's'}, within ${depth} hop${depth === 1 ? '' : 's'}. `
+    + 'This is your question, not the protocol\u2019s verdict — someone else\u2019s '
+    + 'lens would give a different answer, and the unfiltered figures are shown beside it.';
+  banner.appendChild(text);
+
+  const clear = document.createElement('button');
+  clear.className = 'link-button';
+  clear.dataset.testid = 'lens-clear';
+  clear.textContent = 'Remove lens';
+  clear.onclick = () => clearLens(membrane);
+  banner.appendChild(clear);
+
+  const lensed = lensedHealthByMembrane.get(key);
+  const plain = healthByMembrane.get(key);
+  if (lensed && plain) {
+    const delta = document.createElement('p');
+    delta.className = 'lens-delta';
+    delta.dataset.testid = 'lens-delta';
+    // What the lens REMOVED, stated as a difference rather than only as
+    // a new total. A total on its own is exactly as unreadable as no
+    // disclosure at all.
+    //
+    // CRITIQUES ONLY, AND SAID SO. get_discourse_health applies an
+    // AttestationPolicy when tallying critiques and never when counting
+    // claims — read the loop in its coordinator implementation. An
+    // earlier version of this banner printed "Claims N → N" beside the
+    // critique figure, which was true only in the sense that the two
+    // numbers were equal: it implied the lens had considered claims and
+    // spared them, when the lens never looks at them at all. Stating the
+    // scope of a filter incorrectly is the same §4.4 failure as hiding
+    // it, so the claim total is named here as explicitly UNFILTERED.
+    const removed = plain.total_critiques - lensed.total_critiques;
+    delta.textContent =
+      `Critiques ${plain.total_critiques} \u2192 ${lensed.total_critiques}`
+      + (removed > 0 ? ` — your lens sets aside ${removed}.` : ' — your lens sets none aside.')
+      + ` Claims (${plain.total_claims}) are not filtered by a trust lens; only critiques are.`;
+    banner.appendChild(delta);
+  } else if (!lensed) {
+    const pending = document.createElement('p');
+    pending.className = 'lens-delta';
+    pending.dataset.testid = 'lens-pending';
+    pending.textContent = 'The lensed read has not returned. The figures below are unfiltered.';
+    banner.appendChild(pending);
+  }
+
+  return banner;
+}
+
+/** The builder. Roots are chosen from this membrane's own members —
+ * the only agent set this UI can enumerate at all, and the one whose
+ * membership is already meaningful here. */
+function renderLensBuilder(membrane: DecodedRecord<Membrane>): HTMLElement {
+  const key = b64(membrane.entryHash);
+  const form = document.createElement('form');
+  form.className = 'lens-builder';
+  form.dataset.testid = 'lens-builder';
+
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent =
+    'A trust lens is a question you ask, not a ranking the protocol keeps. '
+    + 'Choose whose attestation you count; everything stays visible underneath.';
+  form.appendChild(intro);
+
+  const members = membersByMembrane.get(key) ?? [];
+  const rootBox = document.createElement('div');
+  rootBox.className = 'lens-roots';
+  const checkboxes: Array<[HTMLInputElement, Uint8Array]> = [];
+  for (const member of members) {
+    const label = document.createElement('label');
+    label.className = 'lens-root';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.testid = 'lens-root-checkbox';
+    cb.dataset.agent = b64(member);
+    label.appendChild(cb);
+    const name = document.createElement('span');
+    name.textContent = connection && b64(member) === b64(connection.myAgentPubKey)
+      ? `${short(member)} (you)` : short(member);
+    label.appendChild(name);
+    rootBox.appendChild(label);
+    checkboxes.push([cb, member]);
+  }
+  if (members.length === 0) {
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.textContent = 'No members are loaded for this domain yet, so there is nobody to trust as a root.';
+    rootBox.appendChild(none);
+  }
+  form.appendChild(rootBox);
+
+  const minInput = document.createElement('input');
+  minInput.type = 'number';
+  minInput.min = '1';
+  minInput.value = '1';
+  minInput.dataset.testid = 'lens-min-attestations';
+  const minLabel = document.createElement('label');
+  minLabel.textContent = 'Attesters required';
+  minLabel.appendChild(minInput);
+  form.appendChild(minLabel);
+
+  const depthInput = document.createElement('input');
+  depthInput.type = 'number';
+  depthInput.min = '1';
+  depthInput.max = '5';
+  depthInput.value = '1';
+  depthInput.dataset.testid = 'lens-depth';
+  const depthLabel = document.createElement('label');
+  depthLabel.textContent = 'Hops of transitive trust';
+  depthLabel.appendChild(depthInput);
+  form.appendChild(depthLabel);
+
+  const submit = document.createElement('button');
+  submit.type = 'submit';
+  submit.dataset.testid = 'lens-apply';
+  submit.textContent = 'Apply this lens';
+  form.appendChild(submit);
+
+  const errorBox = document.createElement('div');
+  errorBox.className = 'error-box';
+  errorBox.dataset.testid = 'lens-error';
+  errorBox.hidden = true;
+  form.appendChild(errorBox);
+
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const roots = checkboxes.filter(([cb]) => cb.checked).map(([, agent]) => agent);
+    if (roots.length === 0) {
+      // Refused rather than silently treated as "no restriction". An
+      // empty root set means require_attestation_from: null, under which
+      // is_agent_attested returns true for everyone — a lens that looks
+      // applied and filters nothing is worse than no lens at all.
+      errorBox.hidden = false;
+      errorBox.textContent =
+        'Choose at least one root. A lens with no roots would be applied and filter nothing, '
+        + 'which reads as a verdict while being none.';
+      return;
+    }
+    errorBox.hidden = true;
+    void applyLens(membrane, {
+      require_attestation_from: roots,
+      min_attestations: Math.max(1, parseInt(minInput.value, 10) || 1),
+      max_attestation_depth: Math.max(1, parseInt(depthInput.value, 10) || 1),
+    });
+  };
+
+  return form;
+}
+
+/** Vouch for an agent within this membrane — grant_attestation.
+ *
+ * DELIBERATELY NOT GATED ON BUDGET. Attestation grants are rate-limited
+ * by check_attestation_grant_friction, but the coordinator exposes NO
+ * status read for it (unlike get_synaptic_link_friction_status), so this
+ * client cannot re-derive the conductor's answer. §4.5's third rule is
+ * explicit that an affordance must never be gated on unknown state:
+ * guessing "blocked" would refuse what the protocol would have allowed.
+ * A refusal surfaces as the conductor's own message instead. */
+async function vouchFor(membrane: DecodedRecord<Membrane>, candidate: Uint8Array, onError: (m: string) => void) {
+  if (!connection) return;
+  try {
+    const myMembership = await connection.callZome<Uint8Array | null>(
+      'get_my_membership_action', membrane.entryHash,
+    );
+    if (!myMembership) {
+      // Tenure is enforced DHT-side; saying so plainly beats letting
+      // validation reject it with a message about link tags.
+      onError('You must have joined this domain before you can vouch in it.');
+      return;
+    }
+    await connection.callZome('grant_attestation', {
+      candidate,
+      membrane: membrane.entryHash,
+      my_membership_action: myMembership,
+    });
+    const key = b64(membrane.entryHash);
+    const policy = lensByMembrane.get(key);
+    // A vouch changes who passes a lens, so re-run it if one is active.
+    if (policy) await applyLens(membrane, policy);
+    else render();
+  } catch (err) {
+    onError(err instanceof Error ? err.message : String(err));
+  }
+}
+
 // --- Critique taxonomy tab -------------------------------------------
 
 /** The whole taxonomy, then each species' live adoption count.
@@ -1647,6 +1939,9 @@ function renderFoundingForm(): HTMLElement {
 
 function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
   const key = b64(membrane.entryHash);
+  /** The lens this user has aimed at this membrane, if any. Undefined is
+   * the normal, neutral state and stays that way until they choose. */
+  const activeLens = lensByMembrane.get(key);
   const card = document.createElement('article');
   card.className = 'claim-card';
   card.dataset.testid = 'membrane-card';
@@ -1707,8 +2002,111 @@ function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
       row.appendChild(joinBtn);
     }
     card.appendChild(row);
+
+    // Per-member attestation under the active lens, and the vouch
+    // affordance. Both live here rather than in the lens builder because
+    // "is this person attested" is a fact about a member, and the
+    // builder is where the question gets asked, not answered.
+    if (joined || activeLens) {
+      const list = document.createElement('ul');
+      list.className = 'member-list';
+      list.dataset.testid = 'member-list';
+      if (joined) {
+        // DISCLOSED, NOT GATED. Vouching is bounded by two protocol
+        // rules — a membership-tenure bar and a rolling grant budget —
+        // and the coordinator exposes a status read for NEITHER, unlike
+        // get_synaptic_link_friction_status. §4.5's third rule then
+        // settles it: never gate on unknown state, because guessing
+        // "blocked" refuses what the protocol would have allowed.
+        //
+        // So the button stays live and the cost is stated up front, which
+        // is what stops a refusal from arriving as a surprise. The shape
+        // of the rule is named and the NUMBERS deliberately are not: the
+        // integrity zome calls its 30-day bar "a placeholder scale, not a
+        // value derived from anything; tunable", so a figure copied into
+        // this sentence would silently become a lie the day it is tuned.
+        // The conductor's own refusal carries the specifics.
+        const cost = document.createElement('li');
+        cost.className = 'member-cost-note';
+        cost.dataset.testid = 'vouch-cost-note';
+        cost.textContent =
+          'Vouching is deliberately expensive: it needs established membership here, '
+          + 'and only a few vouches are possible per week. A refusal will say which limit you met.';
+        list.appendChild(cost);
+      }
+      for (const member of members) {
+        const li = document.createElement('li');
+        li.className = 'member-row';
+        li.dataset.agent = b64(member);
+        const who = document.createElement('span');
+        who.textContent = b64(member) === me ? `${short(member)} (you)` : short(member);
+        li.appendChild(who);
+
+        if (activeLens) {
+          const verdict = attestedByMembraneAgent.get(`${key}|${b64(member)}`);
+          const badge = document.createElement('span');
+          badge.className = 'attested-badge';
+          badge.dataset.testid = 'attested-badge';
+          if (verdict === true) {
+            badge.textContent = 'passes your lens';
+          } else if (verdict === false) {
+            badge.textContent = 'does not pass your lens';
+            badge.classList.add('not-attested');
+          } else {
+            // Not checked, or the read failed. Rendered as unknown
+            // rather than as a negative: "we did not ask" and "the
+            // answer was no" are different claims.
+            badge.textContent = 'not checked';
+            badge.classList.add('unknown');
+          }
+          li.appendChild(badge);
+        }
+
+        if (joined && b64(member) !== me) {
+          const vouchBtn = document.createElement('button');
+          vouchBtn.className = 'link-button';
+          vouchBtn.dataset.testid = 'vouch';
+          vouchBtn.textContent = 'Vouch';
+          const err = document.createElement('span');
+          err.className = 'error-box';
+          err.dataset.testid = 'vouch-error';
+          err.hidden = true;
+          vouchBtn.onclick = () => {
+            err.hidden = true;
+            void vouchFor(membrane, member, (m) => { err.hidden = false; err.textContent = m; });
+          };
+          li.appendChild(vouchBtn);
+          li.appendChild(err);
+        }
+        list.appendChild(li);
+      }
+      card.appendChild(list);
+    }
   }
 
+  // --- Trust lens ------------------------------------------------------
+  // Off unless this user turned it on. §4.4: the filter must be chosen,
+  // and visible while it applies.
+  const lensRow = document.createElement('div');
+  lensRow.className = 'lens-row';
+  const lensToggle = document.createElement('button');
+  lensToggle.className = 'link-button';
+  lensToggle.dataset.testid = 'lens-toggle';
+  lensToggle.textContent = lensBuilderOpen.has(key) ? 'Cancel'
+    : activeLens ? 'Change trust lens' : 'Apply a trust lens';
+  lensToggle.onclick = () => {
+    if (lensBuilderOpen.has(key)) lensBuilderOpen.delete(key);
+    else lensBuilderOpen.add(key);
+    render();
+  };
+  lensRow.appendChild(lensToggle);
+  card.appendChild(lensRow);
+  if (activeLens) card.appendChild(renderLensBanner(membrane, activeLens));
+  if (lensBuilderOpen.has(key)) card.appendChild(renderLensBuilder(membrane));
+
+  // The UNFILTERED health always renders, lens or no lens. When a lens
+  // is active the lensed totals sit in the banner above beside these, so
+  // what the lens removed is legible rather than merely disclosed.
   const health = healthByMembrane.get(key);
   if (health) card.appendChild(renderDiscourseHealth(health));
 
