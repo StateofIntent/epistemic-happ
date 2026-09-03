@@ -1842,8 +1842,19 @@ pub fn query_worldline_resonance(query: WorldlineResonanceQuery) -> ExternResult
 pub fn assert_expertise(payload: ExpertiseAssertionPayload) -> ExternResult<ActionHash> {
     let author = agent_info()?.agent_latest_pubkey;
 
-    // The assertion must be backed by the caller's own WorldlineTrace —
+    // The assertion should be backed by the caller's own WorldlineTrace —
     // you can't assert expertise "evidenced by" someone else's history.
+    //
+    // A COURTESY, NOT AN ENFORCED RULE, and deliberately so. What this
+    // builds is an ordinary Claim, so validate_claim governs it and has
+    // no notion of traces; a client bypassing this function can cite
+    // anyone's. That is tolerable only because an expertise assertion
+    // here is a self-asserted, critiquable Claim carrying no standing —
+    // expertise_tags is an informal, non-authoritative index. Any future
+    // mechanism that gives these claims weight has to add the validation
+    // first. Stated because two comments in this codebase have claimed
+    // DHT enforcement that did not exist (see create_membrane); this one
+    // is claiming the opposite on purpose. SPEC.md §5.21.
     let record = get(payload.worldline_trace_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("WorldlineTrace not found".into())))?;
     let trace: WorldlineTrace = record.entry()
