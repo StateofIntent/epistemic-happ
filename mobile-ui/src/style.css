@@ -1060,3 +1060,30 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* The author byline on a claim card is a button, because it navigates —
+   but it sits inside a line of running text, so it is styled as the link
+   it behaves like rather than as another control competing with the
+   card's real actions. */
+.author-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.author-link:hover,
+.author-link:focus-visible {
+  text-decoration-thickness: 2px;
+}
+
+/* One agent's claims. Deliberately identical to the domain listing: the
+   same claim cards, the same order, nothing added that would make an
+   agent's page read as a profile with a standing attached to it. */
+.by-author .claim-list {
+  margin-top: 0.5rem;
+}

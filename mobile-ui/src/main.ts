@@ -230,12 +230,40 @@ const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
 
+// --- By Author -----------------------------------------------------------
+// Kept in its own store rather than reusing `claims`, so that reading one
+// agent's history and browsing a domain do not overwrite each other — a
+// reader who clicks an author from a domain listing expects to be able to
+// go back to that listing, and sharing one array would silently destroy it.
+/** claims by one agent, as returned by `get_claims_by_agent`. */
+let authorClaims: DecodedRecord<Claim>[] = [];
+/** the agent whose claims `authorClaims` holds, base64, '' if none asked for. */
+let currentAuthor = '';
+/** set once a read has come back, so an empty list can be reported as the
+ * real and different answer it is rather than as "nothing loaded yet".
+ * The taxonomy adoption count makes the same distinction for the same
+ * reason: 0 is an answer, absence is not. */
+let authorLoaded = false;
+/** a failed or malformed read, shown rather than swallowed into an empty list. */
+let authorError = '';
+
 function b64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
 function short(bytes: Uint8Array): string {
   return b64(bytes).slice(0, 12) + '…';
+}
+
+/** Inverse of b64, for the one place a key arrives as text: an agent key
+ * typed or pasted into the By Author tab. Throws on anything that is not
+ * valid base64 so the caller can say so, rather than passing malformed
+ * bytes to the conductor and surfacing its error instead of ours. */
+function bytesFromB64(text: string): Uint8Array {
+  const binary = atob(text);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
 }
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -583,7 +611,7 @@ function renderNextStep(): HTMLElement | null {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim';
+type Tab = 'browse' | 'by-author' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -592,7 +620,8 @@ function renderTabs(): HTMLElement {
   const nav = document.createElement('nav');
   nav.className = 'tab-bar';
   const tabs: Array<[Tab, string]> = [
-    ['browse', 'Browse'], ['membranes', 'Domains'],
+    ['browse', 'Browse'], ['by-author', 'By Author'],
+    ['membranes', 'Domains'],
     ['taxonomy', 'Critique Types'], ['worldline', 'Worldline'],
     ['new-claim', 'New Claim'],
   ];
@@ -611,14 +640,109 @@ function renderTabs(): HTMLElement {
   if (step) content.appendChild(step);
   content.appendChild(
     activeTab === 'browse' ? renderBrowseTab()
-      : activeTab === 'membranes' ? renderMembranesTab()
-        : activeTab === 'taxonomy' ? renderTaxonomyTab()
-          : activeTab === 'worldline' ? renderWorldlineTab()
-            : renderNewClaimTab(),
+      : activeTab === 'by-author' ? renderByAuthorTab()
+        : activeTab === 'membranes' ? renderMembranesTab()
+          : activeTab === 'taxonomy' ? renderTaxonomyTab()
+            : activeTab === 'worldline' ? renderWorldlineTab()
+              : renderNewClaimTab(),
   );
   wrap.appendChild(content);
 
   return wrap;
+}
+
+// --- By Author tab ----------------------------------------------------
+//
+// `get_claims_by_agent` follows AgentToClaim links from an agent anchor, so
+// this is a DHT-wide read of what one agent has published — not a lookup of
+// a record the caller already holds. That distinction is the whole reason
+// this screen exists: the function had been filed with three hash-addressed
+// getters under the reasoning that a screen already holding the record does
+// not need to call them, and that reasoning is true of those three and not
+// of this one.
+//
+// INVARIANT 1 SHAPES THIS SCREEN, and it cuts both ways. It forbids a
+// canonical comparative score, and it REQUIRES that raw history stay "open
+// and queryable" — so an unranked list of what one agent has claimed is the
+// shape the invariant protects rather than one it constrains. What would
+// break it is not the list but the framing around it: arriving here by
+// ranking agents, sorting the claims by anything readable as merit, or
+// putting a total in the header that reads as a standing. So this screen
+// takes one agent at a time and only because someone asked for that agent,
+// renders the claims in the order the DHT returned them, and shows NO
+// count. A per-species adoption count is precedent for showing a number as
+// a fact rather than a position, but agents are the thing Invariant 1 is
+// actually about, and a claim tally next to a person is a great deal closer
+// to karma than an adoption tally next to a critique type. Omitted on
+// purpose; the list is right there to be counted by anyone who wants to.
+
+function renderByAuthorTab(): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'by-author';
+
+  const searchRow = document.createElement('div');
+  searchRow.className = 'search-row';
+  const agentInput = document.createElement('input');
+  agentInput.type = 'text';
+  agentInput.placeholder = 'Agent key (base64)';
+  agentInput.value = currentAuthor;
+  agentInput.setAttribute('data-testid', 'author-key-input');
+  const loadBtn = document.createElement('button');
+  loadBtn.textContent = 'Load claims';
+  loadBtn.setAttribute('data-testid', 'author-load');
+  loadBtn.onclick = () => void loadClaimsByAuthor(agentInput.value.trim());
+  agentInput.onkeydown = (e) => { if (e.key === 'Enter') loadBtn.click(); };
+  searchRow.appendChild(agentInput);
+  searchRow.appendChild(loadBtn);
+  section.appendChild(searchRow);
+
+  const note = document.createElement('p');
+  note.className = 'hint';
+  note.setAttribute('data-testid', 'author-note');
+  note.textContent =
+    'Everything one agent has published, in the order the network returns it. '
+    + 'This is a record, not a ranking: there is no score here, and no way to '
+    + 'compare one agent with another.';
+  section.appendChild(note);
+
+  if (authorError) {
+    const err = document.createElement('p');
+    err.className = 'error';
+    err.setAttribute('data-testid', 'author-error');
+    err.textContent = authorError;
+    section.appendChild(err);
+    return section;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'claim-list';
+  list.setAttribute('data-testid', 'author-claim-list');
+
+  if (!currentAuthor) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'Enter an agent key above, or click an author on any claim.';
+    list.appendChild(empty);
+  } else if (!authorLoaded) {
+    const loading = document.createElement('p');
+    loading.className = 'hint';
+    loading.textContent = 'Reading…';
+    list.appendChild(loading);
+  } else if (authorClaims.length === 0) {
+    // A real answer, and a different one from "not asked yet".
+    const none = document.createElement('p');
+    none.className = 'hint';
+    none.setAttribute('data-testid', 'author-empty');
+    none.textContent = 'This agent has published no claims.';
+    list.appendChild(none);
+  }
+
+  for (const claim of authorClaims) {
+    list.appendChild(renderClaimCard(claim));
+  }
+  section.appendChild(list);
+
+  return section;
 }
 
 // --- Browse tab -------------------------------------------------------
@@ -670,7 +794,22 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
 
   const meta = document.createElement('div');
   meta.className = 'claim-meta';
-  meta.textContent = `${claim.entry.confidence} confidence · by ${short(claim.entry.author)}`;
+  meta.append(`${claim.entry.confidence} confidence · by `);
+  // The byline is the way into the By Author tab, because that is where a
+  // reader actually forms the question: they are looking at one claim and
+  // want the rest of what this agent has said. Requiring them to copy a
+  // base64 key into a box would make the read technically reachable and
+  // practically unused. The tab still takes a typed key, so the affordance
+  // is a shortcut rather than the only route.
+  const authorBtn = document.createElement('button');
+  authorBtn.className = 'author-link';
+  authorBtn.textContent = short(claim.entry.author);
+  authorBtn.title = 'See what else this agent has claimed';
+  authorBtn.onclick = () => {
+    activeTab = 'by-author';
+    void loadClaimsByAuthor(b64(claim.entry.author));
+  };
+  meta.appendChild(authorBtn);
   card.appendChild(meta);
   card.appendChild(renderAuthorConstitution(claim.entry.author));
 
@@ -1308,6 +1447,38 @@ async function loadClaims(domain: string) {
   // Epistemic state is fetched after the claims are already on screen,
   // so a slow or failing read degrades the badges rather than the list.
   void loadClaimEpistemicState();
+}
+
+/** Reads every claim one agent has published. Separate from loadClaims in
+ * more than its zome function: this one takes an agent key rather than a
+ * domain, so a malformed key is a real and likely input (it can be typed or
+ * pasted) and is reported as such rather than being handed to the conductor
+ * to fail on obscurely. */
+async function loadClaimsByAuthor(agentB64: string) {
+  if (!connection || !agentB64) return;
+  currentAuthor = agentB64;
+  authorError = '';
+  authorLoaded = false;
+  authorClaims = [];
+
+  let agent: Uint8Array;
+  try {
+    agent = bytesFromB64(agentB64);
+  } catch {
+    authorError = 'That is not a valid agent key. Keys are base64, like the one shown on a claim.';
+    render();
+    return;
+  }
+
+  render();
+  try {
+    const records = await connection.callZome<any[]>('get_claims_by_agent', agent);
+    authorClaims = decodeRecords<Claim>(records);
+    authorLoaded = true;
+  } catch (e) {
+    authorError = `Could not read this agent's claims: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  render();
 }
 
 /** AntibodyPattern flags and Retractions for every claim currently
