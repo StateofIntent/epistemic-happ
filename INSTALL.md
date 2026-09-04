@@ -3,35 +3,50 @@
 This is for someone who wants to **run** it, not build it. If you want to work
 on the code, read [README.md](README.md) §6 instead.
 
-## What you need
+## The honest state of installation right now
 
-**The [Holochain Launcher](https://github.com/holochain/launcher/releases),
-a release built on Holochain 0.7.** The Launcher is the desktop application
-that runs Holochain apps — it creates your identity, stores your data
-locally, and connects you to other people running the same app. Download the
-version for your operating system from its releases page and install it.
+**There is currently no download-and-run path for this app, and that is a
+real gap rather than a missing paragraph.** It is worth two minutes of your
+time to understand why, because the obvious instruction — "get the Holochain
+Launcher" — is the one thing that will not work.
 
-**The Launcher's Holochain version has to match this app's.** A `.webhapp`
-built for 0.7 will not install into a 0.4-era Launcher, and the error you
-get says something about the manifest rather than about versions: the app
-manifest format changed at 0.6, and an older Launcher cannot parse it.
-Launcher releases name the Holochain version they bundle; pick one that
-says 0.7.
+This app runs on **Holochain 0.7**. The [Holochain
+Launcher](https://github.com/holochain/launcher/releases), which is what
+these instructions used to point at, has not had a release since **v0.400.0
+in March 2025, and that release bundles Holochain 0.4.1**. A `.webhapp`
+built for 0.7 cannot be installed into it: the app manifest format changed
+at Holochain 0.6, so an older Launcher fails to parse the file and reports
+an error about the manifest rather than about versions, which is a
+confusing way to discover the real problem.
 
-You do **not** need Rust, Node, a terminal, or a copy of this repository.
+So the Launcher is not a matter of picking the right version. There is no
+version of it that runs this app.
 
-## Installing
+**What replaced it** is
+[Kangaroo](https://github.com/holochain/kangaroo-electron): rather than one
+desktop application that installs many hApps, each hApp is packaged into its
+own standalone, cross-platform Electron app with a Holochain conductor built
+in. Its current branch targets Holochain 0.7 and the same
+`@holochain/client` 0.21 series this project uses, and it takes exactly the
+`.webhapp` this repository already builds — you drop the file into its
+`pouch/` folder and it produces installers.
 
-1. Download **`epistemic-resonance-happ.webhapp`** from
-   [this project's releases](../../releases/latest).
-2. Open the Holochain Launcher.
-3. Choose to install an app **from a file**, and select the `.webhapp` you
-   downloaded.
-4. The Launcher creates an agent key for you and starts the app.
+That is a **maintainer** action, not something you can do from a releases
+page, and this project has not done it yet. Until it does, running this app
+means building it: see [README.md](README.md) §6, which is verified working
+end to end on 0.7.
 
-That's it. There is no account, no server to sign up to, and no password to
-choose — your identity is a keypair the Launcher generates and keeps on your
-own machine.
+If you want to be the person who closes this gap, the `.webhapp` is already
+correct for it — including the `icon.png` at the root of its UI assets that
+Kangaroo requires. What is missing is the packaging repository and a release
+pipeline, not anything in this codebase.
+
+**One caveat to weigh before doing that.** Kangaroo labels its Holochain
+0.7 branch *unstable* and its 0.6 branch *stable*. This project moved to
+0.7 deliberately — 0.4 was fourteen months unmaintained, and 0.6 would have
+meant paying for the same source-level migration twice — but a packaged
+release for other people to install is a different kind of commitment than a
+development toolchain, and 0.7 was five weeks old when this was written.
 
 ## Finding other people
 
@@ -91,6 +106,9 @@ Two things you will notice are missing, and both are deliberate:
   `.webhapp` file. Different builds mean different networks, and they will not
   see each other at all.
 - **It was working and now seems stale.** See the backoff note above.
+- **The Holochain Launcher rejects the `.webhapp`, with an error about the
+  manifest.** That is the version mismatch described at the top of this
+  page, not a corrupt download. No released Launcher runs Holochain 0.7.
 
 ## Running an agent instead of a UI
 
