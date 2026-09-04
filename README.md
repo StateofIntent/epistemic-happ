@@ -1119,6 +1119,18 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   **The honest limit.** Three members is not many, and the courier here is a single node rather than a path of several. What is now shown is that an entry can arrive from a non-author peer at all, and that recovery time depends on how many peers a returning node has — not how either behaves at a scale anyone would call a network. Still untouched: NAT traversal, a public signal server, real internet latency, packet loss short of a full cut, and partitions of a group larger than two.
 
+- [x] **The tab bar had been overflowing the page sideways, on every width this UI is for.** `mobile-ui/src/style.css`, and six layout assertions in `scripts/live-verify/author-scope-ui.mjs`.
+
+  **Found by doing a regression check that had been skipped, which is the part worth keeping.** Adding nodeD to `network.sh` was followed by re-running `partition-rejoin.mjs` to prove the change had not altered what it measured. Adding a sixth tab to the UI was not followed by anything equivalent — thirteen browser harnesses interact with that tab bar and only the new one was run. Going back to do it found the defect, and the defect turned out to predate the new tab entirely.
+
+  **What was actually wrong, measured at three widths.** A flex item's default `min-width: auto` will not let it shrink below its own min-content width, so `flex: 1` never made six labels — or five — fit into 390px. The bar overflowed, tabs were clipped, and **the whole document scrolled sideways at 390, 360 and 320**, with `New Claim`, the primary write action, off the right edge. Confirmed as pre-existing by building the commit before the By Author tab and measuring it the same way: five tabs, same clipping, same horizontal page scroll. The sixth tab made it worse and made it visible; it did not cause it.
+
+  **Why no harness had noticed.** Every browser harness runs at 390×844, so all of them were driving a page that scrolled sideways, and none of them looked. They navigate by clicking tabs by accessible name, which works regardless of whether the tab is inside the visible bar — Playwright scrolls to an element before clicking it. A test suite can drive a broken layout indefinitely without a single red check, because clicking is not seeing.
+
+  **Fixed by wrapping**, which costs a row of vertical space and keeps every tab reachable — the better trade on a phone than a strip that hides its own contents. Two rows at 390 and 360, three at 320.
+
+  **The check asserts on the document, not the design.** It tests that the page does not scroll sideways and that no tab falls outside the bar, rather than a tab count or a row count, because those are design choices that may change while "a phone screen does not scroll sideways" should not. Watched failing: restoring the previous CSS turns all six red.
+
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.

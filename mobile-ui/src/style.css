@@ -173,14 +173,25 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 /* --- Tabs --- */
 
+/* WRAPS, because it must. A flex item's default `min-width: auto` will not
+   shrink below its own min-content width, so `flex: 1` does not make long
+   labels fit — it just overflows the bar, and with the bar overflowing the
+   page scrolled sideways at every mobile width. That was true at five tabs
+   and measured, not assumed: 390, 360 and 320 all reported a clipped bar
+   and a horizontally scrolling document, with `New Claim` — the primary
+   write action — off the right edge. Wrapping to a second row costs a
+   little vertical space and keeps every tab reachable, which on a screen
+   this size is the better trade than a strip that hides its own contents. */
 .tab-bar {
   display: flex;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
 .tab {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   background: none;
   color: var(--text-dim);
   border-radius: 0;
