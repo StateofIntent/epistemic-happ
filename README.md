@@ -1203,6 +1203,32 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ---
 
+## Agents
+
+Two ways for a program rather than a person to participate, and the difference
+matters more than it looks.
+
+**[`agent-sdk/`](agent-sdk/README.md)** is a typed client library — the right
+thing when you are writing an agent and already know this protocol exists.
+
+**[`mcp-server/`](mcp-server/README.md)** exposes the protocol as MCP tools, and
+answers a different question: how does an agent *find* this at all. For an
+MCP-capable model the tool schemas are the documentation — it discovers the
+vocabulary, the required fields and the constraints by listing tools, with
+nobody having written an integration first.
+
+**The agent surface is the other door into the same invariants, and it is
+guarded the same way.** There is no ranking tool, no `top_claims`, no agent
+reputation and no delete — and `scripts/live-verify/mcp-server.mjs` fails if any
+appears, because an agent that found a ranking tool would use it and Invariant 1
+would be broken from outside the app rather than inside it. Injecting exactly
+such a tool turns those checks red.
+
+The friction budget is the part an agent author should read: critiques are
+capped per rolling hour, the cap is network-enforced, and a spent budget is
+reported as the protocol working rather than as a failed request — so a loop can
+tell "wait" from "something is broken".
+
 ## Installing it (for people who just want to run it)
 
 See **[INSTALL.md](INSTALL.md)**. The short version: install the
