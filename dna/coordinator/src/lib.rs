@@ -3468,6 +3468,28 @@ pub fn promote_mew_to_claim(payload: PromoteMewPayload) -> ExternResult<ActionHa
         LinkTag::new(claim.domain.as_bytes().to_vec()),
     )?;
 
+    // Index it under its domain, exactly as create_claim does. WITHOUT
+    // THIS A PROMOTED CLAIM IS INVISIBLE TO get_claims_by_domain, which
+    // is every by-domain reader there is — browsing a domain in the UI,
+    // and anything downstream of that. It was findable only through
+    // get_claims_by_agent, so the bridge could promote a Mew, report
+    // success, and produce a Claim that nobody browsing that domain
+    // would ever see.
+    //
+    // This is the same defect create_claim's own comment records having
+    // been fixed there ("browsing a domain returned only your own
+    // claims"), reproduced on the promotion path because the fix was
+    // applied to one caller rather than to the shape both share. Found
+    // by scripts/live-verify/mew-lifecycle.mjs on its first run — the
+    // first time anything had exercised this path against a conductor.
+    let domain_anchor = domain_anchor_hash(&claim.domain)?;
+    create_link(
+        domain_anchor,
+        claim_hash.clone(),
+        LinkTypes::DomainToClaim,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+
     Ok(claim_hash)
 }
 
