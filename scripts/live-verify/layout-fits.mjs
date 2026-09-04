@@ -44,16 +44,30 @@
 //      reports zero offenders while the document scrolls to 1326px. Text
 //      runs have to be measured directly, with a Range.
 //
-// WHAT THIS DOES AND DOES NOT EXERCISE, stated because the vacuity trap
-// above applies to this file as much as to any other. Browse and By Author
-// are made to render the long token, and are the two tabs where content
-// overflow can actually be observed. Domains, Critique Types, Worldline and
-// New Claim are measured in their default state — which exercises their
-// structure, the tab bar, and their forms, but not long user text, since
-// seeding those screens needs a published Constitution, a proposed species
-// and a generated trace respectively. A red check here is always real; a
-// green one on those four means "the structure fits", not "no content could
-// ever break it".
+// FOUR OF THE SIX TABS ARE GIVEN CONTENT THAT CAN BREAK THEM, and the other
+// two are named rather than glossed. Browse and By Author render a claim
+// carrying the token, Domains a membrane whose description carries it, and
+// Critique Types a species whose required evidence carries it. Each asserts
+// its content is on screen BEFORE being measured — a green from an empty
+// screen is exactly the vacuity this file exists to refuse, and both the
+// Domains and By Author controls have gone red for precisely that reason on
+// their first run, since neither tab loads anything until asked.
+//
+// Those four are guarded, and it is the injection that says so rather than
+// this comment: removing the wrap rule turns twelve checks red, four tabs at
+// three widths. Before they were seeded it turned six.
+//
+// THE OTHER TWO CANNOT FAIL ON CONTENT, and pretending otherwise would be
+// the same overstatement this file was written to catch:
+//   - New Claim is a form. The token is typed into it, which is worth doing
+//     because it exercises the field, but a textarea scrolls its own content
+//     internally and cannot push the page sideways however long the input.
+//   - Worldline renders dates and short domain names. Checked rather than
+//     assumed: the longest unbroken run on that tab is 20 characters, and
+//     the checksum appears as a sentence — "Checksum verifies — this trace
+//     is intact" — not as a hash. An earlier draft of this comment claimed
+//     it rendered long base64 by nature. It does not.
+// For those two, a green means the structure fits, and nothing more.
 //
 // Prereqs: a CLEAN sandbox (scripts/sandbox.sh clean && start) and a UI
 // build — scripts/pack-webhapp.sh does both builds in the right order.
@@ -98,7 +112,19 @@
 //   viewport" claimed the page was laid out acceptably; it tested only that
 //   nothing hung off the edge.
 //
-//   Restored and re-run: 27 checks green.
+//   Injection, after every tab was given content of its own: the wrap rule
+//   removed again. Result: TWELVE red where the same injection had produced
+//   six — Browse, By Author, Domains and Critique Types, at all three
+//   widths. That difference is the entire value of the seeding, and it is
+//   why the four controls exist: before it, Domains and Critique Types were
+//   being measured empty and their green meant nothing.
+//
+//   Both of those controls earned their place on their first run. Domains
+//   went red because that tab loads nothing until "Load domains" is clicked,
+//   exactly as By Author loads nothing until asked for an agent. Two tabs,
+//   the same trap, caught twice by the same kind of check.
+//
+//   Restored and re-run: 33 checks green.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -127,6 +153,10 @@ const DOMAIN = `Layout${STAMP}`;
 // its own account: base64 agent keys, action hashes, pasted links.
 const LONG_TOKEN = `https://example.org/evidence/${'a1b2c3d4e5'.repeat(12)}.pdf`;
 const CONTENT_LONG = `See ${LONG_TOKEN} for the protocol.`;
+const MEMBRANE_DESC = `Seeded for layout verification. Charter: ${LONG_TOKEN}`;
+const SPECIES_NAME = `LayoutSpecies${STAMP}`;
+const SPECIES_EVIDENCE = `The source, published at ${LONG_TOKEN}`;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 const log = (...a) => console.log(...a);
 let failures = 0;
@@ -229,6 +259,30 @@ async function main() {
     author: me, timestamp: nowMicros(), evidence_hashes: [], attestation_policy: null,
   });
 
+  // Each remaining tab gets user-authored text of its own carrying the same
+  // unbreakable token, so that its check can fail. Measuring these in their
+  // default state — which is what this harness did first — exercises their
+  // structure and nothing else, and a green from a screen with no content
+  // on it is the vacuity this file exists to refuse.
+  log('Seeding the other tabs so their checks can fail ...');
+  const constitution = await call('publish_constitution', {
+    agent: me,
+    promises: [{ action: 'state my sources', domain: DOMAIN, modality: null }],
+    conditions: [], published_at: nowSecs(), expires_at: null,
+  });
+  await call('create_membrane', {
+    domain: DOMAIN, description: MEMBRANE_DESC,
+    required_promises: ['state my sources'], validation_rules_hash: null,
+    creator: me, created_at: nowSecs(), constitution,
+  });
+  await call('create_critique_species', {
+    name: SPECIES_NAME, parent_species: null,
+    required_evidence: [SPECIES_EVIDENCE], proposer: me, created_at: nowMicros(),
+  });
+  await call('generate_worldline_trace', {
+    period_granularity_secs: 3600, expertise_tags: [], expires_at: null,
+  });
+
   log('Starting vite preview (production bundle) ...');
   const preview = spawn('npx', ['vite', 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
     cwd: new URL('../../mobile-ui/', import.meta.url).pathname, stdio: 'ignore',
@@ -270,6 +324,28 @@ async function main() {
         // Browse went red at every width and By Author stayed green, which is
         // the vacuity trap this file warns about, reproduced inside this file.
         // Clicking a byline gives it the same long-token claim to render.
+        if (tab === 'Domains') {
+          // Like By Author, this tab loads nothing until asked. Its first
+          // run here went red on the control below rather than passing on an
+          // empty screen, which is the control doing its job.
+          const load = page.getByRole('button', { name: 'Load domains' });
+          if (await load.count()) { await load.first().click(); }
+          await page.waitForTimeout(1800);
+          check(`${width}px CONTROL: Domains renders the membrane's long description`,
+            (await page.locator('.tab-content').innerText()).includes(LONG_TOKEN));
+        }
+        if (tab === 'Critique Types') {
+          await page.waitForTimeout(1200);
+          check(`${width}px CONTROL: Critique Types renders the species' evidence text`,
+            (await page.locator('.tab-content').innerText()).includes(LONG_TOKEN));
+        }
+        if (tab === 'New Claim') {
+          // A form holds no user text until someone types some, so typing
+          // the token is the only way this tab's check can fail at all.
+          const box = page.locator('.tab-content textarea, .tab-content input[type="text"]').first();
+          await box.fill(CONTENT_LONG);
+          await page.waitForTimeout(400);
+        }
         if (tab === 'By Author') {
           const byline = page.locator('[data-testid="author-claim-list"]').locator('..').locator('.author-link');
           if (await page.locator('[data-testid="author-claim-list"] .claim-card').count() === 0) {
