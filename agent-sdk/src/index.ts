@@ -159,11 +159,20 @@ export class EpistemicAgent {
     });
 
     const info = await app.appInfo();
+    // CellInfo became a discriminated union in @holochain/client 0.21:
+    // `{ type: CellType, value: ProvisionedCell | ClonedCell | StemCell }`,
+    // where it used to be an object keyed by cell type. Because these
+    // values are `any` here, the old `CellType.Provisioned in cell` test
+    // compiled fine against the new client and simply matched nothing,
+    // leaving cellIds empty and every zome call failing later with
+    // NoSigningCredentialsForCell. Corrected against the published type,
+    // not the typechecker.
     const cellIds: any[] = [];
     for (const roleCells of Object.values(info!.cell_info)) {
       for (const cell of roleCells as any[]) {
-        if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-        else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+        if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+          cellIds.push(cell.value.cell_id);
+        }
       }
     }
     if (cellIds.length === 0) {
