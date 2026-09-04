@@ -395,7 +395,7 @@ pub fn get_claim(hash: AnyDhtHash) -> ExternResult<Option<Claim>> {
 #[hdk_extern]
 pub fn get_claims_by_domain(domain: String) -> ExternResult<Vec<Record>> {
     let anchor = domain_anchor_hash(&domain)?;
-    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::DomainToClaim)?.build())?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::DomainToClaim)?, GetStrategy::Network)?;
 
     let mut claims = Vec::new();
     for link in links {
@@ -415,7 +415,7 @@ pub fn get_claims_by_domain(domain: String) -> ExternResult<Vec<Record>> {
 #[hdk_extern]
 pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
     let anchor = agent_anchor_hash(&agent)?;
-    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::AgentToClaim)?.build())?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AgentToClaim)?, GetStrategy::Network)?;
 
     let mut claims = Vec::new();
     for link in links {
@@ -452,11 +452,12 @@ pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
 //      of what the author's own client chose to check, so it can't be
 //      bypassed by a modified client the way a coordinator-only check can.
 //
-// VERIFICATION STATUS: this has been written against the documented HDK/
-// HDI 0.4 API surface but has not been run through a real `hc` conductor.
-// The exact field names on OpRecord::CreateLink and the ChainFilter
-// builder API should be checked against the installed HDI version before
-// relying on this in production — same caveat as the N4L exporter.
+// VERIFICATION STATUS: written against, and compiled against, the real
+// HDK 0.7.0 / HDI 0.8.0 API surface. The field names on the CreateLink
+// action data and the ChainFilter constructors this comment used to say
+// "should be checked" have now been checked the only way that counts —
+// both zomes build for wasm32-unknown-unknown with no warnings. What is
+// still unverified is runtime behaviour under a real conductor.
 // ============================================================================
 
 const SYNAPTIC_LINK_WINDOW_SECS: i64 = 3600; // rolling 1-hour window
@@ -499,13 +500,15 @@ fn count_recent_synaptic_links(since: Timestamp) -> ExternResult<usize> {
 
     let count = records
         .iter()
-        .filter(|r| match r.action() {
-            Action::CreateLink(cl) => {
-                cl.timestamp >= since
+        .filter(|r| {
+            // `timestamp` is an ActionHeader field in 0.7, not part of
+            // CreateLinkData, so it is read off the action rather than
+            // destructured out of the pattern.
+            let a = r.action();
+            matches!(&a.data, ActionData::CreateLink(cl)
+                if a.timestamp() >= since
                     && cl.zome_index == synaptic_link_type.zome_index
-                    && cl.link_type == synaptic_link_type.zome_type
-            }
-            _ => false,
+                    && cl.link_type == synaptic_link_type.zome_type)
         })
         .count();
 
@@ -555,9 +558,9 @@ fn check_synaptic_link_friction() -> ExternResult<()> {
 /// client. See that function's comments for the real mechanism.
 #[hdk_extern]
 pub fn get_my_latest_worldline_checkpoint(_: ()) -> ExternResult<Option<ActionHash>> {
-    let agent = agent_info()?.agent_latest_pubkey;
+    let agent = agent_info()?.agent_initial_pubkey;
     let agent_anchor = agent_anchor_hash(&agent)?;
-    let links = get_links(GetLinksInputBuilder::try_new(agent_anchor, LinkTypes::AgentToWorldlineTrace)?.build())?;
+    let links = get_links(LinkQuery::try_new(agent_anchor, LinkTypes::AgentToWorldlineTrace)?, GetStrategy::Network)?;
 
     let mut candidates: Vec<(u64, ActionHash)> = Vec::new();
     for link in links {
@@ -612,7 +615,7 @@ pub struct FindSynapticLinkPayload {
 
 #[hdk_extern]
 pub fn find_synaptic_link(payload: FindSynapticLinkPayload) -> ExternResult<Option<ActionHash>> {
-    let links = get_links(GetLinksInputBuilder::try_new(payload.base, LinkTypes::SynapticLink)?.build())?;
+    let links = get_links(LinkQuery::try_new(payload.base, LinkTypes::SynapticLink)?, GetStrategy::Network)?;
     for link in links {
         if let Ok(target_action) = ActionHash::try_from(link.target.clone()) {
             if target_action == payload.target_action {
@@ -652,13 +655,15 @@ fn count_recent_reinforcements(since: Timestamp) -> ExternResult<usize> {
 
     let count = records
         .iter()
-        .filter(|r| match r.action() {
-            Action::CreateLink(cl) => {
-                cl.timestamp >= since
+        .filter(|r| {
+            // `timestamp` is an ActionHeader field in 0.7, not part of
+            // CreateLinkData, so it is read off the action rather than
+            // destructured out of the pattern.
+            let a = r.action();
+            matches!(&a.data, ActionData::CreateLink(cl)
+                if a.timestamp() >= since
                     && cl.zome_index == reinforcement_type.zome_index
-                    && cl.link_type == reinforcement_type.zome_type
-            }
-            _ => false,
+                    && cl.link_type == reinforcement_type.zome_type)
         })
         .count();
 
@@ -689,7 +694,7 @@ fn check_reinforcement_friction() -> ExternResult<()> {
 #[hdk_extern]
 pub fn reinforce_synaptic_link(synaptic_link_action: ActionHash) -> ExternResult<ActionHash> {
     check_reinforcement_friction()?;
-    let agent = agent_info()?.agent_latest_pubkey;
+    let agent = agent_info()?.agent_initial_pubkey;
     create_link(synaptic_link_action, agent, LinkTypes::Reinforcement, LinkTag::new(Vec::<u8>::new()))
 }
 
@@ -754,8 +759,9 @@ fn compute_effective_conductance(
 #[hdk_extern]
 pub fn get_effective_conductance(synaptic_link_action: ActionHash) -> ExternResult<f32> {
     let record = must_get_valid_record(synaptic_link_action.clone())?;
-    let (base_conductance, created_at_secs) = match record.action() {
-        Action::CreateLink(cl) => {
+    let link_action = record.action();
+    let (base_conductance, created_at_secs) = match &link_action.data {
+        ActionData::CreateLink(cl) => {
             if cl.tag.0.len() < 4 {
                 return Err(wasm_error!(WasmErrorInner::Guest(
                     "SynapticLink tag too short to contain a conductance value.".into()
@@ -764,7 +770,7 @@ pub fn get_effective_conductance(synaptic_link_action: ActionHash) -> ExternResu
             let bytes: [u8; 4] = cl.tag.0[0..4].try_into().map_err(|_| {
                 wasm_error!(WasmErrorInner::Guest("Could not read conductance bytes.".into()))
             })?;
-            (f32::from_le_bytes(bytes), cl.timestamp.as_seconds_and_nanos().0)
+            (f32::from_le_bytes(bytes), link_action.timestamp().as_seconds_and_nanos().0)
         }
         _ => {
             return Err(wasm_error!(WasmErrorInner::Guest(
@@ -773,7 +779,7 @@ pub fn get_effective_conductance(synaptic_link_action: ActionHash) -> ExternResu
         }
     };
 
-    let links = get_links(GetLinksInputBuilder::try_new(synaptic_link_action, LinkTypes::Reinforcement)?.build())?;
+    let links = get_links(LinkQuery::try_new(synaptic_link_action, LinkTypes::Reinforcement)?, GetStrategy::Network)?;
     let reinforcement_timestamps: Vec<i64> = links
         .iter()
         .map(|link| link.timestamp.as_seconds_and_nanos().0)
@@ -905,7 +911,7 @@ pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
 /// was present in every other link-target reader in this file.
 #[hdk_extern]
 pub fn get_critiques_for(target: AnyDhtHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(GetLinksInputBuilder::try_new(target, LinkTypes::TargetToCritique)?.build())?;
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToCritique)?, GetStrategy::Network)?;
     let mut critiques = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
@@ -1011,7 +1017,7 @@ pub fn publish_antibody_pattern(pattern: AntibodyPattern) -> ExternResult<Action
 /// entirely opt-in rather than a protocol default.
 #[hdk_extern]
 pub fn get_antibody_patterns_for(target: AnyDhtHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(GetLinksInputBuilder::try_new(target, LinkTypes::TargetToAntibody)?.build())?;
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToAntibody)?, GetStrategy::Network)?;
     let mut patterns = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
@@ -1359,7 +1365,7 @@ fn membrane_entry_hash(membrane: AnyDhtHash) -> ExternResult<EntryHash> {
 #[hdk_extern]
 pub fn join_membrane(membrane: AnyDhtHash) -> ExternResult<ActionHash> {
     let membrane_hash = membrane_entry_hash(membrane)?;
-    let agent = agent_info()?.agent_latest_pubkey;
+    let agent = agent_info()?.agent_initial_pubkey;
     let member_anchor = agent_anchor_hash(&agent)?;
 
     create_link(
@@ -1373,7 +1379,7 @@ pub fn join_membrane(membrane: AnyDhtHash) -> ExternResult<ActionHash> {
 #[hdk_extern]
 pub fn get_membrane_members(membrane: AnyDhtHash) -> ExternResult<Vec<AgentPubKey>> {
     let membrane_hash = membrane_entry_hash(membrane)?;
-    let links = get_links(GetLinksInputBuilder::try_new(membrane_hash, LinkTypes::AgentToMembrane)?.build())?;
+    let links = get_links(LinkQuery::try_new(membrane_hash, LinkTypes::AgentToMembrane)?, GetStrategy::Network)?;
     Ok(links.into_iter().map(|link| AgentPubKey::from_raw_36(link.tag.0)).collect())
 }
 
@@ -1414,7 +1420,7 @@ pub fn record_federation(record: FederationRecord) -> ExternResult<ActionHash> {
 #[hdk_extern]
 pub fn get_federation_records_for(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
     let membrane_hash = membrane_entry_hash(membrane)?;
-    let links = get_links(GetLinksInputBuilder::try_new(membrane_hash, LinkTypes::MembraneToFederationRecord)?.build())?;
+    let links = get_links(LinkQuery::try_new(membrane_hash, LinkTypes::MembraneToFederationRecord)?, GetStrategy::Network)?;
     let mut records = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
@@ -1482,7 +1488,7 @@ pub fn get_critique_species(hash: AnyDhtHash) -> ExternResult<Option<CritiqueSpe
 #[hdk_extern]
 pub fn get_all_critique_species() -> ExternResult<Vec<Record>> {
     let anchor = taxonomy_anchor_hash()?;
-    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::TaxonomyToSpecies)?.build())?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::TaxonomyToSpecies)?, GetStrategy::Network)?;
 
     let mut species = Vec::new();
     for link in links {
@@ -1509,7 +1515,7 @@ pub fn get_all_critique_species() -> ExternResult<Vec<Record>> {
 /// hand back a comparative ranking.
 #[hdk_extern]
 pub fn get_critique_species_adoption_count(species_hash: EntryHash) -> ExternResult<usize> {
-    let links = get_links(GetLinksInputBuilder::try_new(species_hash, LinkTypes::CritiqueToSpecies)?.build())?;
+    let links = get_links(LinkQuery::try_new(species_hash, LinkTypes::CritiqueToSpecies)?, GetStrategy::Network)?;
     Ok(links.len())
 }
 
@@ -1838,7 +1844,7 @@ pub fn generate_worldline_trace(params: TraceGenerationParams) -> ExternResult<A
 #[hdk_extern]
 pub fn get_agent_worldline_trace(agent: AgentPubKey) -> ExternResult<Option<WorldlineTrace>> {
     let agent_anchor = agent_anchor_hash(&agent)?;
-    let links = get_links(GetLinksInputBuilder::try_new(agent_anchor, LinkTypes::AgentToWorldlineTrace)?.build())?;
+    let links = get_links(LinkQuery::try_new(agent_anchor, LinkTypes::AgentToWorldlineTrace)?, GetStrategy::Network)?;
 
     let mut candidates: Vec<WorldlineTrace> = Vec::new();
     for link in links {
@@ -1952,7 +1958,7 @@ pub fn query_worldline_resonance(query: WorldlineResonanceQuery) -> ExternResult
 /// it reuses infrastructure Invariant #4 already governs.
 #[hdk_extern]
 pub fn assert_expertise(payload: ExpertiseAssertionPayload) -> ExternResult<ActionHash> {
-    let author = agent_info()?.agent_latest_pubkey;
+    let author = agent_info()?.agent_initial_pubkey;
 
     // The assertion should be backed by the caller's own WorldlineTrace —
     // you can't assert expertise "evidenced by" someone else's history.
@@ -2552,7 +2558,7 @@ pub fn get_unbridged_claims() -> ExternResult<Vec<UnbridgedRecord>> {
         // would never match even once the link above is actually created.
         if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
             let claim_hash = hash_entry(&claim)?;
-            let links = get_links(GetLinksInputBuilder::try_new(claim_hash.clone(), LinkTypes::ClaimToBridgeRecord)?.build())?;
+            let links = get_links(LinkQuery::try_new(claim_hash.clone(), LinkTypes::ClaimToBridgeRecord)?, GetStrategy::Network)?;
             if links.is_empty() {
                 unbridged.push(UnbridgedRecord { entry_hash: claim_hash, record });
             }
@@ -2574,7 +2580,7 @@ pub fn get_unbridged_mews() -> ExternResult<Vec<UnbridgedRecord>> {
     for record in mews {
         if let Ok(Some(mew)) = record.entry().to_app_option::<Mew>() {
             let mew_hash = hash_entry(&mew)?;
-            let links = get_links(GetLinksInputBuilder::try_new(mew_hash.clone(), LinkTypes::MewToBridgeRecord)?.build())?;
+            let links = get_links(LinkQuery::try_new(mew_hash.clone(), LinkTypes::MewToBridgeRecord)?, GetStrategy::Network)?;
             if links.is_empty() {
                 unbridged.push(UnbridgedRecord { entry_hash: mew_hash, record });
             }
@@ -2601,7 +2607,7 @@ pub fn import_twitter_reply(payload: ExternalCritique) -> ExternResult<ActionHas
 
 #[hdk_extern]
 pub fn get_twitter_replies_for_claim(claim_hash: EntryHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::ClaimToExternalCritique)?.build())?;
+    let links = get_links(LinkQuery::try_new(claim_hash, LinkTypes::ClaimToExternalCritique)?, GetStrategy::Network)?;
     let mut replies = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
@@ -2656,13 +2662,15 @@ fn count_recent_attestation_grants(since: Timestamp) -> ExternResult<usize> {
 
     let count = records
         .iter()
-        .filter(|r| match r.action() {
-            Action::CreateLink(cl) => {
-                cl.timestamp >= since
+        .filter(|r| {
+            // `timestamp` is an ActionHeader field in 0.7, not part of
+            // CreateLinkData, so it is read off the action rather than
+            // destructured out of the pattern.
+            let a = r.action();
+            matches!(&a.data, ActionData::CreateLink(cl)
+                if a.timestamp() >= since
                     && cl.zome_index == grant_type.zome_index
-                    && cl.link_type == grant_type.zome_type
-            }
-            _ => false,
+                    && cl.link_type == grant_type.zome_type)
         })
         .count();
 
@@ -2695,8 +2703,8 @@ fn check_attestation_grant_friction() -> ExternResult<()> {
 #[hdk_extern]
 pub fn get_my_membership_action(membrane: AnyDhtHash) -> ExternResult<Option<ActionHash>> {
     let membrane_hash = membrane_entry_hash(membrane)?;
-    let agent = agent_info()?.agent_latest_pubkey;
-    let links = get_links(GetLinksInputBuilder::try_new(membrane_hash, LinkTypes::AgentToMembrane)?.build())?;
+    let agent = agent_info()?.agent_initial_pubkey;
+    let links = get_links(LinkQuery::try_new(membrane_hash, LinkTypes::AgentToMembrane)?, GetStrategy::Network)?;
     Ok(links
         .into_iter()
         .find(|link| AgentPubKey::from_raw_36(link.tag.0.clone()) == agent)
@@ -2814,7 +2822,7 @@ fn direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResul
     for record in &claims {
         if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
             let claim_hash = hash_entry(&claim)?;
-            let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::SynapticLink)?.build())?;
+            let links = get_links(LinkQuery::try_new(claim_hash, LinkTypes::SynapticLink)?, GetStrategy::Network)?;
             for link in links {
                 if !attesters.contains(&link.author) {
                     attesters.push(link.author);
@@ -2826,7 +2834,7 @@ fn direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResul
     // Source 2: AttestationGrant-derived — explicit, tenure-gated (at
     // creation time — see the integrity zome), budget-limited vouching,
     // scoped to this specific membrane (AttestationGrant's base).
-    let grant_links = get_links(GetLinksInputBuilder::try_new(membrane.clone(), LinkTypes::AttestationGrant)?.build())?;
+    let grant_links = get_links(LinkQuery::try_new(membrane.clone(), LinkTypes::AttestationGrant)?, GetStrategy::Network)?;
     for link in grant_links {
         if let Ok(candidate) = AgentPubKey::try_from(link.target.clone()) {
             if &candidate == agent && !attesters.contains(&link.author) {
@@ -3414,7 +3422,7 @@ pub fn get_mew(hash: AnyDhtHash) -> ExternResult<Option<Mew>> {
 #[hdk_extern]
 pub fn get_mews_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
     let anchor = agent_anchor_hash(&agent)?;
-    let links = get_links(GetLinksInputBuilder::try_new(anchor, LinkTypes::AgentToMew)?.build())?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::AgentToMew)?, GetStrategy::Network)?;
 
     let mut mews = Vec::new();
     for link in links {
@@ -3535,7 +3543,7 @@ pub fn create_retraction(retraction: Retraction) -> ExternResult<ActionHash> {
 
 #[hdk_extern]
 pub fn get_retractions_for_claim(claim_hash: EntryHash) -> ExternResult<Vec<Record>> {
-    let links = get_links(GetLinksInputBuilder::try_new(claim_hash, LinkTypes::ClaimToRetraction)?.build())?;
+    let links = get_links(LinkQuery::try_new(claim_hash, LinkTypes::ClaimToRetraction)?, GetStrategy::Network)?;
     let mut retractions = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
@@ -3572,7 +3580,7 @@ pub fn publish_constitution(constitution: Constitution) -> ExternResult<ActionHa
 #[hdk_extern]
 pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constitution>> {
     let agent_anchor = agent_anchor_hash(&agent)?;
-    let links = get_links(GetLinksInputBuilder::try_new(agent_anchor, LinkTypes::AgentToConstitution)?.build())?;
+    let links = get_links(LinkQuery::try_new(agent_anchor, LinkTypes::AgentToConstitution)?, GetStrategy::Network)?;
 
     let mut candidates: Vec<Constitution> = Vec::new();
     for link in links {
@@ -3608,20 +3616,23 @@ pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constit
 // reasoned through carefully, but — like every #[hdk_extern] function in
 // this crate — it has not actually been *executed* under `cargo test` in
 // this environment, because linking a runnable test binary needs a
-// native-compatible HDK host backend and hdk 0.4.4's "mock" feature
-// (the mechanism meant to provide one) doesn't build here: its own
-// bundled `mockall::mock! { impl HdkT for HdkT { ... } }` block
-// references methods that don't exist on the HdkT/HdiT traits this hdk
-// version itself resolves — a bug in the published crate, confirmed via
-// a real build, not fixable from this project's Cargo.toml. A
-// MockHdkT-based integration test file was attempted and had to be
-// removed for the same reason.
+// native-compatible HDK host backend, and hdk's "mock" feature — the
+// mechanism meant to provide one — is not enabled here. Under hdk 0.4.4
+// it could not be: that release's own bundled
+// `mockall::mock! { impl HdkT for HdkT { ... } }` block referenced
+// methods that don't exist on the HdkT/HdiT traits the same hdk version
+// resolves, a bug in the published crate rather than anything fixable
+// from this project's Cargo.toml, and a MockHdkT-based integration test
+// file was attempted and had to be removed because of it. That upstream
+// defect is fixed as of hdk 0.7.0 — see this crate's Cargo.toml — so
+// those tests are now writable; they just haven't been written yet.
 //
 // What HAS been verified against a real build in this environment,
 // including this test module: `cargo check` for both zome crates —
 // natively, and (more importantly, since it's the actual deployment
 // target) for `--target wasm32-unknown-unknown` — all pass cleanly, with
-// no warnings, against the real hdk 0.4.4 / hdi 0.5.4 API surface. That
+// no warnings, against the real hdk 0.7.0 / hdi 0.8.0 API surface (and,
+// before the 0.7 upgrade, against hdk 0.4.4 / hdi 0.5.4). That has
 // caught and fixed real, substantive bugs this file used to have: get_links
 // taking three positional arguments instead of one GetLinksInput,
 // create_entry needing an owned EntryTypes rather than a reference,
