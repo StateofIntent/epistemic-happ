@@ -24,7 +24,7 @@ Two reasons, and neither is fixable by writing looser assertions:
 
 Where a precondition can be checked cheaply, the harness checks it and says so plainly rather than failing obscurely — `affordance-surfacing.mjs` and `write-symmetry.mjs` both read the friction budget first and exit with an explanation naming `sandbox.sh clean`. Prefer that pattern in new harnesses over letting a Playwright timeout stand in for "the budget was spent", which is what happened before those checks existed and cost real time to diagnose.
 
-**Two harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs` and `partition-rejoin.mjs` do not use this conductor at all. They need three of them, on a real network, and get them from `scripts/network.sh` instead:
+**Three harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs`, `partition-rejoin.mjs` and `network-partition.mjs` do not use this conductor at all. They need three of them, on a real network, and get them from `scripts/network.sh` instead:
 
 ```bash
 scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap + WebRTC signal
@@ -33,6 +33,16 @@ node scripts/live-verify/partition-rejoin.mjs          # ~9 min; it waits out a 
 ```
 
 `partition-rejoin.mjs` also drives `network.sh stop-node` / `start-node` itself, to take a conductor offline and bring it back mid-run.
+
+**`network-partition.mjs` is the third, and it is launched differently — never directly.** It partitions by dropping packets rather than by stopping a process, so it installs `iptables` rules, and it refuses to do that anywhere they could touch something real or outlive the run. `scripts/netns.sh` supplies a throwaway network **and PID** namespace to run it in, and starts the three-node network inside:
+
+```bash
+scripts/netns.sh run 'node scripts/live-verify/network-partition.mjs'   # ~8 min
+```
+
+Inside that namespace it is uid 0 and may use `iptables`; outside it nothing it did applies, and when it exits the rules, the network and every conductor go with it. Run directly it exits 1 without connecting to anything, printing why — that refusal is checked two ways, including from inside a user namespace that is *not* a network namespace, where the uid check alone would have wrongly said yes.
+
+**Do not run two namespace runs at once.** A network namespace is not a mount namespace, so both would share `/tmp/epi-ns` and each begins by deleting it — and they would share the CPU, which matters because this harness reports timings. `netns.sh` takes a lock and refuses the second, after an overlap silently invalidated a fault-injection result.
 
 Its ports (8892-8899) are deliberately disjoint from `sandbox.sh`'s (8888/8889), so the two setups can be up at once and neither notices the other. Every other file in this directory uses `sandbox.sh` and the rule above applies to it unchanged.
 
@@ -66,6 +76,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `worldline-ui` | browser | 1 | The approximate HRR probe never displaces the exact period record |
 | `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |
 | `partition-rejoin` | **`network.sh`** | 1 per node, **3 nodes** | A node that was offline while history was written catches up on rejoining — both directions, ~5.5 min |
+| `network-partition` | **`netns.sh`** | 1 per node, **3 nodes** | Both conductors stay up and keep writing while a packet-level cut stops them reaching each other, then both converge — ~8 min |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
