@@ -4,20 +4,54 @@
   "license": "MIT OR Apache-2.0",
   "description": "MCP server exposing the Epistemic Resonance Protocol to autonomous agents",
   "type": "module",
-  "bin": { "epistemic-mcp": "dist/index.js" },
+  "bin": {
+    "epistemic-mcp": "dist/index.js"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && cp ../LICENSE-MIT ../LICENSE-APACHE ./",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@epistemic/agent-sdk": "file:../agent-sdk"
+    "@epistemic/agent-sdk": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",
     "@types/node": "^20.0.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StateofIntent/epistemic-happ.git",
+    "directory": "mcp-server"
+  },
+  "homepage": "https://github.com/StateofIntent/epistemic-happ#readme",
+  "bugs": {
+    "url": "https://github.com/StateofIntent/epistemic-happ/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "holochain",
+    "p2p",
+    "distributed",
+    "epistemics",
+    "knowledge-graph",
+    "agent",
+    "autonomous-agents",
+    "protocol",
+    "mcp",
+    "model-context-protocol",
+    "tools"
+  ]
 }
