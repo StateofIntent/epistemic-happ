@@ -77,7 +77,14 @@
 //   assertion notices, which is why it is written against the presence of a
 //   digit rather than against a phrase.
 //
-//   Restored and re-run: 20 checks green.
+//   Injection: the tab bar's previous CSS put back — `display: flex` with
+//   `flex: 1` on the tabs and no wrapping.
+//   Result: all six layout checks red at 390, 360 and 320. Worth stating
+//   plainly because this one is not hypothetical: that CSS was live, and
+//   the assertions were written after measuring what it actually did rather
+//   than to describe a fault imagined for the occasion.
+//
+//   Restored and re-run: 26 checks green.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -305,6 +312,41 @@ async function main() {
     await page.waitForTimeout(1500);
     check('a malformed key is explained rather than swallowed',
       (await page.locator('[data-testid="author-error"]').count()) === 1);
+
+    // ---- 7. The tab bar fits the screen it is on -----------------------
+    //
+    // Lives here because this is the file that added a sixth tab, and the
+    // defect it guards was found by measuring the bar after doing so — but
+    // it was NOT caused by that tab. Five already overflowed: at 390, 360
+    // and 320 the bar clipped and the whole document scrolled sideways,
+    // with `New Claim`, the primary write action, off the right edge. A
+    // flex item will not shrink below its own min-content width, so
+    // `flex: 1` never made the labels fit; it only hid the fact.
+    //
+    // Asserted against the DOCUMENT scrolling, not against a tab count or a
+    // row count, because those are design choices that may change while
+    // "the page does not scroll sideways on a phone" should not.
+    log('\n=== 7. The tab bar fits, at the widths this UI is for ===');
+    for (const width of [390, 360, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.waitForTimeout(300);
+      const fits = await page.evaluate(() => {
+        const bar = document.querySelector('.tab-bar');
+        const barBox = bar.getBoundingClientRect();
+        const tabs = [...bar.querySelectorAll('.tab')];
+        return {
+          barOverflows: bar.scrollWidth > bar.clientWidth + 1,
+          clipped: tabs.some((t) => {
+            const b = t.getBoundingClientRect();
+            return b.left < barBox.left - 1 || b.right > barBox.right + 1;
+          }),
+          pageScrollsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        };
+      });
+      check(`at ${width}px the page does not scroll sideways`, !fits.pageScrollsX);
+      check(`at ${width}px every tab is inside the bar`, !fits.clipped && !fits.barOverflows);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
 
     check('CONTROL: the page raised no uncaught errors throughout',
       pageErrors.length === 0);
