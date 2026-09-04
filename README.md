@@ -563,6 +563,17 @@ But unlike a true Ricardian contract, this binding is **not mutual or enforceabl
   `web-happ.yaml` in this repo (`manifest_version: "0"`, `path:` rather
   than `bundled:`, no `origin_time`/`quantum_time`) will not parse under a
   0.4 or 0.5 `hc`, and vice versa.
+- **`kitsune2-bootstrap-srv`** — only for the multi-node network
+  (`scripts/network.sh`); the single-node sandbox does not need it.
+  Holochain 0.7 removed `hc run-local-services`, and this binary is what
+  replaced it: one process serving both the bootstrap service and an
+  embedded iroh relay.
+
+  ```bash
+  cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+  ```
+
+  0.5.x is the kitsune2 line holochain 0.7.0 itself builds against.
 - **Twitter API credentials** (or OpenTweet subscription)
 
 ### 6.2 Build the DNA
@@ -665,18 +676,18 @@ this document has asserted one since Phase 1: "gossip protocol is wave
 propagation — information ripples through the network organically."
 
 `scripts/network.sh` (see its own header for the full account) builds the
-arrangement that makes that checkable — a local bootstrap server, a tx5
-WebRTC signal server, and three conductors against them:
+arrangement that makes that checkable — a local bootstrap server with an
+embedded iroh relay, and three conductors against it:
 
 ```bash
-scripts/network.sh start    # bootstrap :8893, signal :8892, and three conductors:
+scripts/network.sh start    # bootstrap + relay :8893, and three conductors:
                              #   nodeA  admin :8899  app :8898   seed "netverify-seed-1"
                              #   nodeB  admin :8897  app :8896   seed "netverify-seed-1"
                              #   nodeC  admin :8895  app :8894   seed "netverify-seed-2-isolated"
 scripts/network.sh status   # what is up, on which ports
 scripts/network.sh stop     # stop everything, keep DHT state
 scripts/network.sh clean    # stop + delete all state
-scripts/network.sh addrs    # the bootstrap/signal URLs in use
+scripts/network.sh addrs    # the bootstrap/relay URL in use
 
 scripts/network.sh stop-node nodeB    # take ONE node offline, leave the rest up
 scripts/network.sh start-node nodeB   # and bring it back
@@ -689,7 +700,7 @@ still running.
 
 **nodeA and nodeB share a network seed**, so they install identical DNA
 hashes and are on the same DHT. **nodeC differs in the seed alone** —
-same `.happ`, same wasm, same bootstrap and signal servers, same machine
+same `.happ`, same wasm, same bootstrap and relay, same machine
 — so it is on a different DHT and can never receive anything the other
 two exchange. It exists so that "nodeB received it over the network"
 cannot be quietly confused with "any conductor pointed at these services

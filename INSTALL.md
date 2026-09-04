@@ -5,11 +5,18 @@ on the code, read [README.md](README.md) §6 instead.
 
 ## What you need
 
-**The [Holochain Launcher](https://github.com/holochain/launcher/releases).**
-That is the whole list. The Launcher is the desktop application that runs
-Holochain apps — it creates your identity, stores your data locally, and
-connects you to other people running the same app. Download the version for
-your operating system from its releases page and install it.
+**The [Holochain Launcher](https://github.com/holochain/launcher/releases),
+a release built on Holochain 0.7.** The Launcher is the desktop application
+that runs Holochain apps — it creates your identity, stores your data
+locally, and connects you to other people running the same app. Download the
+version for your operating system from its releases page and install it.
+
+**The Launcher's Holochain version has to match this app's.** A `.webhapp`
+built for 0.7 will not install into a 0.4-era Launcher, and the error you
+get says something about the manifest rather than about versions: the app
+manifest format changed at 0.6, and an older Launcher cannot parse it.
+Launcher releases name the Holochain version they bundle; pick one that
+says 0.7.
 
 You do **not** need Rust, Node, a terminal, or a copy of this repository.
 
@@ -41,13 +48,17 @@ Two honest caveats, because the alternative is you discovering them yourself:
   home routers find each other is the one thing nobody here has been able to
   check. If you are the first two people to try it, you are also the first
   test.
-- **A node that has been offline is not current the moment it returns.** How
-  long depends on how many peers are up: with only one other person on the
-  network, expect around five and a half minutes, because a node that tried to
-  reach a peer while it was down waits out a five-minute backoff before
-  retrying. With a third person online it is usually seconds, since a
-  returning node has no failure history against someone who stayed up. This is
-  measured behaviour, not a guess — see README's networking entries.
+- **A node that has been offline is not current the moment it returns.**
+  With only one other person on the network, a node that tried to reach a
+  peer while it was down waits out a retry backoff before trying again;
+  with a third person online it is usually seconds, since a returning node
+  has no failure history against someone who stayed up.
+
+  The five-and-a-half-minute figure this page used to quote was measured
+  under Holochain 0.4's tx5/WebRTC transport, which 0.7 replaced with iroh
+  QUIC. It has not been re-measured since, so no number is quoted here
+  now. What has been re-measured is ordinary propagation between two nodes
+  that are both up: about two seconds.
 
 ## What you can do in it
 

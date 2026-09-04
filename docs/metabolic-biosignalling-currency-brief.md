@@ -38,6 +38,19 @@
 > unbounded walk nobody designed a bound for, plus fork exposure that
 > friction shares. The removal stands on 2 and 3 without it.
 >
+> **A note on versions, since this project has moved since.** Everything
+> below was written against Holochain 0.4.4 / hdk 0.4.4, and its API
+> references should be read as a record of that release rather than as
+> current. In particular, §6's statement that `hdk`'s
+> `unstable-countersigning` feature "is now enabled in
+> `dna/coordinator/Cargo.toml`" was true when written and is not true
+> now: the feature went with the code it supported, and that file
+> currently enables no hdk features at all. The project is on Holochain
+> 0.7 as of this note. Countersigning itself is still real and still
+> gated behind `unstable-countersigning`, so §6's warning to know what
+> you are opting into before enabling it holds; only the claim that this
+> repository has already enabled it does not.
+>
 > **What was proposed to replace it, and then rejected as well:
 > non-transferable regenerating capacity.** One per-agent budget, spent
 > at differing rates by differing acts, refilling over time, unable to
