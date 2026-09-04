@@ -561,24 +561,28 @@ pub enum EntryTypes {
 
 #[hdk_extern]
 pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
+    // Every FlatOp variant this zome cares about was renamed in 0.7:
+    // StoreEntry -> CreateEntry, RegisterUpdate -> Update,
+    // RegisterDelete -> Delete, and the two link variants were folded
+    // out of FlatOp itself into a single Link(OpLink) arm.
     match op.flattened::<EntryTypes, LinkTypes>()? {
-        FlatOp::StoreEntry(store_entry) => validate_store_entry(store_entry),
-        FlatOp::RegisterUpdate(_) => Ok(ValidateCallbackResult::Valid),
-        FlatOp::RegisterDelete(_) => Ok(ValidateCallbackResult::Invalid(
+        FlatOp::CreateEntry(create_entry) => validate_create_entry(create_entry),
+        FlatOp::Update(_) => Ok(ValidateCallbackResult::Valid),
+        FlatOp::Delete(_) => Ok(ValidateCallbackResult::Invalid(
             "Deletion is not permitted. Entries are immutable.".into()
         )),
-        // RegisterCreateLink/RegisterDeleteLink are struct variants in
-        // this hdi version, not tuple variants — destructure the fields
-        // validate_create_link actually needs rather than passing the
-        // whole variant through.
-        FlatOp::RegisterCreateLink { base_address, target_address, tag, link_type, action, .. } =>
-            validate_create_link(base_address, target_address, tag, link_type, action),
-        FlatOp::RegisterDeleteLink { .. } => Ok(ValidateCallbackResult::Valid),
+        // The link arms are no longer struct variants carrying loose
+        // base_address/target_address/tag fields. Those fields now live
+        // on the action's own CreateLinkData, which TypedAction derefs
+        // to, so pass the action through and read them off it.
+        FlatOp::Link(OpLink::CreateLink { link_type, action }) =>
+            validate_create_link(link_type, action),
+        FlatOp::Link(OpLink::DeleteLink { .. }) => Ok(ValidateCallbackResult::Valid),
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
 
-fn validate_store_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCallbackResult> {
+fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCallbackResult> {
     match entry {
         OpEntry::CreateEntry { app_entry, action } => {
             match app_entry {
@@ -601,21 +605,46 @@ fn validate_store_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCall
     }
 }
 
-// NOTE ON `action: &Create` (not `&EntryCreationAction`) BELOW: every
-// validator here takes the concrete `Create` action struct, matching
-// what `OpEntry::CreateEntry { app_entry, action }` actually hands over
-// in this hdi version — `Create` exposes `author`/`timestamp`/
-// `prev_action` as plain fields (same as `CreateLink` does further
-// below), unlike the `EntryCreationAction` union type, which needs
-// `.author()` etc. as methods to unify across Create/Update. The
-// original code assumed `EntryCreationAction` throughout; every
-// `action.author` field access below was already correct once the
-// parameter type matches what's actually available — confirmed against
-// a real build, not guessed.
+// NOTE ON `action: &TypedAction<CreateData>` BELOW: 0.7 removed the
+// per-variant action structs (`Create`, `CreateLink`, ...) that these
+// validators used to take, in favour of a single `Action` built from an
+// `ActionHeader` plus an `ActionData` payload. `OpEntry::CreateEntry`
+// now hands over a `TypedAction<CreateData>`: the header paired with
+// exactly the `CreateData` the variant already guarantees.
+//
+// The practical consequence for every validator here is that `author`,
+// `timestamp` and `prev_action` are no longer plain fields — they live
+// on the header and are reached through `TypedAction`'s accessor
+// methods (`action.author()`, `action.timestamp()`,
+// `action.prev_action()`). `CreateData`'s own fields (`entry_type`,
+// `entry_hash`) are still plain field accesses, because `TypedAction<D>`
+// derefs to `D`.
+//
+// `prev_action()` returns an `Option`, unlike the old plain field: only
+// the genesis `Dna` action lacks one, so see `require_prev_action` for
+// why a `None` here is a guest error rather than `Invalid`.
+
+/// `prev_action` is `Option<ActionHash>` on 0.7's `ActionHeader` because
+/// the genesis `Dna` action is the one action with nothing before it.
+/// Every action this zome validates is a `Create` or a `CreateLink`,
+/// which always has a predecessor, so a `None` here means the op that
+/// reached validation was malformed — not that an agent submitted bad
+/// data. Surface it as a guest error rather than
+/// `ValidateCallbackResult::Invalid`, which would blame the author for
+/// a fault in how the op was delivered. This is the rule hdi's own
+/// `flat_op::typed_action` module documents for the same situation.
+fn require_prev_action<D>(action: &TypedAction<D>) -> ExternResult<ActionHash> {
+    action.prev_action().cloned().ok_or_else(|| {
+        wasm_error!(WasmErrorInner::Guest(
+            "Action reaching validation has no prev_action; only the genesis Dna action \
+             can lack one.".into()
+        ))
+    })
+}
 
 // --- Mew Validation ---
-fn validate_mew(mew: &Mew, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if mew.author != action.author {
+fn validate_mew(mew: &Mew, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &mew.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Mew author must match action author.".into()));
     }
     if mew.content.is_empty() {
@@ -640,8 +669,8 @@ fn validate_mew(mew: &Mew, action: &Create) -> ExternResult<ValidateCallbackResu
 }
 
 // --- Claim Validation ---
-fn validate_claim(claim: &Claim, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if claim.author != action.author {
+fn validate_claim(claim: &Claim, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &claim.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Claim author must match action author.".into()));
     }
     if claim.content.is_empty() {
@@ -678,8 +707,8 @@ fn validate_claim(claim: &Claim, action: &Create) -> ExternResult<ValidateCallba
 }
 
 // --- Retraction Validation ---
-fn validate_retraction(retraction: &Retraction, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if retraction.author != action.author {
+fn validate_retraction(retraction: &Retraction, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &retraction.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Retraction author must match action author.".into()));
     }
     // Target claim must exist, AND must be this agent's own.
@@ -754,8 +783,8 @@ fn validate_retraction(retraction: &Retraction, action: &Create) -> ExternResult
 const CRITIQUE_WINDOW_SECS_VALIDATION: i64 = 3600;
 const CRITIQUE_MAX_PER_WINDOW_VALIDATION: usize = 20; // must match coordinator's limit
 
-fn validate_critique(critique: &Critique, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if critique.author != action.author {
+fn validate_critique(critique: &Critique, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &critique.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Critique author must match action author.".into()));
     }
 
@@ -820,20 +849,24 @@ fn validate_critique(critique: &Critique, action: &Create) -> ExternResult<Valid
         }
     }
 
-    // prev_action is a plain field on Create (every non-Dna action has
-    // one) — no Option to unwrap, unlike what an earlier draft of this
-    // function assumed.
-    let window_start = action.timestamp.as_micros() - CRITIQUE_WINDOW_SECS_VALIDATION * 1_000_000;
+    // prev_action IS an Option again under 0.7 — it moved onto the
+    // shared ActionHeader, where the genesis Dna action's lack of a
+    // predecessor has to be representable. An earlier draft of this
+    // function once assumed an Option, then 0.4's plain `Create.prev_action`
+    // field made that wrong; it is right again now, for a different
+    // reason. `require_prev_action` unwraps it, treating a `None` here as
+    // a malformed op rather than as invalid author data.
+    let window_start = action.timestamp().as_micros() - CRITIQUE_WINDOW_SECS_VALIDATION * 1_000_000;
     let critique_entry_type = EntryType::App(
         UnitEntryTypes::Critique.try_into().map_err(|_| {
             wasm_error!(WasmErrorInner::Guest("Could not resolve Critique entry type.".into()))
         })?
     );
     let recent_count = count_recent_actions_since_checkpoint(
-        action.author.clone(),
-        action.prev_action.clone(),
+        action.author().clone(),
+        require_prev_action(action)?,
         window_start,
-        move |a| matches!(a, Action::Create(create) if create.entry_type == critique_entry_type),
+        move |a| matches!(&a.data, ActionData::Create(create) if create.entry_type == critique_entry_type),
     )?;
 
     if recent_count >= CRITIQUE_MAX_PER_WINDOW_VALIDATION {
@@ -860,8 +893,8 @@ fn validate_critique(critique: &Critique, action: &Create) -> ExternResult<Valid
 const ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION: i64 = 3600;
 const ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION: usize = 20; // must match coordinator's limit
 
-fn validate_antibody_pattern(pattern: &AntibodyPattern, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if pattern.author != action.author {
+fn validate_antibody_pattern(pattern: &AntibodyPattern, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &pattern.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("AntibodyPattern author must match action author.".into()));
     }
 
@@ -911,17 +944,17 @@ fn validate_antibody_pattern(pattern: &AntibodyPattern, action: &Create) -> Exte
         return Ok(ValidateCallbackResult::Invalid("AntibodyPattern rationale cannot be empty.".into()));
     }
 
-    let window_start = action.timestamp.as_micros() - ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION * 1_000_000;
+    let window_start = action.timestamp().as_micros() - ANTIBODY_PATTERN_WINDOW_SECS_VALIDATION * 1_000_000;
     let antibody_entry_type = EntryType::App(
         UnitEntryTypes::AntibodyPattern.try_into().map_err(|_| {
             wasm_error!(WasmErrorInner::Guest("Could not resolve AntibodyPattern entry type.".into()))
         })?
     );
     let recent_count = count_recent_actions_since_checkpoint(
-        action.author.clone(),
-        action.prev_action.clone(),
+        action.author().clone(),
+        require_prev_action(action)?,
         window_start,
-        move |a| matches!(a, Action::Create(create) if create.entry_type == antibody_entry_type),
+        move |a| matches!(&a.data, ActionData::Create(create) if create.entry_type == antibody_entry_type),
     )?;
 
     if recent_count >= ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION {
@@ -936,8 +969,8 @@ fn validate_antibody_pattern(pattern: &AntibodyPattern, action: &Create) -> Exte
 }
 
 // --- Evidence Validation ---
-fn validate_evidence(evidence: &Evidence, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if evidence.author != action.author {
+fn validate_evidence(evidence: &Evidence, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &evidence.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Evidence author must match action author.".into()));
     }
     if evidence.content.is_empty() {
@@ -947,8 +980,8 @@ fn validate_evidence(evidence: &Evidence, action: &Create) -> ExternResult<Valid
 }
 
 // --- Membrane Validation ---
-fn validate_membrane(membrane: &Membrane, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if membrane.creator != action.author {
+fn validate_membrane(membrane: &Membrane, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &membrane.creator != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Membrane creator must match action author.".into()));
     }
     if membrane.domain.is_empty() {
@@ -1012,8 +1045,8 @@ fn validate_membrane(membrane: &Membrane, action: &Create) -> ExternResult<Valid
 // friction here (unlike Critique/AntibodyPattern/SynapticLink) — a
 // membrane creator declaring federation with several other networks in
 // quick succession isn't the flooding-pattern friction exists to slow.
-fn validate_federation_record(record: &FederationRecord, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if record.author != action.author {
+fn validate_federation_record(record: &FederationRecord, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &record.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("FederationRecord author must match action author.".into()));
     }
 
@@ -1044,8 +1077,8 @@ fn validate_federation_record(record: &FederationRecord, action: &Create) -> Ext
 }
 
 // --- Constitution Validation ---
-fn validate_constitution(constitution: &Constitution, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if constitution.agent != action.author {
+fn validate_constitution(constitution: &Constitution, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &constitution.agent != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Constitution agent must match action author.".into()));
     }
     if constitution.promises.is_empty() {
@@ -1065,8 +1098,8 @@ fn validate_constitution(constitution: &Constitution, action: &Create) -> Extern
 }
 
 // --- CritiqueSpecies Validation ---
-fn validate_critique_species(species: &CritiqueSpecies, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if species.proposer != action.author {
+fn validate_critique_species(species: &CritiqueSpecies, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &species.proposer != action.author() {
         return Ok(ValidateCallbackResult::Invalid("CritiqueSpecies proposer must match action author.".into()));
     }
     if species.name.is_empty() {
@@ -1081,8 +1114,8 @@ fn validate_critique_species(species: &CritiqueSpecies, action: &Create) -> Exte
 }
 
 // --- WorldlineTrace Validation ---
-fn validate_worldline_trace(trace: &WorldlineTrace, action: &Create) -> ExternResult<ValidateCallbackResult> {
-    if trace.agent != action.author {
+fn validate_worldline_trace(trace: &WorldlineTrace, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &trace.agent != action.author() {
         return Ok(ValidateCallbackResult::Invalid("WorldlineTrace agent must match action author.".into()));
     }
     if trace.period_boundaries.is_empty() {
@@ -1144,7 +1177,7 @@ fn bridge_record_loss_fields_consistent(record: &BridgeRecord) -> Result<(), &'s
     Ok(())
 }
 
-fn validate_bridge_record(record: &BridgeRecord, _action: &Create) -> ExternResult<ValidateCallbackResult> {
+fn validate_bridge_record(record: &BridgeRecord, _action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
     if must_get_entry(record.mew_hash.clone()).is_err() {
         return Ok(ValidateCallbackResult::Invalid("BridgeRecord target not found.".into()));
     }
@@ -1155,7 +1188,7 @@ fn validate_bridge_record(record: &BridgeRecord, _action: &Create) -> ExternResu
 }
 
 // --- ExternalCritique Validation ---
-fn validate_external_critique(ext: &ExternalCritique, _action: &Create) -> ExternResult<ValidateCallbackResult> {
+fn validate_external_critique(ext: &ExternalCritique, _action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
     if ext.content.is_empty() {
         return Ok(ValidateCallbackResult::Invalid("ExternalCritique content cannot be empty.".into()));
     }
@@ -1305,13 +1338,17 @@ fn count_recent_actions_since_checkpoint(
     );
 
     // Phase 1: small scan to look for a recent checkpoint.
-    let scan_filter = ChainFilter::new(prev_action.clone()).take(CHECKPOINT_SCAN_CAP);
+    let scan_filter = ChainFilter::take(prev_action.clone(), CHECKPOINT_SCAN_CAP);
     let scan_activity = must_get_agent_activity(author.clone(), scan_filter)?;
 
+    // `must_get_agent_activity` now yields `AgentActivity` items whose
+    // `action` is a `SignedHashed<Action>`. That type has no `.action()`
+    // / `.action_address()` of its own — those were `Record`'s — so read
+    // the action through `hashed`'s deref and the hash via `as_hash()`.
     let checkpoint_hash = scan_activity.iter().find_map(|item| {
-        match item.action.action() {
-            Action::Create(create) if create.entry_type == worldline_entry_type => {
-                Some(item.action.action_address().clone())
+        match &item.action.hashed.data {
+            ActionData::Create(create) if create.entry_type == worldline_entry_type => {
+                Some(item.action.as_hash().clone())
             }
             _ => None,
         }
@@ -1322,11 +1359,11 @@ fn count_recent_actions_since_checkpoint(
     // safety-cap scan.
     let activity = match checkpoint_hash {
         Some(cp_hash) => {
-            let bounded_filter = ChainFilter::new(prev_action).until(cp_hash);
+            let bounded_filter = ChainFilter::until_hash(prev_action, cp_hash);
             must_get_agent_activity(author, bounded_filter)?
         }
         None => {
-            let fallback_filter = ChainFilter::new(prev_action).take(FALLBACK_SCAN_CAP);
+            let fallback_filter = ChainFilter::take(prev_action, FALLBACK_SCAN_CAP);
             must_get_agent_activity(author, fallback_filter)?
         }
     };
@@ -1334,7 +1371,7 @@ fn count_recent_actions_since_checkpoint(
     Ok(activity
         .into_iter()
         .filter(|item| {
-            let a = item.action.action();
+            let a: &Action = &item.action.hashed;
             a.timestamp().as_micros() >= window_start && matches(a)
         })
         .count())
@@ -1367,12 +1404,18 @@ fn taxonomy_anchor_hash() -> ExternResult<EntryHash> {
 }
 
 fn validate_create_link(
-    base_address: AnyLinkableHash,
-    target_address: AnyLinkableHash,
-    tag: LinkTag,
     link_type: LinkTypes,
-    action: CreateLink,
+    action: TypedAction<CreateLinkData>,
 ) -> ExternResult<ValidateCallbackResult> {
+    // 0.7 folded the loose base_address/target_address/tag fields that
+    // FlatOp's old RegisterCreateLink variant carried into the action's
+    // own CreateLinkData. Bind them back to locals so the branch logic
+    // below reads exactly as it did before; the branches are mutually
+    // exclusive, so several of them moving these values is fine.
+    let base_address = action.base_address.clone();
+    let target_address = action.target_address.clone();
+    let tag = action.tag.clone();
+
     if link_type == LinkTypes::SynapticLink {
         if tag.0.len() < 4 {
             return Ok(ValidateCallbackResult::Invalid(
@@ -1380,12 +1423,12 @@ fn validate_create_link(
             ));
         }
 
-        let window_start = action.timestamp.as_micros() - SYNAPTIC_LINK_WINDOW_SECS_VALIDATION * 1_000_000;
+        let window_start = action.timestamp().as_micros() - SYNAPTIC_LINK_WINDOW_SECS_VALIDATION * 1_000_000;
         let recent_count = count_recent_actions_since_checkpoint(
-            action.author.clone(),
-            action.prev_action.clone(),
+            action.author().clone(),
+            require_prev_action(&action)?,
             window_start,
-            |a| matches!(a, Action::CreateLink(cl) if cl.link_type == action.link_type),
+            |a| matches!(&a.data, ActionData::CreateLink(cl) if cl.link_type == action.link_type),
         )?;
 
         // A plain, absolute limit. There is deliberately no way to buy
@@ -1412,7 +1455,7 @@ fn validate_create_link(
             ));
         }
         let claimed_agent = AgentPubKey::from_raw_36(tag.0.clone());
-        if claimed_agent != action.author {
+        if &claimed_agent != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "AgentToMembrane links can only be created by the agent joining, not on \
                  someone else's behalf.".into()
@@ -1447,7 +1490,7 @@ fn validate_create_link(
         let claimed_reinforcer = AgentPubKey::try_from(target_address.clone()).map_err(|_| {
             wasm_error!(WasmErrorInner::Guest("Reinforcement target must be an AgentPubKey.".into()))
         })?;
-        if claimed_reinforcer != action.author {
+        if &claimed_reinforcer != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "Reinforcement links can only be created by the agent doing the reinforcing, \
                  not on someone else's behalf.".into()
@@ -1467,8 +1510,8 @@ fn validate_create_link(
             wasm_error!(WasmErrorInner::Guest("Reinforcement base record not found.".into()))
         })?;
         let is_synaptic_link = matches!(
-            base_record.action(),
-            Action::CreateLink(cl)
+            &base_record.action().data,
+            ActionData::CreateLink(cl)
                 if cl.zome_index == synaptic_link_type.zome_index
                     && cl.link_type == synaptic_link_type.zome_type
         );
@@ -1481,12 +1524,12 @@ fn validate_create_link(
         // Reinforcement's own SWO temporal friction — see the constants'
         // comment above for why this needs its own budget, separate from
         // SynapticLink's.
-        let window_start = action.timestamp.as_micros() - REINFORCEMENT_WINDOW_SECS_VALIDATION * 1_000_000;
+        let window_start = action.timestamp().as_micros() - REINFORCEMENT_WINDOW_SECS_VALIDATION * 1_000_000;
         let recent_count = count_recent_actions_since_checkpoint(
-            action.author.clone(),
-            action.prev_action.clone(),
+            action.author().clone(),
+            require_prev_action(&action)?,
             window_start,
-            |a| matches!(a, Action::CreateLink(cl) if cl.link_type == action.link_type),
+            |a| matches!(&a.data, ActionData::CreateLink(cl) if cl.link_type == action.link_type),
         )?;
         if recent_count >= REINFORCEMENT_MAX_PER_WINDOW_VALIDATION {
             return Ok(ValidateCallbackResult::Invalid(format!(
@@ -1524,15 +1567,20 @@ fn validate_create_link(
             wasm_error!(WasmErrorInner::Guest("Could not resolve AgentToMembrane type.".into()))
         })?;
 
-        let tenure_ok = match membership_record.action() {
-            Action::CreateLink(cl) => {
+        // `author` and `timestamp` are no longer carried on the
+        // per-variant CreateLink data — they moved to the shared
+        // ActionHeader — so bind the whole action and read them off it
+        // rather than out of the pattern.
+        let membership_action = membership_record.action();
+        let tenure_ok = match &membership_action.data {
+            ActionData::CreateLink(cl) => {
                 cl.zome_index == agent_to_membrane_type.zome_index
                     && cl.link_type == agent_to_membrane_type.zome_type
-                    && cl.author == action.author
+                    && membership_action.author() == action.author()
                     && cl.base_address == base_address
                     && tenure_satisfied(
-                        cl.timestamp.as_micros(),
-                        action.timestamp.as_micros(),
+                        membership_action.timestamp().as_micros(),
+                        action.timestamp().as_micros(),
                         ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION,
                     )
             }
@@ -1553,12 +1601,12 @@ fn validate_create_link(
         // distinct-candidate count. Re-granting the same candidate twice
         // just wastes some of the granter's own budget, which is strictly
         // more conservative than a distinct-count cap, not a gap in it.
-        let window_start = action.timestamp.as_micros() - ATTESTATION_GRANT_WINDOW_SECS_VALIDATION * 1_000_000;
+        let window_start = action.timestamp().as_micros() - ATTESTATION_GRANT_WINDOW_SECS_VALIDATION * 1_000_000;
         let recent_count = count_recent_actions_since_checkpoint(
-            action.author.clone(),
-            action.prev_action.clone(),
+            action.author().clone(),
+            require_prev_action(&action)?,
             window_start,
-            |a| matches!(a, Action::CreateLink(cl) if cl.link_type == action.link_type),
+            |a| matches!(&a.data, ActionData::CreateLink(cl) if cl.link_type == action.link_type),
         )?;
         if recent_count >= ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION {
             return Ok(ValidateCallbackResult::Invalid(format!(
@@ -1617,7 +1665,7 @@ fn validate_create_link(
         //    a domain index is unbounded by that claim's author's own
         //    friction budget, which would make the index a flooding
         //    surface answerable to nobody.
-        if claim.author != action.author {
+        if &claim.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A DomainToClaim link may only be created by the claim's own author.".into()
             ));
@@ -1664,7 +1712,7 @@ fn validate_create_link(
         // Claim has. Same rule as DomainToClaim, reading a differently
         // named field, which is exactly the kind of near-miss PR #44's
         // audit warned looks like an omission at a glance.
-        if species.proposer != action.author {
+        if &species.proposer != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A TaxonomyToSpecies link may only be created by the species' own proposer.".into()
             ));
@@ -1699,31 +1747,19 @@ mod tests {
         EntryHash::from_raw_36(vec![seed; 36])
     }
 
-    fn fixture_agent_pubkey(seed: u8) -> AgentPubKey {
-        AgentPubKey::from_raw_36(vec![seed; 36])
-    }
-
-    fn fixture_action_hash(seed: u8) -> ActionHash {
-        ActionHash::from_raw_36(vec![seed; 36])
-    }
-
-    /// A minimal but well-formed Create action for validate_credit_transfer
-    /// /validate_credit_burn — both are pure functions of `&Create` (no
-    /// host calls), so unlike most validate_* functions in this file they
-    /// can be tested directly rather than needing the pure/impure split
-    /// tenure_satisfied and friends already use. entry_type/entry_hash are
-    /// filled with harmless placeholders neither function inspects.
-    fn fixture_create(author: AgentPubKey, timestamp_secs: i64) -> Create {
-        Create {
-            author,
-            timestamp: Timestamp::from_micros(timestamp_secs * 1_000_000),
-            action_seq: 1,
-            prev_action: fixture_action_hash(0),
-            entry_type: EntryType::AgentPubKey,
-            entry_hash: fixture_entry_hash(0),
-            weight: EntryRateWeight::default(),
-        }
-    }
+    // REMOVED with the 0.7 upgrade: `fixture_create`, and the
+    // `fixture_agent_pubkey`/`fixture_action_hash` helpers that existed
+    // only to feed it. It built a `Create` action struct — a type 0.7
+    // deleted along with the rest of the per-variant action structs and
+    // the `rate_limit` module its `weight: EntryRateWeight` field came
+    // from — for `validate_credit_transfer`/`validate_credit_burn`.
+    // Those two validators were themselves removed earlier, with the
+    // credit ledger (see the REMOVED note beside this zome's friction
+    // constants), so the fixture already had no callers before this
+    // upgrade and was only waiting to be noticed. It is deleted rather
+    // than ported to `TypedAction<CreateData>` because porting it would
+    // be porting dead code: nothing in this module builds an action
+    // fixture any more.
 
     fn fixture_bridge_record(
         carried_fields: Vec<&str>,

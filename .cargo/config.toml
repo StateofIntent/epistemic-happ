@@ -25,5 +25,29 @@
 # covers both dna/integrity and dna/coordinator regardless of which is
 # built from — matching how this repo already has no Cargo workspace
 # unifying the two crates otherwise (see either crate's Cargo.toml).
+# SECOND FLAG, added for Holochain 0.7: hdi 0.8.0 depends on getrandom
+# 0.3 specifically for the wasm32-unknown-unknown target, and getrandom
+# 0.3 refuses to compile for that target until the consumer picks a
+# backend — "The wasm32-unknown-unknown targets are not supported by
+# default". The backend to pick is NOT `wasm_js`, which would bind
+# randomness to browser/JS APIs a wasmer host does not provide; it is
+# `custom`, leaving the symbol to be resolved the same way the `__hc__*`
+# host functions are.
+#
+# Both flags below are exactly what Holochain's own zome-wasm build
+# passes (crates/test_utils/wasm/build.rs at the holochain-0.7.0 tag:
+# `-C opt-level=z -C link-arg=--import-undefined
+# --cfg getrandom_backend="custom"`), which is the strongest available
+# evidence of what a 0.7 zome is meant to be built with — those are the
+# wasms upstream's own conductor tests actually run.
+#
+# Note `--import-undefined` rather than the `--allow-undefined` this file
+# used under 0.4. It is the more precise flag for the same job: it turns
+# each undefined symbol into a real WASM *import* entry, which is exactly
+# what the `__hc__*` host functions are supposed to become, rather than
+# merely tolerating them at link time.
 [target.wasm32-unknown-unknown]
-rustflags = ["-C", "link-arg=--allow-undefined"]
+rustflags = [
+    "-C", "link-arg=--import-undefined",
+    "--cfg", "getrandom_backend=\"custom\"",
+]
