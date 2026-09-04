@@ -80,6 +80,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `author-scope-ui` | browser | **2** | One agent's whole record is readable from the DHT — and the screen is not a client-side filter of what was already loaded |
 | `layout-fits` | browser | 1 | Every tab fits every width this UI is for, with an unbreakable token on screen — the check fifteen harnesses were missing |
 | `mew-lifecycle` | `sandbox.sh` | **2** | The Twitter bridge's zome surface end to end — Mew to Claim to mirror to imported reply, one deliberate step at a time. Does **not** cover the live X API |
+| `mcp-server` | `sandbox.sh` | 1 | The MCP server driven over stdio as an agent would drive it — the protocol is discoverable from the tool list, offers no ranking, and round-trips hashes as strings |
 | `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |
 | `partition-rejoin` | **`network.sh`** | 1 per node, **3 nodes** | A node that was offline while history was written catches up on rejoining — both directions, ~5.5 min |
 | `network-partition` | **`netns.sh`** | 1 per node, **3 nodes** | Both conductors stay up and keep writing while a packet-level cut stops them reaching each other, then both converge — ~8 min |

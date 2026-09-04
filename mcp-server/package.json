@@ -1,0 +1,23 @@
+{
+  "name": "@epistemic/mcp-server",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "description": "MCP server exposing the Epistemic Resonance Protocol to autonomous agents",
+  "type": "module",
+  "bin": { "epistemic-mcp": "dist/index.js" },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@epistemic/agent-sdk": "file:../agent-sdk"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
