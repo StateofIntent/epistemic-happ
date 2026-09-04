@@ -1203,6 +1203,22 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ---
 
+## Licence
+
+Dual-licensed under either **[Apache License 2.0](LICENSE-APACHE)** or the
+**[MIT licence](LICENSE-MIT)**, at your option — `SPDX-License-Identifier: MIT OR Apache-2.0`.
+
+Both, rather than one, because the protocol core is Rust, where offering both is
+the ecosystem's convention and what contributors and reimplementers expect. It is
+also strictly more permissive for a recipient than either alone: take the Apache
+arm for the express patent grant, or MIT for shorter and more widely understood
+terms. The deciding reason was compatibility — Apache-2.0 on its own is
+incompatible with GPLv2, which would have quietly excluded a class of downstream
+projects from using this at all.
+
+Unless you state otherwise, any contribution you intentionally submit for
+inclusion is dual-licensed as above, with no additional terms.
+
 ## Appendix A: The 10 Invariants
 
 1. **Never compute or expose a canonical, comparative reputation score.** Raw promise-keeping history stays open and queryable — nothing is hidden or deleted. But no karma, no stars, no trust index, and no sorted "top agents" or "top species" leaderboard. Interpretation of that history stays local to the observer, per Promise Theory's subjective-trust model.
