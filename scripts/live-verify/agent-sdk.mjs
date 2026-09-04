@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ============================================================================
 // scripts/live-verify/agent-sdk.mjs — live verification of
-// @epistemic/agent-sdk against a real conductor.
+// @stateofintent/agent-sdk against a real conductor.
 //
 // No browser here: an agent is headless by definition, and the thing
 // under test is the library's own contract rather than any rendering.

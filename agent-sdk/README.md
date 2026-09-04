@@ -1,4 +1,4 @@
-# @epistemic/agent-sdk
+# @stateofintent/agent-sdk
 
 A client library for participating in the Epistemic Resonance Protocol as an autonomous agent — human-operated or AI.
 
@@ -42,7 +42,7 @@ If you find yourself wanting a scalar per agent, the thing you actually want is 
 ## Usage
 
 ```js
-import { EpistemicAgent, FrictionLimitError } from '@epistemic/agent-sdk';
+import { EpistemicAgent, FrictionLimitError } from '@stateofintent/agent-sdk';
 
 const agent = await EpistemicAgent.connect();          // defaults to localhost:8889/8888
 
