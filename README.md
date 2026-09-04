@@ -613,6 +613,55 @@ against it. It installs a second agent on the same conductor itself
 second sandbox is needed. Run it against a `clean` sandbox: it asserts
 exact balances, which prior transfers on a resumed DHT would shift.
 
+### 6.6b Run a Real Network (three conductors that can actually reach each other)
+
+`sandbox.sh` starts **one** conductor with no networking at all — that is
+what `hc sandbox` produces by default, and the generated config says so
+outright:
+
+```yaml
+network:
+  transport_pool: []          # no transport. Nothing to gossip over.
+  bootstrap_service: null     # no peer discovery. Nobody to gossip to.
+```
+
+That is fine for almost everything in `scripts/live-verify/`, whose
+multi-agent harnesses install their extra agents on that single conductor
+and ask questions about *visibility* — what one agent can and cannot find
+of another's work. It cannot answer a question about *propagation*, and
+this document has asserted one since Phase 1: "gossip protocol is wave
+propagation — information ripples through the network organically."
+
+`scripts/network.sh` (see its own header for the full account) builds the
+arrangement that makes that checkable — a local bootstrap server, a tx5
+WebRTC signal server, and three conductors against them:
+
+```bash
+scripts/network.sh start    # bootstrap :8893, signal :8892, and three conductors:
+                             #   nodeA  admin :8899  app :8898   seed "netverify-seed-1"
+                             #   nodeB  admin :8897  app :8896   seed "netverify-seed-1"
+                             #   nodeC  admin :8895  app :8894   seed "netverify-seed-2-isolated"
+scripts/network.sh status   # what is up, on which ports
+scripts/network.sh stop     # stop everything, keep DHT state
+scripts/network.sh clean    # stop + delete all state
+scripts/network.sh addrs    # the bootstrap/signal URLs in use
+```
+
+**nodeA and nodeB share a network seed**, so they install identical DNA
+hashes and are on the same DHT. **nodeC differs in the seed alone** —
+same `.happ`, same wasm, same bootstrap and signal servers, same machine
+— so it is on a different DHT and can never receive anything the other
+two exchange. It exists so that "nodeB received it over the network"
+cannot be quietly confused with "any conductor pointed at these services
+would have shown it." Without nodeC, a harness watching only nodeB prove
+positive is an anecdote.
+
+The ports are deliberately disjoint from `sandbox.sh`'s 8888/8889, so
+this network and the single-node sandbox can both be up without either
+noticing the other.
+
+With it up, `node scripts/live-verify/real-gossip.mjs` asks the question.
+
 ### 6.7 Run the Bridge
 
 ```bash
@@ -837,6 +886,8 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   **Proven, not inferred:** `scripts/live-verify/read-scope.mjs` installs a second agent on the same conductor and pairs every chain-local read with a link-based read of the *same* entry by the *same* agent at the *same* moment — `get_claims_by_agent` returns the claim while `get_claims_by_domain` returns nothing, `get_agent_constitution` finds the constitution while `get_all_constitutions` does not. That pairing is what rules out "not yet gossiped" and turns an observed zero into evidence. Twelve checks, three of them controls.
 
+  **And since confirmed on a real network, which is where this claim was always actually about.** The pairing above is an indirect answer to "not yet gossiped" — a good one, made necessary by there being no network to gossip over. `scripts/live-verify/real-gossip.mjs` now answers it directly: on two conductors demonstrably exchanging claims in both directions, `get_all_constitutions` on one still returns only its own. See the multi-node networking entry below.
+
   **THE FIX, and the two design decisions inside it.** `create_claim` now writes a `DomainToClaim` link from a domain anchor (`Path::from("domain_<name>")`), and `get_claims_by_domain` reads that index instead of the caller's chain. `create_critique_species`/`get_all_critique_species` got the same treatment via a single `TaxonomyToSpecies` anchor, because that read blocked the taxonomy UI this was found while scoping.
 
   *Not `MembraneToClaim`*, the declared-but-unused link type that looked like the obvious candidate. A Claim's `domain` is free text and a Membrane need not exist for it — the practitioner UI publishes into unfounded domains as a matter of course — so indexing by Membrane would have left exactly those claims unfindable: the same bug with extra steps. A domain anchor covers every claim regardless.
@@ -953,6 +1004,32 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **Verified live, and observed failing first.** `scripts/live-verify/worldline-ui.mjs`, seventeen checks, with a control that refuses to run unless the seeded trace has a real HRR payload and at least one period — otherwise "the exact half renders" would pass vacuously. Then the §2.5 inversion was injected — the probe rendered before the exact record, and the score restated as "73% match" — and two checks failed.
 
   **Neighborhood binding is not included, and that is §2.5's own division:** it calls neighborhood and worldline binding "two distinct HRR use cases, not one", independent rather than two halves of one job.
+
+- [x] **Real multi-node networking — the first time anything in this repository has watched an entry travel.** `scripts/network.sh` and `scripts/live-verify/real-gossip.mjs`.
+
+  **The gap was structural, not an oversight.** This document has said since Phase 1 that "gossip protocol is wave propagation — information ripples through the network organically," and §2.5 that "DHT gossip propagates the binding." Nothing here had ever run two conductors that could reach each other, so those were statements about Holochain taken on faith rather than observations of this hApp. `hc sandbox` produces no networking at all by default — the generated config reads `transport_pool: []` and `bootstrap_service: null` — and every multi-agent harness in `scripts/live-verify/` installs its extra agents on that same conductor, where two "agents" share one local DHT store and an entry is visible to the second the instant the first writes it, because it never travelled. `federation/` does drive two real conductors, but deliberately ones sharing no network; the boundary is the entire point there. So the arrangement needed to ask the question did not exist and had to be built: `hc run-local-services` for a bootstrap server and a tx5 WebRTC signal server, and three conductors generated against them.
+
+  **Three nodes, and the third is what makes the other two mean anything.** nodeA and nodeB share a network seed, so they install identical DNA hashes and are on the same DHT. nodeC differs in the seed alone — same `.happ`, same wasm, same bootstrap and signal servers, same machine, same moment — so its DNA hash differs and it is on a different DHT. Without it, a harness watching nodeB succeed is an anecdote: "nodeB received it" and "any conductor pointed at these services would have shown it" are indistinguishable from a single positive.
+
+  **Verified live — 25 checks against three conductors in three separate OS processes, with three distinct agent keys and three separate data directories.** nodeA published a `Claim`; nodeB received it over WebRTC in 2.0s, byte-identical in content and domain, carrying nodeA's agent key as author and the same `ActionHash` nodeA authored — found by two independent read paths (`get_claims_by_domain` and `get_claims_by_agent`). The reverse direction was exercised on its own fresh domain rather than inferred from symmetry: nodeB published, nodeA received in 2.1s. Every run uses a fresh domain string and reads it on nodeB **before** nodeA publishes, so "it was already there" is excluded without depending on how fast gossip happens to be. nodeC never saw any of it — watched for 20s past the moment nodeB succeeded, because "never arrives" is a claim about a stretch of time and not an instant, and checked to be alive and answering rather than merely silent.
+
+  **The sharpest result is not the gossip; it is what the gossip made checkable.** `read-scope.mjs` established that `get_all_constitutions` reads the calling agent's own source chain rather than the DHT, and proved it with two agents on one conductor. That setup left one objection permanently open: with both agents on the same node there is no network, so "agent 2 cannot see it" was never fully separable from "there is nothing here to see it with." `read-scope` answered that indirectly, by pairing each chain-local read with a link-based read of the same entry at the same moment — a good answer, and not the direct one. Here the objection is retired outright. On a network demonstrably carrying claims in both directions moments earlier, nodeA published a `Constitution` and nodeB's `get_all_constitutions` returned only nodeB's own — with nodeB publishing one of its own first, so a read that was simply broken could not pass the check by returning nothing to anybody, and with a claim published alongside it arriving at nodeB normally, so a network that had quietly stopped working could not pass it either. **§9's caveat that on a real network a practitioner browsing with a chain-local read sees only their own work has been true and untested since it was written. It is now measured.**
+
+  **Five things the tooling cost, recorded in `scripts/network.sh`'s header so they cost nobody else anything.** `--in-process-lair` puts a unix socket at `<root>/<node>/ks/socket` and unix socket paths are capped by `SUN_LEN` (~108 bytes), so a sandbox root under a long path fails at startup with `path must be shorter than SUN_LEN` and holochain's crash-report banner — an error naming neither the path nor the flag responsible. `hc sandbox generate` **appends** to a `.hc` file in the current working directory, and `sandbox.sh` reads that file's *last* line to decide which sandbox to resume, so generating these nodes from the repo root would have made the next `sandbox.sh start` try to resume nodeC; this script therefore runs with its cwd inside its own root, and cleans up with `rm -rf` rather than `hc sandbox clean`, which would delete `sandbox.sh`'s conductor too. And the bootstrap and signal ports had to be **pinned** despite `run-local-services` recommending ephemeral ones: a conductor's bootstrap and signal URLs are written into its persistent config at generate time, so a stop/start cycle brings the services back on new ports while the resumed conductors go on dialling the old ones — a network that reports itself fully up and on which nothing ever gossips. Observed exactly that way, and only caught because the previous run's services happened to still be alive.
+
+  **The fourth was found by the pinning fix, and is the one worth generalising.** `( cd X && nohup Y & )` backgrounds the whole `cd && nohup` list, so `$!` names that transient subshell rather than the long-running process — an earlier version of this script recorded it, and `stop` therefore killed something that had exited milliseconds after starting while the real bootstrap and signal servers went on running and holding their ports. This is precisely the leak `sandbox.sh`'s header already documents for conductors, reproduced from scratch for the services because the lesson had been written down as a fact about `hc sandbox` rather than as a fact about backgrounding. It was invisible for as long as the service ports were ephemeral — every start got fresh ones, so a leaked predecessor collided with nothing — and pinning them surfaced it immediately as `AddrInUse`, which is an argument for pinning beyond the resume correctness it was done for. Every PID in this script is now *found* by matching the process's own arguments, never captured; and it was found by running `clean && start` end to end rather than by re-reading the function.
+
+  **The fifth was found by exercising `stop` and `start` as a cycle rather than only from scratch.** `hc sandbox generate` installs an app *and enables it*; `hc sandbox run` against an existing sandbox brings the conductor back with the app **disabled**. Nothing about that is visible from outside: both ports answer, the process is alive, and `network.sh status` reports every node healthy. The first zome call then fails with `CellDisabled(CellId(...))` raised from inside the client's signing-credential setup — an error that names a cell id and says nothing about what is wrong or what to do. `start` now calls `hc sandbox call -r <admin port> enable-app` on every node, on the generate path as well as the resume path (EnableApp is idempotent, confirmed by calling it twice) so the two paths cannot drift apart.
+
+  **Two fixes that looked sufficient were not, and that is the part worth keeping.** Adding the `enable-app` call changed nothing observable — the harness failed identically, same error, same cell. Enabling is asynchronous: the call reports `Activated app` while the cell is still coming up, and a client connecting inside that window gets exactly the error it would get if the app had never been enabled at all. The obvious follow-up, polling the app's own status until it reported `Running` before declaring the node ready, *also* changed nothing: that poll passes immediately, because the app's status flips well before the cell can accept a capability grant. What settled it was running the authorization by hand some minutes later and watching it succeed — proving a race rather than a stuck state. So the readiness signal is now the operation itself: `real-gossip.mjs` retries `authorizeSigningCredentials` on `CellDisabled` for up to 30s, and gives up with an explanation naming `list-apps` rather than a bare cell id.
+
+  **Three general lessons rather than Holochain trivia.** A `start` that has only ever been run from scratch has not been shown to work, in the same way a harness that has only ever been green has not been shown to test anything — this was found only by exercising `stop` and `start` as a cycle. A fix that leaves the symptom byte-for-byte identical has not been shown to be the fix, however plausible its story; two in a row here looked right and were not. And a component's own report that it is ready is a weaker signal than the operation you need succeeding — where the two disagree, retry the operation.
+
+  **Watched failing, twice, in the two ways that matter.** Pointing nodeB at nodeC's ports made three checks fail at once and aborted the run before it published anything, printing all three DNA hashes rather than producing a result that looked like an answer. The second injection is the one worth having: the receiver and the isolated-control slots were swapped and the precondition abort bypassed, so the "receiver" sat on a different DHT while the "isolated control" was a genuine peer. Fourteen of the twenty-five went red — and among them, the point of the exercise, **both nodeC control checks**. A control asserting that something never happens is exactly the check that can stay green forever while testing nothing, and swapping the slots is the only arrangement that makes it fail.
+
+  **That run also showed something no green run could have.** Check 9's own assertion — nodeB does not see nodeA's constitution — **passed** during the injection, because the node in the nodeB slot was on a different DHT and could not have seen anything at all. What exposed the pass as empty was the paired control immediately after it going red. That is the exact job the paired control was added to do, now confirmed rather than assumed: without it, the sharpest check in this harness reports a meaningless green precisely when the network is broken in the way that matters most. Restored afterwards and re-run: all 25 checks green again, on the same conductors, without cleaning them.
+
+  **The honest limit, since a green result here invites a bigger claim than it supports.** All three conductors run on one machine against a localhost bootstrap and a localhost signal server. What is now verified is that this hApp's entries propagate between genuinely separate conductors over a real transport, with real peer discovery, and that the chain-local reads stay chain-local when they do. What is *not* touched: NAT traversal, a public signal server, real internet latency, network partition and rejoin, or more than trivially few nodes. That is the next real networking gap, named here the same way the Launcher-install gap is named above rather than left to be discovered by someone reading a passing test as more than it is.
 
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
