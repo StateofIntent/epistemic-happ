@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// @epistemic/mcp-server — the Epistemic Resonance Protocol as MCP tools, so
+// @stateofintent/mcp-server — the Epistemic Resonance Protocol as MCP tools, so
 // an autonomous agent can find and use it without anyone writing an
 // integration first.
 //
@@ -48,7 +48,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { EpistemicAgent, FrictionLimitError, CONFIDENCE_LEVELS, CRITIQUE_MODES } from '@epistemic/agent-sdk';
+import { EpistemicAgent, FrictionLimitError, CONFIDENCE_LEVELS, CRITIQUE_MODES } from '@stateofintent/agent-sdk';
 
 const b64 = (u8: Uint8Array): string => Buffer.from(u8).toString('base64');
 const unb64 = (s: string): Uint8Array => new Uint8Array(Buffer.from(s, 'base64'));

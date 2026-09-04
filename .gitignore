@@ -55,3 +55,8 @@ dist/
 .DS_Store
 Thumbs.db
 *.swp
+
+# A packed bundle that lost its extension. `/*.happ` above does not match a
+# file with no extension, so `git add -A` swept 1.6MB of build output into a
+# commit once. Named explicitly so it cannot happen again.
+/epistemic-resonance-happ

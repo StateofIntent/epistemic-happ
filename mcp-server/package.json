@@ -1,5 +1,5 @@
 {
-  "name": "@epistemic/mcp-server",
+  "name": "@stateofintent/mcp-server",
   "version": "0.1.0",
   "license": "MIT OR Apache-2.0",
   "description": "MCP server exposing the Epistemic Resonance Protocol to autonomous agents",
@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@epistemic/agent-sdk": "^0.1.0"
+    "@stateofintent/agent-sdk": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0",

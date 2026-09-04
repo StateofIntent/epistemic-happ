@@ -1,5 +1,5 @@
 // ============================================================================
-// @epistemic/agent-sdk — participate in the Epistemic Resonance Protocol
+// @stateofintent/agent-sdk — participate in the Epistemic Resonance Protocol
 // as an autonomous agent.
 //
 // WHAT THIS IS FOR. An AI agent participating here does not want a UI; it
