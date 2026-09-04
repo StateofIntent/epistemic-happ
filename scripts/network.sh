@@ -36,6 +36,7 @@
 #   nodeA  admin :8899  app :8898   network seed "netverify-seed-1"
 #   nodeB  admin :8897  app :8896   network seed "netverify-seed-1"
 #   nodeC  admin :8895  app :8894   network seed "netverify-seed-2-isolated"
+#   nodeD  admin :8891  app :8890   network seed "netverify-seed-1"   OPT-IN
 #
 # plus the bootstrap server on :8893 and the WebRTC signal server on :8892.
 #
@@ -157,6 +158,31 @@ NODES=(
   "nodeC:8895:8894:epistemic-net-c:$ISOLATED_SEED"
 )
 
+# NOT STARTED BY `start`, AND THAT IS THE WHOLE POINT OF IT BEING SEPARATE.
+# nodeD is a THIRD member of the shared DHT, which is what makes transitive
+# gossip askable: until it existed the shared DHT had exactly two members,
+# so "B has A's entry" could never distinguish gossip from point-to-point
+# delivery — an entry had never reached a node from a peer that was not its
+# author.
+#
+# It is opt-in because adding it to the default network would silently
+# change what two existing harnesses measure, and one of them would break
+# outright. `partition-rejoin.mjs` stops nodeB, has nodeA write, then stops
+# nodeA BEFORE restarting nodeB, so that nodeB provably could not have
+# obtained the entry from its author. A third node sitting up throughout,
+# holding that same entry, defeats exactly that: nodeB would acquire it
+# from nodeD and the divergence check — the one carrying the whole meaning
+# of that run — would go red for a reason that has nothing to do with the
+# property being tested. `network-partition.mjs` would be muddied the same
+# way on the healing side.
+#
+# So the default network stays the three nodes every existing harness was
+# written against, and anything wanting a three-member DHT brings nodeD up
+# itself with `start-node nodeD` and stops it afterwards.
+OPTIONAL_NODES=(
+  "nodeD:8891:8890:epistemic-net-d:$SHARED_SEED"
+)
+
 # Pinned, not ephemeral — see the header. These live just below the
 # conductor ports for the same reason those avoid 8888/8889: so the whole
 # range this script occupies is contiguous and obvious.
@@ -200,9 +226,11 @@ wait_for_port() {
 node_pidfile() { echo "$NET_ROOT/$1.pid"; }
 
 # Look up a node's spec by name, for the per-node subcommands below.
+# Searches the optional nodes as well, so `start-node nodeD` and friends
+# work on a node that `start` deliberately does not bring up.
 spec_for() {
   local want="$1" spec
-  for spec in "${NODES[@]}"; do
+  for spec in "${NODES[@]}" "${OPTIONAL_NODES[@]}"; do
     IFS=: read -r name _ _ _ _ <<< "$spec"
     [ "$name" = "$want" ] && { echo "$spec"; return 0; }
   done
@@ -391,11 +419,18 @@ case "$cmd" in
     log "positive result on nodeB came from the network and not from the"
     log "mere fact of pointing a conductor at these services."
     log ""
+    log "nodeD (admin :8891, app :8890) is a THIRD member of the shared DHT"
+    log "and is deliberately NOT started here — it would change what the"
+    log "partition harnesses measure. Bring it up only when a test wants a"
+    log "three-member DHT:  scripts/network.sh start-node nodeD"
+    log ""
     log "Next: node scripts/live-verify/real-gossip.mjs"
     ;;
 
   stop)
-    for spec in "${NODES[@]}"; do
+    # Optional nodes included: one left running would be invisible to the
+    # next harness and would change what it measures.
+    for spec in "${NODES[@]}" "${OPTIONAL_NODES[@]}"; do
       IFS=: read -r name _ _ _ _ <<< "$spec"
       stop_pidfile "$(node_pidfile "$name")" "$name"
     done
@@ -411,7 +446,7 @@ case "$cmd" in
     else
       log "Services not running."
     fi
-    for spec in "${NODES[@]}"; do
+    for spec in "${NODES[@]}" "${OPTIONAL_NODES[@]}"; do
       IFS=: read -r name admin app app_id seed <<< "$spec"
       if node_running "$name"; then
         if port_up "$admin" && port_up "$app"; then
@@ -441,8 +476,8 @@ case "$cmd" in
     # unlike blocking traffic between two processes that are both still
     # running and may hold an already-negotiated WebRTC connection.
     node="${2:-}"
-    [ -n "$node" ] || fail "Usage: scripts/network.sh stop-node <nodeA|nodeB|nodeC>"
-    spec_for "$node" >/dev/null || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC."
+    [ -n "$node" ] || fail "Usage: scripts/network.sh stop-node <nodeA|nodeB|nodeC|nodeD>"
+    spec_for "$node" >/dev/null || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC, nodeD (nodeD is opt-in; see OPTIONAL_NODES)."
     stop_pidfile "$(node_pidfile "$node")" "$node"
     # Confirm rather than assume: a partition that did not actually happen
     # would make everything downstream of it meaningless.
@@ -460,8 +495,8 @@ case "$cmd" in
     # up; this deliberately does not start them, so that a caller cannot
     # accidentally restart the whole network mid-test.
     node="${2:-}"
-    [ -n "$node" ] || fail "Usage: scripts/network.sh start-node <nodeA|nodeB|nodeC>"
-    spec="$(spec_for "$node")" || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC."
+    [ -n "$node" ] || fail "Usage: scripts/network.sh start-node <nodeA|nodeB|nodeC|nodeD>"
+    spec="$(spec_for "$node")" || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC, nodeD (nodeD is opt-in; see OPTIONAL_NODES)."
     services_running || fail "The bootstrap/signal services are not running. Start the whole network first: scripts/network.sh start"
     start_node "$spec"
     ;;
@@ -474,6 +509,7 @@ case "$cmd" in
 
   *)
     echo "Usage: scripts/network.sh {start|stop|status|clean|addrs|stop-node <n>|start-node <n>}" >&2
+    echo "  nodes: nodeA nodeB nodeC (started by 'start'), nodeD (opt-in, third member of the shared DHT)" >&2
     exit 1
     ;;
 esac

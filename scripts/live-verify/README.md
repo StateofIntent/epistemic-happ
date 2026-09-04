@@ -24,15 +24,18 @@ Two reasons, and neither is fixable by writing looser assertions:
 
 Where a precondition can be checked cheaply, the harness checks it and says so plainly rather than failing obscurely — `affordance-surfacing.mjs` and `write-symmetry.mjs` both read the friction budget first and exit with an explanation naming `sandbox.sh clean`. Prefer that pattern in new harnesses over letting a Playwright timeout stand in for "the budget was spent", which is what happened before those checks existed and cost real time to diagnose.
 
-**Three harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs`, `partition-rejoin.mjs` and `network-partition.mjs` do not use this conductor at all. They need three of them, on a real network, and get them from `scripts/network.sh` instead:
+**Four harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs`, `partition-rejoin.mjs`, `network-partition.mjs` and `transitive-gossip.mjs` do not use this conductor at all. They need three of them on a real network — four, for the last — and get them from `scripts/network.sh` instead:
 
 ```bash
 scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap + WebRTC signal
 node scripts/live-verify/real-gossip.mjs
 node scripts/live-verify/partition-rejoin.mjs          # ~9 min; it waits out a real gossip backoff
+node scripts/live-verify/transitive-gossip.mjs        # ~3 min; brings nodeD up and puts it back
 ```
 
 `partition-rejoin.mjs` also drives `network.sh stop-node` / `start-node` itself, to take a conductor offline and bring it back mid-run.
+
+**`transitive-gossip.mjs` needs a fourth conductor, and `start` deliberately does not give it one.** `nodeD` is a third member of the *shared* DHT, which is what makes "did this entry arrive from a peer that did not author it" a question at all — before it, that DHT had exactly two members and gossip was indistinguishable from point-to-point delivery. It is opt-in because a third node sitting up throughout would break `partition-rejoin.mjs` outright: that harness stops the author before restarting the returning node so the returning node provably cannot have obtained the entry from its author, and nodeD holding the same entry defeats exactly that. The harness brings nodeD up itself and stops it again at the end; if it dies mid-run, `scripts/network.sh stop-node nodeD` puts things back.
 
 **`network-partition.mjs` is the third, and it is launched differently — never directly.** It partitions by dropping packets rather than by stopping a process, so it installs `iptables` rules, and it refuses to do that anywhere they could touch something real or outlive the run. `scripts/netns.sh` supplies a throwaway network **and PID** namespace to run it in, and starts the three-node network inside:
 
@@ -77,6 +80,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |
 | `partition-rejoin` | **`network.sh`** | 1 per node, **3 nodes** | A node that was offline while history was written catches up on rejoining — both directions, ~5.5 min |
 | `network-partition` | **`netns.sh`** | 1 per node, **3 nodes** | Both conductors stay up and keep writing while a packet-level cut stops them reaching each other, then both converge — ~8 min |
+| `transitive-gossip` | **`network.sh`** + `nodeD` | 1 per node, **4 nodes** | An entry reaches a node from a peer that did not author it — the author is down for the whole wait, ~3 min |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
