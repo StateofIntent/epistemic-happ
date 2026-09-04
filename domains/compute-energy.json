@@ -1,0 +1,95 @@
+{
+  "_comment": "ComputeEnergy — a third worked domain template, alongside climate.json and nutrition.json, and the one used by docs/demo-compute-energy.md as the standard first demo. Chosen because its characteristic failure is not disagreement about values but a NUMBER THAT HAS OUTRUN ITS METHODOLOGY: a figure gets quoted at a boundary it was never measured at, or cited to a source that never contained it. That failure is legible to a physicist, a utility engineer, a proof-of-work miner, and someone reading their electricity bill, which is why it demos across audiences that share no other vocabulary.",
+
+  "domain": "ComputeEnergy",
+  "description": "Claims about the electricity, water, and grid impact of computation — AI training and inference, datacenter siting, and proof-of-work — where the dominant failure mode is a real measurement quoted outside the boundary it was taken at. Stating the measurement boundary and tracing a figure to its primary source are first-class epistemic norms here, not background assumptions.",
+
+  "promises": [
+    { "action": "validate_claims", "domain": "ComputeEnergy", "modality": "Evidential" },
+    { "action": "state_measurement_boundary", "domain": "ComputeEnergy", "modality": "Methodological" },
+    { "action": "trace_figure_to_primary_source", "domain": "ComputeEnergy", "modality": "Evidential" },
+    { "action": "disclose_operator_affiliation", "domain": "ComputeEnergy", "modality": null }
+  ],
+  "required_promises": [
+    "validate_claims",
+    "state_measurement_boundary",
+    "trace_figure_to_primary_source",
+    "disclose_operator_affiliation"
+  ],
+  "conditions": [
+    { "condition_type": "if_evidence_present", "parameters": ["primary_source"] }
+  ],
+
+  "critique_species": [
+    {
+      "name": "BoundaryCritique",
+      "parent": null,
+      "required_evidence": [
+        "A statement of what the disputed figure actually measures: which stage (training or inference), which enclosure (chip, rack, or whole facility), and over what unit of work"
+      ]
+    },
+    {
+      "name": "TrainingVsInferenceCritique",
+      "parent": "BoundaryCritique",
+      "required_evidence": [
+        "Which stage the cited measurement covers, and the figure for the other stage where the claim treats them as one number"
+      ]
+    },
+    {
+      "name": "ChipVsFacilityCritique",
+      "parent": "BoundaryCritique",
+      "required_evidence": [
+        "The PUE applied, or an explicit statement that the figure excludes cooling and facility overhead"
+      ]
+    },
+    {
+      "name": "MarginalVsAverageCritique",
+      "parent": "BoundaryCritique",
+      "required_evidence": [
+        "The grid emissions or capacity factor used, and whether it is an average or a marginal/consequential factor"
+      ]
+    },
+    {
+      "name": "ProvenanceCritique",
+      "parent": null,
+      "required_evidence": [
+        "The chain of citation from the claim back to a primary measurement, or the specific link at which that chain breaks"
+      ]
+    },
+    {
+      "name": "CitationLaunderingCritique",
+      "parent": "ProvenanceCritique",
+      "required_evidence": [
+        "The primary source, quoted, showing it does not contain the figure attributed to it"
+      ]
+    },
+    {
+      "name": "StaleBaselineCritique",
+      "parent": "ProvenanceCritique",
+      "required_evidence": [
+        "The date and hardware generation of the underlying measurement, and a current figure for the same quantity where one exists"
+      ]
+    },
+    {
+      "name": "LocalIncidenceCritique",
+      "parent": null,
+      "required_evidence": [
+        "The specific facility, ratepayer class, watershed, or airshed where the cost lands, and how it differs from the aggregate figure being quoted"
+      ]
+    },
+    {
+      "name": "RatepayerIncidenceCritique",
+      "parent": "LocalIncidenceCritique",
+      "required_evidence": [
+        "The tariff, rate case, or interconnection agreement that determines who actually pays for the new load"
+      ]
+    },
+    {
+      "name": "ReboundCritique",
+      "parent": null,
+      "required_evidence": [
+        "The efficiency gain being claimed, and the total-consumption series over the same period"
+      ]
+    }
+  ]
+}
