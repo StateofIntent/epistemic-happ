@@ -309,3 +309,13 @@ export const ANTIBODY_PATTERN_KINDS: AntibodyPatternKind[] = [
   'CoordinatedManipulation',
   'Impersonation',
 ];
+
+/** One candidate, echoed back with how strongly it resonates with a claim's
+ * neighborhood binding. `sourceHash` is always the caller's own candidate
+ * hash — the coordinator never invents a value here — so every row points at
+ * something the reader can open. Similarity is approximate by construction. */
+export interface NeighborRecall {
+  source_hash: Uint8Array;
+  kind: 'Evidence' | 'Critique';
+  similarity: number;
+}

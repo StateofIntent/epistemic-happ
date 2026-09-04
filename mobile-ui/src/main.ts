@@ -10,6 +10,7 @@ import {
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
   type CritiqueMode, type WorldlineTrace, type PeriodResonance,
+  NeighborRecall,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -229,6 +230,24 @@ let proposingSpecies = false;
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
+
+// --- Neighborhood resonance (HRR, the approximate half) -----------------
+// §2.5 permits this layer to be "a receiver, not a truth engine", and
+// query_neighborhood_resonance is explicit that a similarity is "a hint
+// worth checking, not a claim of fact" and never a substitute for
+// get_grounding_path or get_critiques_for, which stay the exact reads.
+//
+// IT IS A MEMBERSHIP PROBE, NOT A SEARCH, and that shapes the whole
+// surface. It does not discover related claims — it scores candidates the
+// caller supplies, so the candidates here are the other claims already on
+// screen in this domain. A discovery feature would have to rank the DHT by
+// relevance, which is the comparative ordering Invariant 1 refuses.
+/** claim key -> probe results, absent until the reader asks for them. */
+const resonanceByClaim = new Map<string, NeighborRecall[]>();
+/** which claims currently have their resonance probe open. */
+const resonanceOpen = new Set<string>();
+/** claim keys whose probe is in flight, so the panel can say so. */
+const resonanceLoading = new Set<string>();
 
 // --- By Author -----------------------------------------------------------
 // Kept in its own store rather than reusing `claims`, so that reading one
@@ -989,6 +1008,93 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   if (isExpanded) {
     card.appendChild(renderCritiquePanel(claim));
   }
+
+  // --- Neighborhood resonance, the approximate half of HRR ------------
+  //
+  // PLACED AFTER the grounding badge and the critique toggle, deliberately.
+  // §2.5's rule is that the approximate reading never displaces the exact
+  // one, and on a screen "never displaces" is a question of document order
+  // as much as of wording: the evidence chain and the critique stack are
+  // the exact answers and they come first. worldline-ui.mjs already checks
+  // that ordering for the other half of HRR; author-scope of this one is
+  // checked the same way.
+  const resonanceBtn = document.createElement('button');
+  resonanceBtn.className = 'link-button';
+  resonanceBtn.dataset.testid = 'resonance-toggle';
+  const probeOpen = resonanceOpen.has(key);
+  resonanceBtn.textContent = probeOpen ? 'Hide resonance probe' : 'Probe neighborhood resonance';
+  resonanceBtn.onclick = () => {
+    if (probeOpen) { resonanceOpen.delete(key); render(); return; }
+    resonanceOpen.add(key);
+    if (!resonanceByClaim.has(key)) void loadResonance(claim);
+    else render();
+  };
+  card.appendChild(resonanceBtn);
+
+  if (probeOpen) {
+    const panel = document.createElement('div');
+    panel.className = 'resonance-panel';
+    panel.dataset.testid = 'resonance-panel';
+
+    const caveat = document.createElement('p');
+    caveat.className = 'hint';
+    caveat.dataset.testid = 'neighborhood-caveat';
+    // WHAT THIS LIST IS, STATED PLAINLY, for the same reason the worldline
+    // probe states it: the coordinator applies NO THRESHOLD. It scores every
+    // candidate handed to it and returns them all, so probing claims with no
+    // relationship to this one still produces a full list — just with low
+    // scores. Rendering that identically to a set of findings is how an
+    // approximate probe becomes a truth engine through presentation rather
+    // than through the number.
+    caveat.textContent =
+      'Unbinding is lossy by construction, and this scores every claim currently '
+      + 'loaded in this domain rather than selecting matches — there is no threshold, '
+      + 'so claims unrelated to this one still appear, just with low scores. A high '
+      + 'score is a hint worth checking, not a claim of fact: the evidence chain and '
+      + 'critiques above are the exact answer, and every row below points at a claim '
+      + 'you can open and read for yourself.';
+    panel.appendChild(caveat);
+
+    const recalls = resonanceByClaim.get(key);
+    if (resonanceLoading.has(key)) {
+      const p2 = document.createElement('p');
+      p2.className = 'hint';
+      p2.textContent = 'Probing…';
+      panel.appendChild(p2);
+    } else if (!recalls || recalls.length === 0) {
+      // A legitimate answer, not a failure: nothing to resonate with is
+      // exactly what a claim with no other claims loaded beside it means.
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.dataset.testid = 'resonance-empty';
+      empty.textContent = recalls
+        ? 'Nothing to probe against — load more claims in this domain first.'
+        : 'Nothing to probe against yet.';
+      panel.appendChild(empty);
+    } else {
+      const byHash = new Map(claims.map((c) => [b64(c.entryHash), c]));
+      for (const r of [...recalls].sort((a, b) => b.similarity - a.similarity)) {
+        const row = document.createElement('div');
+        row.className = 'resonance-row';
+        row.dataset.testid = 'resonance-row';
+        const target = byHash.get(b64(r.source_hash));
+        const score = document.createElement('span');
+        score.className = 'resonance-score';
+        score.dataset.testid = 'resonance-score';
+        // A tilde and two decimals, never a percentage. "73% match" states a
+        // measurement; "~0.73" states an approximation, which is what this is.
+        score.textContent = `~${r.similarity.toFixed(2)}`;
+        const label = document.createElement('span');
+        label.className = 'resonance-label';
+        label.textContent = ` as ${r.kind} — ${target ? target.entry.content.slice(0, 60) : short(r.source_hash)}`;
+        row.appendChild(score);
+        row.appendChild(label);
+        panel.appendChild(row);
+      }
+    }
+    card.appendChild(panel);
+  }
+
   if (graphOpen) {
     card.appendChild(renderCritiqueGraph(claim));
   }
@@ -1479,6 +1585,36 @@ async function loadClaimsByAuthor(agentB64: string) {
     authorError = `Could not read this agent's claims: ${e instanceof Error ? e.message : String(e)}`;
   }
   render();
+}
+
+/** Probes a claim's neighborhood binding against the other claims loaded in
+ * this domain. Candidates are supplied by us and echoed back scored; nothing
+ * here searches. Both roles are probed for each candidate, because a claim
+ * may sit in another's neighborhood as evidence or as critique and the
+ * caller does not know which in advance. */
+async function loadResonance(claim: DecodedRecord<Claim>) {
+  if (!connection) return;
+  const key = b64(claim.entryHash);
+  resonanceLoading.add(key);
+  render();
+  try {
+    const candidates: [Uint8Array, string][] = [];
+    for (const other of claims) {
+      if (b64(other.entryHash) === key) continue;
+      candidates.push([other.entryHash, 'Evidence']);
+      candidates.push([other.entryHash, 'Critique']);
+    }
+    const recalls = candidates.length === 0 ? [] : await connection.callZome<NeighborRecall[]>(
+      'query_neighborhood_resonance', { claim_hash: claim.entryHash, candidates },
+    );
+    resonanceByClaim.set(key, recalls);
+  } catch (e) {
+    resonanceByClaim.set(key, []);
+    console.error('resonance probe failed', e);
+  } finally {
+    resonanceLoading.delete(key);
+    render();
+  }
 }
 
 /** AntibodyPattern flags and Retractions for every claim currently
