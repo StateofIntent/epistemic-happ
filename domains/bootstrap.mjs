@@ -70,8 +70,13 @@ async function connect({ admin: adminUrl, app: appUrl, appId }) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client 0.21
+      // ({ type, value }); it used to be keyed by cell type. The old
+      // `CellType.Provisioned in cell` test matches nothing against the
+      // new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   if (cellIds.length === 0) throw new Error(`App "${appId}" has no provisioned or cloned cells.`);
@@ -157,7 +162,9 @@ async function main() {
       return decoded.name === species.name && decoded.proposer.every((b, i) => b === myAgent[i]);
     });
     if (!match) throw new Error(`Could not find just-created CritiqueSpecies "${species.name}" via get_all_critique_species.`);
-    const entryHash = match.signed_action.hashed.content.entry_hash;
+    // An action is `{ header, data }` under Holochain 0.7's v2 action
+    // model, so entry_hash lives on `data` rather than at the top level.
+    const entryHash = match.signed_action.hashed.content.data.entry_hash;
     speciesEntryHashByName.set(species.name, entryHash);
 
     console.log(
