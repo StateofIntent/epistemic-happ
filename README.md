@@ -1203,6 +1203,20 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ---
 
+## Installing it (for people who just want to run it)
+
+See **[INSTALL.md](INSTALL.md)**. The short version: install the
+[Holochain Launcher](https://github.com/holochain/launcher/releases), download
+`epistemic-resonance-happ.webhapp` from [the latest release](../../releases/latest),
+and install it from a file. No Rust, no Node, no terminal, no account.
+
+Everyone installing the same `.webhapp` lands on the same network — the bundle
+declares no network seed, so the file itself decides which peers you join.
+INSTALL.md states the two caveats that matter to a first-time user in plain
+terms: cross-internet peer discovery is the one thing this project has never
+been able to test, and a returning node takes minutes rather than seconds to
+catch up when it is the only other peer.
+
 ## Licence
 
 Dual-licensed under either **[Apache License 2.0](LICENSE-APACHE)** or the
