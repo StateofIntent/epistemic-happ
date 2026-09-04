@@ -3,10 +3,10 @@
 # scripts/sandbox.sh — bring up / tear down a local hc sandbox conductor.
 #
 # Replaces README.md §6.6's `hc run -p 8888`, which does not work against
-# any `hc` version this project has actually installed (0.4.4) — `hc run`
-# is not a real subcommand; the real one is `hc sandbox`. This script
-# exists because getting a conductor running at all took several real,
-# confirmed false starts the first time this was done by hand (see
+# any `hc` version this project has actually installed (0.4.4, now 0.7.0)
+# — `hc run` is not a real subcommand; the real one is `hc sandbox`. This
+# script exists because getting a conductor running at all took several
+# real, confirmed false starts the first time this was done by hand (see
 # README.md's Phase 2 changelog entry on live-conductor verification):
 #
 #   - `hc` looks for a `holochain` binary on PATH by default and fails with
@@ -52,6 +52,20 @@
 #     new one). Fixed by finding the real `holochain` process afterward,
 #     by matching its own `--config-path`, once the ports confirm it's
 #     actually up — see `start`'s `real_pid` below.
+#
+#   - Upgrading 0.4.4 -> 0.7.0 moved two of the things below. `run`'s
+#     "use every sandbox in .hc" flag is now `-a`/`--all`; the `-l` this
+#     script passed under 0.4 no longer exists and is a clap parse error.
+#     And `zome-call`/`zome-call-auth` are no longer `hc sandbox`
+#     subcommands at all — 0.6 split them out into a separate `hc client`
+#     CLI, which no longer infers the admin port from `.hc` and so needs
+#     an explicit `--port`. Both moves were read off `--help` on the
+#     installed 0.7.0 binaries, not inferred from the changelog.
+#
+#     Everything else in this list still holds: `--piped`, `-f`/
+#     `--force-admin-ports` and `-H`/`--holochain-path` are all still
+#     global, `--in-process-lair` still exists, and `generate` still takes
+#     `-a <app-id> -r=<app-port> <happ-path>`.
 #
 # Admin port, app port, and app id below are chosen to match
 # bridge/.env.example's HOLOCHAIN_ADMIN_URL / HOLOCHAIN_URL /
@@ -144,7 +158,7 @@ case "$cmd" in
     if [ -f "$REPO_ROOT/.hc" ] && [ -d "$(tail -n1 "$REPO_ROOT/.hc")" ]; then
       log "Resuming existing sandbox ($(tail -n1 "$REPO_ROOT/.hc")) ..."
       ( cd "$REPO_ROOT" && \
-        echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$ADMIN_PORT" run -l \
+        echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$ADMIN_PORT" run -a \
           > "$LOGFILE" 2>&1 & )
     else
       [ -f "$HAPP_PATH" ] || fail "No .happ bundle at $HAPP_PATH. Build it first (README.md §6.2-6.3: cargo build --release --target wasm32-unknown-unknown in dna/integrity and dna/coordinator, then hc dna pack dna/ && hc app pack .)."
@@ -178,7 +192,7 @@ case "$cmd" in
     log "  HOLOCHAIN_URL=ws://localhost:$APP_PORT"
     log "  HOLOCHAIN_APP_ID=$APP_ID"
     log "(these match bridge/.env.example's defaults exactly)"
-    log "Next, to make CLI zome calls: echo \"$PASSPHRASE\" | hc sandbox zome-call-auth --piped $APP_ID"
+    log "Next, to make CLI zome calls: echo \"$PASSPHRASE\" | hc client zome-call-auth --piped --port $ADMIN_PORT $APP_ID"
     ;;
 
   stop)

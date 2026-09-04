@@ -1,40 +1,43 @@
-manifest_version: "1"
+# Holochain 0.7 DNA manifest (DnaManifestV0).
+#
+# `manifest_version` is "0", not "1". Holochain 0.6 collapsed the manifest
+# lineage onto a single V0 schema, so the "1" this file used under 0.4 is
+# no longer a recognised variant. The struct is `deny_unknown_fields`, so
+# every rename below is a hard parse failure rather than a warning.
+manifest_version: "0"
 name: epistemic-dna
 integrity:
-  origin_time: 2026-07-25T00:00:00.000000Z
+  # `origin_time` is gone. It was a Kitsune-1 DHT-sharding parameter, and
+  # Kitsune2 (which replaced the networking layer wholesale in 0.5) has no
+  # equivalent. Leaving it here fails the parse outright — it is not simply
+  # ignored. The 0.7 `IntegrityManifest` is exactly network_seed +
+  # properties + zomes.
   network_seed: ~
   properties: ~
   zomes:
     - name: epistemic_integrity
-      # There is no Cargo workspace unifying dna/integrity and
-      # dna/coordinator (see either crate's Cargo.toml for why — pinned
-      # hdi/hdk versions must resolve to one physical instance, which a
-      # loose workspace easily broke in the past). Each crate therefore
-      # builds into its OWN target/ directory (dna/integrity/target/,
-      # dna/coordinator/target/), not a shared repo-root target/. The
-      # previous path here (../../target/wasm32-unknown-unknown/release/,
-      # i.e. <repo-root>/target/...) pointed at a directory that can never
-      # exist under this project's actual build layout — confirmed
-      # directly: `hc dna pack .` failed with "No such file or directory"
-      # before this fix, since nothing had ever actually run that command
-      # against this repo before. This path is relative to this file
-      # (dna/dna.yaml), so ./integrity/target/... correctly resolves to
-      # dna/integrity/target/wasm32-unknown-unknown/release/... (an
-      # earlier version of this fix wrote ../integrity/, which is wrong
-      # the same way the original bug was — dna.yaml's own directory
-      # already IS dna/, so integrity/ is a direct child, not a sibling).
-      bundled: ./integrity/target/wasm32-unknown-unknown/release/epistemic_integrity.wasm
       hash: ~
+      # `bundled:` is now `path:` — same meaning (a location resolved
+      # relative to this manifest file), new field name, across DNA, app
+      # and web-app manifests alike.
+      #
+      # There is no Cargo workspace unifying dna/integrity and
+      # dna/coordinator (see either crate's Cargo.toml for why — the two
+      # crates must resolve hdi to one physical instance, which a loose
+      # workspace broke in the past). Each crate therefore builds into its
+      # OWN target/ directory, not a shared repo-root target/. This path is
+      # relative to this file (dna/dna.yaml), so ./integrity/target/...
+      # resolves to dna/integrity/target/... — dna.yaml's own directory
+      # already IS dna/, so integrity/ is a direct child, not a sibling.
+      path: ./integrity/target/wasm32-unknown-unknown/release/epistemic_integrity.wasm
       dependencies: ~
-      dylib: ~
+      # `dylib:` is gone from ZomeManifest in 0.7 and must be removed.
 coordinator:
   zomes:
     - name: epistemic_coordinator
-      # See epistemic_integrity's bundled path comment above for why this
-      # points into dna/coordinator/target/ rather than a shared
-      # repo-root target/.
-      bundled: ./coordinator/target/wasm32-unknown-unknown/release/epistemic_coordinator.wasm
       hash: ~
+      # See epistemic_integrity's path comment above for why this points
+      # into dna/coordinator/target/ rather than a shared repo-root target/.
+      path: ./coordinator/target/wasm32-unknown-unknown/release/epistemic_coordinator.wasm
       dependencies:
         - name: epistemic_integrity
-      dylib: ~
