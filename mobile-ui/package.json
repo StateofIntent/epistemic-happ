@@ -1,7 +1,8 @@
 {
   "name": "epistemic-mobile-ui",
   "version": "0.1.0",
-  "description": "Mobile-responsive web UI (PWA) for practitioners — Claims and Critiques against a live Holochain conductor",
+  "license": "MIT OR Apache-2.0",
+  "description": "Mobile-responsive web UI (PWA) for practitioners \u2014 Claims and Critiques against a live Holochain conductor",
   "type": "module",
   "scripts": {
     "dev": "vite",

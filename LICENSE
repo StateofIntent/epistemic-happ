@@ -1,0 +1,21 @@
+This project is dual-licensed under either of
+
+  * Apache License, Version 2.0 ......... see LICENSE-APACHE
+  * MIT license ......................... see LICENSE-MIT
+
+at your option.
+
+WHY BOTH, since a single licence would be less paperwork. The protocol core
+is Rust, where offering both is the ecosystem's convention and the thing
+contributors and reimplementers expect to find. It is also strictly more
+permissive for a recipient than either alone: anyone who wants the express
+patent grant takes the Apache arm, anyone who wants the shorter and more
+widely understood terms takes MIT, and — the reason that actually decided it
+— Apache-2.0 on its own is incompatible with GPLv2, which would have quietly
+excluded a class of downstream projects from ever using this at all.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+
+CONTRIBUTIONS. Unless you state otherwise, any contribution intentionally
+submitted for inclusion in this work shall be dual-licensed as above, with no
+additional terms or conditions.

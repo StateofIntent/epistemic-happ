@@ -1,6 +1,7 @@
 {
   "name": "@epistemic/agent-sdk",
   "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
   "description": "Client library for participating in the Epistemic Resonance Protocol as an autonomous agent",
   "type": "module",
   "main": "dist/index.js",

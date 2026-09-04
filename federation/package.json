@@ -1,7 +1,8 @@
 {
   "name": "epistemic-federation-bridge",
   "version": "0.1.0",
-  "description": "Cross-network federation bridge — records and confirms mutual recognition between membranes on two independently-run Holochain conductors. See README.md.",
+  "license": "MIT OR Apache-2.0",
+  "description": "Cross-network federation bridge \u2014 records and confirms mutual recognition between membranes on two independently-run Holochain conductors. See README.md.",
   "type": "module",
   "scripts": {
     "federate": "node federate.mjs"
