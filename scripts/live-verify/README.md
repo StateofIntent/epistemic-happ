@@ -24,6 +24,17 @@ Two reasons, and neither is fixable by writing looser assertions:
 
 Where a precondition can be checked cheaply, the harness checks it and says so plainly rather than failing obscurely — `affordance-surfacing.mjs` and `write-symmetry.mjs` both read the friction budget first and exit with an explanation naming `sandbox.sh clean`. Prefer that pattern in new harnesses over letting a Playwright timeout stand in for "the budget was spent", which is what happened before those checks existed and cost real time to diagnose.
 
+**One harness is the exception, and it is the exception on purpose.** `real-gossip.mjs` does not use this conductor at all. It needs three of them, on a real network, and gets them from `scripts/network.sh` instead:
+
+```bash
+scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap + WebRTC signal
+node scripts/live-verify/real-gossip.mjs
+```
+
+Its ports (8892-8899) are deliberately disjoint from `sandbox.sh`'s (8888/8889), so the two setups can be up at once and neither notices the other. Every other file in this directory uses `sandbox.sh` and the rule above applies to it unchanged.
+
+It is also the one harness here that is **safe to re-run without cleaning first**, and for reasons worth copying rather than by luck: every check is scoped to a domain string minted from `Date.now()` at the top of the run, the one count-free check matches on its own domain rather than on a total, and it spends no friction budget — `create_claim` and `publish_constitution` are not rate-limited, and it calls neither `create_critique` nor `create_synaptic_link`. Confirmed by re-running it green on conductors that had already carried two previous runs. The two properties that force the clean-conductor rule elsewhere — exact counts and per-hour budgets — are simply absent here.
+
 ## What each harness needs
 
 `scripts/pack-webhapp.sh` after any change — it builds the zomes, packs the DNA and hApp, builds the UI and packs the bundle, in that order.
@@ -50,8 +61,11 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `expertise-ui` | browser | **2** | An expertise assertion is findable by strangers, and reads as self-asserted |
 | `mode-and-constitution` | browser | **3** | A chain-local read is never shown as global, and absence is never scored |
 | `worldline-ui` | browser | 1 | The approximate HRR probe never displaces the exact period record |
+| `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
+
+**Two agents on one conductor is not a network, and that distinction is worth holding on to.** Those agents share a single local DHT store: an entry written by one is visible to the other the instant it is written, because it never travelled. That is exactly the right arrangement for the questions those harnesses ask — read scope, per-agent friction budgets, what one agent can and cannot find of another's work — and it is silent on whether anything propagates between machines. `hc sandbox` produces no networking by default (`transport_pool: []`, `bootstrap_service: null` in the conductor config), so until `real-gossip.mjs` nothing here had ever run two conductors that could reach each other. Reach for `sandbox.sh` and a second agent when the question is about visibility; reach for `network.sh` and `real-gossip.mjs` when it is about propagation.
 
 ## Writing a new one
 
