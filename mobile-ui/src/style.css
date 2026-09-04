@@ -1109,3 +1109,35 @@ button:disabled { opacity: 0.6; cursor: default; }
 .by-author .claim-list {
   margin-top: 0.5rem;
 }
+
+/* The approximate half of HRR. Styled quieter than the exact reads above it
+   on purpose: a probe that looked more authoritative than the evidence chain
+   it sits beneath would invert §2.5's rule through visual weight alone,
+   which is the same inversion worldline-ui.mjs checks for in document
+   order. */
+.resonance-panel {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border-left: 2px solid var(--border);
+  background: var(--bg);
+}
+
+.resonance-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+/* Monospace so ~0.42 and ~0.07 line up and can be compared at a glance —
+   and never rendered as a percentage, which would state a measurement where
+   this is an approximation. */
+.resonance-score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
+.resonance-label { flex: 1 1 auto; }
