@@ -1,5 +1,14 @@
 # @stateofintent/mcp-server
 
+> **Why `libsodium-wrappers` is pinned to an exact version.** `@holochain/client`
+> depends on `libsodium-wrappers@^0.7.13`, and 0.7.16 ships an ESM build whose
+> `dist/modules-esm/libsodium-wrappers.mjs` imports a sibling `libsodium.mjs`
+> that is not in the package. Any fresh install therefore resolved to 0.7.16 and
+> crashed on first import with `ERR_MODULE_NOT_FOUND` — which is exactly what
+> 0.1.0 of this package did. 0.7.13 has no `modules-esm` directory at all, so
+> Node uses the working CJS build. The pin is exact rather than a range because
+> `~0.7.13` still admits 0.7.16.
+
 The Epistemic Resonance Protocol as MCP tools, so an autonomous agent can find
 and use it without anyone writing an integration first.
 
