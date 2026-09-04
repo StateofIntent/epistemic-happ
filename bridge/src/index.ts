@@ -247,13 +247,20 @@ class HolochainClient {
     // has — required for (2) above. `info.cell_info` is keyed by role name;
     // each role can have provisioned/cloned/stem cells (CellType), of which
     // only provisioned and cloned cells have a real cell_id to sign for.
+    //
+    // CellInfo changed shape in @holochain/client 0.21. It used to be an
+    // object keyed by cell type — hence the old `CellType.Provisioned in
+    // cell` / `cell[CellType.Provisioned]` idiom — and is now a properly
+    // discriminated union, `{ type: CellType, value: ProvisionedCell | ... }`.
+    // Worth noting that the old idiom does not fail to compile against the
+    // new type in every context; where a value is `any` it just silently
+    // stops matching and yields no cell ids at all, so this was corrected
+    // by reading the type rather than by trusting the typechecker.
     const cellIds: CellId[] = [];
     for (const roleCells of Object.values(info.cell_info)) {
       for (const cell of roleCells) {
-        if (CellType.Provisioned in cell) {
-          cellIds.push(cell[CellType.Provisioned].cell_id);
-        } else if (CellType.Cloned in cell) {
-          cellIds.push(cell[CellType.Cloned].cell_id);
+        if (cell.type === CellType.Provisioned || cell.type === CellType.Cloned) {
+          cellIds.push(cell.value.cell_id);
         }
       }
     }

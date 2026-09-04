@@ -184,8 +184,13 @@ export class HolochainConnection {
     const cellIds: CellId[] = [];
     for (const roleCells of Object.values(info.cell_info)) {
       for (const cell of roleCells) {
-        if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-        else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+        // CellInfo is a discriminated union as of @holochain/client 0.21
+        // ({ type, value }), where it used to be keyed by cell type. The
+        // old `CellType.Provisioned in cell` test matches nothing against
+        // the new shape and silently yields no cell ids.
+        if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+          cellIds.push(cell.value.cell_id);
+        }
       }
     }
     if (cellIds.length === 0) {
