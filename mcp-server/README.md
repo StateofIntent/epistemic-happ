@@ -18,9 +18,22 @@ no capability the protocol does not have.
 ## Running it
 
 ```bash
-cd agent-sdk && npm install && npm run build
-cd ../mcp-server && npm install && npm run build
+cd agent-sdk  && npm install && npm run build
+cd ../mcp-server && npm install --no-save ../agent-sdk && npm run build
 ```
+
+The second line is not the usual `npm install`, and the reason is worth a
+sentence. This package depends on `@epistemic/agent-sdk@^0.1.0` — the correct
+declaration for a published package, and the one thing that must NOT be
+`file:../agent-sdk`, since a relative path cannot resolve on anyone else's
+machine. Until the SDK is on the registry that version does not exist to fetch,
+so a plain `npm install` fails with a 404. Installing the local path with
+`--no-save` satisfies the dependency without rewriting `package.json`, so the
+published form stays correct while local development works.
+
+Once `@epistemic/agent-sdk` is published, `npm install` on its own is enough
+and this note can go. `node scripts/check-packages.mjs` from the repo root
+fails if the `file:` form ever comes back.
 
 It speaks MCP over stdio and talks to a conductor you are already running —
 your own, since this protocol has no central server and "the backend" is a peer

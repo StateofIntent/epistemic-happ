@@ -8,7 +8,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && cp ../LICENSE-MIT ../LICENSE-APACHE ./",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@holochain/client": "^0.17.0",
@@ -22,5 +24,35 @@
     "libsodium-wrappers": "0.7.13",
     "libsodium": "0.7.13"
   },
-  "_overridesNote": "libsodium-wrappers 0.7.16 ships a broken ESM build \u2014 its libsodium-wrappers.mjs imports a sibling libsodium.mjs that is not in the published package, so any ESM import of @holochain/client fails with ERR_MODULE_NOT_FOUND. 0.7.13 is what federation/ resolved and works. Remove this override once upstream republishes a working ESM build."
+  "_overridesNote": "libsodium-wrappers 0.7.16 ships a broken ESM build \u2014 its libsodium-wrappers.mjs imports a sibling libsodium.mjs that is not in the published package, so any ESM import of @holochain/client fails with ERR_MODULE_NOT_FOUND. 0.7.13 is what federation/ resolved and works. Remove this override once upstream republishes a working ESM build.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StateofIntent/epistemic-happ.git",
+    "directory": "agent-sdk"
+  },
+  "homepage": "https://github.com/StateofIntent/epistemic-happ#readme",
+  "bugs": {
+    "url": "https://github.com/StateofIntent/epistemic-happ/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "holochain",
+    "p2p",
+    "distributed",
+    "epistemics",
+    "knowledge-graph",
+    "agent",
+    "autonomous-agents",
+    "protocol",
+    "sdk",
+    "client"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ]
 }
