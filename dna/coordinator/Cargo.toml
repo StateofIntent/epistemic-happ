@@ -15,6 +15,11 @@ crate-type = ["cdylib", "rlib"]
 # rather than by our own care alone.
 hdk = "=0.7.0"
 serde = { version = "1.0", features = ["derive"] }
+# Direct dependency from 0.7 on, for the same reason as the integrity
+# zome's copy — see that crate's Cargo.toml. `#[hdk_entry_helper]`
+# expands to a `derive(SerializedBytes)` that names this crate by
+# absolute path, so it must be in this crate's own dependency list.
+holochain_serialized_bytes = "0.0.57"
 epistemic_integrity = { path = "../integrity" }
 sha2 = "0.10"
 hex = "0.4"
@@ -25,10 +30,16 @@ hex = "0.4"
 # (accept_countersigning_preflight_request, block_agent, schedule,
 # get_agent_key_lineage, is_same_agent) that don't exist on the HdkT/HdiT
 # traits the same hdk version resolves — E0407, a bug in the published
-# crate rather than anything fixable from this Cargo.toml. Whether hdk
-# 0.7.0 still has that defect has NOT been rechecked; do not read the
-# paragraph above as evidence either way. It is left off for now because
-# nothing here depends on it.
+# crate rather than anything fixable from this Cargo.toml.
+#
+# That defect is FIXED in hdk 0.7.0. Checked directly rather than assumed:
+# a throwaway crate depending on `hdk = { version = "=0.7.0", features =
+# ["mock"] }` builds cleanly. So the feature could now be enabled, and
+# with it the MockHdkT-based host-call tests that had to be abandoned
+# under 0.4.4. It is still left off here only because nothing in this
+# crate depends on it yet — enabling it is worth its own change, together
+# with the tests that would justify it, rather than being smuggled into a
+# version upgrade.
 #
 # What that did not block, and still does not: the crate links and runs
 # natively without any mock backend, so src/lib.rs's pure-logic unit tests
