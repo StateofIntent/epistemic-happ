@@ -110,8 +110,13 @@ async function zome() {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
@@ -186,7 +191,7 @@ async function main() {
     // a reaction to conductor state it did not create.
     const claimRecords = await call('get_claims_by_domain', DOMAIN);
     const targetHash = firstOrFail(claimRecords, 'get_claims_by_domain',
-      "the claim this harness seeded into its domain").signed_action.hashed.content.entry_hash;
+      "the claim this harness seeded into its domain").signed_action.hashed.content.data.entry_hash;
     const remaining = before.limit - before.recent_count;
     for (let i = 0; i < remaining; i++) {
       await call('create_critique', {

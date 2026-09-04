@@ -114,7 +114,7 @@ async function main() {
   const subject = all.find((r) => {
     try { return String(Buffer.from(r.entry.Present.entry)).includes('Loaded carries'); } catch { return false; }
   }) ?? all[0];
-  const subjectHash = subject.signed_action.hashed.content.entry_hash;
+  const subjectHash = subject.signed_action.hashed.content.data.entry_hash;
   await call('create_critique', {
     target: subjectHash, target_type: 'Claim', critique_mode: 'Logical',
     content: `A critique giving the subject a neighborhood, stamped ${STAMP}.`,

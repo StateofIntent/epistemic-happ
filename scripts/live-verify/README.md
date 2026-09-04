@@ -27,7 +27,7 @@ Where a precondition can be checked cheaply, the harness checks it and says so p
 **Four harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs`, `partition-rejoin.mjs`, `network-partition.mjs` and `transitive-gossip.mjs` do not use this conductor at all. They need three of them on a real network — four, for the last — and get them from `scripts/network.sh` instead:
 
 ```bash
-scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap + WebRTC signal
+scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap/iroh relay
 node scripts/live-verify/real-gossip.mjs
 node scripts/live-verify/partition-rejoin.mjs          # ~9 min; it waits out a real gossip backoff
 node scripts/live-verify/transitive-gossip.mjs        # ~3 min; brings nodeD up and puts it back

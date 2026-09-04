@@ -80,8 +80,13 @@ async function connectApp(admin, appId) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
@@ -99,9 +104,14 @@ async function main() {
   if (!apps.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
     log('Installing agent 2 on the same conductor ...');
     const agent2Pub = await admin.generateAgentPubKey();
+    // installApp takes `source: { type: 'path', value }` as of client
+    // 0.21, not a bare `path`, and no longer accepts a top-level
+    // `membrane_proofs` map. The old shape is rejected by the conductor
+    // with "deserialization: Failed to deserialize request".
     await admin.installApp({
-      path: HAPP_PATH, agent_key: agent2Pub,
-      installed_app_id: AGENT2_APP_ID, membrane_proofs: {},
+      source: { type: 'path', value: HAPP_PATH },
+      agent_key: agent2Pub,
+      installed_app_id: AGENT2_APP_ID,
     });
     await admin.enableApp({ installed_app_id: AGENT2_APP_ID });
   }
@@ -164,7 +174,7 @@ async function main() {
     // Critiquable is the claim being made about it, so it must actually
     // be critiquable — by the stranger, not by its author.
     const targetHash = strangerSees.length > 0
-      ? strangerSees[0].signed_action.hashed.content.entry_hash : null;
+      ? strangerSees[0].signed_action.hashed.content.data.entry_hash : null;
     let critiqued = false;
     if (targetHash) {
       try {

@@ -93,8 +93,13 @@ async function connectApp(admin, appId) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   if (cellIds.length === 0) throw new Error(`App "${appId}" has no provisioned or cloned cells.`);
@@ -136,9 +141,14 @@ async function main() {
   if (!apps.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
     log('Installing agent 2 on the same conductor ...');
     const agent2Pub = await admin.generateAgentPubKey();
+    // installApp takes `source: { type: 'path', value }` as of client
+    // 0.21, not a bare `path`, and no longer accepts a top-level
+    // `membrane_proofs` map. The old shape is rejected by the conductor
+    // with "deserialization: Failed to deserialize request".
     await admin.installApp({
-      path: HAPP_PATH, agent_key: agent2Pub,
-      installed_app_id: AGENT2_APP_ID, membrane_proofs: {},
+      source: { type: 'path', value: HAPP_PATH },
+      agent_key: agent2Pub,
+      installed_app_id: AGENT2_APP_ID,
     });
     await admin.enableApp({ installed_app_id: AGENT2_APP_ID });
   }
@@ -175,7 +185,7 @@ async function main() {
   // The specific regression read-scope.mjs recorded: agent 2 could not
   // see agent 1's claim at all. Named explicitly so the comparison is
   // unmistakable rather than implied by a count.
-  const authorsSeenByA2 = seenByA2.map((r) => b64(r.signed_action.hashed.content.author));
+  const authorsSeenByA2 = seenByA2.map((r) => b64(r.signed_action.hashed.content.header.author));
   check('agent 1\'s claim is specifically among what agent 2 can see',
     authorsSeenByA2.includes(b64(agent1.me)));
 
@@ -236,11 +246,11 @@ async function main() {
   // it was already DHT-wide (get_links). Checked here because a species
   // nobody can see is one nobody can adopt, so the two only became
   // meaningful together.
-  const speciesEntryHash = speciesSeenByA2[0]?.signed_action?.hashed?.content?.entry_hash;
+  const speciesEntryHash = speciesSeenByA2[0]?.signed_action?.hashed?.content?.data?.entry_hash;
   if (speciesEntryHash) {
     const claimRecords = await agent2.call('get_claims_by_domain', DOMAIN);
     const targetHash = firstOrFail(claimRecords, 'get_claims_by_domain',
-      "the two claims both agents published into this run's domain").signed_action.hashed.content.entry_hash;
+      "the two claims both agents published into this run's domain").signed_action.hashed.content.data.entry_hash;
     await agent2.call('create_critique', {
       target: targetHash, target_type: 'Claim', critique_mode: 'Methodological',
       content: 'Sample size is not reported.', author: agent2.me,

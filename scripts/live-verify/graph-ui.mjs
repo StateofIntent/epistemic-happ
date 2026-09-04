@@ -78,8 +78,13 @@ async function seed() {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
@@ -94,7 +99,7 @@ async function seed() {
     evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
   });
   const claims = await call('get_claims_by_domain', DOMAIN);
-  const claimHash = claims[0].signed_action.hashed.content.entry_hash;
+  const claimHash = claims[0].signed_action.hashed.content.data.entry_hash;
 
   // A critique targets an entry hash (SPEC §5.4), so critiquing a
   // critique means reading back its entry hash and targeting that.
@@ -105,7 +110,7 @@ async function seed() {
       replication_attempted: false, evidence_hashes: [], species: null,
     });
     const list = await call('get_critiques_for', targetHash);
-    return list[list.length - 1].signed_action.hashed.content.entry_hash;
+    return list[list.length - 1].signed_action.hashed.content.data.entry_hash;
   };
 
   const l1 = await critiqueOn(claimHash, 'Claim', 'Methodological',

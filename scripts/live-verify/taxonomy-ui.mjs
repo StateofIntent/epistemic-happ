@@ -98,8 +98,13 @@ async function zome() {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
@@ -140,7 +145,7 @@ async function main() {
     seeded.filter((r) => r.entry?.Present?.entry != null), 'get_all_critique_species',
     `the root species ${ROOT} just created`,
   );
-  const rootEntryHash = rootRecord.signed_action.hashed.content.entry_hash;
+  const rootEntryHash = rootRecord.signed_action.hashed.content.data.entry_hash;
 
   await call('create_critique_species', {
     name: CHILD, parent_species: rootEntryHash,
@@ -274,7 +279,7 @@ async function main() {
     // simpler and the same path any real client would take.
     const allSpecies = await call2('get_all_critique_species', null);
     const decoded = await Promise.all(allSpecies.map((r) =>
-      call2('get_critique_species', r.signed_action.hashed.content.entry_hash)));
+      call2('get_critique_species', r.signed_action.hashed.content.data.entry_hash)));
     const proposed = decoded.find((sp) => sp && sp.name === PROPOSED);
     check('the proposed species is on the DHT under the name given, per an independent client',
       proposed != null);
