@@ -79,8 +79,13 @@ async function connectApp(admin, appId) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
@@ -93,7 +98,11 @@ async function ensureAgent(admin, appId) {
   const apps = await admin.listApps({});
   if (!apps.some((a) => a.installed_app_id === appId)) {
     const key = await admin.generateAgentPubKey();
-    await admin.installApp({ path: HAPP_PATH, agent_key: key, installed_app_id: appId, membrane_proofs: {} });
+    // installApp takes `source: { type: 'path', value }` as of client
+    // 0.21, not a bare `path`, and no longer accepts a top-level
+    // `membrane_proofs` map. The old shape is rejected by the conductor
+    // with "deserialization: Failed to deserialize request".
+    await admin.installApp({ source: { type: 'path', value: HAPP_PATH }, agent_key: key, installed_app_id: appId });
     await admin.enableApp({ installed_app_id: appId });
   }
   return connectApp(admin, appId);
@@ -135,7 +144,7 @@ async function main() {
     log('  the conductor is running a STALE BUILD — scripts/pack-webhapp.sh, then clean.');
     process.exit(1);
   }
-  const target = claims[0].signed_action.hashed.content.entry_hash;
+  const target = claims[0].signed_action.hashed.content.data.entry_hash;
   for (let i = 0; i < 2; i += 1) {
     await agent2.call('create_critique', {
       target, target_type: 'Claim', critique_mode: 'Logical',

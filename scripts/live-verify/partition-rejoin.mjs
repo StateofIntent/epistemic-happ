@@ -20,7 +20,7 @@
 // deliberate: it is unambiguous, and it is what actually happens in
 // practice. Blocking traffic between two processes that are both still
 // running is a different and murkier experiment, since either may hold an
-// already-negotiated WebRTC connection that no longer depends on the
+// already-negotiated QUIC connection that no longer depends on the
 // signal server it was introduced by.
 //
 //   Phase 0  Both up. A claim crosses A -> B. This is the baseline: if

@@ -38,20 +38,30 @@
 #   nodeC  admin :8895  app :8894   network seed "netverify-seed-2-isolated"
 #   nodeD  admin :8891  app :8890   network seed "netverify-seed-1"   OPT-IN
 #
-# plus the bootstrap server on :8893 and the WebRTC signal server on :8892.
+# plus a single combined bootstrap + iroh relay service on :8893.
 #
 # A and B share a network seed, so the DNA hashes they install are
 # identical and they are on the SAME DHT. C differs in the seed alone —
-# same .happ, same code, same bootstrap server, same signal server, same
+# same .happ, same code, same bootstrap server, same relay, same
 # machine — so its DNA hash differs and it is on a DIFFERENT DHT. C is
 # there so "B received it over the network" cannot be confused with "any
 # conductor pointed at these services would have shown it." Without C, a
 # harness that only watches B prove positive is an anecdote.
 #
-# Peer discovery and transport come from `hc run-local-services`, which
-# runs a local bootstrap server and a tx5 WebRTC signal server. Both bind
-# ephemeral ports and write their real addresses to files, which this
-# script reads rather than guessing.
+# Peer discovery and transport come from `kitsune2-bootstrap-srv`, run on
+# a pinned port. Holochain 0.7 removed both `hc run-local-services` and
+# the tx5/WebRTC transport it served; the transport is now iroh QUIC, and
+# kitsune2's own server binary provides the bootstrap service and an
+# embedded iroh relay together on one address. The same URL is therefore
+# passed as both `network -b <bootstrap>` and `quic <relay>`.
+#
+# Install it with:
+#   cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+# 0.5.x is the kitsune2 line holochain 0.7.0 itself builds against.
+#
+# Verified end to end under 0.7, not assumed: A writes a claim, B (same
+# seed) reads it back within a few seconds, and C (different seed) sees
+# nothing.
 #
 # Ports are deliberately 8894-8899, NOT sandbox.sh's 8888/8889, so this
 # network and the single-node sandbox can be up at the same time without
@@ -87,17 +97,15 @@
 #     from the repo root includes sandbox.sh's conductor. Deleting this
 #     network must not delete that one.
 #
-#   - THE BOOTSTRAP AND SIGNAL PORTS MUST BE PINNED, even though
-#     `run-local-services` recommends leaving them at 0 to be assigned
-#     something free. Its own advice is right for a one-shot run and wrong
-#     here, because a conductor's bootstrap and signal URLs are written
-#     into its persistent config at GENERATE time. Stop the network,
-#     start it again, and the services come back on two different
-#     ephemeral ports while the resumed conductors go on dialling the old
-#     ones — a network that reports itself fully up, on which nothing ever
-#     gossips. Observed exactly that way: three nodes resumed green and
-#     were only reachable because the previous run's services happened to
-#     still be alive. Fixed ports below make `stop`/`start` mean what it
+#   - THE BOOTSTRAP/RELAY PORT MUST BE PINNED, not left ephemeral.
+#     A conductor's bootstrap and relay URLs are written into its
+#     persistent config at GENERATE time. Stop the network, start it
+#     again, and the service comes back on a different ephemeral port
+#     while the resumed conductors go on dialling the old one — a network
+#     that reports itself fully up, on which nothing ever gossips.
+#     Observed exactly that way: three nodes resumed green and were only
+#     reachable because the previous run's services happened to still be
+#     alive. A fixed port below makes `stop`/`start` mean what it
 #     looks like it means. The cost is that these two ports must be free,
 #     which is the same contract the conductor ports already have.
 #
@@ -187,10 +195,23 @@ OPTIONAL_NODES=(
 # conductor ports for the same reason those avoid 8888/8889: so the whole
 # range this script occupies is contiguous and obvious.
 BOOTSTRAP_PORT="${EPI_NET_BOOTSTRAP_PORT:-8893}"
-SIGNAL_PORT="${EPI_NET_SIGNAL_PORT:-8892}"
 
-BOOT_ADDR_FILE="$NET_ROOT/bootstrap.addr"
-SIG_ADDR_FILE="$NET_ROOT/signal.addr"
+# ONE SERVICE, ONE URL, used as both the bootstrap server and the iroh
+# relay. Holochain 0.7 removed the tx5/WebRTC transport, and with it the
+# separate WebRTC signal server this script used to run on :8892 — there
+# is no signal server to point at any more. `kitsune2-bootstrap-srv`
+# embeds an iroh relay alongside the bootstrap service and serves both on
+# the same address, so the same URL goes to `-b` and to `quic`'s relay
+# argument. Confirmed from its own startup log, which reports both
+# "Binding to: 127.0.0.1:<port>" and an `iroh_relay::server` QUIC server.
+#
+# The address is computed rather than read from a file. `hc
+# run-local-services` used to publish its real addresses to
+# --bootstrap-address-path/--signal-address-path because its ports could
+# be ephemeral; kitsune2-bootstrap-srv takes a --listen address directly,
+# so pinning the port (see the header for why it must be pinned) means
+# the URL is already known and nothing needs to be discovered.
+BOOTSTRAP_URL="http://127.0.0.1:$BOOTSTRAP_PORT"
 SERVICES_LOG="$NET_ROOT/services.log"
 SERVICES_PIDFILE="$NET_ROOT/services.pid"
 
@@ -211,6 +232,11 @@ find_bin() {
 
 HC_BIN="$(find_bin hc)"
 HOLOCHAIN_BIN="$(find_bin holochain)"
+# Holochain 0.7 dropped `hc run-local-services`, so the local bootstrap
+# and relay come from kitsune2's own server binary instead. Installed
+# with `cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked`
+# (0.5.x is the kitsune2 line holochain 0.7.0 itself builds against).
+K2_BOOT_BIN="$(find_bin kitsune2-bootstrap-srv)"
 
 port_up() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&- 2>/dev/null || true; return 0; }; return 1; }
 
@@ -248,61 +274,45 @@ services_running() {
 
 start_services() {
   if services_running; then
-    log "Local bootstrap/signal services already running (pid $(cat "$SERVICES_PIDFILE"))."
+    log "Local bootstrap/relay service already running (pid $(cat "$SERVICES_PIDFILE"))."
     return 0
   fi
-  # run-local-services REFUSES to start if either address file already
-  # exists ("If the file exists, an error will be returned"), so a stale
-  # pair from a previous run is a hard failure rather than an overwrite.
-  rm -f "$BOOT_ADDR_FILE" "$SIG_ADDR_FILE"
-  log "Starting local bootstrap + WebRTC signal services ..."
-  ( cd "$NET_ROOT" && setsid --fork "$HC_BIN" run-local-services \
-      --bootstrap-port "$BOOTSTRAP_PORT" --signal-port "$SIGNAL_PORT" \
-      --bootstrap-address-path "$BOOT_ADDR_FILE" \
-      --signal-address-path "$SIG_ADDR_FILE" \
+  log "Starting local bootstrap + iroh relay service on :$BOOTSTRAP_PORT ..."
+  ( cd "$NET_ROOT" && setsid --fork "$K2_BOOT_BIN" --listen "127.0.0.1:$BOOTSTRAP_PORT" \
       < /dev/null > "$SERVICES_LOG" 2>&1 )
 
+  # Wait on the port rather than on an address file: there is no address
+  # file any more (see BOOTSTRAP_URL above), and the port answering is
+  # the thing conductors actually need.
   local tries=30
   while [ "$tries" -gt 0 ]; do
-    [ -s "$BOOT_ADDR_FILE" ] && [ -s "$SIG_ADDR_FILE" ] && break
-    # A bind failure is reported in the log and never produces an address
-    # file, so waiting out the full 30s for it is pure delay. Fail fast
-    # and show the reason, which is nearly always a leaked previous run
-    # still holding these ports.
-    if grep -q "run-local-services error" "$SERVICES_LOG" 2>/dev/null; then
-      log "Services failed to start. Log:"
+    port_up "$BOOTSTRAP_PORT" && break
+    # A bind failure is fatal and instant; waiting out the full 30s for
+    # it is pure delay. Nearly always a leaked previous run still holding
+    # the port.
+    if grep -qiE "address in use|AddrInUse" "$SERVICES_LOG" 2>/dev/null; then
+      log "Service failed to start. Log:"
       cat "$SERVICES_LOG" >&2
-      fail "If this says AddrInUse, something is still bound to :$BOOTSTRAP_PORT/:$SIGNAL_PORT — check with: pgrep -af run-local-services"
+      fail "Something is still bound to :$BOOTSTRAP_PORT — check with: pgrep -af kitsune2-bootstrap-srv"
     fi
     sleep 1; tries=$((tries - 1))
   done
-  [ -s "$BOOT_ADDR_FILE" ] && [ -s "$SIG_ADDR_FILE" ] \
-    || fail "Services did not publish their addresses within 30s. Log tail:$(echo; tail -n 20 "$SERVICES_LOG" 2>/dev/null)"
+  port_up "$BOOTSTRAP_PORT" \
+    || fail "Bootstrap/relay service did not bind :$BOOTSTRAP_PORT within 30s. Log tail:$(echo; tail -n 20 "$SERVICES_LOG" 2>/dev/null)"
 
-  # THE PID MUST BE FOUND, NOT CAPTURED. `( cd X && nohup Y ... & )`
-  # backgrounds the whole `cd && nohup` list, so `$!` is that transient
-  # subshell's PID, not the `hc` process's — the subshell is gone in
-  # milliseconds while `hc` keeps running and keeps the ports. Recording
-  # `$!` therefore made `stop` kill something already dead and leave the
-  # real services alive, which is the exact leak sandbox.sh's header
-  # describes for conductors, reproduced here for the services.
-  #
-  # It stayed invisible for as long as the ports were ephemeral: every
-  # `start` got fresh ones, so a leaked predecessor collided with nothing.
-  # Pinning the ports (see the header) is what surfaced it, immediately
-  # and as `AddrInUse` — a good argument for pinning beyond the resume
-  # correctness it was done for. Found by running `clean && start` end to
-  # end rather than by reading this function.
-  #
-  # Matched on the address-path arguments, which contain $NET_ROOT and so
-  # cannot match a run-local-services belonging to a different network.
+  # THE PID MUST BE FOUND, NOT CAPTURED. `( cd X && setsid --fork Y ... )`
+  # leaves `$!` pointing at a transient subshell that is gone in
+  # milliseconds while the service keeps running and keeps the port.
+  # Recording `$!` made `stop` kill something already dead and leave the
+  # real service alive — the exact leak sandbox.sh's header describes for
+  # conductors. Matched on the --listen address so this cannot match a
+  # service belonging to a different network on another port.
   local pid
-  pid="$(pgrep -f "run-local-services .*--bootstrap-address-path $BOOT_ADDR_FILE" | head -n1)"
-  [ -n "$pid" ] || fail "Services published their addresses but their process could not be found (looked for --bootstrap-address-path $BOOT_ADDR_FILE)."
+  pid="$(pgrep -f "kitsune2-bootstrap-srv .*--listen 127.0.0.1:$BOOTSTRAP_PORT" | head -n1)"
+  [ -n "$pid" ] || fail "Service bound :$BOOTSTRAP_PORT but its process could not be found (looked for --listen 127.0.0.1:$BOOTSTRAP_PORT)."
   echo "$pid" > "$SERVICES_PIDFILE"
 
-  log "  bootstrap: $(head -n1 "$BOOT_ADDR_FILE")  (pid $pid)"
-  log "  signal:    $(head -n1 "$SIG_ADDR_FILE")"
+  log "  bootstrap + relay: $BOOTSTRAP_URL  (pid $pid)"
 }
 
 start_node() {
@@ -314,21 +324,30 @@ start_node() {
     return 0
   fi
 
-  local boot sig
-  boot="$(head -n1 "$BOOT_ADDR_FILE")"
-  # The signal file lists both an IPv4 and an IPv6 address; take the first.
-  sig="$(head -n1 "$SIG_ADDR_FILE")"
+  # One URL for both roles now — see BOOTSTRAP_URL. There is no separate
+  # signal address to read, and no address file to read it from.
 
   if [ -d "$NET_ROOT/$name" ]; then
-    log "Resuming $name (admin :$admin, app :$app) ..."
+    # RESUME IS BY INDEX NOW, NOT BY PATH. 0.7 removed `run -e <path>`;
+    # `hc sandbox run` takes zero-based indices into the `.hc` file (or
+    # `-a` for all of them). The index cannot be assumed from the order
+    # this script generates nodes in — `.hc` is appended to as each
+    # sandbox finishes generating, so a run where nodeC won the race
+    # leaves nodeC at index 0. Look the name up in `.hc` instead, which
+    # is exact regardless of ordering.
+    local idx
+    idx="$(grep -nxF "$NET_ROOT/$name" "$NET_ROOT/.hc" 2>/dev/null | head -n1 | cut -d: -f1)"
+    [ -n "$idx" ] || fail "$name has a directory but no entry in $NET_ROOT/.hc, so it cannot be resumed by index. Recreate the network: scripts/network.sh clean && scripts/network.sh start"
+    idx=$((idx - 1))   # grep -n is 1-based; hc sandbox indices are 0-based.
+    log "Resuming $name (admin :$admin, app :$app, .hc index $idx) ..."
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
-        run -e "$NET_ROOT/$name" > "$NET_ROOT/$name.log" 2>&1 )
+        run "$idx" > "$NET_ROOT/$name.log" 2>&1 )
   else
     log "Generating $name (admin :$admin, app :$app, seed \"$seed\") ..."
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
         generate -a "$app_id" -r="$app" --in-process-lair --root "$NET_ROOT" -d "$name" \
         -s "$seed" "$HAPP_PATH" \
-        network -b "$boot" webrtc "$sig" > "$NET_ROOT/$name.log" 2>&1 )
+        network -b "$BOOTSTRAP_URL" quic "$BOOTSTRAP_URL" > "$NET_ROOT/$name.log" 2>&1 )
   fi
 
   if ! wait_for_port "$admin" 90 || ! wait_for_port "$app" 90; then
@@ -356,32 +375,43 @@ start_node() {
   # app and getting "Activated app" both times), so this runs on the
   # generate path too rather than being conditional on which branch was
   # taken — one less way for the two paths to diverge.
-  if ! echo "$PASSPHRASE" | "$HC_BIN" sandbox --piped call -r "$admin" \
+  # No passphrase and no --piped here, unlike the zome-call commands:
+  # `hc client call` makes ADMIN API requests, which are not signed with
+  # the agent's key and so never touch the keystore. It rejects --piped
+  # outright ("unexpected argument '--piped' found"), which is a silent
+  # no-op failure if it goes to a log nobody reads.
+  if ! "$HC_BIN" client call --port "$admin" \
        enable-app "$app_id" > "$NET_ROOT/$name.enable.log" 2>&1; then
     log "  WARNING: could not enable app \"$app_id\" on $name. Zome calls will fail with CellDisabled. Log:"
     cat "$NET_ROOT/$name.enable.log" >&2 || true
   fi
 
-  # AND THEN WAIT FOR IT, because EnableApp returning success is not the
-  # same as the cell being usable. Enabling is asynchronous: the call
-  # reports `Activated app` immediately while the cell is still coming
-  # up, and a client connecting in that window gets the SAME
-  # `CellDisabled(CellId(...))` error as if the app had never been
-  # enabled at all. Adding the enable call above without this wait
-  # therefore changed nothing observable — the harness failed identically,
-  # and only a later `list-apps` (by then reporting `status: Running`)
-  # showed that the enable had in fact worked and been raced. Polling
-  # list-apps for `status: Running` is what makes `start` returning mean
-  # the network is actually usable.
+  # AND THEN WAIT FOR IT. Under 0.4 this was strictly necessary: EnableApp
+  # returned `Activated app` immediately while the cell was still coming
+  # up, and a client connecting in that window got the same
+  # `CellDisabled(CellId(...))` error as if the app had never been enabled
+  # — so adding the enable call without this wait changed nothing
+  # observable, and only a later `list-apps` showed the enable had worked
+  # and been raced. 0.6 tightened `EnableApp` to fail if creating the
+  # app's cells fails, which should close that window, but the poll is
+  # kept: it is cheap, and "start returning means the network is usable"
+  # is the property worth holding regardless of which release enforces it.
+  #
+  # THE STATUS STRING CHANGED. 0.6 removed the Running/Paused app states
+  # entirely, leaving only enabled and disabled, and `hc client call`
+  # emits JSON rather than the old debug formatting. What used to be
+  # `status: Running` in that output is now `"status":{"type":"enabled"}`.
+  # Grepping for the old string would never match and would silently burn
+  # the full 30s on every node, every start.
   local tries=30
   while [ "$tries" -gt 0 ]; do
-    if echo "$PASSPHRASE" | "$HC_BIN" sandbox --piped call -r "$admin" list-apps 2>/dev/null \
-         | grep -q "status: Running"; then
+    if "$HC_BIN" client call --port "$admin" list-apps 2>/dev/null \
+         | grep -q '"type":"enabled"'; then
       break
     fi
     sleep 1; tries=$((tries - 1))
   done
-  [ "$tries" -gt 0 ] || log "  WARNING: $name's app never reported \"status: Running\" within 30s; zome calls may fail with CellDisabled."
+  [ "$tries" -gt 0 ] || log "  WARNING: $name's app never reported an enabled status within 30s; zome calls may fail."
 
   log "  $name ready (pid $pid)."
 }
@@ -440,9 +470,8 @@ case "$cmd" in
 
   status)
     if services_running; then
-      log "Services running (pid $(cat "$SERVICES_PIDFILE"))."
-      [ -s "$BOOT_ADDR_FILE" ] && log "  bootstrap: $(head -n1 "$BOOT_ADDR_FILE")"
-      [ -s "$SIG_ADDR_FILE" ] && log "  signal:    $(head -n1 "$SIG_ADDR_FILE")"
+      log "Service running (pid $(cat "$SERVICES_PIDFILE"))."
+      log "  bootstrap + relay: $BOOTSTRAP_URL"
     else
       log "Services not running."
     fi
@@ -474,7 +503,7 @@ case "$cmd" in
     # This is how scripts/live-verify/partition-rejoin.mjs partitions the
     # network: taking a conductor offline is an unambiguous partition,
     # unlike blocking traffic between two processes that are both still
-    # running and may hold an already-negotiated WebRTC connection.
+    # running and may hold an already-negotiated QUIC connection.
     node="${2:-}"
     [ -n "$node" ] || fail "Usage: scripts/network.sh stop-node <nodeA|nodeB|nodeC|nodeD>"
     spec_for "$node" >/dev/null || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC, nodeD (nodeD is opt-in; see OPTIONAL_NODES)."
@@ -497,14 +526,17 @@ case "$cmd" in
     node="${2:-}"
     [ -n "$node" ] || fail "Usage: scripts/network.sh start-node <nodeA|nodeB|nodeC|nodeD>"
     spec="$(spec_for "$node")" || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC, nodeD (nodeD is opt-in; see OPTIONAL_NODES)."
-    services_running || fail "The bootstrap/signal services are not running. Start the whole network first: scripts/network.sh start"
+    services_running || fail "The bootstrap/relay service is not running. Start the whole network first: scripts/network.sh start"
     start_node "$spec"
     ;;
 
   addrs)
-    [ -s "$BOOT_ADDR_FILE" ] || fail "No bootstrap address recorded. Is the network up? scripts/network.sh start"
-    echo "bootstrap=$(head -n1 "$BOOT_ADDR_FILE")"
-    echo "signal=$(head -n1 "$SIG_ADDR_FILE")"
+    # Both roles are the same URL now; the "signal=" line is kept, with
+    # the relay's address, so anything parsing this output for a second
+    # service still finds one rather than silently getting nothing.
+    services_running || fail "The bootstrap/relay service is not running. Is the network up? scripts/network.sh start"
+    echo "bootstrap=$BOOTSTRAP_URL"
+    echo "relay=$BOOTSTRAP_URL"
     ;;
 
   *)

@@ -50,7 +50,7 @@
 # reachable, and removing the rule restored it.
 #
 # WHAT THE PARTITION ACTUALLY CUTS, which is not what was first assumed.
-# The obvious guess is that Holochain peers talk over WebRTC/UDP and that
+# The obvious guess is that Holochain peers talk over QUIC/UDP and that
 # dropping UDP partitions them. That was tried first and it DID NOT WORK —
 # claims crossed with all UDP dropped in both directions. Inspecting the
 # sockets explained why: on this setup each conductor holds exactly two TCP

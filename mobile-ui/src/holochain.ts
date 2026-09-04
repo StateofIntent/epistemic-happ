@@ -235,7 +235,7 @@ export function decodeRecords<T>(records: any[]): DecodedRecord<T>[] {
     const present = record?.entry?.Present;
     if (!present) continue;
     out.push({
-      entryHash: record.signed_action.hashed.content.entry_hash,
+      entryHash: record.signed_action.hashed.content.data.entry_hash,
       actionHash: record.signed_action.hashed.hash,
       entry: decode(present.entry) as T,
     });

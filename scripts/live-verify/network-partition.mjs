@@ -20,7 +20,7 @@
 // comment.
 //
 // WHAT IS CUT, AND HOW THAT WAS ESTABLISHED. The obvious guess is that
-// peers talk over WebRTC/UDP, so dropping UDP should partition them. That
+// peers talk over QUIC/UDP, so dropping UDP should partition them. That
 // was tried first and it did not work: claims crossed with all UDP dropped
 // in both directions. The sockets say why — each conductor holds exactly
 // two TCP connections, to the bootstrap server and to the signal server,

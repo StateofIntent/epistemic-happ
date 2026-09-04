@@ -142,7 +142,11 @@ async function main() {
   const apps = await admin.listApps({});
   if (!apps.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
     const key = await admin.generateAgentPubKey();
-    await admin.installApp({ path: HAPP_PATH, agent_key: key, installed_app_id: AGENT2_APP_ID, membrane_proofs: {} });
+    // installApp takes `source: { type: 'path', value }` as of client
+    // 0.21, not a bare `path`, and no longer accepts a top-level
+    // `membrane_proofs` map. The old shape is rejected by the conductor
+    // with "deserialization: Failed to deserialize request".
+    await admin.installApp({ source: { type: 'path', value: HAPP_PATH }, agent_key: key, installed_app_id: AGENT2_APP_ID });
     await admin.enableApp({ installed_app_id: AGENT2_APP_ID });
   }
   const a2 = await connectApp(admin, AGENT2_APP_ID);
@@ -159,7 +163,7 @@ async function main() {
   const mewRec = mine.find((r) => entryOf(r).content === MEW_TEXT);
   check('the Mew is findable by its author', mewRec !== undefined);
   if (!mewRec) setupFail(['The Mew just created was not returned by get_mews_by_agent.']);
-  const mewHash = mewRec.signed_action.hashed.content.entry_hash;
+  const mewHash = mewRec.signed_action.hashed.content.data.entry_hash;
 
   const fetched = await a1.call('get_mew', mewHash);
   check('get_mew returns it by hash, with its content intact',
@@ -193,7 +197,7 @@ async function main() {
   check('promotion produced exactly one Claim', claims.length === 1);
   if (claims.length !== 1) setupFail(['Promotion did not produce a single Claim; nothing below is interpretable.']);
   const claim = entryOf(claims[0]);
-  const claimHash = claims[0].signed_action.hashed.content.entry_hash;
+  const claimHash = claims[0].signed_action.hashed.content.data.entry_hash;
   check('the Claim carries the Mew\'s content', claim.content === MEW_TEXT);
   check('the Claim carries the Mew\'s semantic tags', JSON.stringify(claim.semantic_tags) === JSON.stringify(['rehab']));
   check('the Claim names the Mew it came from — provenance, not a copy',
@@ -224,7 +228,7 @@ async function main() {
   // ---- 5. A reply comes back and lands on the right Claim -------------
   log('\n--- 5. An external reply is imported against its Claim ---');
   const otherClaimHash = (await a1.call('get_claims_by_domain', DOMAIN))[0]
-    .signed_action.hashed.content.entry_hash;
+    .signed_action.hashed.content.data.entry_hash;
   await a1.call('create_claim', {
     content: `An unrelated claim, stamped ${STAMP}.`, domain: DOMAIN,
     confidence: 'Moderate', semantic_tags: [], author: a1.me,
@@ -232,7 +236,7 @@ async function main() {
   });
   const all = await a1.call('get_claims_by_domain', DOMAIN);
   const unrelated = all.find((r) => entryOf(r).content.startsWith('An unrelated claim'));
-  const unrelatedHash = unrelated.signed_action.hashed.content.entry_hash;
+  const unrelatedHash = unrelated.signed_action.hashed.content.data.entry_hash;
 
   await a1.call('import_twitter_reply', {
     twitter_id: `${TWEET_ID}-reply`, author_handle: REPLY_HANDLE, content: REPLY_TEXT,

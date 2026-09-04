@@ -23,7 +23,8 @@
 //
 // So the arrangement this needs did not exist and had to be built:
 // `scripts/network.sh`, which runs a local bootstrap server and a tx5
-// WebRTC signal server and brings up three conductors against them.
+// iroh relay (one combined kitsune2-bootstrap-srv) and brings up three
+// conductors against it.
 //
 // WHAT IS VERIFIED, against three live conductors in three separate OS
 // processes with three distinct agent keys and three separate data
@@ -38,7 +39,7 @@
 //      out "it was already there" without depending on how fast gossip
 //      happens to be.
 //   3. THE FINDING. nodeA publishes a Claim; nodeB's `get_claims_by_domain`
-//      returns it, having received it over WebRTC.
+//      returns it, having received it over the iroh QUIC transport.
 //   4. IT IS THE SAME ENTRY. The claim nodeB holds is compared field by
 //      field with what nodeA wrote, and its author is nodeA's key.
 //   5. TWO INDEPENDENT READ PATHS. `get_claims_by_agent` on nodeB finds
@@ -181,8 +182,13 @@ async function connectNode(name, { admin: adminPort, app: appPort, appId }) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   if (cellIds.length === 0) setupFail([`App "${appId}" on node${name} has no provisioned cells.`]);
@@ -216,7 +222,7 @@ async function connectNode(name, { admin: adminPort, app: appPort, appId }) {
       `node${name}'s cell was still disabled after 30s of retrying.`,
       String(lastErr.message ?? lastErr),
       'The conductor is up but its app never finished enabling. Try:',
-      `  hc sandbox call -r ${adminPort} list-apps`,
+      `  hc client call --port ${adminPort} list-apps`,
       'and if it is not Running, scripts/network.sh clean && scripts/network.sh start.',
     ]);
   }
@@ -466,7 +472,7 @@ async function main() {
   log('');
   if (failures === 0) {
     log('ALL CHECKS PASSED — an entry written on one conductor reached a');
-    log('genuinely different conductor over a real WebRTC network, an');
+    log('genuinely different conductor over a real iroh QUIC network, an');
     log('isolated conductor never saw it, and chain-local reads stayed');
     log('chain-local across that same working network.');
   } else {

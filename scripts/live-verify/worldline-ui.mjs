@@ -84,8 +84,13 @@ async function zome() {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
-      else if (CellType.Cloned in cell) cellIds.push(cell[CellType.Cloned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) {
+        cellIds.push(cell.value.cell_id);
+      }
     }
   }
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
