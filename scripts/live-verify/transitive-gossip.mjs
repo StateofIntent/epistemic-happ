@@ -90,6 +90,21 @@
 //
 //   Restored and re-run: 21 checks green.
 //
+//   Found by a full-suite run, not by an injection: "nodeB does NOT yet hold
+//   the claim" went red. It had passed every isolated run of this file, and
+//   it was wrong the whole time. The read asserts that nodeB returns without
+//   the claim; nodeB can acquire it from nodeD DURING connectNode's own
+//   handshake, and on a network already warmed by real-gossip and
+//   partition-rejoin running before it, that is what happened — 0.0s. The
+//   isolated runs had measured 5.0s and 55.3s and won the race by luck.
+//
+//   It is now an observation rather than a check, because divergence never
+//   depended on it: the domain is minted fresh, and phase 3 asserts nodeB is
+//   genuinely down before the claim is authored, so a node that was not
+//   running cannot have been sent it. Verified on the failing condition
+//   rather than in principle — cold network 5.0s, warm 55.3s, warm again
+//   0.0s taking the fast path, all three green.
+//
 //   THE DELIVERY TIME VARIES AND IS REPORTED AS A RANGE, NOT A CONSTANT.
 //   Three clean runs measured 5.0s, 55.3s and 55.3s. The repeat of the
 //   same figure twice suggests a periodic gossip cycle that a returning
@@ -310,13 +325,45 @@ async function main() {
   B = await connectNode('B');
   check('nodeB is up again', !nodeIsDown('nodeB'));
   check('nodeA is STILL down now that nodeB is up — they are never up together', nodeIsDown('nodeA'));
-  check('nodeB does NOT yet hold the claim', (await countIn(B, D_A)) === 0);
+  // NOT A CHECK, AND IT USED TO BE ONE. This read used to assert that nodeB
+  // returns without the claim, as a way of establishing divergence. It
+  // asserts a race, not a property: nodeB can sync from nodeD during
+  // connectNode's own handshake — authorizeSigningCredentials alone retries
+  // for up to 30s — and when it does, this read finds the claim already
+  // there. That is the mechanism under test SUCCEEDING FASTER, not the
+  // premise failing.
+  //
+  // It went red for exactly that reason on a full-suite run, where
+  // real-gossip and partition-rejoin had already warmed the same network so
+  // peers were discovered and gossip was hot; nodeB acquired in 0.0s. Every
+  // isolated run had measured 5.0s or 55.3s and won the race by luck.
+  //
+  // Divergence does not need this read anyway, and never did. It is
+  // guaranteed by construction and by a check that is already strict: the
+  // domain is minted fresh at the top of this run, and phase 3 asserts nodeB
+  // is genuinely down BEFORE the claim is authored. A node that was not
+  // running when an entry was written cannot have been sent it. What proves
+  // the result is nodeA being down for the whole of the wait below, which is
+  // checked on every poll.
+  //
+  // This is the inverse of the defect partition-rejoin.mjs records in its own
+  // negative evidence — that one read too early and passed for the wrong
+  // reason. This one read too late and failed for the wrong reason. Both are
+  // the same underlying mistake: a check whose label claims a property when
+  // its assertion tests a timing.
+  const alreadySynced = (await countIn(B, D_A)) > 0;
+  log(alreadySynced
+    ? '    nodeB had already synced from nodeD during the handshake — the fast path'
+    : '    nodeB does not hold the claim yet — the wait below will measure it arriving');
 
   // ---- 5. The question --------------------------------------------------
   log('\n--- 5. Does nodeB acquire it, with its author down and only nodeD holding it? ---');
   const conv = await awaitVia(B, D_A, 'nodeB', 'nodeA', C);
   check('nodeB acquired the claim', conv.ms !== null);
-  if (conv.ms !== null) log(`    nodeB acquired it in ${(conv.ms / 1000).toFixed(1)}s`);
+  if (conv.ms !== null) {
+    log(`    nodeB acquired it in ${(conv.ms / 1000).toFixed(1)}s`
+      + (alreadySynced ? ' (already held at reconnect — see the note in phase 4)' : ''));
+  }
   check('CONTROL: nodeA never came back up at any point during that wait — so nodeD is the only possible source',
     !conv.authorEverUp);
 
