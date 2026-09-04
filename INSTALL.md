@@ -54,11 +54,17 @@ Two honest caveats, because the alternative is you discovering them yourself:
   with a third person online it is usually seconds, since a returning node
   has no failure history against someone who stayed up.
 
-  The five-and-a-half-minute figure this page used to quote was measured
-  under Holochain 0.4's tx5/WebRTC transport, which 0.7 replaced with iroh
-  QUIC. It has not been re-measured since, so no number is quoted here
-  now. What has been re-measured is ordinary propagation between two nodes
-  that are both up: about two seconds.
+  On Holochain 0.7 that wait is **about a minute**: two conductors taken
+  offline, each having written history the other could not see, converged
+  on both after rejoining in 65 and 60 seconds respectively. Ordinary
+  propagation between two nodes that are both up is about two seconds.
+
+  This page previously quoted five and a half minutes. That was accurate
+  when written and was measured under Holochain 0.4's tx5/WebRTC
+  transport, which 0.7 replaced with iroh QUIC — the figure improved by
+  roughly five-fold with the transport, and neither number was a guess:
+  both come from `scripts/live-verify/partition-rejoin.mjs`, which
+  partitions a real network and waits out the real backoff.
 
 ## What you can do in it
 

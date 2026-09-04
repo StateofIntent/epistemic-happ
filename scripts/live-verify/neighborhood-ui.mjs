@@ -89,7 +89,7 @@ async function zome() {
   const info = await app.appInfo();
   const cellIds = [];
   for (const rc of Object.values(info.cell_info)) {
-    for (const c of rc) if (CellType.Provisioned in c) cellIds.push(c[CellType.Provisioned].cell_id);
+    for (const c of rc) if (c?.type === CellType.Provisioned) cellIds.push(c.value.cell_id);
   }
   for (const id of cellIds) await admin.authorizeSigningCredentials(id);
   const call = (fn, payload) =>

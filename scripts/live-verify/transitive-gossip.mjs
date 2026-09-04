@@ -206,7 +206,11 @@ async function connectNode(name) {
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
-      if (CellType.Provisioned in cell) cellIds.push(cell[CellType.Provisioned].cell_id);
+      // CellInfo became a discriminated union in @holochain/client
+      // 0.21 ({ type, value }); it used to be keyed by cell type. The
+      // old `CellType.Provisioned in cell` test matches nothing against
+      // the new shape, silently yielding no cell ids at all.
+      if (cell?.type === CellType.Provisioned) cellIds.push(cell.value.cell_id);
     }
   }
   if (cellIds.length === 0) setupFail([`App "${appId}" on ${NODES[name].node} has no provisioned cells.`]);
