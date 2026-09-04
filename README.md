@@ -656,7 +656,15 @@ scripts/network.sh status   # what is up, on which ports
 scripts/network.sh stop     # stop everything, keep DHT state
 scripts/network.sh clean    # stop + delete all state
 scripts/network.sh addrs    # the bootstrap/signal URLs in use
+
+scripts/network.sh stop-node nodeB    # take ONE node offline, leave the rest up
+scripts/network.sh start-node nodeB   # and bring it back
 ```
+
+The last two are how `scripts/live-verify/partition-rejoin.mjs` partitions
+the network mid-run: taking a conductor offline is an unambiguous
+partition, unlike blocking traffic between two processes that are both
+still running.
 
 **nodeA and nodeB share a network seed**, so they install identical DNA
 hashes and are on the same DHT. **nodeC differs in the seed alone** —
@@ -671,7 +679,12 @@ The ports are deliberately disjoint from `sandbox.sh`'s 8888/8889, so
 this network and the single-node sandbox can both be up without either
 noticing the other.
 
-With it up, `node scripts/live-verify/real-gossip.mjs` asks the question.
+With it up, `node scripts/live-verify/real-gossip.mjs` asks whether an
+entry crosses between two conductors at all, and
+`node scripts/live-verify/partition-rejoin.mjs` asks the harder version:
+whether a node that was *offline* while history was written catches up
+when it returns. The second takes about nine minutes, most of it spent
+waiting out a real gossip backoff rather than doing anything.
 
 ### 6.7 Run the Bridge
 
@@ -1043,6 +1056,26 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **That run also showed something no green run could have.** Check 9's own assertion — nodeB does not see nodeA's constitution — **passed** during the injection, because the node in the nodeB slot was on a different DHT and could not have seen anything at all. What exposed the pass as empty was the paired control immediately after it going red. That is the exact job the paired control was added to do, now confirmed rather than assumed: without it, the sharpest check in this harness reports a meaningless green precisely when the network is broken in the way that matters most. Restored afterwards and re-run: all 25 checks green again, on the same conductors, without cleaning them.
 
   **The honest limit, since a green result here invites a bigger claim than it supports.** All three conductors run on one machine against a localhost bootstrap and a localhost signal server. What is now verified is that this hApp's entries propagate between genuinely separate conductors over a real transport, with real peer discovery, and that the chain-local reads stay chain-local when they do. What is *not* touched: NAT traversal, a public signal server, real internet latency, network partition and rejoin, or more than trivially few nodes. That is the next real networking gap, named here the same way the Launcher-install gap is named above rather than left to be discovered by someone reading a passing test as more than it is.
+
+- [x] **Partition and rejoin — a node that was offline while history was written catches up, and it takes about five and a half minutes.** `scripts/live-verify/partition-rejoin.mjs`, and `stop-node`/`start-node` added to `scripts/network.sh`.
+
+  **Why the previous increment was only half the question.** Real multi-node networking proved an entry crosses between conductors that are both up the whole time. A network whose participants are never offline is not a network anyone runs — laptops close, processes restart, links drop — and for a protocol built on "nothing is deleted, only witnessed", the property that actually matters is that a node which was *away* while history was written does not stay ignorant of it. Nothing tested that.
+
+  **Partitioned in both directions, because one direction cannot tell two mechanisms apart.** A test where only one node ever goes offline cannot distinguish "the returning node catches up" from "the node that stayed up pushes to whoever appears" — different mechanisms, same happy path. So each node in turn writes something the other cannot see: nodeB is stopped and nodeA writes; then **nodeA is stopped before nodeB is restarted**, so the two are never running simultaneously, and nodeB writes. Stopping a conductor is the partition, deliberately — it is unambiguous and it is what actually happens, unlike blocking traffic between two processes that may both still hold an already-negotiated WebRTC connection.
+
+  **The result, and the number is the interesting part.** Both nodes converged on the other's writes, in both directions, **at 326.6s — the same instant for both**, which is what shows they heal in a single gossip round rather than independently. Content and authorship were checked, not just counts. A claim written *after* healing then crossed in 5.0s, confirming the link was genuinely repaired rather than backfilled once. nodeC, on its own DHT, saw none of it throughout, and was confirmed alive rather than merely silent. 23 checks.
+
+  **Five and a half minutes is not a defect, and the constant that explains it is in the conductor's own config.** Steady-state gossip here is ~2-5s. Post-partition catch-up is dominated instead by `gossip_peer_on_error_next_gossip_delay_ms: 300000` — a node that tried to reach a peer while that peer was down took the error path and will not retry it for five minutes. Worth stating plainly because it sets an expectation: **a node returning from an outage is not current for several minutes**, and any UI that implies otherwise would be lying about what it can see.
+
+  **A too-short timeout produced a confident wrong answer, and that is why the window is now derived rather than guessed.** The first version used a 180s window and was on course to report a convergence *failure* that would have been pure impatience. The window is now 600s, sized from the backoff constant above. A timeout that is shorter than the mechanism it is timing does not measure the mechanism; it measures the timeout, and reports it as a property of the system.
+
+  **The first injection found a real defect in the harness rather than confirming it was sound.** With both partitions removed, so that nothing ever went offline, the two "is genuinely down" checks went red as they should — and **the divergence check, which carries the entire meaning of the run, stayed green.** It read the returning node immediately after the write, sooner than the ~5s a claim takes to cross, so it saw zero for a reason with nothing to do with any partition: the label said "it was never up alongside nodeA", the assertion tested "nothing has arrived yet". That is precisely the failure mode `scripts/live-verify/README.md` records — a check whose label claims more than its assertion tests — found live, in a new harness, by the injection convention that exists to find it. It now waits several times the crossing time Phase 0 measures on the same network before asserting absence, and the same injection turns it red.
+
+  **A misleading pair of true numbers, also fixed.** Measured in sequence, the second direction was timed only after the first had already waited out the whole healing delay, so it reported `0.0s` and read as instant. The run printed "nodeA 351.7s, nodeB 0.0s" — both true, and together a false story. Both directions are now measured concurrently from one shared clock, which is how the matching 326.6s figures came out.
+
+  **A leak in `network.sh` that only a caller could see.** `( cmd & )` looks like it detaches a process and does not: the child stays attached and the script blocks in `wait()` until it exits, which for a conductor is never. Running `network.sh` from a terminal hides this completely — the output all appears and the prompt returns — and it surfaced only when this harness called `stop-node`/`start-node` through Node's `execFileSync`, which waits for the process *and* for its stdout to reach EOF. The harness hung indefinitely with three leaked `network.sh` processes sitting in `do_wait` behind it, one per launch site. Every long-running child is now started with `setsid --fork`; `start` went from never returning to returning in 16s.
+
+  **The honest limit is unchanged and worth repeating.** Three conductors on one machine against localhost services. This tests partition by process exit, not by network failure — no NAT, no packet loss, no asymmetric reachability, no partition of a group larger than two, and no case where both sides keep running but cannot see each other, which is the harder and more realistic shape.
 
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
