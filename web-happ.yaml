@@ -1,16 +1,19 @@
-manifest_version: "1"
+# Holochain 0.7 web-app manifest (WebAppManifestV0). `manifest_version` is
+# "0" for the same reason as dna/dna.yaml and happ.yaml.
+manifest_version: "0"
 name: epistemic-resonance-happ
 ui:
+  # `bundled:` -> `path:`, as everywhere else.
+  #
   # A ZIP of mobile-ui/dist, not the directory itself — `hc web-app pack`
   # embeds the UI as a single opaque archive and does no bundling of its
-  # own. Produced by `scripts/pack-webhapp.sh`, which builds the UI and
-  # zips it; it is a build artifact and is gitignored, so packing from a
-  # fresh clone means running that script rather than `hc web-app pack`
-  # directly.
-  bundled: "./mobile-ui/dist.zip"
-happ_manifest:
+  # own. Produced by scripts/pack-webhapp.sh, which builds the UI and zips
+  # it; it is a build artifact and is gitignored, so packing from a fresh
+  # clone means running that script rather than `hc web-app pack` directly.
+  path: "./mobile-ui/dist.zip"
+# The key is `happ:`, not `happ_manifest:` — renamed alongside the
+# bundled/path change.
+happ:
   # Produced by `hc app pack .` from happ.yaml at this same directory,
-  # which in turn needs `hc dna pack dna/` first. See happ.yaml's own
-  # comment on why the DNA path is dna/epistemic-dna.dna and not what an
-  # earlier version of that file guessed.
-  bundled: "./epistemic-resonance-happ.happ"
+  # which in turn needs `hc dna pack dna/` first.
+  path: "./epistemic-resonance-happ.happ"

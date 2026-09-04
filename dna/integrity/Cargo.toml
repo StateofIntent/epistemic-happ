@@ -8,18 +8,24 @@ license = "MIT OR Apache-2.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Pinned to exactly what hdk 0.4.4 (the coordinator zome's dependency)
-# actually resolves hdi to — a loose "0.4" here let this crate build
-# standalone against hdi 0.4.6, which type-checks fine in isolation but
-# is a physically different crate instance from the hdi 0.5.4 that hdk
-# 0.4.4 pulls in. With no Cargo workspace unifying versions across
-# dna/integrity and dna/coordinator, that split produced HoloHash<Entry>
-# (via this crate) vs HoloHash<hdk::prelude::hash_type::Entry> (via
-# hdk's prelude) being reported as different types when the coordinator
-# zome tried to use both together — confirmed against a real build, not
-# a preventative guess.
-hdi = "=0.5.4"
+# hdi 0.8.0 is the exact version that hdk 0.7.0 depends on — upstream now
+# pins it as `hdi = "=0.8.0"` rather than a caret range, so the two zome
+# crates here can no longer silently resolve to two physically different
+# hdi instances the way they could under 0.4.
+#
+# That hazard is what this pin originally existed for, and it is worth
+# keeping the record: under hdk 0.4.4 a loose "0.4" here resolved hdi to
+# 0.4.6 standalone, which type-checks fine in isolation but is a different
+# crate instance from the hdi 0.5.4 that hdk 0.4.4 pulls in. With no Cargo
+# workspace unifying versions across dna/integrity and dna/coordinator,
+# that split produced HoloHash<Entry> (via this crate) vs
+# HoloHash<hdk::prelude::hash_type::Entry> (via hdk's prelude) being
+# reported as different types when the coordinator zome used both
+# together — confirmed against a real build, not a preventative guess.
+# Upstream's exact pin makes a recurrence much less likely, but pinning
+# exactly on this side too costs nothing and keeps the invariant explicit.
+hdi = "=0.8.0"
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
-hdk = "=0.4.4"
+hdk = "=0.7.0"

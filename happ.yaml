@@ -1,4 +1,7 @@
-manifest_version: "1"
+# Holochain 0.7 app manifest (AppManifestV0). See dna/dna.yaml's header for
+# why `manifest_version` is "0" and why every rename here is a hard parse
+# failure rather than an ignored field.
+manifest_version: "0"
 name: epistemic-resonance-happ
 description: "Epistemic Resonance Protocol - A distributed knowledge system with Twitter bridge"
 roles:
@@ -7,19 +10,17 @@ roles:
       strategy: create
       deferred: false
     dna:
-      # `hc dna pack .` (run from dna/, per README.md §6.2) names its
-      # output after dna.yaml's own `name:` field (epistemic-dna) and
-      # writes it alongside dna.yaml, i.e. dna/epistemic-dna.dna — not
-      # ./epistemic.dna at the repo root, which never existed. Confirmed
-      # directly: `hc app pack .` failed with "No such file or directory"
-      # at that path before this fix, since nothing had ever actually run
-      # that command against this repo before (same class of bug as
-      # dna.yaml's own previously-wrong bundled wasm paths).
-      bundled: ./dna/epistemic-dna.dna
+      # `bundled:` -> `path:`, as in dna/dna.yaml.
+      #
+      # `hc dna pack dna/` names its output after dna.yaml's own `name:`
+      # field (epistemic-dna) and writes it alongside dna.yaml, i.e.
+      # dna/epistemic-dna.dna — not ./epistemic.dna at the repo root.
+      path: ./dna/epistemic-dna.dna
       modifiers:
+        # `origin_time` and `quantum_time` are both gone. Kitsune2 removed
+        # the DHT time-quantisation they configured, and 0.7's
+        # `DnaModifiers` is exactly network_seed + properties.
         network_seed: ~
         properties: ~
-        origin_time: ~
-        quantum_time: ~
       installed_hash: ~
       clone_limit: 0

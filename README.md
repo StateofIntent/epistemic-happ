@@ -539,9 +539,30 @@ But unlike a true Ricardian contract, this binding is **not mutual or enforceabl
 
 ### 6.1 Prerequisites
 
-- **Rust** (latest stable) with `wasm32-unknown-unknown` target
+- **Rust** ≥ 1.88 with the `wasm32-unknown-unknown` target
+  (`rustup target add wasm32-unknown-unknown`). Holochain 0.7 raised the
+  minimum from what 0.4 needed; this project is developed on 1.98.
 - **Node.js** (v18+) and npm
-- **Holochain CLI** (`hc`) — install via `nix-shell` or binary release
+- **Holochain 0.7.0** — both the conductor and the `hc` CLI, installed from
+  crates.io and pinned to the same version as the `hdk`/`hdi` pins in
+  `dna/*/Cargo.toml`:
+
+  ```bash
+  cargo install holochain     --version 0.7.0 --locked
+  cargo install holochain_cli --version 0.7.0 --locked   # provides `hc`
+  ```
+
+  These land in `~/.cargo/bin`, which is **not** on the default `PATH` in
+  every shell — `scripts/sandbox.sh` works around that with `-H`
+  (`--holochain-path`) rather than mutating the caller's `PATH`. A
+  standalone `lair-keystore` binary is not part of either release artifact
+  and is not needed: the sandbox runs with `--in-process-lair`.
+
+  The version matters. Holochain manifests are `deny_unknown_fields` and
+  the manifest schema changed at 0.6, so `dna/dna.yaml`, `happ.yaml` and
+  `web-happ.yaml` in this repo (`manifest_version: "0"`, `path:` rather
+  than `bundled:`, no `origin_time`/`quantum_time`) will not parse under a
+  0.4 or 0.5 `hc`, and vice versa.
 - **Twitter API credentials** (or OpenTweet subscription)
 
 ### 6.2 Build the DNA
