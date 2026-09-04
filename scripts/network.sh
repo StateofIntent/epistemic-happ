@@ -100,6 +100,21 @@
 #     looks like it means. The cost is that these two ports must be free,
 #     which is the same contract the conductor ports already have.
 #
+# EVERY LONG-RUNNING CHILD IS LAUNCHED WITH `setsid --fork`, NOT `&`.
+# `( cmd & )` looks like it detaches and does not: the launched process
+# stays a child of this script, and the script then blocks in wait() until
+# it exits — which, for a conductor or the services, is never. Running
+# `network.sh` from a terminal hides this completely, because the output
+# all appears and the shell prompt returns; the script itself is still
+# sitting there. It only becomes visible to a CALLER that waits for the
+# process to finish and its stdout to reach EOF — which is exactly what
+# Node's `execFileSync` does, and therefore exactly what
+# scripts/live-verify/partition-rejoin.mjs does when it calls `stop-node`
+# and `start-node`. That harness hung indefinitely on its first run, with
+# three leaked `network.sh` processes sitting in `do_wait` behind it, one
+# per launch site. `setsid --fork` puts each child in its own session so
+# nothing is left holding it, and the script exits when its work is done.
+#
 # NO PID IN THIS SCRIPT IS CAPTURED; EVERY ONE IS FOUND. The `hc sandbox
 # run`/`generate` wrapper exits on its own immediately after handing off
 # to the real `holochain` binary, so conductor PIDs are found by matching
@@ -184,6 +199,16 @@ wait_for_port() {
 
 node_pidfile() { echo "$NET_ROOT/$1.pid"; }
 
+# Look up a node's spec by name, for the per-node subcommands below.
+spec_for() {
+  local want="$1" spec
+  for spec in "${NODES[@]}"; do
+    IFS=: read -r name _ _ _ _ <<< "$spec"
+    [ "$name" = "$want" ] && { echo "$spec"; return 0; }
+  done
+  return 1
+}
+
 node_running() {
   local pf; pf="$(node_pidfile "$1")"
   [ -f "$pf" ] && kill -0 "$(cat "$pf")" 2>/dev/null
@@ -203,11 +228,11 @@ start_services() {
   # pair from a previous run is a hard failure rather than an overwrite.
   rm -f "$BOOT_ADDR_FILE" "$SIG_ADDR_FILE"
   log "Starting local bootstrap + WebRTC signal services ..."
-  ( cd "$NET_ROOT" && nohup "$HC_BIN" run-local-services \
+  ( cd "$NET_ROOT" && setsid --fork "$HC_BIN" run-local-services \
       --bootstrap-port "$BOOTSTRAP_PORT" --signal-port "$SIGNAL_PORT" \
       --bootstrap-address-path "$BOOT_ADDR_FILE" \
       --signal-address-path "$SIG_ADDR_FILE" \
-      > "$SERVICES_LOG" 2>&1 & )
+      < /dev/null > "$SERVICES_LOG" 2>&1 )
 
   local tries=30
   while [ "$tries" -gt 0 ]; do
@@ -268,14 +293,14 @@ start_node() {
 
   if [ -d "$NET_ROOT/$name" ]; then
     log "Resuming $name (admin :$admin, app :$app) ..."
-    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
-        run -e "$NET_ROOT/$name" > "$NET_ROOT/$name.log" 2>&1 & )
+    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
+        run -e "$NET_ROOT/$name" > "$NET_ROOT/$name.log" 2>&1 )
   else
     log "Generating $name (admin :$admin, app :$app, seed \"$seed\") ..."
-    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
+    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
         generate -a "$app_id" -r="$app" --in-process-lair --root "$NET_ROOT" -d "$name" \
         -s "$seed" "$HAPP_PATH" \
-        network -b "$boot" webrtc "$sig" > "$NET_ROOT/$name.log" 2>&1 & )
+        network -b "$boot" webrtc "$sig" > "$NET_ROOT/$name.log" 2>&1 )
   fi
 
   if ! wait_for_port "$admin" 90 || ! wait_for_port "$app" 90; then
@@ -409,6 +434,38 @@ case "$cmd" in
     log "Clean. Next 'start' generates three fresh conductors with empty DHTs."
     ;;
 
+  stop-node)
+    # Stop ONE node, leaving the rest of the network and the services up.
+    # This is how scripts/live-verify/partition-rejoin.mjs partitions the
+    # network: taking a conductor offline is an unambiguous partition,
+    # unlike blocking traffic between two processes that are both still
+    # running and may hold an already-negotiated WebRTC connection.
+    node="${2:-}"
+    [ -n "$node" ] || fail "Usage: scripts/network.sh stop-node <nodeA|nodeB|nodeC>"
+    spec_for "$node" >/dev/null || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC."
+    stop_pidfile "$(node_pidfile "$node")" "$node"
+    # Confirm rather than assume: a partition that did not actually happen
+    # would make everything downstream of it meaningless.
+    IFS=: read -r _ admin app _ _ <<< "$(spec_for "$node")"
+    for _ in $(seq 1 15); do
+      port_up "$admin" || break
+      sleep 1
+    done
+    port_up "$admin" && fail "$node was told to stop but its admin port $admin still answers."
+    log "$node is down (admin :$admin and app :$app no longer answer)."
+    ;;
+
+  start-node)
+    # Bring ONE node back, healing the partition. Services must already be
+    # up; this deliberately does not start them, so that a caller cannot
+    # accidentally restart the whole network mid-test.
+    node="${2:-}"
+    [ -n "$node" ] || fail "Usage: scripts/network.sh start-node <nodeA|nodeB|nodeC>"
+    spec="$(spec_for "$node")" || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC."
+    services_running || fail "The bootstrap/signal services are not running. Start the whole network first: scripts/network.sh start"
+    start_node "$spec"
+    ;;
+
   addrs)
     [ -s "$BOOT_ADDR_FILE" ] || fail "No bootstrap address recorded. Is the network up? scripts/network.sh start"
     echo "bootstrap=$(head -n1 "$BOOT_ADDR_FILE")"
@@ -416,7 +473,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: scripts/network.sh {start|stop|status|clean|addrs}" >&2
+    echo "Usage: scripts/network.sh {start|stop|status|clean|addrs|stop-node <n>|start-node <n>}" >&2
     exit 1
     ;;
 esac
