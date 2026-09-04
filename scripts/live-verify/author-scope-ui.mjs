@@ -84,7 +84,22 @@
 //   the assertions were written after measuring what it actually did rather
 //   than to describe a fault imagined for the occasion.
 //
-//   Restored and re-run: 26 checks green.
+//   Injection: the `overflow-wrap: anywhere` rule removed from html, body.
+//   Result: six red — the page scrolls sideways and a text run escapes the
+//   viewport, at 390, 360 and 320 — while both tab-bar checks stay green,
+//   which is the separation wanted: two different defects, two independent
+//   guards, neither standing in for the other.
+//
+//   HOW THIS ONE WAS NEARLY MISSED, which is the reason for the vacuity
+//   control above it. The first pass measured 390px and reported no
+//   overflow. That was true and meaningless: the claim had not finished
+//   loading, so the screen it measured was empty. Only the widths that
+//   happened to load a card showed the defect, which read at first like a
+//   width-dependent bug and was nothing of the kind. An empty screen never
+//   overflows. Every layout assertion here is now preceded by a check that
+//   the content capable of breaking it is actually on the page.
+//
+//   Restored and re-run: 30 checks green.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -113,6 +128,12 @@ const DOMAIN_UNBROWSED = `AuthorUnbrowsed${STAMP}`;
 const CONTENT_BROWSED = 'Published into the domain the Browse tab loads.';
 const CONTENT_UNBROWSED = 'Published into a domain the browser never loads.';
 const CONTENT_AGENT2 = 'Published by a different agent, in the same domain.';
+// An unbreakable token of the kind this app genuinely renders — a pasted
+// URL, and the same shape as the base64 keys and action hashes it shows
+// elsewhere. It exists so the layout checks below are made against content
+// that can actually break them.
+const LONG_TOKEN = `https://example.org/evidence/${'a1b2c3d4e5'.repeat(12)}.pdf`;
+const CONTENT_LONG = `See ${LONG_TOKEN} for the protocol.`;
 
 const log = (...a) => console.log(...a);
 let failures = 0;
@@ -173,6 +194,7 @@ async function main() {
   log(`agent1 publishes into ${DOMAIN_BROWSED} and ${DOMAIN_UNBROWSED} ...`);
   await claim(agent1, DOMAIN_BROWSED, CONTENT_BROWSED);
   await claim(agent1, DOMAIN_UNBROWSED, CONTENT_UNBROWSED);
+  await claim(agent1, DOMAIN_BROWSED, CONTENT_LONG);
   log(`agent2 publishes into ${DOMAIN_BROWSED} ...`);
   await claim(agent2, DOMAIN_BROWSED, CONTENT_AGENT2);
 
@@ -326,10 +348,22 @@ async function main() {
     // Asserted against the DOCUMENT scrolling, not against a tab count or a
     // row count, because those are design choices that may change while
     // "the page does not scroll sideways on a phone" should not.
-    log('\n=== 7. The tab bar fits, at the widths this UI is for ===');
+    log('\n=== 7. The page fits, at the widths this UI is for ===');
+    // Put agent1's claims back on screen, one of which carries a
+    // 153-character unbreakable token. Measuring an empty screen would
+    // pass vacuously, and that is not hypothetical: on the pass that found
+    // the wrapping defect, the 390px case reported "no overflow" only
+    // because the claim had not finished loading.
+    await page.locator('[data-testid="author-key-input"]').fill(b64(agent1.me));
+    await page.getByTestId('author-load').click();
+    await page.waitForSelector('[data-testid="author-claim-list"] .claim-card', { timeout: 20000 });
+    await page.waitForTimeout(800);
+    check('CONTROL: the long-token claim is on screen, so the layout checks are not vacuous',
+      (await page.locator('[data-testid="author-claim-list"]').innerText()).includes(LONG_TOKEN));
+
     for (const width of [390, 360, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(400);
       const fits = await page.evaluate(() => {
         const bar = document.querySelector('.tab-bar');
         const barBox = bar.getBoundingClientRect();
@@ -341,10 +375,26 @@ async function main() {
             return b.left < barBox.left - 1 || b.right > barBox.right + 1;
           }),
           pageScrollsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+          // A long token overflows its container WITHOUT the container's own
+          // box ever exceeding the viewport, so element rects miss it
+          // entirely. The text run has to be measured directly.
+          widestTextRight: (() => {
+            let widest = 0;
+            for (const el of document.querySelectorAll('p, div, span, li, h1, h2, h3, button')) {
+              for (const node of el.childNodes) {
+                if (node.nodeType !== 3 || !node.textContent.trim()) continue;
+                const rng = document.createRange();
+                rng.selectNodeContents(node);
+                widest = Math.max(widest, rng.getBoundingClientRect().right);
+              }
+            }
+            return Math.round(widest);
+          })(),
         };
       });
       check(`at ${width}px the page does not scroll sideways`, !fits.pageScrollsX);
       check(`at ${width}px every tab is inside the bar`, !fits.clipped && !fits.barOverflows);
+      check(`at ${width}px no text run escapes the viewport`, fits.widestTextRight <= width + 1);
     }
     await page.setViewportSize({ width: 390, height: 844 });
 

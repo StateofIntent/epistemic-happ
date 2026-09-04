@@ -32,6 +32,17 @@
 * { box-sizing: border-box; }
 
 html, body {
+  /* User-authored text is arbitrary, and this app also renders things that
+     are unbreakable by nature: base64 agent keys, action hashes, and any URL
+     someone pastes into a claim. Without this, one such token makes the whole
+     document scroll sideways — measured at 1326px of scroll width inside a
+     320px viewport, from a single 153-character URL in one claim. Set here
+     rather than per class because the stylesheet had NO wrap rule anywhere,
+     so every user-text surface shared the defect: claims, critiques, species
+     names, membrane descriptions. `anywhere` rather than `break-word` so that
+     min-content sizing shrinks too, which is what stops a flex or grid parent
+     being forced wide by a child it cannot break. */
+  overflow-wrap: anywhere;
   margin: 0;
   background: var(--bg);
   color: var(--text);
