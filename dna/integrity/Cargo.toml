@@ -26,6 +26,16 @@ crate-type = ["cdylib", "rlib"]
 # exactly on this side too costs nothing and keeps the invariant explicit.
 hdi = "=0.8.0"
 serde = { version = "1.0", features = ["derive"] }
+# Required as a DIRECT dependency from 0.7 on, even though nothing in
+# src/lib.rs names it: `#[hdk_entry_helper]` expands to a
+# `#[derive(SerializedBytes)]` whose generated code refers to
+# `holochain_serialized_bytes` by absolute path, so the crate has to be
+# in this crate's own dependency list or every entry struct fails with
+# "cannot find `holochain_serialized_bytes` in the crate root". Holochain
+# 0.7's own zome crates all declare it the same way and at this same
+# version (see crates/test_utils/wasm/wasm_workspace/*/Cargo.toml at the
+# holochain-0.7.0 tag); it is the version hdi 0.8.0 itself resolves.
+holochain_serialized_bytes = "0.0.57"
 
 [dev-dependencies]
 hdk = "=0.7.0"
