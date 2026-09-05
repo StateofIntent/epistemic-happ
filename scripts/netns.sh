@@ -21,7 +21,7 @@
 #   - Inside it we are uid 0 and may run `iptables`; outside it we are an
 #     ordinary user and nothing we did applies.
 #   - The namespace starts with ONLY a loopback device, so the whole network
-#     — bootstrap server, signal server, three conductors, and the harness
+#     — bootstrap server, relay server, three conductors, and the harness
 #     itself — lives in there together and reaches nothing else.
 #   - When the process exits the namespace is destroyed, and every rule in
 #     it goes with it. There is no cleanup step that can be forgotten,
@@ -49,19 +49,38 @@
 # a DROP on one port made that port unreachable while a control port stayed
 # reachable, and removing the rule restored it.
 #
+# BOTH ADDRESS FAMILIES HAVE TO BE CUT. `iptables` governs IPv4 and
+# `ip6tables` governs IPv6, as two entirely separate rulesets, and the
+# conductors' QUIC sockets bind both stacks. Cutting IPv4 alone does not
+# partition anything on 0.7 — it just moves peer traffic to IPv6 loopback.
+# `network-partition.mjs` applies every rule to both tables for that
+# reason; see its header for the measurement.
+#
 # WHAT THE PARTITION ACTUALLY CUTS, which is not what was first assumed.
 # The obvious guess is that Holochain peers talk over QUIC/UDP and that
 # dropping UDP partitions them. That was tried first and it DID NOT WORK —
 # claims crossed with all UDP dropped in both directions. Inspecting the
 # sockets explained why: on this setup each conductor holds exactly two TCP
-# connections, one to the bootstrap server and one to the signal server,
-# and there is NO direct conductor-to-conductor connection and no UDP
-# socket at all. All peer traffic is relayed through the signal server.
-# So the data path to cut is TCP to the signal port, and cutting it is a
-# genuine data-plane partition here. `network-partition.mjs` asserts that
-# socket topology at runtime rather than trusting this comment, because
-# the moment tx5 establishes direct connections instead, this cut stops
-# meaning what it says.
+# connections, to the bootstrap server and to the relay, and there is NO
+# direct conductor-to-conductor connection and no UDP socket at all. All
+# peer traffic goes through the relay. So the data path to cut is TCP to
+# the relay port, and cutting it is a genuine data-plane partition here.
+# `network-partition.mjs` asserts that socket topology at runtime rather
+# than trusting this comment, because the moment the transport starts
+# establishing direct connections instead, this cut stops meaning what it
+# says.
+#
+# THAT SURVIVED THE 0.7 UPGRADE, but only because network.sh was changed
+# to keep it true. Holochain 0.7 replaced tx5/WebRTC with iroh QUIC, and
+# the obvious worry was that a QUIC transport would hole-punch directly
+# between peers on loopback and leave nothing to cut. Measured instead of
+# assumed: with bootstrap and relay split across two ports, each
+# conductor holds its connections to the relay port, none to any other
+# conductor, and no peer traffic on UDP — the same shape tx5 produced.
+# What did change is that a single kitsune2-bootstrap-srv serves BOTH
+# roles on one address, which would have collapsed the cut and its own
+# control onto one port; network.sh runs one instance per role to keep
+# them separable.
 #
 # Usage:
 #   scripts/netns.sh run '<shell command>'   # network up, run cmd, tear down

@@ -19,27 +19,57 @@
 // so "this is not secretly a restart" is asserted rather than asserted-by-
 // comment.
 //
-// WHAT IS CUT, AND HOW THAT WAS ESTABLISHED. The obvious guess is that
-// peers talk over QUIC/UDP, so dropping UDP should partition them. That
-// was tried first and it did not work: claims crossed with all UDP dropped
-// in both directions. The sockets say why — each conductor holds exactly
-// two TCP connections, to the bootstrap server and to the signal server,
-// with NO direct conductor-to-conductor connection and no UDP socket at
-// all. Peer traffic is relayed through the signal server, so the data path
-// is TCP to the signal port, and cutting that is a genuine data-plane
-// partition.
+// WHAT IS CUT, AND HOW THAT WAS ESTABLISHED — AND THEN INVERTED BY 0.7.
 //
-// That is a fact about this setup and not a law, so check 2 below ASSERTS
-// the socket topology at runtime. If tx5 ever establishes direct peer
-// connections, this harness stops silently measuring the wrong thing and
-// says so instead.
+// Under Holochain 0.4's tx5/WebRTC transport the answer was: not UDP.
+// Dropping all UDP in both directions was tried first and claims crossed
+// anyway. The sockets said why — each conductor held exactly two TCP
+// connections, to the bootstrap server and to the signal server, with no
+// direct conductor-to-conductor connection and no UDP socket at all. All
+// peer traffic went through the signal relay, so the data path was TCP to
+// that port and cutting it was a genuine data-plane partition.
 //
-// THE CONTROL THAT MAKES THE CUT MEAN SOMETHING. Severing every TCP path
-// would partition the peers and prove very little — it would also be
+// Holochain 0.7 replaced tx5 with iroh QUIC and REVERSED that. Cutting
+// TCP to the relay alone no longer partitions anything: this harness was
+// run that way on 0.7 and 25 of its 26 checks passed while the one that
+// matters — "neither side saw the other while the link was cut" — failed,
+// because the two sides went on exchanging claims for the full 302-second
+// watch. Inspecting the sockets during the cut shows the mechanism: the
+// conductors' established TCP to the relay disappears, their UDP sockets
+// remain, and the entries keep crossing. On iroh the relay is the
+// FALLBACK and a direct QUIC path is the data path; on loopback that
+// direct path always works, so severing the fallback costs nothing.
+//
+// So the cut is now BOTH: UDP (the direct path) and TCP to the relay (the
+// fallback it would otherwise use). Neither alone is a partition here.
+//
+// That reversal is exactly what check 2 exists to catch, and it did catch
+// it rather than being reasoned out in advance. It asserts the socket
+// topology at runtime, so a transport that changes what carries peer
+// traffic makes this harness fail loudly instead of quietly measuring
+// something else.
+//
+// ONE MEASUREMENT BUG WORTH RECORDING, because it hid the above for a
+// while. The UDP count used `ss -unp`, which lists only CONNECTED UDP
+// sockets. A QUIC socket bound to 0.0.0.0:* is not "connected" in that
+// sense, so the count came back 0 and the assertion "peer traffic is not
+// on UDP" passed on 0.7 — while six such sockets were sitting right
+// there. `ss -uanp` sees them. An assertion that cannot observe the thing
+// it denies is worse than no assertion, because it reads as evidence.
+//
+// THE CONTROL THAT MAKES THE CUT MEAN SOMETHING. Cutting everything would
+// partition the peers and prove very little — it would be
 // indistinguishable from the machine's networking failing. So the cut is
-// aimed at ONE port, and the bootstrap server on another port is probed
-// throughout and must stay reachable. Alive-and-reachable-but-for-this-one-
-// path is the claim; a general outage is the thing being ruled out.
+// aimed only at what carries peer traffic, and the bootstrap server, on
+// its own port and its own protocol, is probed throughout and must stay
+// reachable. Alive-and-reachable-but-for-the-peer-path is the claim; a
+// general outage is the thing being ruled out.
+//
+// That control is why scripts/network.sh runs bootstrap and relay as two
+// separate kitsune2-bootstrap-srv instances on two ports. One instance
+// serves both roles perfectly well and is simpler, but it puts the cut
+// and its own control on the same port, which would leave nothing to
+// distinguish a partition from an outage.
 //
 // MUST BE RUN INSIDE scripts/netns.sh, which supplies a throwaway network
 // AND PID namespace and starts the three-node network inside it. This file
@@ -72,7 +102,7 @@
 //   count is now PRINTED rather than merely subtracted, so the correction
 //   stays visible on every run instead of becoming invisible once green.
 //
-//   Injection: cut the bootstrap port as well as the signal port, making
+//   Injection: cut the bootstrap port as well as the relay port, making
 //   the partition a broad outage rather than one severed path.
 //   Result: SIX checks red. The intended one first — the CONTROL asserting
 //   bootstrap stays reachable, which is the entire basis for calling this
@@ -141,14 +171,25 @@ const NODES = {
   C: { node: 'nodeC', admin: 8895, app: 8894, appId: 'epistemic-net-c' },
 };
 
-const SIGNAL_PORT = 8892;      // the peer data path, and what gets cut
+// The peer data path, and what gets cut. Holochain 0.7 replaced tx5's
+// WebRTC signal server with an iroh relay; scripts/network.sh runs one
+// kitsune2-bootstrap-srv instance per role so the two paths stay on
+// separate ports, which is what makes the cut below a partition rather
+// than an outage. Port unchanged from the tx5 era — only what is
+// listening on it changed.
+const RELAY_PORT = 8892;
 const BOOTSTRAP_PORT = 8893;   // the control: must stay reachable throughout
 const NET_ROOT = process.env.EPI_NET_ROOT || '/tmp/epi-ns';
 
 // Healing is dominated by the same gossip backoff partition-rejoin.mjs
 // measured (gossip_peer_on_error_next_gossip_delay_ms: 300000), so the
 // window is sized from that constant rather than guessed.
-const CONVERGE_WINDOW_MS = 600_000;
+// Overridable so "did not converge in ten minutes" can be told apart from
+// "does not converge", which are very different findings and which the
+// default window cannot distinguish. Ten minutes stays the default: it is
+// already an order of magnitude beyond the ~60s that the stop-based
+// partition in partition-rejoin.mjs needs.
+const CONVERGE_WINDOW_MS = Number(process.env.EPI_CONVERGE_WINDOW_MS ?? 600_000);
 const POLL_MS = 5_000;
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
@@ -174,7 +215,27 @@ const tcpReachable = (port, timeout = 2000) => new Promise((res) => {
   s.setTimeout(timeout, () => { s.destroy(); res(false); });
 });
 
-const ipt = (...args) => execFileSync('iptables', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+// BOTH TABLES, ALWAYS. `iptables` governs IPv4 only; IPv6 has its own
+// entirely separate ruleset in `ip6tables`, and a rule in one says nothing
+// about the other. That is not a detail here — it is the difference
+// between a partition and no partition.
+//
+// Measured on 0.7, inside the namespace, with a claim published on nodeA
+// and nodeB polled for it:
+//
+//   no cut                     crossed in 28.2s
+//   IPv4 UDP + relay TCP cut   still crossed, in 54.4s
+//   IPv4 AND IPv6 cut          held for the full 90s watch
+//
+// The conductors' QUIC sockets bind both stacks (`0.0.0.0:*` and
+// `[::]:*`), so cutting IPv4 alone just pushes peer traffic onto IPv6
+// loopback — slower, because it has to notice and re-path, which is
+// exactly why a short dwell would have called that a successful
+// partition.
+const ipt = (...args) => {
+  execFileSync('iptables', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  execFileSync('ip6tables', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+};
 
 async function connectNode(name) {
   const { admin: adminPort, app: appPort, appId } = NODES[name];
@@ -236,7 +297,7 @@ const pidOf = (node) => readFileSync(`${NET_ROOT}/${node}.pid`, 'utf8').trim();
 // peer link unless the ports are actually inspected. The check failed
 // loudly on the first run, which is the only reason the miscount was not
 // quietly baked in as a fact about Holochain's transport.
-const SERVICE_PORTS = new Set([SIGNAL_PORT, BOOTSTRAP_PORT]);
+const SERVICE_PORTS = new Set([RELAY_PORT, BOOTSTRAP_PORT]);
 const CLIENT_PORTS = new Set(Object.values(NODES).flatMap((n) => [n.admin, n.app]));
 
 function socketFacts() {
@@ -251,7 +312,7 @@ function socketFacts() {
     })
     .filter((r) => Number.isFinite(r.local) && Number.isFinite(r.peer));
 
-  const toSignal = rows.filter((r) => r.peer === SIGNAL_PORT).length;
+  const toRelay = rows.filter((r) => r.peer === RELAY_PORT).length;
   const toBootstrap = rows.filter((r) => r.peer === BOOTSTRAP_PORT).length;
   // A genuine peer link joins two conductors on ephemeral ports: neither
   // end is a service port, and neither end is an admin/app port this
@@ -261,12 +322,17 @@ function socketFacts() {
     !CLIENT_PORTS.has(r.local) && !CLIENT_PORTS.has(r.peer)).length;
   const clientConns = rows.filter((r) => CLIENT_PORTS.has(r.local)).length;
 
+  // `-a` matters: without it `ss -u` lists only CONNECTED UDP sockets, and
+  // a QUIC socket bound to 0.0.0.0:* is not connected in that sense. The
+  // count came back 0 on 0.7 while six such sockets were open, which made
+  // the old "peer traffic is not on UDP" assertion pass for the wrong
+  // reason. See this file's header.
   let udp = 0;
   try {
-    udp = execFileSync('ss', ['-unp'], { encoding: 'utf8' })
+    udp = execFileSync('ss', ['-uanp'], { encoding: 'utf8' })
       .split('\n').filter((l) => l.includes('holochain')).length;
   } catch { /* ss without -u support; leave at 0 */ }
-  return { toSignal, toBootstrap, direct, clientConns, udp };
+  return { toRelay, toBootstrap, direct, clientConns, udp };
 }
 
 async function awaitConvergence(node, domain, label, isolated) {
@@ -357,18 +423,23 @@ async function main() {
 
   // ---- 2. What actually carries peer traffic ---------------------------
   //
-  // Asserted, not assumed. The cut below aims at the signal port because
+  // Asserted, not assumed. The cut below aims at the relay port because
   // that is where peer traffic goes on this setup; if that ever stops
   // being true, every result after it would be measuring something else,
   // and this check is what turns that into a visible failure instead of a
   // quiet one.
-  log('\n--- 2. The peer data path is the relay, not a direct link ---');
+  log('\n--- 2. What actually carries peer traffic ---');
   const facts = socketFacts();
   if (!facts) setupFail(['`ss` is unavailable; cannot establish the socket topology.']);
-  log(`    conductor TCP -> signal :${SIGNAL_PORT}: ${facts.toSignal}   -> bootstrap :${BOOTSTRAP_PORT}: ${facts.toBootstrap}   direct peer links: ${facts.direct}   (this harness's own client connections, excluded: ${facts.clientConns})   UDP sockets: ${facts.udp}`);
-  check('every conductor holds a TCP connection to the signal server', facts.toSignal >= 3);
-  check('there are NO direct conductor-to-conductor connections', facts.direct === 0);
-  check('peer traffic is not on UDP (so cutting the relay really cuts the data path)', facts.udp === 0);
+  log(`    conductor TCP -> relay :${RELAY_PORT}: ${facts.toRelay}   -> bootstrap :${BOOTSTRAP_PORT}: ${facts.toBootstrap}   direct peer links: ${facts.direct}   (this harness's own client connections, excluded: ${facts.clientConns})   UDP sockets: ${facts.udp}`);
+  // On iroh both paths exist at once: a QUIC socket per conductor for the
+  // direct path, and a TCP connection to the relay as the fallback. Both
+  // are asserted because the cut below has to sever both, and either one
+  // going missing would mean the cut is aimed at something that is no
+  // longer there.
+  check('every conductor holds a TCP connection to the relay (the fallback path)', facts.toRelay >= 3);
+  check('every conductor holds a UDP socket (the direct QUIC path)', facts.udp >= 3);
+  check('there are NO direct conductor-to-conductor TCP connections', facts.direct === 0);
 
   // ---- 3. Baseline ------------------------------------------------------
   log('\n--- 3. BASELINE — the network works before it is cut ---');
@@ -380,12 +451,19 @@ async function main() {
   log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`);
 
   // ---- 4. Cut the data path, leave everything else alone ---------------
-  log(`\n--- 4. Cutting TCP to the signal relay :${SIGNAL_PORT} (no process is touched) ---`);
-  ipt('-I', 'INPUT', '1', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP');
-  ipt('-I', 'OUTPUT', '1', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP');
+  log(`\n--- 4. Cutting the peer paths: UDP, and TCP to the relay :${RELAY_PORT} (no process is touched) ---`);
+  // Both, because either alone leaves the other carrying traffic. Dropping
+  // UDP is safe to do broadly here precisely because of where this runs:
+  // the namespace holds only this network, so "all UDP" is exactly "all
+  // peer traffic" and nothing else. The bootstrap server is HTTP over TCP
+  // on another port and is untouched — that is the control.
+  ipt('-I', 'INPUT', '1', '-p', 'udp', '-j', 'DROP');
+  ipt('-I', 'OUTPUT', '1', '-p', 'udp', '-j', 'DROP');
+  ipt('-I', 'INPUT', '1', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP');
+  ipt('-I', 'OUTPUT', '1', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP');
   await sleep(3000);
 
-  check(`the signal relay :${SIGNAL_PORT} is now unreachable`, !(await tcpReachable(SIGNAL_PORT)));
+  check(`the relay :${RELAY_PORT} is now unreachable`, !(await tcpReachable(RELAY_PORT)));
   check(`CONTROL: bootstrap :${BOOTSTRAP_PORT} is STILL reachable — this is one severed path, not an outage`,
     await tcpReachable(BOOTSTRAP_PORT));
   check('CONTROL: nodeA still answers zome calls (it is running, not stopped)',
@@ -429,9 +507,14 @@ async function main() {
 
   // ---- 7. Heal ----------------------------------------------------------
   log('\n--- 7. Healing the link ---');
-  ipt('-D', 'INPUT', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP');
-  ipt('-D', 'OUTPUT', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP');
-  check(`the signal relay :${SIGNAL_PORT} is reachable again`, await tcpReachable(SIGNAL_PORT));
+  // Heal exactly what was cut — both paths, or the "converges after
+  // healing" result below would be measuring a still-partitioned network
+  // that merely looks restored on one of the two.
+  ipt('-D', 'INPUT', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP');
+  ipt('-D', 'OUTPUT', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP');
+  ipt('-D', 'INPUT', '-p', 'udp', '-j', 'DROP');
+  ipt('-D', 'OUTPUT', '-p', 'udp', '-j', 'DROP');
+  check(`the relay :${RELAY_PORT} is reachable again`, await tcpReachable(RELAY_PORT));
 
   // ---- 8. Converge, both directions, one clock -------------------------
   log('\n--- 8. Do both sides converge on what the other wrote? ---');
@@ -488,7 +571,7 @@ main().catch((e) => {
   console.error('\nHARNESS ERROR:', e);
   // Best effort: the namespace dies with us anyway, so this is tidiness
   // rather than safety.
-  try { ipt('-D', 'INPUT', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP'); } catch { /* already gone */ }
-  try { ipt('-D', 'OUTPUT', '-p', 'tcp', '--dport', String(SIGNAL_PORT), '-j', 'DROP'); } catch { /* already gone */ }
+  try { ipt('-D', 'INPUT', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP'); } catch { /* already gone */ }
+  try { ipt('-D', 'OUTPUT', '-p', 'tcp', '--dport', String(RELAY_PORT), '-j', 'DROP'); } catch { /* already gone */ }
   process.exit(1);
 });
