@@ -82,7 +82,9 @@
 //
 //     scripts/netns.sh run 'node scripts/live-verify/network-partition.mjs'
 //
-// Takes about eight minutes, most of it waiting out a real gossip backoff.
+// Takes roughly 25 minutes on Holochain 0.7, most of it waiting out the
+// real post-heal gossip reconciliation — about 15.5 minutes of it, see
+// CONVERGE_WINDOW_MS. Under 0.4 this was about eight minutes.
 // ============================================================================
 // ---------------------------------------------------------------------------
 // NEGATIVE EVIDENCE — this harness has been watched failing, and its FIRST
@@ -184,12 +186,28 @@ const NET_ROOT = process.env.EPI_NET_ROOT || '/tmp/epi-ns';
 // Healing is dominated by the same gossip backoff partition-rejoin.mjs
 // measured (gossip_peer_on_error_next_gossip_delay_ms: 300000), so the
 // window is sized from that constant rather than guessed.
-// Overridable so "did not converge in ten minutes" can be told apart from
-// "does not converge", which are very different findings and which the
-// default window cannot distinguish. Ten minutes stays the default: it is
-// already an order of magnitude beyond the ~60s that the stop-based
-// partition in partition-rejoin.mjs needs.
-const CONVERGE_WINDOW_MS = Number(process.env.EPI_CONVERGE_WINDOW_MS ?? 600_000);
+// THIRTY MINUTES, AND THE NUMBER IS MEASURED RATHER THAN PADDED.
+//
+// Reconciling history written during a drop-partition took 930.0s and
+// 924.9s on Holochain 0.7 — about fifteen and a half minutes each way.
+// The previous default was ten minutes, which failed all four convergence
+// checks while the network was in fact working: a claim written AFTER
+// healing crossed immediately in the same run. So the failure said
+// "these conductors never reconciled" when the truth was "not yet".
+//
+// The asymmetry with partition-rejoin.mjs is the interesting part and is
+// not a defect in either. That harness partitions by STOPPING a
+// conductor, and its catch-up is ~60s: a node that restarts re-runs
+// discovery and pulls what it missed. Here both processes stay up
+// throughout, so nothing triggers that path — the two sides simply regain
+// connectivity and wait for a periodic gossip reconciliation round, which
+// is on a far longer cycle. Roughly fifteen times longer, measured.
+//
+// Overridable because "did not converge in N minutes" and "does not
+// converge" are different findings, and a fixed window cannot tell them
+// apart. That override is how the 930s figure above was obtained, after
+// the ten-minute default reported a failure that was really a timeout.
+const CONVERGE_WINDOW_MS = Number(process.env.EPI_CONVERGE_WINDOW_MS ?? 1_800_000);
 const POLL_MS = 5_000;
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
