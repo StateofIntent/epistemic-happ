@@ -7,7 +7,20 @@
 **Version:** 0.1.0  
 **Date:** 2026-08-25  
 **Status:** Design Complete — HRR Compressor Deferred  
-**License:** TBD (recommend: AGPL-3.0 for protocol layer)
+**License:** TBD (recommend: AGPL-3.0 for protocol layer)  
+**Runs on:** Holochain 0.7.0
+
+---
+
+> ### Just want to run it?
+>
+> **[Download the desktop app](https://github.com/StateofIntent/epistemic-resonance-desktop/releases/latest)**
+> — Windows, macOS and Linux, each carrying its own Holochain conductor. No
+> Rust, Node, or terminal needed. See [INSTALL.md](INSTALL.md) first: the
+> builds are unsigned, so macOS needs one Terminal command to open them, and
+> there are three other things worth knowing before you install.
+>
+> Everything below is for working on the code.
 
 ---
 
@@ -756,16 +769,29 @@ wasm on disk rather than compiling it. The output is
 gitignored on purpose: the bundle to hand someone is the one just built,
 not a stale copy found in the tree.
 
-**Installing it.** Open a Holochain Launcher, choose to install a hApp
-from a file, and select the `.webhapp`. The Launcher creates the agent
-key, installs the DNA, and serves the UI itself.
+**Where it goes.** The `.webhapp` is the input to
+[epistemic-resonance-desktop](https://github.com/StateofIntent/epistemic-resonance-desktop),
+which packages it — via [Kangaroo](https://github.com/holochain/kangaroo-electron)
+— into a standalone desktop app carrying its own Holochain conductor.
+Copy the freshly built bundle into that repo's `pouch/` and follow its
+README to cut a release. Installers for Windows, macOS and Linux are
+published at
+[releases/latest](https://github.com/StateofIntent/epistemic-resonance-desktop/releases/latest);
+end users want those, not this file.
+
+**Not the Holochain Launcher.** It is what the rest of this section
+originally assumed, and it cannot install this bundle: its most recent
+release is v0.400.0 from March 2025, bundling Holochain 0.4.1, and the app
+manifest format changed at 0.6. It fails with a manifest parse error
+rather than a version mismatch. The per-app packaging above is what
+replaced that model.
 
 **What changes when it is installed, and why that needed code.** A
 Launcher-installed UI runs in a genuinely different environment from the
 one every other instruction in this section produces, and the difference
 is not cosmetic:
 
-| | Developing against your own conductor | Installed from the `.webhapp` |
+| | Developing against your own conductor | Installed as the desktop app |
 |---|---|---|
 | Who issues the app auth token | the UI, over the Admin API | the Launcher, before the UI loads |
 | Admin API reachable from UI code | yes | **never** |
