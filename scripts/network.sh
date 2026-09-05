@@ -298,8 +298,24 @@ services_running() {
 # Start one kitsune2-bootstrap-srv instance and record the PID that
 # actually holds the port. Shared by the bootstrap and relay services,
 # which differ only in which port they bind and which log they write.
+one_service_running() {
+  local pidf="$1"
+  [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null
+}
+
 start_one_service() {
   local role="$1" port="$2" logf="$3" pidf="$4"
+
+  # Checked PER SERVICE, not for the pair. Splitting one service into two
+  # introduced a partial-failure state the single-service version could
+  # not have: if one of them dies and the other lives, a `start` that
+  # tried to bring up both would fail on "address in use" for the
+  # survivor and leave the network down for a reason that has nothing to
+  # do with what actually broke.
+  if one_service_running "$pidf"; then
+    log "Local $role service already running (pid $(cat "$pidf"))."
+    return 0
+  fi
 
   log "Starting local $role service on :$port ..."
   ( cd "$NET_ROOT" && setsid --fork "$K2_BOOT_BIN" --listen "127.0.0.1:$port" \
@@ -340,18 +356,23 @@ start_one_service() {
 }
 
 start_services() {
-  if services_running; then
-    log "Local bootstrap and relay services already running (pids $(cat "$SERVICES_PIDFILE"), $(cat "$RELAY_PIDFILE"))."
-    return 0
-  fi
+  # No early return for the pair: each service decides for itself whether
+  # it is already up, so a half-dead pair heals instead of failing.
   # Two instances, two roles — see the BOOTSTRAP_URL/RELAY_URL note above
-  # for why one is not enough. Measured topology inside the namespace with
-  # both up under Holochain 0.7: each conductor holds exactly one TCP
-  # connection to the relay port and one to the bootstrap port, there are
-  # no direct conductor-to-conductor connections, and no peer traffic on
-  # UDP. That is the same shape tx5 produced, which is what lets
-  # network-partition.mjs keep cutting the relay while using bootstrap as
-  # its control.
+  # for why one is not enough.
+  #
+  # Measured topology inside the namespace with both up under Holochain
+  # 0.7, three conductors: three established TCP connections to the relay
+  # port and ZERO to the bootstrap port, no direct conductor-to-conductor
+  # TCP, and six UDP sockets (two per conductor, one per address family).
+  #
+  # Both halves of that are worth stating because both differ from tx5.
+  # Bootstrap holds no persistent connection — it is HTTP, used for
+  # discovery and then done — so it is reachable-on-demand rather than
+  # continuously connected, which is exactly what makes it usable as
+  # network-partition.mjs's control. And the UDP sockets are the real peer
+  # data path on iroh, with the relay as fallback; under tx5 it was the
+  # other way round. See that harness's header.
   start_one_service "bootstrap" "$BOOTSTRAP_PORT" "$SERVICES_LOG" "$SERVICES_PIDFILE"
   start_one_service "relay"     "$RELAY_PORT"     "$RELAY_LOG"     "$RELAY_PIDFILE"
 }
