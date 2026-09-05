@@ -27,23 +27,29 @@ Where a precondition can be checked cheaply, the harness checks it and says so p
 **Four harnesses are the exception, and they are the exception on purpose.** `real-gossip.mjs`, `partition-rejoin.mjs`, `network-partition.mjs` and `transitive-gossip.mjs` do not use this conductor at all. They need three of them on a real network — four, for the last — and get them from `scripts/network.sh` instead:
 
 ```bash
-scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap/iroh relay
+scripts/network.sh clean && scripts/network.sh start   # three conductors + bootstrap + iroh relay
 node scripts/live-verify/real-gossip.mjs
 node scripts/live-verify/partition-rejoin.mjs          # ~9 min; it waits out a real gossip backoff
 node scripts/live-verify/transitive-gossip.mjs        # ~3 min; brings nodeD up and puts it back
 ```
 
+**The one-clean-environment rule applies here too, and nothing above used to say so.** `clean && start` before EACH of these, exactly as with the single-node conductor. Observed rather than assumed: `partition-rejoin.mjs` run immediately after `transitive-gossip.mjs` on the same network died in its baseline phase with a 60-second zome-call timeout, and passed in full on a freshly started network. `transitive-gossip.mjs` restores what it changes and still leaves the network in a state the next harness cannot rely on.
+
+`network-partition.mjs` is not in the list above because it is never launched directly — see below — but it needs the same thing, and `netns.sh` gives it that for free by building its network inside a namespace that is thrown away at exit.
+
 `partition-rejoin.mjs` also drives `network.sh stop-node` / `start-node` itself, to take a conductor offline and bring it back mid-run.
 
 **`transitive-gossip.mjs` needs a fourth conductor, and `start` deliberately does not give it one.** `nodeD` is a third member of the *shared* DHT, which is what makes "did this entry arrive from a peer that did not author it" a question at all — before it, that DHT had exactly two members and gossip was indistinguishable from point-to-point delivery. It is opt-in because a third node sitting up throughout would break `partition-rejoin.mjs` outright: that harness stops the author before restarting the returning node so the returning node provably cannot have obtained the entry from its author, and nodeD holding the same entry defeats exactly that. The harness brings nodeD up itself and stops it again at the end; if it dies mid-run, `scripts/network.sh stop-node nodeD` puts things back.
 
-**`network-partition.mjs` is the third, and it is launched differently — never directly.** It partitions by dropping packets rather than by stopping a process, so it installs `iptables` rules, and it refuses to do that anywhere they could touch something real or outlive the run. `scripts/netns.sh` supplies a throwaway network **and PID** namespace to run it in, and starts the three-node network inside:
+**`network-partition.mjs` is the third, and it is launched differently — never directly.** It partitions by dropping packets rather than by stopping a process, so it installs `iptables` **and `ip6tables`** rules — both, because they are separate rulesets and the conductors' QUIC sockets bind both address families — and it refuses to do that anywhere they could touch something real or outlive the run. `scripts/netns.sh` supplies a throwaway network **and PID** namespace to run it in, and starts the three-node network inside:
 
 ```bash
-scripts/netns.sh run 'node scripts/live-verify/network-partition.mjs'   # ~8 min
+scripts/netns.sh run 'node scripts/live-verify/network-partition.mjs'   # ~25 min on 0.7
 ```
 
-Inside that namespace it is uid 0 and may use `iptables`; outside it nothing it did applies, and when it exits the rules, the network and every conductor go with it. Run directly it exits 1 without connecting to anything, printing why — that refusal is checked two ways, including from inside a user namespace that is *not* a network namespace, where the uid check alone would have wrongly said yes.
+Inside that namespace it is uid 0 and may use `iptables`; outside it nothing it did applies, and when it exits the rules, the network and every conductor go with it.
+
+**Why it takes so much longer on 0.7 than the ~8 minutes it used to.** Reconciling entries written during the partition took 930s and 925s once the link was healed — about fifteen and a half minutes each way, and that is the bulk of the run. This is not a regression in the harness or a slow machine: a claim written *after* healing crosses immediately in the same run, and `partition-rejoin.mjs` catches up in ~60s. The difference is what triggers the sync. `partition-rejoin` **stops** a conductor, so it re-runs discovery on restart and pulls what it missed; here both processes stay up throughout, regain connectivity, and wait for a periodic gossip reconciliation round on a much longer cycle. The harness's convergence window is 30 minutes for that reason, overridable with `EPI_CONVERGE_WINDOW_MS`. Run directly it exits 1 without connecting to anything, printing why — that refusal is checked two ways, including from inside a user namespace that is *not* a network namespace, where the uid check alone would have wrongly said yes.
 
 **Do not run two namespace runs at once.** A network namespace is not a mount namespace, so both would share `/tmp/epi-ns` and each begins by deleting it — and they would share the CPU, which matters because this harness reports timings. `netns.sh` takes a lock and refuses the second, after an overlap silently invalidated a fault-injection result.
 
@@ -84,7 +90,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `mcp-server` | `sandbox.sh` | 1 | The MCP server driven over stdio as an agent would drive it — the protocol is discoverable from the tool list, offers no ranking, and round-trips hashes as strings |
 | `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |
 | `partition-rejoin` | **`network.sh`** | 1 per node, **3 nodes** | A node that was offline while history was written catches up on rejoining — both directions, ~5.5 min |
-| `network-partition` | **`netns.sh`** | 1 per node, **3 nodes** | Both conductors stay up and keep writing while a packet-level cut stops them reaching each other, then both converge — ~8 min |
+| `network-partition` | **`netns.sh`** | 1 per node, **3 nodes** | Both conductors stay up and keep writing while a packet-level cut stops them reaching each other, then both converge — ~25 min on 0.7, most of it the post-heal reconciliation |
 | `transitive-gossip` | **`network.sh`** + `nodeD` | 1 per node, **4 nodes** | An entry reaches a node from a peer that did not author it — the author is down for the whole wait, ~3 min |
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.

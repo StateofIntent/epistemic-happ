@@ -38,7 +38,9 @@
 #   nodeC  admin :8895  app :8894   network seed "netverify-seed-2-isolated"
 #   nodeD  admin :8891  app :8890   network seed "netverify-seed-1"   OPT-IN
 #
-# plus a single combined bootstrap + iroh relay service on :8893.
+# plus a bootstrap server on :8893 and an iroh relay on :8892 — two
+# instances of the same binary, one per role. See the BOOTSTRAP_URL /
+# RELAY_URL note below for why they are not collapsed into one.
 #
 # A and B share a network seed, so the DNA hashes they install are
 # identical and they are on the SAME DHT. C differs in the seed alone —
@@ -49,7 +51,7 @@
 # harness that only watches B prove positive is an anecdote.
 #
 # Peer discovery and transport come from `kitsune2-bootstrap-srv`, run on
-# a pinned port. Holochain 0.7 removed both `hc run-local-services` and
+# pinned ports. Holochain 0.7 removed both `hc run-local-services` and
 # the tx5/WebRTC transport it served; the transport is now iroh QUIC, and
 # kitsune2's own server binary provides the bootstrap service and an
 # embedded iroh relay together on one address. The same URL is therefore
@@ -97,7 +99,7 @@
 #     from the repo root includes sandbox.sh's conductor. Deleting this
 #     network must not delete that one.
 #
-#   - THE BOOTSTRAP/RELAY PORT MUST BE PINNED, not left ephemeral.
+#   - THE BOOTSTRAP AND RELAY PORTS MUST BE PINNED, not left ephemeral.
 #     A conductor's bootstrap and relay URLs are written into its
 #     persistent config at GENERATE time. Stop the network, start it
 #     again, and the service comes back on a different ephemeral port
@@ -195,23 +197,43 @@ OPTIONAL_NODES=(
 # conductor ports for the same reason those avoid 8888/8889: so the whole
 # range this script occupies is contiguous and obvious.
 BOOTSTRAP_PORT="${EPI_NET_BOOTSTRAP_PORT:-8893}"
+RELAY_PORT="${EPI_NET_RELAY_PORT:-8892}"
 
-# ONE SERVICE, ONE URL, used as both the bootstrap server and the iroh
-# relay. Holochain 0.7 removed the tx5/WebRTC transport, and with it the
-# separate WebRTC signal server this script used to run on :8892 — there
-# is no signal server to point at any more. `kitsune2-bootstrap-srv`
-# embeds an iroh relay alongside the bootstrap service and serves both on
-# the same address, so the same URL goes to `-b` and to `quic`'s relay
-# argument. Confirmed from its own startup log, which reports both
-# "Binding to: 127.0.0.1:<port>" and an `iroh_relay::server` QUIC server.
+# TWO SERVICES ON TWO PORTS, deliberately, even though one would do.
 #
-# The address is computed rather than read from a file. `hc
+# Holochain 0.7 removed the tx5/WebRTC transport and with it the separate
+# signal server this script used to run on :8892. Its replacement,
+# `kitsune2-bootstrap-srv`, embeds an iroh relay alongside the bootstrap
+# service and serves BOTH on one address — so a single instance is enough
+# to bring a network up, and that is what this script did at first.
+#
+# It is not enough for `scripts/live-verify/network-partition.mjs`. That
+# harness partitions the network by dropping packets to the port carrying
+# peer traffic, while asserting that the bootstrap port stays reachable —
+# the control that makes the result "one severed path" rather than "the
+# services went away". Collapsing both roles onto one port destroys that
+# control: there is no longer any cut that separates them.
+#
+# There is no flag to run the binary as bootstrap-only (its config has a
+# `no_relay_server` field, but the CLI does not expose it). So this runs
+# two instances and points each conductor at one for each role: `-b` at
+# :8893 and `quic`'s relay argument at :8892. Both instances serve both
+# roles; the conductors only ever use the one they were pointed at, which
+# is what separates the two data paths again.
+#
+# Measured, not assumed — see start_services' note below for the socket
+# topology this produces under 0.7.
+#
+# The addresses are computed rather than read from a file. `hc
 # run-local-services` used to publish its real addresses to
 # --bootstrap-address-path/--signal-address-path because its ports could
 # be ephemeral; kitsune2-bootstrap-srv takes a --listen address directly,
-# so pinning the port (see the header for why it must be pinned) means
-# the URL is already known and nothing needs to be discovered.
+# so pinning the ports (see the header for why they must be pinned) means
+# the URLs are already known and nothing needs to be discovered.
 BOOTSTRAP_URL="http://127.0.0.1:$BOOTSTRAP_PORT"
+RELAY_URL="http://127.0.0.1:$RELAY_PORT"
+RELAY_LOG="$NET_ROOT/relay.log"
+RELAY_PIDFILE="$NET_ROOT/relay.pid"
 SERVICES_LOG="$NET_ROOT/services.log"
 SERVICES_PIDFILE="$NET_ROOT/services.pid"
 
@@ -269,50 +291,90 @@ node_running() {
 }
 
 services_running() {
-  [ -f "$SERVICES_PIDFILE" ] && kill -0 "$(cat "$SERVICES_PIDFILE")" 2>/dev/null
+  [ -f "$SERVICES_PIDFILE" ] && kill -0 "$(cat "$SERVICES_PIDFILE")" 2>/dev/null \
+    && [ -f "$RELAY_PIDFILE" ] && kill -0 "$(cat "$RELAY_PIDFILE")" 2>/dev/null
 }
 
-start_services() {
-  if services_running; then
-    log "Local bootstrap/relay service already running (pid $(cat "$SERVICES_PIDFILE"))."
+# Start one kitsune2-bootstrap-srv instance and record the PID that
+# actually holds the port. Shared by the bootstrap and relay services,
+# which differ only in which port they bind and which log they write.
+one_service_running() {
+  local pidf="$1"
+  [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null
+}
+
+start_one_service() {
+  local role="$1" port="$2" logf="$3" pidf="$4"
+
+  # Checked PER SERVICE, not for the pair. Splitting one service into two
+  # introduced a partial-failure state the single-service version could
+  # not have: if one of them dies and the other lives, a `start` that
+  # tried to bring up both would fail on "address in use" for the
+  # survivor and leave the network down for a reason that has nothing to
+  # do with what actually broke.
+  if one_service_running "$pidf"; then
+    log "Local $role service already running (pid $(cat "$pidf"))."
     return 0
   fi
-  log "Starting local bootstrap + iroh relay service on :$BOOTSTRAP_PORT ..."
-  ( cd "$NET_ROOT" && setsid --fork "$K2_BOOT_BIN" --listen "127.0.0.1:$BOOTSTRAP_PORT" \
-      < /dev/null > "$SERVICES_LOG" 2>&1 )
+
+  log "Starting local $role service on :$port ..."
+  ( cd "$NET_ROOT" && setsid --fork "$K2_BOOT_BIN" --listen "127.0.0.1:$port" \
+      < /dev/null > "$logf" 2>&1 )
 
   # Wait on the port rather than on an address file: there is no address
   # file any more (see BOOTSTRAP_URL above), and the port answering is
   # the thing conductors actually need.
   local tries=30
   while [ "$tries" -gt 0 ]; do
-    port_up "$BOOTSTRAP_PORT" && break
+    port_up "$port" && break
     # A bind failure is fatal and instant; waiting out the full 30s for
     # it is pure delay. Nearly always a leaked previous run still holding
     # the port.
-    if grep -qiE "address in use|AddrInUse" "$SERVICES_LOG" 2>/dev/null; then
-      log "Service failed to start. Log:"
-      cat "$SERVICES_LOG" >&2
-      fail "Something is still bound to :$BOOTSTRAP_PORT — check with: pgrep -af kitsune2-bootstrap-srv"
+    if grep -qiE "address in use|AddrInUse" "$logf" 2>/dev/null; then
+      log "$role service failed to start. Log:"
+      cat "$logf" >&2
+      fail "Something is still bound to :$port — check with: pgrep -af kitsune2-bootstrap-srv"
     fi
     sleep 1; tries=$((tries - 1))
   done
-  port_up "$BOOTSTRAP_PORT" \
-    || fail "Bootstrap/relay service did not bind :$BOOTSTRAP_PORT within 30s. Log tail:$(echo; tail -n 20 "$SERVICES_LOG" 2>/dev/null)"
+  port_up "$port" \
+    || fail "$role service did not bind :$port within 30s. Log tail:$(echo; tail -n 20 "$logf" 2>/dev/null)"
 
   # THE PID MUST BE FOUND, NOT CAPTURED. `( cd X && setsid --fork Y ... )`
   # leaves `$!` pointing at a transient subshell that is gone in
   # milliseconds while the service keeps running and keeps the port.
   # Recording `$!` made `stop` kill something already dead and leave the
   # real service alive — the exact leak sandbox.sh's header describes for
-  # conductors. Matched on the --listen address so this cannot match a
-  # service belonging to a different network on another port.
+  # conductors. Matched on the --listen address, which is what makes this
+  # safe now that two instances of the same binary are running: the port
+  # is the only thing that tells them apart.
   local pid
-  pid="$(pgrep -f "kitsune2-bootstrap-srv .*--listen 127.0.0.1:$BOOTSTRAP_PORT" | head -n1)"
-  [ -n "$pid" ] || fail "Service bound :$BOOTSTRAP_PORT but its process could not be found (looked for --listen 127.0.0.1:$BOOTSTRAP_PORT)."
-  echo "$pid" > "$SERVICES_PIDFILE"
+  pid="$(pgrep -f "kitsune2-bootstrap-srv .*--listen 127.0.0.1:$port" | head -n1)"
+  [ -n "$pid" ] || fail "$role service bound :$port but its process could not be found (looked for --listen 127.0.0.1:$port)."
+  echo "$pid" > "$pidf"
+  log "  $role: http://127.0.0.1:$port  (pid $pid)"
+}
 
-  log "  bootstrap + relay: $BOOTSTRAP_URL  (pid $pid)"
+start_services() {
+  # No early return for the pair: each service decides for itself whether
+  # it is already up, so a half-dead pair heals instead of failing.
+  # Two instances, two roles — see the BOOTSTRAP_URL/RELAY_URL note above
+  # for why one is not enough.
+  #
+  # Measured topology inside the namespace with both up under Holochain
+  # 0.7, three conductors: three established TCP connections to the relay
+  # port and ZERO to the bootstrap port, no direct conductor-to-conductor
+  # TCP, and six UDP sockets (two per conductor, one per address family).
+  #
+  # Both halves of that are worth stating because both differ from tx5.
+  # Bootstrap holds no persistent connection — it is HTTP, used for
+  # discovery and then done — so it is reachable-on-demand rather than
+  # continuously connected, which is exactly what makes it usable as
+  # network-partition.mjs's control. And the UDP sockets are the real peer
+  # data path on iroh, with the relay as fallback; under tx5 it was the
+  # other way round. See that harness's header.
+  start_one_service "bootstrap" "$BOOTSTRAP_PORT" "$SERVICES_LOG" "$SERVICES_PIDFILE"
+  start_one_service "relay"     "$RELAY_PORT"     "$RELAY_LOG"     "$RELAY_PIDFILE"
 }
 
 start_node() {
@@ -347,7 +409,7 @@ start_node() {
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
         generate -a "$app_id" -r="$app" --in-process-lair --root "$NET_ROOT" -d "$name" \
         -s "$seed" "$HAPP_PATH" \
-        network -b "$BOOTSTRAP_URL" quic "$BOOTSTRAP_URL" > "$NET_ROOT/$name.log" 2>&1 )
+        network -b "$BOOTSTRAP_URL" quic "$RELAY_URL" > "$NET_ROOT/$name.log" 2>&1 )
   fi
 
   if ! wait_for_port "$admin" 90 || ! wait_for_port "$app" 90; then
@@ -464,14 +526,16 @@ case "$cmd" in
       IFS=: read -r name _ _ _ _ <<< "$spec"
       stop_pidfile "$(node_pidfile "$name")" "$name"
     done
-    stop_pidfile "$SERVICES_PIDFILE" "local bootstrap/signal services"
+    stop_pidfile "$RELAY_PIDFILE" "local relay service"
+    stop_pidfile "$SERVICES_PIDFILE" "local bootstrap service"
     log "Stopped. DHT state kept — next 'start' resumes it."
     ;;
 
   status)
     if services_running; then
-      log "Service running (pid $(cat "$SERVICES_PIDFILE"))."
-      log "  bootstrap + relay: $BOOTSTRAP_URL"
+      log "Services running (bootstrap pid $(cat "$SERVICES_PIDFILE"), relay pid $(cat "$RELAY_PIDFILE"))."
+      log "  bootstrap: $BOOTSTRAP_URL"
+      log "  relay:     $RELAY_URL"
     else
       log "Services not running."
     fi
@@ -526,17 +590,14 @@ case "$cmd" in
     node="${2:-}"
     [ -n "$node" ] || fail "Usage: scripts/network.sh start-node <nodeA|nodeB|nodeC|nodeD>"
     spec="$(spec_for "$node")" || fail "Unknown node \"$node\". Known: nodeA, nodeB, nodeC, nodeD (nodeD is opt-in; see OPTIONAL_NODES)."
-    services_running || fail "The bootstrap/relay service is not running. Start the whole network first: scripts/network.sh start"
+    services_running || fail "The bootstrap/relay services are not running. Start the whole network first: scripts/network.sh start"
     start_node "$spec"
     ;;
 
   addrs)
-    # Both roles are the same URL now; the "signal=" line is kept, with
-    # the relay's address, so anything parsing this output for a second
-    # service still finds one rather than silently getting nothing.
-    services_running || fail "The bootstrap/relay service is not running. Is the network up? scripts/network.sh start"
+    services_running || fail "The bootstrap/relay services are not running. Is the network up? scripts/network.sh start"
     echo "bootstrap=$BOOTSTRAP_URL"
-    echo "relay=$BOOTSTRAP_URL"
+    echo "relay=$RELAY_URL"
     ;;
 
   *)
