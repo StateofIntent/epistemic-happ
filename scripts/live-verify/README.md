@@ -86,6 +86,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `neighborhood-ui` | browser | 1 | The other half of HRR — a claim's neighborhood probe is offered second, scored as an approximation, and filters nothing |
 | `author-scope-ui` | browser | **2** | One agent's whole record is readable from the DHT — and the screen is not a client-side filter of what was already loaded |
 | `layout-fits` | browser | 1 | Every tab fits every width this UI is for, with an unbreakable token on screen — the check fifteen harnesses were missing |
+| `theme-pinning` | browser, **no conductor** | 0 | The palette follows the OS by default and a user's pin overrides it in both directions — checked under both emulated OS preferences, and before first paint |
 | `mew-lifecycle` | `sandbox.sh` | **2** | The Twitter bridge's zome surface end to end — Mew to Claim to mirror to imported reply, one deliberate step at a time. Does **not** cover the live X API |
 | `mcp-server` | `sandbox.sh` | 1 | The MCP server driven over stdio as an agent would drive it — the protocol is discoverable from the tool list, offers no ranking, and round-trips hashes as strings |
 | `real-gossip` | **`network.sh`** | 1 per node, **3 nodes** | An entry written on one conductor reaches a different conductor over a real network — and a chain-local read still does not |

@@ -125,6 +125,16 @@ Two things you will notice are missing, and both are deliberate:
   top of this page: two machines on different networks finding each other has
   never been verified, and a report of it failing is genuinely useful.
 - **It was working and now seems stale.** See the backoff note above.
+- **The same release looks different on two of your machines** — a white page
+  with muted green on one, a dark page with brighter green on the other. Both
+  are the app working correctly: it follows each machine's light/dark
+  preference by default, and the desktop builds embed a webview that reports
+  whatever the OS says. On Windows that comes from Settings > Personalization
+  > Colors > "Choose your default app mode" (the separate *Windows mode*
+  setting only changes the taskbar and Start menu, not embedded webviews). If
+  you would rather the app not follow the machine at all, the theme control in
+  the top right of the app header pins it to Light or Dark; that choice is
+  remembered per machine and never leaves it.
 - **macOS refuses to open the app**, or offers no way to allow it. That is
   the code-signing quarantine described above, not a corrupt download — see
   the `xattr` command in "Four things to know".
