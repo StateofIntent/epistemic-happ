@@ -9,6 +9,23 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>Epistemic — Practitioner</title>
+    <script>
+      // Runs before the first paint, and deliberately duplicates the one
+      // read that src/theme.ts also does. The module script that owns this
+      // preference is deferred, so leaving the read to it alone would paint
+      // one default-palette frame on every launch — a white flash for
+      // anyone who pinned dark, which is the exact complaint the pin exists
+      // to answer. Kept to the read and the stamp: theme.ts stays the only
+      // writer, and the key below must match STORAGE_KEY there.
+      try {
+        var pinned = localStorage.getItem('epistemic-mobile-ui:theme');
+        if (pinned === 'light' || pinned === 'dark') {
+          document.documentElement.dataset.theme = pinned;
+        }
+      } catch (e) {
+        // Blocked site-data throws on read; fall through to the OS preference.
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

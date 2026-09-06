@@ -13,8 +13,17 @@
   color-scheme: light dark;
 }
 
+/* The dark palette applies in two distinct cases, and CSS cannot express
+   them as one rule: the OS asks for dark and the user has not pinned light,
+   or the user has pinned dark outright. Hence the two blocks below. They
+   carry the same tokens and MUST be edited together — see src/theme.ts for
+   what does the pinning and why it is a pin rather than a toggle.
+
+   The :not() guard is what makes a pin work in both directions. Without it,
+   pinning light on a dark desktop would leave the media query in charge and
+   the choice would do nothing. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #15171a;
     --surface: #1e2125;
     --text: #ececec;
@@ -28,6 +37,28 @@
     --success-text: #8fd9a8;
   }
 }
+
+:root[data-theme='dark'] {
+  --bg: #15171a;
+  --surface: #1e2125;
+  --text: #ececec;
+  --text-dim: #9a9a9a;
+  --border: #33373c;
+  --accent: #4caf7d;
+  --accent-text: #0c1a12;
+  --danger-bg: #3a1f1f;
+  --danger-text: #f2a3a3;
+  --success-bg: #17301f;
+  --success-text: #8fd9a8;
+}
+
+/* A pin has to move color-scheme too, not just the tokens. `light dark` on
+   :root lets the browser paint its own widgets — scrollbars, date pickers,
+   the caret, form control chrome — from the OS preference, which is exactly
+   what a pinned user is overriding. Left alone, pinning light on a dark
+   desktop produces light surfaces with dark scrollbars. */
+:root[data-theme='dark'] { color-scheme: dark; }
+:root[data-theme='light'] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -109,6 +140,28 @@ html, body {
   content: '●';
   color: var(--accent);
   margin-right: 0.35rem;
+}
+
+/* Pushed to the far end of the title row so it sits clear of the app name
+   at every width, and kept in the row that renders before a connection
+   exists — the theme is chrome, and chrome should not be gated on being
+   connected to a conductor. */
+.theme-control {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Overrides the global block/full-width rule for form controls: this one is
+   a small inline control in a flex row, not a field in a form. */
+.theme-select {
+  display: inline-block;
+  width: auto;
+  margin-top: 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
 }
 
 /* --- Generic form / button styling --- */

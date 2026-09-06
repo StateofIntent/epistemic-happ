@@ -21,6 +21,7 @@ import {
   domainDetailExpanded, setDomainDetailExpanded,
   CONCEPT_NOTES, type Concept,
 } from './onboarding';
+import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -312,6 +313,7 @@ function renderHeader(): HTMLElement {
   subtitle.className = 'subtitle';
   subtitle.textContent = 'Practitioner';
   titleRow.appendChild(subtitle);
+  titleRow.appendChild(renderThemeControl());
   header.appendChild(titleRow);
   if (connection) {
     const meta = document.createElement('div');
@@ -337,6 +339,42 @@ function renderHeader(): HTMLElement {
     }
   }
   return header;
+}
+
+/** Light / dark / follow-the-OS, as a named control rather than a glyph
+ * that cycles: three states cannot be read off a single icon, and the one
+ * that matters most here — that 'System' is a live deferral to the OS and
+ * not a third fixed palette — is exactly the one an icon cannot say.
+ *
+ * Changing it needs no re-render. The stylesheet is driven by data-theme on
+ * the root element, so stamping that attribute repaints every surface at
+ * once; tearing down and rebuilding the tree would only lose scroll position
+ * and any half-typed claim. */
+function renderThemeControl(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'theme-control';
+
+  const select = document.createElement('select');
+  select.className = 'theme-select';
+  select.dataset.testid = 'theme-select';
+  // Visible label omitted on purpose — the row is tight and the option text
+  // is self-describing — so the accessible name has to come from here.
+  select.setAttribute('aria-label', 'Colour theme');
+
+  const options: Array<[ThemePreference, string]> = [
+    ['system', 'System'], ['light', 'Light'], ['dark', 'Dark'],
+  ];
+  for (const [value, label] of options) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    select.appendChild(opt);
+  }
+  select.value = getThemePreference();
+  select.onchange = () => { setThemePreference(select.value as ThemePreference); };
+
+  wrap.appendChild(select);
+  return wrap;
 }
 
 /** The SWO budget as a depleting meter rather than an error the user
@@ -3558,6 +3596,12 @@ function renderNewClaimTab(): HTMLElement {
 }
 
 // --- Boot -------------------------------------------------------------
+
+// Before the first render, so a pinned theme is in force for the first
+// frame this module paints. index.html stamps the same attribute earlier
+// still, from its own pre-paint read — this call is what keeps the two
+// agreeing once the module graph owns the state.
+initTheme();
 
 render();
 
