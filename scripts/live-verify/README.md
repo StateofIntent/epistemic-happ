@@ -57,6 +57,8 @@ Its ports (8892-8899) are deliberately disjoint from `sandbox.sh`'s (8888/8889),
 
 They are also the only harnesses here that are **safe to re-run without cleaning first**, and for reasons worth copying rather than by luck: every check is scoped to a domain string minted from `Date.now()` at the top of the run, the one count-free check matches on its own domain rather than on a total, and it spends no friction budget — `create_claim` and `publish_constitution` are not rate-limited, and it calls neither `create_critique` nor `create_synaptic_link`. Confirmed by re-running it green on conductors that had already carried two previous runs. The two properties that force the clean-conductor rule elsewhere — exact counts and per-hour budgets — are simply absent here.
 
+**Two harnesses need no conductor at all**, and are the only ones exempt from the rule above: `theme-pinning` drives the built UI bundle alone, and `notes-layer` drives the `notes/` service, which lives *above* the promotion gate and by construction never touches a DHT. Both are safe to run at any time, in any order, alongside anything else. `notes-layer` needs `cd notes && npm install && npm run build` first — the same "packing does not compile" trap as everywhere else, in a different package.
+
 ## What each harness needs
 
 `scripts/pack-webhapp.sh` after any change — it builds the zomes, packs the DNA and hApp, builds the UI and packs the bundle, in that order.
@@ -86,6 +88,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `neighborhood-ui` | browser | 1 | The other half of HRR — a claim's neighborhood probe is offered second, scored as an approximation, and filters nothing |
 | `author-scope-ui` | browser | **2** | One agent's whole record is readable from the DHT — and the screen is not a client-side filter of what was already loaded |
 | `layout-fits` | browser | 1 | Every tab fits every width this UI is for, with an unbreakable token on screen — the check fifteen harnesses were missing |
+| `notes-layer` | `notes/` built, **no conductor** | 4 members, 2 spaces | The soft layer above the gate — invite links, a directory that refuses to rank, space-local descriptive signals, deletion that really deletes, and a service that structurally cannot publish to the DHT |
 | `theme-pinning` | browser, **no conductor** | 0 | The palette follows the OS by default and a user's pin overrides it in both directions — checked under both emulated OS preferences, and before first paint |
 | `mew-lifecycle` | `sandbox.sh` | **2** | The Twitter bridge's zome surface end to end — Mew to Claim to mirror to imported reply, one deliberate step at a time. Does **not** cover the live X API |
 | `mcp-server` | `sandbox.sh` | 1 | The MCP server driven over stdio as an agent would drive it — the protocol is discoverable from the tool list, offers no ranking, and round-trips hashes as strings |
