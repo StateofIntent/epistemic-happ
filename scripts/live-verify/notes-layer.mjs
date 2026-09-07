@@ -94,9 +94,18 @@ async function call(method, path, { token, body } = {}) {
 }
 
 async function startServer(statePath) {
-  const env = { ...process.env, EPI_NOTES_PORT: String(PORT), EPI_NOTES_ORIGIN: ORIGIN };
-  if (statePath) env.EPI_NOTES_STATE = statePath;
-  else delete env.EPI_NOTES_STATE;
+  // An empty EPI_NOTES_STATE is passed deliberately for the ephemeral case
+  // rather than deleting the key. That is how a shell says "unset" — and it
+  // is the shape that broke the service once: `?? null` does not catch an
+  // empty string, so the server started, served reads, and threw ENOENT on
+  // the first WRITE when the atomic rename tried to move `.tmp` onto `''`.
+  // Found by notes-ui.mjs on its first run; kept here so it stays fixed.
+  const env = {
+    ...process.env,
+    EPI_NOTES_PORT: String(PORT),
+    EPI_NOTES_ORIGIN: ORIGIN,
+    EPI_NOTES_STATE: statePath ?? '',
+  };
   const child = spawn(process.execPath, [MAIN], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stderr.on('data', (d) => process.stderr.write(`[notes stderr] ${d}`));
   for (let i = 0; i < 100; i++) {
@@ -384,6 +393,14 @@ async function main() {
     server = await startServer(null);
     check('with no state file, a restart starts genuinely empty — nothing above the gate is permanent',
       (await call('GET', '/directory')).body.entries.length === 0);
+    // The empty-string case above is only proven by a WRITE succeeding: the
+    // defect it guards against left reads working perfectly.
+    const ephemeralWrite = await call('POST', '/spaces', {
+      body: { name: `Ephemeral ${STAMP}`, description: 'Written with EPI_NOTES_STATE empty.',
+        listed: true, creator: { displayName: 'Ada' } },
+    });
+    check('an empty EPI_NOTES_STATE means "no file", and writes succeed rather than 500',
+      ephemeralWrite.status === 200);
   } finally {
     await stopServer(server);
     rmSync(stateDir, { recursive: true, force: true });
