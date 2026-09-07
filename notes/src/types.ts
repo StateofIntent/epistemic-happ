@@ -190,3 +190,59 @@ export interface InvitePreview {
    * "this room has an onboarding assistant" is answerable from the link. */
   aiOffers: string[];
 }
+
+/** A question asked of the room's AI members, and their answer.
+ *
+ * THE AI IS A MEMBER, NOT A FEATURE OF THE SERVICE. This service routes the
+ * question and stores the answer; it holds no model credentials, makes no
+ * outbound calls, and has no idea what produced a reply. An assistant is an
+ * ordinary member with `kind: "ai"` that happens to be a program, joining
+ * through an invite link like anyone else — which is what makes "3 AI agents
+ * helping here" a fact about who is in the room rather than a feature flag.
+ *
+ * AND AN ANSWER IS A SUGGESTION. Nothing here is applied to anything. The
+ * `suggestion` field is a structured offer the asker's client renders beside
+ * an accept and a reject; no code path in this service or in the client
+ * writes it anywhere on its own. The design's phrasing is the specification:
+ * an assistant that can "say 'this reads like a methodological critique —
+ * want me to draft it that way?' and be right often enough to be useful and
+ * wrong safely enough to be corrected."
+ */
+export type AssistKind = 'critique-mode' | 'draft' | 'general';
+
+export interface AssistSuggestion {
+  /** One of the protocol's five critique modes, when the question was about
+   * which one fits. Sent as the bare variant name so a client can offer it
+   * without translating. */
+  critiqueMode: string | null;
+  /** Whether the material reads as an assertion or as a disagreement. */
+  entryKind: 'claim' | 'critique' | null;
+  /** A stronger wording of what the note said, for the asker to edit or
+   * discard. Never published by anything but a person pressing publish. */
+  wording: string | null;
+  /** Why the assistant thinks so, in a sentence. An unexplained suggestion is
+   * not correctable, and correctability is the whole safety argument. */
+  reason: string | null;
+}
+
+export interface Assist {
+  id: string;
+  spaceId: string;
+  askedBy: string;
+  /** The note the question is about, when there is one. */
+  noteId: string | null;
+  kind: AssistKind;
+  /** The text the asker wants help with — usually the note, or the part of it
+   * they selected. */
+  prompt: string;
+  createdAt: number;
+  answeredAt: number | null;
+  answeredBy: string | null;
+  answer: string | null;
+  suggestion: AssistSuggestion | null;
+  /** How the answer was produced, in the answerer's own words — a model id, or
+   * a statement that it came from fixed rules. Stored and shown rather than
+   * inferred, because "an AI said so" and "a keyword table said so" deserve
+   * different amounts of trust and the reader is the one who decides. */
+  source: string | null;
+}

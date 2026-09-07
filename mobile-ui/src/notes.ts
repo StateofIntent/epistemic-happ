@@ -85,6 +85,35 @@ export interface NotesSignals {
   promotionsAllTime: number;
 }
 
+/** A question asked of the room's AI members, and their answer.
+ *
+ * The answer is a SUGGESTION. Nothing in this client applies one on its own:
+ * every field arrives beside a button somebody has to press, and `source`
+ * (the answerer's own statement of what produced it — a model id, or fixed
+ * keyword rules) is rendered next to it, because "a model said so" and "a
+ * keyword table said so" deserve different amounts of trust. */
+export interface AssistSuggestion {
+  critiqueMode: string | null;
+  entryKind: 'claim' | 'critique' | null;
+  wording: string | null;
+  reason: string | null;
+}
+
+export interface Assist {
+  id: string;
+  spaceId: string;
+  askedBy: string;
+  noteId: string | null;
+  kind: 'critique-mode' | 'draft' | 'general';
+  prompt: string;
+  createdAt: number;
+  answeredAt: number | null;
+  answeredBy: string | null;
+  answer: string | null;
+  suggestion: AssistSuggestion | null;
+  source: string | null;
+}
+
 export interface DirectoryEntry {
   space: NotesSpace;
   totalMembers: number;
@@ -327,6 +356,20 @@ export class NotesClient {
     spaceId: string, token: string, patch: Partial<Pick<NotesSpace, 'name' | 'description' | 'tags' | 'listed'>>,
   ): Promise<{ space: NotesSpace }> {
     return this.request('PATCH', `/spaces/${spaceId}`, { token, body: patch });
+  }
+
+  askAssistant(spaceId: string, token: string, body: {
+    kind: Assist['kind']; prompt: string; noteId: string | null;
+  }): Promise<{ assist: Assist }> {
+    return this.request('POST', `/spaces/${spaceId}/assists`, { token, body });
+  }
+
+  assist(assistId: string, token: string): Promise<{ assist: Assist }> {
+    return this.request('GET', `/assists/${assistId}`, { token });
+  }
+
+  assists(spaceId: string, token: string): Promise<{ assists: Assist[] }> {
+    return this.request('GET', `/spaces/${spaceId}/assists`, { token });
   }
 
   /** Records that something crossed the gate. Called only AFTER the publish

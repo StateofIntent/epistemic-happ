@@ -117,17 +117,66 @@ notebook, not a set of adjacent private ones, and the argument for freeform
 notes over threads — a note lets you be wrong first — only pays off if being
 wrong is correctable by whoever spots it.
 
+## The AI in the room
+
+An assistant is a **member**, not a feature of this service. It follows an
+invite link, registers with `kind: "ai"` and a list of what it offers, and
+polls the same routes any member could. There is no registration endpoint for
+AI members and no flag that conjures one into a space: somebody hands the
+process a link, exactly as they would hand one to a person — and revoking the
+link or removing the member is how you tell it to stop.
+
+```bash
+cd notes && npm install && npm run build
+node dist/assistant-main.js 'http://localhost:8790/invites/<token>'
+
+EPI_ASSISTANT_NAME=Tutor EPI_ASSISTANT_OFFERS=onboarding,critique-tutor \
+  ANTHROPIC_API_KEY=... node dist/assistant-main.js '<invite link>'
+```
+
+**With no API key it still works, and says so.** The fallback answers from a
+fixed keyword table and reports that in the `source` line the asker's screen
+renders — because an assistant that goes silent without a key makes the whole
+feature undemonstrable, and one that passes a keyword match off as a
+considered judgement is worse than useless. The rules suggester therefore
+declines to draft anyone's published wording at all: it will say which mode
+the words look like and why, and stop there.
+
+This service still holds no model credentials, makes no outbound calls, and
+cannot tell a considered answer from a keyword table. It routes the question
+and stores the answer, with `source` recorded as the answerer's own statement
+and shown to the reader, who is the one deciding how much to trust it.
+
+**An answer is a suggestion.** Nothing is applied by this service or by the
+client on arrival; every field lands beside a button somebody presses. The
+form is complete and usable with the assistant ignored entirely — the design
+is explicit that someone who wants to explore unaided must still be able to.
+Questions and answers are visible to the whole space rather than whispered to
+the asker: an assistant answering privately would be a participant nobody else
+can check. First answer wins, so two assistants racing cannot overwrite each
+other, and any member — not only an AI one — may answer.
+
+| | |
+|---|---|
+| `POST /spaces/:id/assists` | ask the room |
+| `GET /spaces/:id/assists?waiting=1` | what an assistant polls for |
+| `GET /assists/:id` | the asker collects the answer |
+| `POST /assists/:id/answer` | any member answers, once |
+
 ## Verification
 
 ```bash
 cd notes && npm install && npm run build
-node scripts/live-verify/notes-layer.mjs
+node scripts/live-verify/notes-layer.mjs        # the rules, over real HTTP
+node scripts/live-verify/notes-assistant.mjs    # the assistant, in a real browser
 ```
 
-Drives a real server over real HTTP with several members at once. Needs no
-conductor and spends no friction budget, so unlike most of that directory it
-is safe to run at any time in any order. See its header for what it proves and
-for the fault injection that shows it can fail.
+Both drive a real server with several members at once; the second also runs a
+real assistant process and a real Chromium. Neither needs a conductor or
+spends any friction budget, so unlike most of that directory they are safe to
+run at any time in any order. See their headers for what they prove and for
+the fault injections that show they can fail — including one that *passed*
+first time and had to be strengthened.
 
 ## The client, and the gate
 
@@ -153,7 +202,7 @@ from the screen.
 
 ## Status
 
-**Proposed, now partly built.** The service, its rules, the browser client and
-the promotion flow are real code, with two verification harnesses. What is
-*not* here yet, and is tracked separately: the in-space AI collaborator, and
-the Linked Data face for published entries.
+**Proposed, now largely built.** The service, its rules, the browser client,
+the promotion flow and the in-space assistant are real code, with three
+verification harnesses. What is *not* here yet, and is tracked separately: the
+Linked Data face for published entries.

@@ -1400,3 +1400,41 @@ button:disabled { opacity: 0.6; cursor: default; }
   padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
+
+/* --- The AI in the room -----------------------------------------------
+ *
+ * Marked as a suggestion at every level, including visually: the block is
+ * inset and quieter than the form it sits in, never styled as a result or a
+ * verdict. Nothing here is an accent colour that would read as "the system
+ * recommends", and the apply buttons look like the other secondary actions
+ * on the screen rather than like a primary path. */
+
+.assist-block {
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.assist-block .hint { margin: 0 0 0.4rem; }
+
+.assist-answer { margin-top: 0.5rem; }
+.assist-text { margin: 0 0 0.35rem; font-size: 0.9rem; overflow-wrap: anywhere; }
+.assist-source { margin: 0 0 0.4rem; font-size: 0.75rem; }
+
+.assist-wording {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.assist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.3rem;
+}
