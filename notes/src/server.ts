@@ -280,6 +280,46 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       },
     },
 
+    // --- Asking the room's AI members --------------------------------------
+    {
+      method: 'POST', pattern: /^\/spaces\/([^/]+)\/assists$/,
+      handler: ({ token, body }, [spaceId]) => {
+        const member = store.requireMemberOf(token, spaceId);
+        return { assist: store.askAssist(spaceId, member.id, body) };
+      },
+    },
+    {
+      // `waiting=1` is what an assistant polls; without it this is the room's
+      // whole history of questions and answers, which is deliberately visible
+      // to every member — an assistant answering privately would be a
+      // participant nobody else can check.
+      method: 'GET', pattern: /^\/spaces\/([^/]+)\/assists$/,
+      handler: ({ token, url }, [spaceId]) => {
+        store.requireMemberOf(token, spaceId);
+        return { assists: store.listAssists(spaceId, url.searchParams.get('waiting') === '1') };
+      },
+    },
+    {
+      method: 'GET', pattern: /^\/assists\/([^/]+)$/,
+      handler: ({ token }, [assistId]) => {
+        const assist = store.getAssist(assistId);
+        store.requireMemberOf(token, assist.spaceId);
+        return { assist };
+      },
+    },
+    {
+      // Any member may answer, not only an AI one. A person who knows the
+      // answer is not less qualified than a program, and gating this on
+      // `kind: "ai"` would make the assistant an authority rather than a
+      // participant.
+      method: 'POST', pattern: /^\/assists\/([^/]+)\/answer$/,
+      handler: ({ token, body }, [assistId]) => {
+        const assist = store.getAssist(assistId);
+        const member = store.requireMemberOf(token, assist.spaceId);
+        return { assist: store.answerAssist(assistId, member.id, body) };
+      },
+    },
+
     // --- Liveness ---------------------------------------------------------
     {
       // Long-poll. Answers as soon as the store's revision moves past
@@ -303,6 +343,7 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
           notes: changed ? store.listNotes(spaceId) : null,
           members: changed ? store.publicMembers(spaceId) : null,
           signals: changed ? store.signals(spaceId) : null,
+          assists: changed ? store.listAssists(spaceId, false) : null,
         };
       },
     },

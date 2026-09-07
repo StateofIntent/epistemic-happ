@@ -428,6 +428,8 @@ epistemic-happ/
 │       ├── types.ts                # Spaces, members, invites, notes, promotions
 │       ├── store.ts                # The rules — including the directory's refusal to rank
 │       ├── server.ts               # HTTP transport; holds NO Holochain credentials
+│       ├── assistant.ts            # The AI member's suggesters (Claude, or fixed rules)
+│       ├── assistant-main.ts       # Runs one, joining a space by invite link
 │       └── main.ts                 # Entry point; ephemeral by default
 ├── happ.yaml                       # hApp manifest — defines roles
 └── README.md                       # This document
@@ -1245,6 +1247,22 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **The trap, inherited from the worldline half and just as live here.** The coordinator applies **no threshold**: it scores every candidate handed to it and returns them all, so probing claims with no relationship to the subject still yields a full list, just with low scores. Rendered as a set of findings, a meaningless probe reads as evidence. The screen says so before showing any of it, and the harness proves the claim by requiring an *unrelated* claim to appear among the results rather than merely requiring rows to exist.
 
   **Watched failing, and the second injection changed the argument.** Rendering similarity as "73% match" turns two checks red — the same inversion `worldline-ui.mjs` records, repeated here because the two halves are separate surfaces. Then filtering to `similarity > 0.2`, the sort of reasonable-looking tidy-up someone would add later, turned **four** red by taking the panel to **zero rows**: every score in that arrangement is below 0.2, because a binding built from one neighbour spreads thinly over a fixed-size vector. A threshold does not trim noise here; it empties the panel whenever a claim's neighborhood is small, and reports nothing while looking like it found nothing. That is a better argument for the no-threshold rule than the caveat's own wording.
+
+- [x] **The AI in the room, and it is a member rather than a feature.** `notes/src/assistant.ts`, `assistant-main.ts`, an assist channel in the notes service, a suggestion block in the promotion form, and `scripts/live-verify/notes-assistant.mjs` (34 checks).
+
+  **This is the piece the design note says replaces documentation.** An assistant sitting inside a notes space, next to the writing that is actually happening, can explain the difference between a note and a Claim *at the moment someone is trying to make one* — rather than in an onboarding flow they clicked through three days ago. It is allowed to be wrong, because every answer lands beside an accept and a reject.
+
+  **It joins through an invite link, as a member with `kind: "ai"`.** There is no registration endpoint for AI members and no configuration flag that conjures one into a space: somebody hands the process a link, exactly as they would hand one to a person, and revoking the link or removing the member is how you tell it to stop. That also makes "3 AI agents helping here" a fact about who is in the room — surfaced in the directory and in the invite preview, where it is a reason to walk in the door rather than a feature listed on a page.
+
+  **The notes service still holds no model credentials and makes no outbound calls.** It routes the question and stores the answer, with `source` recorded as the answerer's own statement of what produced it. That field is rendered next to the suggestion, because "a model said so" and "a keyword table said so" deserve different amounts of trust and the reader is the one who decides.
+
+  **Without an API key the assistant still answers, from fixed keyword rules, and says so.** A feature that goes silent without a credential is undemonstrable and unverifiable; one that passes a keyword match off as a considered judgement is worse than useless. So the fallback labels itself, and **declines to draft the published wording at all** — it will say which of the five modes the words look like and why, and stop there, because a keyword table has no business writing what someone is about to sign with their own key. Verified in exactly that configuration.
+
+  **Nothing is applied on arrival.** The single most tempting thing to build here is a form that fills itself in when the answer arrives, and it is the one change that would turn "AI-assisted if you want it" into "the AI decided". Every field lands beside a button; the form is complete and usable with the assistant ignored, which the design requires in as many words.
+
+  **The injection PASSED the first time, and that is the most useful result in this pass.** Auto-applying the suggestion left every check green: the assertion read the mode field before asking and compared it afterwards, and the select defaults to the first of the five variants — which is the mode suggested for that note, so the auto-apply wrote the value already there. Same shape as the two weak checks §9 already records: a label claiming more than its assertion tests. Fixed by setting the field, before asking, to a mode the suggestion demonstrably is not — read from the answer already collected over HTTP — and by asserting the Claim/Critique switch too; a further check now guards that setup so a future note whose suggestion happens to match cannot hollow it out again. Re-run injected: two reds, exactly the two properties broken.
+
+  **And the strengthened check then found a real defect with nothing injected at all.** Asking the assistant wiped the promotion form. `render()` rebuilds the DOM on every pass, so fields initialised from the note discarded whatever had been typed the moment anything in the space changed — an arriving answer most sharply, but equally another member writing a note. Fixed by binding the form to draft state that outlives a render.
 
 - [x] **The gate is a screen now — a note becomes a real Claim, in a real browser, under the practitioner's own key.** `mobile-ui/src/notes.ts`, `notes-ui.ts`, a Notes tab, and `scripts/live-verify/notes-ui.mjs` (41 checks, across two browser contexts).
 

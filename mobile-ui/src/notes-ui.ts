@@ -37,7 +37,8 @@ import {
   NotesClient, NotesRequestError, DEFAULT_NOTES_ORIGIN, loadNotesOrigin, saveNotesOrigin,
   loadMemberships, saveMembership, forgetMembership, membershipFor, inviteTokenFrom,
   type DirectoryEntry, type DirectorySort, type InvitePreview, type JoinRequest,
-  type Membership, type Note, type NotesInvite, type NotesMember, type NotesSignals,
+  type Assist, type Membership, type Note, type NotesInvite, type NotesMember,
+  type NotesSignals,
 } from './notes';
 import { CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros, type Claim, type Critique, type CritiqueMode } from './types';
 import type { HolochainConnection } from './holochain';
@@ -101,6 +102,7 @@ const notesBySpace = new Map<string, Note[]>();
 const membersBySpace = new Map<string, NotesMember[]>();
 const signalsBySpace = new Map<string, NotesSignals>();
 const invitesBySpace = new Map<string, NotesInvite[]>();
+const assistsBySpace = new Map<string, Assist[]>();
 const requestsBySpace = new Map<string, JoinRequest[]>();
 
 let editingNoteId: string | null = null;
@@ -108,8 +110,32 @@ let editingNoteId: string | null = null;
  * Captured at the moment the form opens: the note is editable by anyone in
  * the space, and what gets published must be what was read. */
 let promoting: { noteId: string; excerpt: string } | null = null;
+/** What has been typed into the open promotion form.
+ *
+ * main.ts's render() rebuilds the DOM from scratch on every pass, so a form
+ * whose fields are initialised from the note would silently discard whatever
+ * had been typed the moment anything else in the space changed — another
+ * member writing a note, a signals refresh, or, most sharply, asking the
+ * assistant a question. Found exactly that way: the assist harness set a mode,
+ * asked for help, and watched the answer arrive on a form that had reset
+ * itself. Draft state therefore lives here and the fields are bound to it. */
+interface PromotionDraft {
+  kind: 'claim' | 'critique';
+  content: string;
+  domain: string;
+  confidence: string;
+  tags: string;
+  target: string;
+  mode: string;
+}
+let promotionDraft: PromotionDraft | null = null;
 let promotionError: string | null = null;
 let promotionResult: string | null = null;
+/** The question currently out to the room's AI members, if any. Held by id
+ * because the answer arrives on a later poll, and the form it belongs to is
+ * rebuilt on every render. */
+let pendingAssistId: string | null = null;
+let assistError: string | null = null;
 
 function setOrigin(next: string): void {
   origin = next.replace(/\/$/, '');
@@ -201,12 +227,14 @@ async function loadSpace(ctx: NotesContext, spaceId: string): Promise<void> {
   // Invites and pending requests are secondary: a failure to read them must
   // not take the notes down with it.
   try {
-    const [invites, requests] = await Promise.all([
+    const [invites, requests, assists] = await Promise.all([
       client.invites(spaceId, membership.token),
       client.pendingRequests(spaceId, membership.token),
+      client.assists(spaceId, membership.token),
     ]);
     invitesBySpace.set(spaceId, invites.invites);
     requestsBySpace.set(spaceId, requests.requests);
+    assistsBySpace.set(spaceId, assists.assists);
   } catch { /* the room still reads without them */ }
   ctx.rerender();
 }
@@ -899,7 +927,17 @@ function renderNote(
   // any member may rewrite this note, and what gets published must be what
   // was read.
   actions.appendChild(button('Publish a stronger version', `note-promote-${note.id}`, () => {
-    promoting = { noteId: note.id, excerpt: selectionWithin(body) ?? note.text };
+    const excerpt = selectionWithin(body) ?? note.text;
+    promoting = { noteId: note.id, excerpt };
+    promotionDraft = {
+      kind: 'claim',
+      content: excerpt,
+      domain: '',
+      confidence: 'Moderate',
+      tags: '',
+      target: '',
+      mode: CRITIQUE_MODES[0],
+    };
     promotionError = null;
     promotionResult = null;
     ctx.rerender();
@@ -955,6 +993,19 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   panel.appendChild(excerpt);
 
   const connection = ctx.connection;
+  // Every field below reads its initial value from the draft and writes back
+  // on change, so a re-render mid-form (an arriving assist answer, another
+  // member's note) restores what was typed instead of discarding it.
+  const draft: PromotionDraft = promotionDraft ?? {
+    kind: 'claim',
+    content: promoting?.excerpt ?? note.text,
+    domain: '',
+    confidence: 'Moderate',
+    tags: '',
+    target: '',
+    mode: CRITIQUE_MODES[0],
+  };
+  promotionDraft = draft;
 
   const kindSelect = el('select');
   kindSelect.dataset.testid = 'promotion-kind';
@@ -964,13 +1015,15 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   ] as const) {
     const option = el('option', undefined, label);
     option.value = value;
+    if (value === draft.kind) option.selected = true;
     kindSelect.appendChild(option);
   }
   panel.appendChild(field('What is this?', kindSelect));
 
   const content = el('textarea');
   content.dataset.testid = 'promotion-content';
-  content.value = promoting?.excerpt ?? note.text;
+  content.value = draft.content;
+  content.oninput = () => { draft.content = content.value; };
   panel.appendChild(field('The published wording', content));
 
   // --- Claim fields
@@ -979,26 +1032,32 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   domain.type = 'text';
   domain.dataset.testid = 'promotion-domain';
   domain.placeholder = 'e.g. LumbarRehab';
+  domain.value = draft.domain;
+  domain.oninput = () => { draft.domain = domain.value; };
   claimFields.appendChild(field('Domain', domain));
   const confidence = el('select');
   confidence.dataset.testid = 'promotion-confidence';
   for (const level of CONFIDENCE_LEVELS) {
     const option = el('option', undefined, level);
     option.value = level;
-    if (level === 'Moderate') option.selected = true;
+    if (level === draft.confidence) option.selected = true;
     confidence.appendChild(option);
   }
+  confidence.onchange = () => { draft.confidence = confidence.value; };
   claimFields.appendChild(field('How confident are you?', confidence));
   const tags = el('input');
   tags.type = 'text';
   tags.dataset.testid = 'promotion-tags';
   tags.placeholder = 'comma-separated, optional';
+  tags.value = draft.tags;
+  tags.oninput = () => { draft.tags = tags.value; };
   claimFields.appendChild(field('Tags', tags));
   panel.appendChild(claimFields);
 
   // --- Critique fields
   const critiqueFields = el('div', 'promotion-critique-fields');
-  critiqueFields.hidden = true;
+  critiqueFields.hidden = draft.kind !== 'critique';
+  claimFields.hidden = draft.kind === 'critique';
   const targetSelect = el('select');
   targetSelect.dataset.testid = 'promotion-target';
   const targets = ctx.claimTargets();
@@ -1008,8 +1067,10 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   for (const target of targets) {
     const option = el('option', undefined, target.label);
     option.value = b64(target.hash);
+    if (option.value === draft.target) option.selected = true;
     targetSelect.appendChild(option);
   }
+  targetSelect.onchange = () => { draft.target = targetSelect.value; };
   critiqueFields.appendChild(field('Which claim are you critiquing?', targetSelect));
 
   // The one field the protocol will not let anyone skip, asked in plain
@@ -1020,8 +1081,10 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   for (const mode of CRITIQUE_MODES) {
     const option = el('option', undefined, `${mode} — ${MODE_IN_PLAIN_WORDS[mode]}`);
     option.value = mode;
+    if (mode === draft.mode) option.selected = true;
     modeSelect.appendChild(option);
   }
+  modeSelect.onchange = () => { draft.mode = modeSelect.value as CritiqueMode; };
   critiqueFields.appendChild(field('What kind of disagreement is this?', modeSelect));
   const modeNote = el('p', 'hint',
     'The protocol requires one of these five and will not accept free text. That is what stops '
@@ -1031,9 +1094,35 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
 
   kindSelect.onchange = () => {
     const critique = kindSelect.value === 'critique';
+    draft.kind = critique ? 'critique' : 'claim';
     claimFields.hidden = critique;
     critiqueFields.hidden = !critique;
   };
+
+  // --- The AI in the room ------------------------------------------------
+  //
+  // This is the piece the design note says replaces documentation: an
+  // assistant sitting next to the writing that is actually happening can
+  // explain the difference between a note and a Claim at the moment someone
+  // is trying to make one. Three rules hold it in place.
+  //
+  //   It is a MEMBER, so it is only offered when the room actually has one.
+  //   No AI member, no button — rather than a button that quietly does
+  //   nothing, or a service-level assistant nobody in the room can see.
+  //
+  //   Its answer is a SUGGESTION. Every field arrives beside a button
+  //   somebody presses. Nothing is applied on arrival, and the form is never
+  //   pre-filled from an answer that has not been accepted.
+  //
+  //   It is NOT THE ONLY WAY IN. The form is complete and usable with the
+  //   assistant ignored entirely — the design is explicit that someone who
+  //   wants to explore unaided must still be able to.
+  const aiMembers = (membersBySpace.get(note.spaceId) ?? []).filter((m) => m.kind === 'ai');
+  if (aiMembers.length > 0) {
+    panel.appendChild(renderAssistBlock(ctx, note, membership, aiMembers, {
+      kindSelect, content, modeSelect, claimFields, critiqueFields,
+    }));
+  }
 
   const error = el('div', 'error-box');
   error.hidden = promotionError === null;
@@ -1108,6 +1197,7 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
       });
       promotionResult = 'Published. The note is still here; the published entry is permanent.';
       promoting = null;
+      promotionDraft = null;
       await loadSpace(ctx, note.spaceId);
     } catch (err) {
       promotionError = err instanceof Error ? err.message : String(err);
@@ -1120,12 +1210,169 @@ function renderPromotionForm(ctx: NotesContext, note: Note, membership: Membersh
   panel.appendChild(submit);
   panel.appendChild(button('Cancel', 'promotion-cancel', () => {
     promoting = null;
+    promotionDraft = null;
     promotionError = null;
     ctx.rerender();
   }));
   panel.appendChild(error);
   panel.appendChild(success);
   return panel;
+}
+
+/** The controls an accepted suggestion is allowed to touch. Passed in
+ * explicitly so it is legible exactly which fields a suggestion can fill —
+ * and so that nothing else can be filled by accident. */
+interface PromotionControls {
+  kindSelect: HTMLSelectElement;
+  content: HTMLTextAreaElement;
+  modeSelect: HTMLSelectElement;
+  claimFields: HTMLElement;
+  critiqueFields: HTMLElement;
+}
+
+function renderAssistBlock(
+  ctx: NotesContext,
+  note: Note,
+  membership: Membership,
+  aiMembers: NotesMember[],
+  controls: PromotionControls,
+): HTMLElement {
+  const block = el('div', 'assist-block');
+  block.dataset.testid = 'assist-block';
+
+  const names = aiMembers.map((m) => m.displayName).join(', ');
+  const offer = el('p', 'hint',
+    `${names} ${aiMembers.length === 1 ? 'is' : 'are'} in this space and can suggest how this `
+    + 'might be published. Anything suggested is yours to accept or throw away, and you can '
+    + 'fill this form in without asking at all.');
+  block.appendChild(offer);
+
+  const answered = (assistsBySpace.get(note.spaceId) ?? [])
+    .filter((a) => a.id === pendingAssistId && a.answeredAt !== null);
+  const pending = pendingAssistId !== null && answered.length === 0;
+
+  const ask = button(
+    pending ? 'Waiting for an answer…' : 'Ask how to publish this',
+    'assist-ask',
+    () => void askAssistant(ctx, note, membership),
+    'link-button',
+  );
+  if (pending) ask.disabled = true;
+  block.appendChild(ask);
+
+  if (assistError) {
+    const err = el('div', 'error-box', assistError);
+    err.dataset.testid = 'assist-error';
+    block.appendChild(err);
+  }
+
+  const assist = answered[0];
+  if (!assist) return block;
+
+  const answer = el('div', 'assist-answer');
+  answer.dataset.testid = 'assist-answer';
+  answer.appendChild(el('p', 'assist-text', assist.answer ?? ''));
+
+  // Who said it, and what produced it. An unattributed suggestion invites
+  // being taken as the system's own view, and "a model said so" and "a
+  // keyword table said so" are not the same claim.
+  const answerer = (membersBySpace.get(note.spaceId) ?? []).find((m) => m.id === assist.answeredBy);
+  const attribution = el('p', 'hint assist-source');
+  attribution.dataset.testid = 'assist-source';
+  attribution.textContent =
+    `Suggested by ${answerer?.displayName ?? 'a member'}${answerer?.kind === 'ai' ? ' (AI)' : ''}`
+    + `${assist.source ? ` · ${assist.source}` : ''}. A suggestion, not a verdict — `
+    + 'the protocol validates what you publish, not what anyone suggested.';
+  answer.appendChild(attribution);
+
+  const suggestion = assist.suggestion;
+  if (suggestion) {
+    if (suggestion.reason) answer.appendChild(el('p', 'hint', suggestion.reason));
+    const actions = el('div', 'assist-actions');
+    if (suggestion.entryKind) {
+      actions.appendChild(button(
+        `Use "${suggestion.entryKind === 'claim' ? 'Claim' : 'Critique'}"`,
+        'assist-apply-kind',
+        () => {
+          controls.kindSelect.value = suggestion.entryKind as string;
+          const critique = suggestion.entryKind === 'critique';
+          if (promotionDraft) promotionDraft.kind = critique ? 'critique' : 'claim';
+          controls.claimFields.hidden = critique;
+          controls.critiqueFields.hidden = !critique;
+        },
+      ));
+    }
+    if (suggestion.critiqueMode) {
+      actions.appendChild(button(`Use ${suggestion.critiqueMode}`, 'assist-apply-mode', () => {
+        controls.kindSelect.value = 'critique';
+        controls.claimFields.hidden = true;
+        controls.critiqueFields.hidden = false;
+        controls.modeSelect.value = suggestion.critiqueMode as string;
+        if (promotionDraft) {
+          promotionDraft.kind = 'critique';
+          promotionDraft.mode = suggestion.critiqueMode as string;
+        }
+      }));
+    }
+    if (suggestion.wording) {
+      const wording = el('blockquote', 'assist-wording', suggestion.wording);
+      wording.dataset.testid = 'assist-wording';
+      answer.appendChild(wording);
+      actions.appendChild(button('Use this wording', 'assist-apply-wording', () => {
+        controls.content.value = suggestion.wording as string;
+        if (promotionDraft) promotionDraft.content = suggestion.wording as string;
+      }));
+    }
+    actions.appendChild(button('Ignore it', 'assist-dismiss', () => {
+      pendingAssistId = null;
+      ctx.rerender();
+    }));
+    answer.appendChild(actions);
+  }
+
+  block.appendChild(answer);
+  return block;
+}
+
+/** Files the question and then polls for the answer.
+ *
+ * Polling rather than pushing because an answer is a change in the space like
+ * any other, and because an assistant may take a while to think or may not be
+ * running at all — a request that is never answered has to degrade into a
+ * sentence saying so, not into a spinner forever. */
+async function askAssistant(ctx: NotesContext, note: Note, membership: Membership): Promise<void> {
+  assistError = null;
+  const prompt = promoting?.excerpt ?? note.text;
+  try {
+    const { assist } = await client.askAssistant(note.spaceId, membership.token, {
+      kind: 'critique-mode',
+      prompt,
+      noteId: note.id,
+    });
+    pendingAssistId = assist.id;
+    ctx.rerender();
+    // ~45 seconds. Long enough for a model to answer, short enough that an
+    // assistant nobody is running does not leave the question open forever.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const current = await client.assist(assist.id, membership.token);
+      if (current.assist.answeredAt !== null) {
+        const existing = (assistsBySpace.get(note.spaceId) ?? []).filter((a) => a.id !== assist.id);
+        assistsBySpace.set(note.spaceId, [...existing, current.assist]);
+        ctx.rerender();
+        return;
+      }
+    }
+    assistError =
+      'Nobody answered. The AI members of a space are ordinary members running somewhere — '
+      + 'one may not be running right now. The form works without them.';
+    pendingAssistId = null;
+    ctx.rerender();
+  } catch (error) {
+    assistError = error instanceof Error ? error.message : String(error);
+    pendingAssistId = null;
+    ctx.rerender();
+  }
 }
 
 // Local copies of main.ts's two hash helpers. Duplicated rather than exported

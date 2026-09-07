@@ -28,8 +28,9 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
-  DirectoryEntry, DirectorySort, Invite, InviteMode, InvitePreview, JoinRequest,
-  Member, MemberKind, Note, Promotion, PublicMember, Space, SpaceSignals,
+  Assist, AssistKind, AssistSuggestion, DirectoryEntry, DirectorySort, Invite, InviteMode,
+  InvitePreview, JoinRequest, Member, MemberKind, Note, Promotion, PublicMember, Space,
+  SpaceSignals,
 } from './types.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -71,10 +72,14 @@ interface State {
   invites: Record<string, Invite>;
   requests: Record<string, JoinRequest>;
   notes: Record<string, Note>;
+  /** Optional so a state file written before assists existed still loads —
+   * this layer is ephemeral by default, but someone running with a state file
+   * should not lose their notes to a version bump. */
+  assists?: Record<string, Assist>;
 }
 
 function emptyState(): State {
-  return { version: 1, spaces: {}, members: {}, invites: {}, requests: {}, notes: {} };
+  return { version: 1, spaces: {}, members: {}, invites: {}, requests: {}, notes: {}, assists: {} };
 }
 
 function id(prefix: string): string {
@@ -587,6 +592,88 @@ export class NotesStore {
     return promotion;
   }
 
+  // --- Asking the room's AI members --------------------------------------
+  //
+  // Routing only. This service never calls a model, holds no model
+  // credentials, and cannot tell a considered answer from a keyword table —
+  // which is why `source` is stored as the answerer's own statement and shown
+  // to the reader rather than inferred here.
+
+  private get assists(): Record<string, Assist> {
+    this.state.assists ??= {};
+    return this.state.assists;
+  }
+
+  askAssist(spaceId: string, askedBy: string, input: {
+    kind: unknown; prompt: unknown; noteId?: unknown;
+  }): Assist {
+    this.getSpace(spaceId);
+    const kind = input.kind;
+    if (kind !== 'critique-mode' && kind !== 'draft' && kind !== 'general') {
+      throw new NotesError(400, 'bad_field', 'kind must be "critique-mode", "draft" or "general"');
+    }
+    let noteId: string | null = null;
+    if (input.noteId !== undefined && input.noteId !== null) {
+      noteId = trimmed(input.noteId, 'noteId', 200);
+      const note = this.getNote(noteId);
+      if (note.spaceId !== spaceId) {
+        throw new NotesError(400, 'bad_field', 'that note is in a different space');
+      }
+    }
+    const assist: Assist = {
+      id: id('ask'),
+      spaceId,
+      askedBy,
+      noteId,
+      kind: kind as AssistKind,
+      prompt: trimmed(input.prompt, 'prompt', 20000),
+      createdAt: Date.now(),
+      answeredAt: null,
+      answeredBy: null,
+      answer: null,
+      suggestion: null,
+      source: null,
+    };
+    this.assists[assist.id] = assist;
+    this.touched();
+    return assist;
+  }
+
+  getAssist(assistId: string): Assist {
+    const assist = this.assists[assistId];
+    if (!assist) throw new NotesError(404, 'no_such_assist', 'no such request for help');
+    return assist;
+  }
+
+  /** Every assist in a space, newest last. `waiting` narrows to the ones no
+   * member has answered — what an assistant process polls for. */
+  listAssists(spaceId: string, waiting: boolean): Assist[] {
+    return Object.values(this.assists)
+      .filter((a) => a.spaceId === spaceId && (!waiting || a.answeredAt === null))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  answerAssist(assistId: string, answeredBy: string, input: {
+    answer: unknown; suggestion?: unknown; source?: unknown;
+  }): Assist {
+    const assist = this.getAssist(assistId);
+    if (assist.answeredAt !== null) {
+      // First answer wins rather than last. Two assistants racing on the same
+      // question should not overwrite each other, and a question that has
+      // already been answered is not still open.
+      throw new NotesError(409, 'already_answered', 'that question already has an answer');
+    }
+    assist.answer = trimmed(input.answer, 'answer', 20000);
+    assist.answeredBy = answeredBy;
+    assist.answeredAt = Date.now();
+    assist.source = input.source === undefined || input.source === null
+      ? null
+      : trimmed(input.source, 'source', 200);
+    assist.suggestion = normaliseSuggestion(input.suggestion);
+    this.touched();
+    return assist;
+  }
+
   // --- Signals -----------------------------------------------------------
 
   private lastActivityAt(spaceId: string): number | null {
@@ -616,6 +703,35 @@ export class NotesStore {
       promotionsAllTime: notes.reduce((sum, n) => sum + n.promotions.length, 0),
     };
   }
+}
+
+/** Validates the structured half of an answer.
+ *
+ * `critiqueMode` is deliberately NOT checked against the protocol's five
+ * variants here. This service knows nothing about the DNA's enums, and a
+ * suggestion is not an entry — the client offers it, the protocol's own
+ * validation is what refuses a bad one at publish time, and encoding the
+ * enum here would put a second, staler copy of the protocol's vocabulary in
+ * a service that has no business holding one. */
+function normaliseSuggestion(value: unknown): AssistSuggestion | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') throw new NotesError(400, 'bad_field', 'suggestion must be an object');
+  const raw = value as Record<string, unknown>;
+  const optional = (field: string, max: number): string | null => {
+    const item = raw[field];
+    if (item === undefined || item === null) return null;
+    return trimmed(item, `suggestion.${field}`, max);
+  };
+  const entryKind = raw.entryKind;
+  if (entryKind !== undefined && entryKind !== null && entryKind !== 'claim' && entryKind !== 'critique') {
+    throw new NotesError(400, 'bad_field', 'suggestion.entryKind must be "claim" or "critique"');
+  }
+  return {
+    critiqueMode: optional('critiqueMode', 60),
+    entryKind: (entryKind ?? null) as AssistSuggestion['entryKind'],
+    wording: optional('wording', 20000),
+    reason: optional('reason', 2000),
+  };
 }
 
 function publicShape(stored: StoredMember): Member {
