@@ -420,6 +420,13 @@ epistemic-happ/
 │   │   ├── sw.js                   # Minimal service worker (installability)
 │   │   └── icon.svg
 │   └── README.md                   # This app's own build/run/verification account
+├── notes/                          # THE SOFT LAYER — above the promotion gate
+│   ├── package.json                # No runtime dependencies; node:http only
+│   └── src/
+│       ├── types.ts                # Spaces, members, invites, notes, promotions
+│       ├── store.ts                # The rules — including the directory's refusal to rank
+│       ├── server.ts               # HTTP transport; holds NO Holochain credentials
+│       └── main.ts                 # Entry point; ephemeral by default
 ├── happ.yaml                       # hApp manifest — defines roles
 └── README.md                       # This document
 ```
@@ -1237,6 +1244,23 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   **Watched failing, and the second injection changed the argument.** Rendering similarity as "73% match" turns two checks red — the same inversion `worldline-ui.mjs` records, repeated here because the two halves are separate surfaces. Then filtering to `similarity > 0.2`, the sort of reasonable-looking tidy-up someone would add later, turned **four** red by taking the panel to **zero rows**: every score in that arrangement is below 0.2, because a binding built from one neighbour spreads thinly over a fixed-size vector. A threshold does not trim noise here; it empties the panel whenever a claim's neighborhood is small, and reports nothing while looking like it found nothing. That is a better argument for the no-threshold rule than the caveat's own wording.
 
+- [x] **The shared notes layer exists — the first thing this project has built that sits ABOVE the protocol rather than inside it.** `notes/`, and `scripts/live-verify/notes-layer.mjs` (56 checks).
+
+  **The problem it answers is one this protocol earned by succeeding.** Typed disagreement, permanent history, cryptographic authorship and a hard refusal of global scores are bought with ceremony, and the bill comes due at capture: a half-formed thought has nowhere to land, and every invariant that makes the graph worth reading is also a reason not to write in it. The obvious fix — relax the rules, allow a half-thought as a `Claim` — would destroy the only property this protocol has that Twitter and the Semantic Web do not.
+
+  **So nothing was relaxed.** A room was put in front of the rules where they do not apply yet, and one deliberate act carries material across. Because notes never reach the DHT, there is no pressure to weaken validation, friction limits or Invariant 1 to accommodate them — which is the whole argument for the two-layer shape, and the reason this is a new package rather than a new entry type.
+
+  **The service structurally cannot publish, which is what makes "promotion is never automatic" a fact rather than a policy.** It imports no Holochain client, holds no conductor credentials, and learns about a promotion only by being told after the client has already published under the member's own agent key. A service that *could* publish would need a rule saying it must not; one that cannot needs no rule, and there is no code path a later refactor can quietly enable. The harness asserts the absence against the built bundle rather than against intent.
+
+  **Invariant 1 reappears one layer up, wearing a directory.** Every field a listing legitimately shows — participant count, last activity, notes this week — is one `sort=` parameter away from being a leaderboard over rooms, which is exactly what the layer below exists to avoid. The directory therefore offers two orderings, `recent` and `alphabetical` — a fact about time and a fact about names — and **refuses anything else with a 400 that says why**, rather than falling back to a default and leaving the caller believing they got what they asked for. Activity signals are space-local and descriptive for the same reason: "12 notes this week" tells you a room is alive; the same number sorted against every other room tells you it is better, and that is a different and worse thing.
+
+  **The one place the two layers deliberately disagree is deletion.** Below the gate, `RegisterDelete` is refused for every entry type and history is inviolable. Above it, deleting a note really deletes it. That is not a missing feature relative to the protocol; it is the difference between the layers stated in code. A person who cannot throw away a bad half-thought will not write half-thoughts, and half-thoughts are the entire point of this layer.
+
+  **Provenance survives editing, which needed a decision rather than a field.** Notes here are rewritable by any member of the space — a shared notebook, not adjacent private ones — so a promotion stores the promoted excerpt *verbatim* alongside the `ActionHash`, not a pointer into text that may since have changed. The hash is stored as what it is: an unverifiable claim by a member about something they say they did, whose authoritative copy is on the DHT and addressed by that hash. The soft layer is never a second source of truth about the hard one.
+
+  **Watched failing.** Widening the directory's allow-list to include `popular`, plus the four lines that make it work, turned exactly two checks red and left the paired `sort=activity` check correctly green. Reverted; 56 green. See the harness header.
+
+  **What is not built yet, and is not claimed to be:** the browser client and promotion flow in `mobile-ui/`, the in-space AI collaborator, and the Linked Data face for published entries. Each is tracked as its own item rather than folded into this one.
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.

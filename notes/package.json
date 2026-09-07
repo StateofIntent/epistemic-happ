@@ -1,0 +1,17 @@
+{
+  "name": "epistemic-notes",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "description": "The shared notes layer — the soft, off-DHT room that sits above the Epistemic Resonance Protocol's promotion gate. See README.md.",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "typescript": "^5.4.0"
+  }
+}
