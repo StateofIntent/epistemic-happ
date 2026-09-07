@@ -414,6 +414,8 @@ epistemic-happ/
 │   │   ├── holochain.ts            # Conductor connection + zome-call layer
 │   │   ├── types.ts                # Claim/Critique field shapes, mirroring the DNA
 │   │   ├── main.ts                 # Screens (Connect, Browse, New Claim) — vanilla DOM, no framework
+│   │   ├── notes.ts                # Client for the notes service — never touches the DHT
+│   │   ├── notes-ui.ts             # The Notes tab, and the promotion form (the gate)
 │   │   └── style.css
 │   ├── public/
 │   │   ├── manifest.webmanifest    # PWA manifest
@@ -1243,6 +1245,20 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **The trap, inherited from the worldline half and just as live here.** The coordinator applies **no threshold**: it scores every candidate handed to it and returns them all, so probing claims with no relationship to the subject still yields a full list, just with low scores. Rendered as a set of findings, a meaningless probe reads as evidence. The screen says so before showing any of it, and the harness proves the claim by requiring an *unrelated* claim to appear among the results rather than merely requiring rows to exist.
 
   **Watched failing, and the second injection changed the argument.** Rendering similarity as "73% match" turns two checks red — the same inversion `worldline-ui.mjs` records, repeated here because the two halves are separate surfaces. Then filtering to `similarity > 0.2`, the sort of reasonable-looking tidy-up someone would add later, turned **four** red by taking the panel to **zero rows**: every score in that arrangement is below 0.2, because a binding built from one neighbour spreads thinly over a fixed-size vector. A threshold does not trim noise here; it empties the panel whenever a claim's neighborhood is small, and reports nothing while looking like it found nothing. That is a better argument for the no-threshold rule than the caveat's own wording.
+
+- [x] **The gate is a screen now — a note becomes a real Claim, in a real browser, under the practitioner's own key.** `mobile-ui/src/notes.ts`, `notes-ui.ts`, a Notes tab, and `scripts/live-verify/notes-ui.mjs` (41 checks, across two browser contexts).
+
+  **The soft layer is reachable without a conductor, and that ordering is the point.** The connect screen offers a second door straight into the notes layer. Requiring a connection first would put the protocol's ceremony back in front of the room built to sit in front of the protocol — the whole design would still be true and nobody would ever reach it. Everything works there: writing, invite links, the directory, joining. Publishing is the one act that needs an agent key.
+
+  **So the promotion form is rendered and DISABLED with a reason, never hidden.** §4.5's rule, applied to the one affordance that crosses layers: hide what is structurally impossible, disable-with-a-reason what is merely unavailable now. Publishing is unavailable without a conductor and perfectly possible with one, so hiding it would teach a newcomer that the notes layer cannot reach the protocol at all — the opposite of the thing being explained. The wording names the conductor and the agent key, and does not offer the notes server as a way round, because there is none: that service has no key and cannot sign.
+
+  **The critique mode is asked in plain language, and that is the entire onboarding argument in one field.** `CritiqueMode` is a fixed five-variant axis the integrity zome will not let anyone skip, and it is the wall a newcomer hits. Each variant is offered as a sentence — "I tried this myself and something different happened", "The reasoning does not follow, even if the facts are right" — with the variant name sent unchanged. Free text is not offered as a sixth option, because the protocol's refusal of it is what stops disagreement collapsing into a single bit.
+
+  **Promotion is a copy, not a move**, and the note records what it became. The excerpt is captured when the form opens rather than read at submit time: notes here are editable by anyone in the space, and what gets published must be what was read.
+
+  **Verified against the DHT, not against the screen.** In a real Chromium at 390×844 across two browser contexts — two members, one invite link, one shared notebook — a note was promoted to a Claim and another to a typed Critique, and both were read back by an **independent** client off a real conductor: right content, right domain, right mode, authored by the practitioner's own agent key and not by the notes server. Exactly one Claim, not one per render.
+
+  **Watched failing twice, and two more defects were found without any injection.** Hiding the form when disconnected: four reds. Deleting the note after publishing: three reds, with the DHT checks correctly staying green, since the Claim really was published and what broke was a different property. Unforced, on first runs: an empty `EPI_NOTES_STATE` was treated as a filename, so the service served every read and threw on the first write; and a space still being read rendered as an empty room, telling someone who had just followed an invite that they had walked into a dead one. Both fixed at the source and guarded by checks. The first attempt at each injection also reported nothing but a Playwright timeout — the complaint this project already records against `launcher-packaging`'s first regression report — so every wait in that harness that can legitimately fail is now bounded and then asserted.
 
 - [x] **The shared notes layer exists — the first thing this project has built that sits ABOVE the protocol rather than inside it.** `notes/`, and `scripts/live-verify/notes-layer.mjs` (56 checks).
 

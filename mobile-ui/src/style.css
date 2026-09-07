@@ -1194,3 +1194,209 @@ button:disabled { opacity: 0.6; cursor: default; }
 }
 
 .resonance-label { flex: 1 1 auto; }
+
+/* --- The notes layer (notes-ui.ts) ------------------------------------
+ *
+ * The soft room above the promotion gate. Two rules shape everything here.
+ *
+ * FIRST: nothing may read as a ranking. Signals are a sentence, not a row of
+ * figures — a number in a box invites comparison with the same box elsewhere,
+ * and directory rows are deliberately uniform, with no size, weight or accent
+ * varying by activity. There is no "featured" treatment to add.
+ *
+ * SECOND: everything here can carry an unbreakable token. Invite URLs and
+ * base64 ActionHashes are long, have no spaces, and land on a 320px screen.
+ * `overflow-wrap: anywhere` on both is what keeps the whole document from
+ * scrolling sideways — the defect `scripts/live-verify/layout-fits.mjs`
+ * exists to catch, and one this screen would otherwise reintroduce twice
+ * over. */
+
+.notes-server-bar {
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.notes-server-bar input { margin-bottom: 0.4rem; }
+.notes-server-bar .hint { margin: 0.4rem 0 0; }
+
+.notes-block {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-block h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.4rem;
+}
+
+.notes-space-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.notes-space-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-directory-row {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-directory-row p { margin: 0.25rem 0; font-size: 0.9rem; }
+
+.notes-space-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.notes-space-meta { margin: 0.3rem 0 0; }
+
+.notes-directory-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.notes-directory-controls select,
+.notes-directory-controls input {
+  width: auto;
+  flex: 1 1 8rem;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.notes-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.3rem; }
+
+.tag {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.notes-examples blockquote {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.notes-members { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0; }
+
+.member-chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* An AI member is marked, never disguised — the design's own requirement
+ * that AI collaborators be visible, and a reason to walk in the door. */
+.member-chip.ai {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notes-signals { margin: 0.25rem 0 0.75rem; }
+
+.notes-request-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.3rem 0;
+}
+
+.notes-invites { margin: 0.75rem 0; }
+.notes-invites summary { cursor: pointer; font-size: 0.9rem; color: var(--accent); }
+.notes-invite-list { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+
+.notes-invite-url,
+.promotion-hash {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  color: var(--text-dim);
+}
+
+.notes-composer { margin: 1rem 0; }
+
+.notes-list { list-style: none; padding: 0; margin: 0; }
+
+.note-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem;
+  margin-bottom: 0.7rem;
+}
+
+.note-byline { margin: 0 0 0.35rem; }
+.note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.promote-button { font-weight: 600; }
+
+.note-promotions { margin-top: 0.5rem; }
+.note-promotion { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: baseline; }
+
+.chip {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.promotion-panel {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed var(--border);
+}
+
+.promotion-panel h3 { font-size: 0.95rem; margin: 0 0 0.3rem; }
+
+.promotion-excerpt {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.promotion-unavailable { margin: 0.5rem 0; }
+
+.notes-checkbox { display: flex; gap: 0.5rem; align-items: flex-start; }
+.notes-checkbox input { width: auto; margin-top: 0.2rem; }
+
+.soft-door {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}

@@ -129,9 +129,31 @@ conductor and spends no friction budget, so unlike most of that directory it
 is safe to run at any time in any order. See its header for what it proves and
 for the fault injection that shows it can fail.
 
+## The client, and the gate
+
+`mobile-ui/` carries the browser half: a **Notes** tab, and a second door on
+the connect screen so the notes layer is reachable *without a conductor at
+all* — requiring one first would put the protocol's ceremony back in front of
+the room built to sit in front of it.
+
+Promotion happens there, not here. Selecting part of a note and choosing
+"publish a stronger version" opens a form pre-filled from what was already
+written; the critique mode — the one field the protocol will not let anyone
+skip — is asked in plain language, with the five fixed variants spelled out as
+sentences. Publishing calls `create_claim` or `create_critique` on the
+practitioner's own conductor, under their own agent key, and only then tells
+this service what happened. Without a connection the form is still rendered,
+visibly disabled, saying that publishing needs an agent key this service does
+not have and cannot obtain.
+
+Verified end to end by `scripts/live-verify/notes-ui.mjs`, in a real Chromium
+across two browser contexts, against a real conductor — with the published
+Claim and Critique read back by an independent client rather than believed
+from the screen.
+
 ## Status
 
-**Proposed, now partly built.** The service, its rules and its verification
-are real code as of this commit. What is *not* here yet, and is tracked
-separately: the browser client and promotion flow in `mobile-ui/`, the in-space
-AI collaborator, and the Linked Data face for published entries.
+**Proposed, now partly built.** The service, its rules, the browser client and
+the promotion flow are real code, with two verification harnesses. What is
+*not* here yet, and is tracked separately: the in-space AI collaborator, and
+the Linked Data face for published entries.

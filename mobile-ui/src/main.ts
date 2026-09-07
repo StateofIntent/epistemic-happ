@@ -22,6 +22,7 @@ import {
   CONCEPT_NOTES, type Concept,
 } from './onboarding';
 import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
+import { renderNotesTab, onNotesTabOpened, type NotesContext } from './notes-ui';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -288,15 +289,70 @@ function bytesFromB64(text: string): Uint8Array {
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
+/** Whether the notes layer is being used without a conductor.
+ *
+ * The soft layer's whole argument is that it costs nothing to walk into, and
+ * requiring a Holochain connection first would put the protocol's ceremony
+ * back in front of the room built to sit in front of the protocol. So the
+ * connect screen offers a second door: write notes now, connect when you have
+ * something you want to publish. Promotion is the only thing that needs the
+ * conductor, and its form says so where it is disabled. */
+let notesWithoutConductor = false;
+
+/** What notes-ui needs from this app: a connection when there is one, a way
+ * to ask for a re-render, and the claims already on screen to offer as
+ * critique targets. Built fresh on each use so it never holds a stale
+ * connection. */
+function notesContext(): NotesContext {
+  return {
+    connection,
+    rerender: render,
+    claimTargets: () => claims.map((record) => ({
+      label: `${record.entry.content.slice(0, 60)}${record.entry.content.length > 60 ? '…' : ''}`
+        + ` — ${record.entry.domain}`,
+      // create_critique targets a Claim by ENTRY hash, exactly as the
+      // critique form in this file does. An ActionHash here would validate
+      // as a link target and point at nothing the critique panel can read.
+      hash: record.entryHash,
+    })),
+  };
+}
+
 function render() {
   app.innerHTML = '';
   conceptNoteShownThisPass = false;
   app.appendChild(renderHeader());
   if (!connection) {
+    if (notesWithoutConductor) {
+      app.appendChild(renderNotesWithoutConductor());
+      return;
+    }
     app.appendChild(renderConnectScreen());
     return;
   }
   app.appendChild(renderTabs());
+}
+
+/** The notes layer on its own, before any conductor exists. */
+function renderNotesWithoutConductor(): HTMLElement {
+  const wrap = document.createElement('main');
+  wrap.className = 'tab-content';
+  const back = document.createElement('button');
+  back.className = 'link-button';
+  back.textContent = '← Connect to a conductor';
+  back.dataset.testid = 'notes-solo-back';
+  back.onclick = () => { notesWithoutConductor = false; render(); };
+  wrap.appendChild(back);
+  const banner = document.createElement('p');
+  banner.className = 'hint';
+  banner.dataset.testid = 'notes-solo-banner';
+  banner.textContent =
+    'You are in the notes layer without a conductor. Everything here works — writing, '
+    + 'invites, the directory. Publishing to the protocol is the one thing that needs your '
+    + 'own agent key, and it will say so when you try.';
+  wrap.appendChild(banner);
+  wrap.appendChild(renderNotesTab(notesContext()));
+  return wrap;
 }
 
 // --- Header -----------------------------------------------------------
@@ -503,6 +559,32 @@ function renderConnectScreen(): HTMLElement {
   };
 
   section.appendChild(form);
+
+  // The second door. A conductor is required to PUBLISH and to read the DHT;
+  // it is not required to think, and the notes layer exists precisely so that
+  // the two are not the same act.
+  const softDoor = document.createElement('div');
+  softDoor.className = 'soft-door';
+  const softHint = document.createElement('p');
+  softHint.className = 'hint';
+  softHint.textContent =
+    'Not ready for any of that yet? The notes layer is a shared, freeform place to think '
+    + 'that never touches the DHT. Nothing there is published until you deliberately '
+    + 'promote it, and that is the only step that needs a conductor.';
+  softDoor.appendChild(softHint);
+  const softBtn = document.createElement('button');
+  softBtn.type = 'button';
+  softBtn.className = 'link-button';
+  softBtn.textContent = 'Go to the notes layer';
+  softBtn.dataset.testid = 'connect-to-notes';
+  softBtn.onclick = () => {
+    notesWithoutConductor = true;
+    onNotesTabOpened(notesContext());
+    render();
+  };
+  softDoor.appendChild(softBtn);
+  section.appendChild(softDoor);
+
   return section;
 }
 
@@ -668,7 +750,7 @@ function renderNextStep(): HTMLElement | null {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'by-author' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim';
+type Tab = 'browse' | 'by-author' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim' | 'notes';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -680,13 +762,20 @@ function renderTabs(): HTMLElement {
     ['browse', 'Browse'], ['by-author', 'By Author'],
     ['membranes', 'Domains'],
     ['taxonomy', 'Critique Types'], ['worldline', 'Worldline'],
-    ['new-claim', 'New Claim'],
+    ['new-claim', 'New Claim'], ['notes', 'Notes'],
   ];
   for (const [tab, label] of tabs) {
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.className = tab === activeTab ? 'tab active' : 'tab';
-    btn.onclick = () => { activeTab = tab; render(); };
+    btn.onclick = () => {
+      activeTab = tab;
+      // The notes layer is a different service on the other end of a network
+      // hop, so it is loaded when the tab is opened rather than on connect —
+      // a practitioner who never opens it never talks to it at all.
+      if (tab === 'notes') onNotesTabOpened(notesContext());
+      render();
+    };
     nav.appendChild(btn);
   }
   wrap.appendChild(nav);
@@ -701,7 +790,8 @@ function renderTabs(): HTMLElement {
         : activeTab === 'membranes' ? renderMembranesTab()
           : activeTab === 'taxonomy' ? renderTaxonomyTab()
             : activeTab === 'worldline' ? renderWorldlineTab()
-              : renderNewClaimTab(),
+              : activeTab === 'notes' ? renderNotesTab(notesContext())
+                : renderNewClaimTab(),
   );
   wrap.appendChild(content);
 

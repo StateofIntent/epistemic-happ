@@ -152,6 +152,14 @@ export class NotesStore {
    * wants a room that provably cannot outlive the process. */
   static open(path: string | null): NotesStore {
     if (path === null) return new NotesStore(emptyState(), null);
+    if (path.trim() === '') {
+      // Never silently treat this as ephemeral: a caller that passed an empty
+      // string meant to pass something, and a store that quietly forgets
+      // everything is a worse answer than one that refuses to start. main.ts
+      // normalises an empty EPI_NOTES_STATE to null before reaching here, so
+      // this catches a programmatic caller rather than an env var.
+      throw new Error('notes state path is an empty string — pass null for an ephemeral store');
+    }
     if (!existsSync(path)) {
       mkdirSync(dirname(path), { recursive: true });
       return new NotesStore(emptyState(), path);

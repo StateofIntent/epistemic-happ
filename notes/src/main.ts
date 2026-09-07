@@ -18,7 +18,16 @@ import { createNotesServer } from './server.js';
 import { NotesStore } from './store.js';
 
 const port = Number(process.env.EPI_NOTES_PORT ?? 8790);
-const statePath = process.env.EPI_NOTES_STATE ?? null;
+// An EMPTY `EPI_NOTES_STATE` means "no state file", not "a file called
+// nothing". `EPI_NOTES_STATE= node dist/main.js` and `env EPI_NOTES_STATE=''`
+// are both ordinary ways for a shell — or a test harness building an env
+// object — to say "unset this", and `?? null` does not catch either, because
+// an empty string is not null. Found by `scripts/live-verify/notes-ui.mjs` on
+// its first run: the server started, served reads, and threw ENOENT on the
+// first WRITE, when the atomic rename tried to move `.tmp` onto `''`. A
+// startup flag that only fails on write is the worst shape this could take,
+// so it is normalised here and guarded again in NotesStore.open.
+const statePath = (process.env.EPI_NOTES_STATE ?? '').trim() || null;
 const publicOrigin = process.env.EPI_NOTES_ORIGIN ?? `http://localhost:${port}`;
 
 const store = NotesStore.open(statePath);
