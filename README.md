@@ -431,6 +431,14 @@ epistemic-happ/
 │       ├── assistant.ts            # The AI member's suggesters (Claude, or fixed rules)
 │       ├── assistant-main.ts       # Runs one, joining a space by invite link
 │       └── main.ts                 # Entry point; ephemeral by default
+├── gateway/                        # THE LINKED DATA FACE — one-way, out only
+│   ├── package.json
+│   └── src/
+│       ├── conductor.ts            # Read-only: an allowlist with no writer in it
+│       ├── jsonld.ts               # The export, and what it deliberately never emits
+│       ├── pages.ts                # The human half of the same documents
+│       ├── server.ts               # Content negotiation; noindex by default
+│       └── main.ts
 ├── happ.yaml                       # hApp manifest — defines roles
 └── README.md                       # This document
 ```
@@ -1247,6 +1255,22 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
   **The trap, inherited from the worldline half and just as live here.** The coordinator applies **no threshold**: it scores every candidate handed to it and returns them all, so probing claims with no relationship to the subject still yields a full list, just with low scores. Rendered as a set of findings, a meaningless probe reads as evidence. The screen says so before showing any of it, and the harness proves the claim by requiring an *unrelated* claim to appear among the results rather than merely requiring rows to exist.
 
   **Watched failing, and the second injection changed the argument.** Rendering similarity as "73% match" turns two checks red — the same inversion `worldline-ui.mjs` records, repeated here because the two halves are separate surfaces. Then filtering to `similarity > 0.2`, the sort of reasonable-looking tidy-up someone would add later, turned **four** red by taking the panel to **zero rows**: every score in that arrangement is below 0.2, because a binding built from one neighbour spreads thinly over a fixed-size vector. A threshold does not trim noise here; it empties the panel whenever a claim's neighborhood is small, and reports nothing while looking like it found nothing. That is a better argument for the no-threshold rule than the caveat's own wording.
+
+- [x] **The Linked Data face — the protocol is no longer invisible to everything that already speaks HTTP.** `gateway/`, and `scripts/live-verify/linked-data-gateway.mjs` (38 checks).
+
+  **The trade this answers, stated the way the design note states it.** The Semantic Web bought universal addresses and machine-readable structure and paid with no native model of disagreement and weak provenance. This protocol is the other way round: typed disagreement and cryptographic provenance, addressed by a hash nobody can paste into a browser and no existing tool can read. The gateway gives the second the first's reach, in the only direction that is safe — **out**.
+
+  **One way, enforced rather than promised.** Every zome call goes through an allowlist in `conductor.ts` holding ten reads and no writer, so a call to anything else throws before it reaches the conductor; a `POST` is refused with 405 and an explanation of where writing actually happens. The harness asserts both, and asserts against the built bundle that no coordinator write function appears in it at all. Widening what this service can do means editing that list — a visible, reviewable act rather than a quiet one.
+
+  **The hash travels and stays canonical.** `@id` is an HTTP URL because Linked Data needs one, but `canonicalHash` is the entry's real address, `canonicalHashAlgorithm` says which kind, `dnaHash` says which network — the same hash on another DNA is a different claim — and `isBasedOn` states *in the data* that the DHT copy is authoritative and this one may be stale or absent. An export whose provenance is its own URL would have recreated the weak-provenance problem it exists to answer.
+
+  **Nothing becomes a score, and this needed the most care.** schema.org offers `aggregateRating`, `ratingValue`, `interactionStatistic` and `upvoteCount`, and every one of them would accept this protocol's critiques as input and emit precisely the canonical comparative number Invariant 1 refuses — under the protocol's own name, in a document every downstream tool would believe. There is no vocabulary term here for "how good is this claim". Critiques export with their five typed modes intact, and a domain listing declares `ItemListUnordered` rather than leaving a consumer to infer a ranking from the sequence. The absence is asserted across every document the gateway serves, because an absence is the only form this property can take.
+
+  **Retractions travel with their claim, above it.** A one-way export that drops a retraction leaves the web asserting something its author has publicly withdrawn, in their name, indefinitely. So it is in the document and *above* the claim on the page, where it is read first — checked by document order rather than presence, the lesson §9 already records from `founding-ui`. The claim itself is still exported: a retraction withdraws, it does not delete.
+
+  **Noindex by default, which is a judgement rather than a setting.** Publishing to a DHT is a decision to make something available to that network; it is not, by itself, a decision to be indexed by search engines under one's own name forever. The gateway's purpose is fully served without indexing, so an operator who has the standing to decide otherwise sets `EPI_GATEWAY_INDEXABLE=1` deliberately. Related and stated in `gateway/README.md`: this service connects **as an agent with a key of its own**, because even a read is a signed zome call — it is not an anonymous window onto other people's data but a network member re-publishing what it can read, which someone chose to do and answers for.
+
+  **Watched failing, and its first run found three defects before anything was injected.** Emitting an `aggregateRating` computed from the critique count turns two checks red, and correctly leaves the domain and index documents green. Unforced: a made-up hash reached the conductor and returned a wasm deserialization error, so a wrong URL was reported as a gateway failure rather than a malformed address — now shape-checked at 39 bytes before the call. And two of the checks were themselves wrong: the retraction-ordering assertion compared indices across the whole document, where the embedded JSON-LD in `<head>` carries the claim text too, and the "mode is a label, not a severity" assertion forbade the word "score" anywhere in HTML that legitimately uses it to say there is not one.
 
 - [x] **The AI in the room, and it is a member rather than a feature.** `notes/src/assistant.ts`, `assistant-main.ts`, an assist channel in the notes service, a suggestion block in the promotion form, and `scripts/live-verify/notes-assistant.mjs` (34 checks).
 
