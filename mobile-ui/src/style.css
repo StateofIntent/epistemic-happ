@@ -1316,6 +1316,27 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .notes-signals { margin: 0.25rem 0 0.75rem; }
 
+/* Whether the room is currently showing other people's writing as it
+ * happens. Stated rather than implied: a room that has stopped listening
+ * looks exactly like a room where nobody is writing, and only one of those
+ * is a fact about the room. */
+.notes-live { margin: 0.1rem 0 0.4rem; }
+.notes-live[data-state="live"] { color: var(--success-text); }
+.notes-live[data-state="retrying"] { color: var(--danger-text); }
+
+/* Two people who rewrote the same note. Both versions are on screen and the
+ * choice is the reader's — this never merges for them, and never picks a
+ * winner by arrival order. */
+.note-conflict { display: flex; flex-direction: column; gap: 0.4rem; }
+.note-conflict-theirs {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .notes-request-row {
   display: flex;
   flex-wrap: wrap;

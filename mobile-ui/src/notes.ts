@@ -59,6 +59,11 @@ export interface Note {
   exemplar: boolean;
   createdAt: number;
   updatedAt: number;
+  /** The version of the text this note is on. Sent back with an edit so the
+   * service can refuse a save that would silently overwrite somebody else's,
+   * which stopped being a theoretical concern the moment this screen started
+   * showing other people's writing as it arrives. */
+  rev: number;
   promotions: NotesPromotion[];
 }
 
@@ -152,9 +157,16 @@ export type DirectorySort = 'recent' | 'alphabetical';
  * distinguish "that invite expired" from "the server is down" without parsing
  * prose. */
 export class NotesRequestError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  /** Seconds until a refused call is worth trying again, when the service
+   * said. Only 429s carry one — the loop that long-polls this room needs it
+   * to back off by the amount the server actually named rather than by a
+   * number this client invented. */
+  readonly retryAfter: number | null;
+
+  constructor(readonly status: number, readonly code: string, message: string, retryAfter: number | null = null) {
     super(message);
     this.name = 'NotesRequestError';
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -242,7 +254,7 @@ export class NotesClient {
   private async request<T>(
     method: string,
     path: string,
-    options: { token?: string | null; body?: unknown } = {},
+    options: { token?: string | null; body?: unknown; signal?: AbortSignal } = {},
   ): Promise<T> {
     const headers: Record<string, string> = {};
     if (options.token) headers.authorization = `Bearer ${options.token}`;
@@ -253,8 +265,13 @@ export class NotesClient {
         method,
         headers,
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: options.signal,
       });
     } catch (error) {
+      // An aborted request is this client hanging up on purpose — leaving a
+      // room, or the tab going away — and must not be reported as the server
+      // being unreachable.
+      if (options.signal?.aborted) throw new NotesRequestError(0, 'aborted', 'request cancelled');
       // A fetch that never reached the server is a different failure from one
       // the server refused, and the screens say so differently.
       throw new NotesRequestError(0, 'unreachable',
@@ -263,10 +280,12 @@ export class NotesClient {
     let payload: any = null;
     try { payload = await response.json(); } catch { /* some responses carry no body */ }
     if (!response.ok) {
+      const header = response.headers.get('retry-after');
       throw new NotesRequestError(
         response.status,
         payload?.error ?? 'unknown',
         payload?.message ?? `${method} ${path} failed with ${response.status}`,
+        header !== null ? Number(header) : (payload?.retryAfter ?? null),
       );
     }
     return payload as T;
@@ -326,8 +345,13 @@ export class NotesClient {
     return this.request('POST', `/spaces/${spaceId}/notes`, { token, body: { text } });
   }
 
-  editNote(noteId: string, token: string, text: string): Promise<{ note: Note }> {
-    return this.request('PATCH', `/notes/${noteId}`, { token, body: { text } });
+  /** `expectedRev` is the version this edit was written against. Always sent
+   * from this client: a screen that shows other people's writing arriving is
+   * a screen where somebody can be halfway through a paragraph when the note
+   * underneath it changes, and a save that quietly wins that race is a lost
+   * edit nobody is told about. */
+  editNote(noteId: string, token: string, text: string, expectedRev?: number): Promise<{ note: Note }> {
+    return this.request('PATCH', `/notes/${noteId}`, { token, body: { text, expectedRev } });
   }
 
   deleteNote(noteId: string, token: string): Promise<{ deleted: boolean }> {
@@ -370,6 +394,34 @@ export class NotesClient {
 
   assists(spaceId: string, token: string): Promise<{ assists: Assist[] }> {
     return this.request('GET', `/spaces/${spaceId}/assists`, { token });
+  }
+
+  /** The room, as it stands, whenever it next differs from `since`.
+   *
+   * A long-poll rather than a socket: it parks for up to 25 seconds and
+   * answers early the moment anything in the space changes. `changed: false`
+   * is the honest "nothing happened, ask again" — and carries no snapshot, so
+   * an idle room costs one parked request and nothing else.
+   *
+   * The signal is not optional in practice. The service caps CONCURRENT
+   * parked polls per member (four, by default), so a client that walks away
+   * from a room without hanging up leaves a socket held for up to 25 seconds;
+   * do that four times quickly and the member has locked themselves out of
+   * their own room. Every caller here aborts. */
+  events(
+    spaceId: string,
+    token: string,
+    since: number,
+    signal?: AbortSignal,
+  ): Promise<{
+    revision: number;
+    changed: boolean;
+    notes: Note[] | null;
+    members: NotesMember[] | null;
+    signals: NotesSignals | null;
+    assists: Assist[] | null;
+  }> {
+    return this.request('GET', `/spaces/${spaceId}/events?since=${since}`, { token, signal });
   }
 
   /** Records that something crossed the gate. Called only AFTER the publish

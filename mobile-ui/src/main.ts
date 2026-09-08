@@ -22,7 +22,7 @@ import {
   CONCEPT_NOTES, type Concept,
 } from './onboarding';
 import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
-import { renderNotesTab, onNotesTabOpened, type NotesContext } from './notes-ui';
+import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -769,6 +769,10 @@ function renderTabs(): HTMLElement {
     btn.textContent = label;
     btn.className = tab === activeTab ? 'tab active' : 'tab';
     btn.onclick = () => {
+      // Leaving the notes tab hangs up on the room's parked long-poll. The
+      // notes service caps concurrent polls per member, so a client that
+      // wanders off holding sockets spends a ceiling meant to bound it.
+      if (activeTab === 'notes' && tab !== 'notes') onNotesTabClosed();
       activeTab = tab;
       // The notes layer is a different service on the other end of a network
       // hop, so it is loaded when the tab is opened rather than on connect —
