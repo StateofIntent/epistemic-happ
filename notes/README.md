@@ -224,6 +224,40 @@ Counters are in memory and reset with the process. A restart forgives
 everyone, which is the cheaper failure for a layer whose entire default is to
 keep nothing.
 
+### An AI member is a member, and meets the same ceilings
+
+`assists.answer` is 60/hour per member, and nothing exempts an AI one — a
+tireless participant in a busy room is precisely who runs out first. That is
+the cap working rather than failing, so the handling belongs in the client,
+and `assistant-main.ts` does three things when it is refused:
+
+- **Waits the number of seconds the service named**, in one wait. The old
+  behaviour was subtler than a busy loop and worth stating exactly: the 429
+  was swallowed, so the question was retried on the next wake of the assistant's
+  `/events` poll — meaning the retry rate was whatever the room's write rate
+  happened to be. A quiet room hid it completely; a busy one retried on every
+  note anybody typed.
+- **Calls no suggester while paused.** With an API key set, every one of those
+  retries was a paid model call producing an answer the room was about to
+  refuse.
+- **Stops on a dead membership** rather than retrying a 401 forever. Removing
+  this assistant's membership is the documented way to switch it off, and a
+  process that spins on a dead token makes the documented way not work.
+
+Its log says which of these happened, and names the ceiling as this layer's
+rather than the protocol's, so nobody reads "rate limited" and goes looking at
+their agent key.
+
+### Stopping the server
+
+`SIGTERM` closes idle connections at once and gives anything in flight half a
+second. That is not tidiness either: `server.close()` on its own waits for
+open connections, and this service's liveness is built on connections that
+stay open for 25 seconds on purpose. Without it, Ctrl-C appears to hang, and —
+worse — a restart script that waits for the port gets a healthy answer from
+the process it just asked to stop. A dropped long-poll costs a client one
+retry, which is what a long-poll is already built to handle.
+
 ## The AI in the room
 
 An assistant is a **member**, not a feature of this service. It follows an

@@ -59,6 +59,21 @@ server.listen(port, () => {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
+    // `server.close()` alone waits for every open connection to finish, and
+    // this service's whole liveness design is built on connections that stay
+    // open for 25 seconds on purpose. So a plain close means Ctrl-C appears
+    // to hang for half a minute, and a restart script that waits for the port
+    // silently talks to the OLD process for as long as one poll is parked.
+    // Found exactly that way: a harness restarted this server, got a healthy
+    // /health from the process it had just asked to stop, and concluded the
+    // replacement was up.
+    //
+    // A dropped long-poll costs a client one retry, which is what a long-poll
+    // is already built to handle, so idle connections go at once and the rest
+    // get a short grace period to finish an in-flight write.
     server.close(() => process.exit(0));
+    server.closeIdleConnections();
+    setTimeout(() => server.closeAllConnections(), 500).unref();
+    setTimeout(() => process.exit(0), 2000).unref();
   });
 }

@@ -78,8 +78,9 @@
 //   check stayed green, which is the point: the refusal still looked perfect
 //   from outside while the room had already grown a space. Reverted.
 // ---------------------------------------------------------------------------
-// Runtime: ~4 seconds, a third of it the deliberate 1.2s wait for a 1-second
-// invite to actually expire. Real clock, real expiry. 89 checks.
+// Runtime: ~5 seconds, most of it two deliberate waits against a real clock:
+// 1.2s for a 1-second invite to expire, and a parked poll being interrupted
+// by a SIGTERM that must not wait it out. 90 checks.
 // ============================================================================
 
 import { spawn } from 'node:child_process';
@@ -620,11 +621,32 @@ async function main() {
     check('a poll the client hangs up on frees its slot at once, rather than 25 seconds later',
       (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).status === 200);
 
+    // And the same fact from the operator's side. `server.close()` waits for
+    // open connections, and this service's liveness is built on connections
+    // that stay open for 25 seconds ON PURPOSE — so a plain close means Ctrl-C
+    // appears to hang, and worse, a restart script that waits for the port
+    // gets a healthy answer from the process it just asked to stop. A poll is
+    // parked deliberately here rather than hoped for: the first version of
+    // this check lived in another harness, where whether anything was parked
+    // at kill time was a matter of timing, and it passed cleanly against a
+    // server with the defect still in it.
+    const parkedRev = (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).body.revision;
+    const stubborn = call('GET', `/spaces/${capRoom}/events?since=${parkedRev}`, { token: capAda })
+      .catch(() => null);
+    await sleep(400);
+    const askedAt = Date.now();
+    const exited = new Promise((resolve) => server.once('exit', () => resolve(Date.now() - askedAt)));
+    server.kill('SIGTERM');
+    const shutdownMs = await Promise.race([exited, sleep(10000).then(() => null)]);
+    await stubborn;
+    check('SIGTERM stops the server promptly even with a poll parked, rather than waiting out the poll',
+      shutdownMs !== null && shutdownMs < 5000);
+    server = null;
+
     // --- whose address it is, and who gets to say ---
     // The failure mode this pair guards against is the worst kind: a ceiling
     // that looks present in the code, reads as a defence in review, and can be
     // reset by any caller willing to send one header.
-    await stopServer(server);
     server = await startServer(null, { EPI_NOTES_CAP_SPACES_CREATE: '1/3600' });
     await makeSpace('Behind nothing', { 'x-forwarded-for': '10.0.0.1' });
     const spoofed = await makeSpace('Spoofed', { 'x-forwarded-for': '10.0.0.2' });
