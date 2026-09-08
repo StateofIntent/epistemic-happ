@@ -264,8 +264,9 @@ An assistant is a **member**, not a feature of this service. It follows an
 invite link, registers with `kind: "ai"` and a list of what it offers, and
 polls the same routes any member could. There is no registration endpoint for
 AI members and no flag that conjures one into a space: somebody hands the
-process a link, exactly as they would hand one to a person — and revoking the
-link or removing the member is how you tell it to stop.
+process a link, exactly as they would hand one to a person. Revoking that link
+stops the *next* one from joining; what does not yet stop one already in the
+room is recorded under Status below.
 
 ```bash
 cd notes && npm install && npm run build
@@ -355,3 +356,36 @@ invite so strangers can walk in). The design for it is written and holds, but
 it is discovery built before there is anything to discover, and it would trade
 away a real property — nobody gets in unless somebody let them in — for a use
 case nobody has yet. It waits for a room where someone knocks.
+
+### Open: there is no way to remove a member
+
+**A room cannot currently ask anybody to leave**, and this document said
+otherwise until it was checked. An invite is consulted only at join time, so
+revoking it stops the next arrival and does nothing about anyone already
+inside; and while `NotesStore.removeMember` exists, **no HTTP route exposes
+it**. For an assistant that means the only ways to stop one are to stop its
+process or to restart an ephemeral server and take every token with it.
+
+The client half is ready: `assistant-main.ts` stops on a 401 or 403 rather
+than retrying a dead token, so a removal route would work the day it exists.
+What is missing is not code but a decision — **who may remove whom** — and it
+is a decision about how a room governs itself rather than a detail to settle
+inside a client fix. Three shapes, none obviously right:
+
+- **Any member may remove any member.** Consistent with the rest of this layer
+  — anyone may rewrite or delete any note — and the same argument applies: a
+  shared room whose participants cannot correct it is not shared. It also
+  makes one compromised token enough to empty a room.
+- **Only the creator may.** Simple, and quietly introduces the one asymmetry
+  this layer has so far avoided: a member who is more than a member. The space
+  has no owner today, and adding one to solve a moderation problem is how a
+  soft layer grows an admin.
+- **Removal is itself a note in the room.** No privileged role, and the
+  history of who removed whom is readable by everyone it happened to — which
+  fits a layer whose whole posture is that nothing here is hidden from the
+  people in the room. Slower, and needs a rule for how a removal takes effect.
+
+Whichever is chosen, an assistant is the easy case and a person is the hard
+one, so this waits for a room where somebody actually needs to be asked to
+leave. Recorded here rather than in a pull request comment, which is where it
+first got written down and where it would have been lost.
