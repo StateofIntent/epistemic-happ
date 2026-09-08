@@ -75,6 +75,18 @@ try {
   process.exit(1);
 }
 
+/** Which Chromium to drive.
+ *
+ * This directory's harnesses were written on a machine with a system
+ * Chromium, and hardcoded its path. That is right for the ones that need a
+ * conductor — they only ever run where one is already installed — but it is
+ * what stopped the conductor-free harnesses from running anywhere else, CI
+ * included. Resolution order: an explicit EPI_CHROMIUM, then the system
+ * browser these were written against, then Playwright's own download
+ * (`executablePath: undefined`), which is what a runner has. */
+const CHROMIUM = process.env.EPI_CHROMIUM?.trim()
+  || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+
 const PORT = Number(process.env.EPI_NOTES_TEST_PORT ?? 8794);
 const ORIGIN = `http://localhost:${PORT}`;
 const PREVIEW_PORT = 4189;
@@ -212,7 +224,7 @@ async function main() {
       stdio: 'ignore',
     });
     await sleep(3000);
-    browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+    browser = await chromium.launch({ executablePath: CHROMIUM });
 
     // === Bo is in the room, and the room says so =========================
     log('\n--- A room that is listening ---');

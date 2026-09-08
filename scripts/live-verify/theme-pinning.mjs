@@ -69,6 +69,7 @@
 // ---------------------------------------------------------------------------
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
@@ -79,6 +80,18 @@ try {
   console.error('Could not resolve playwright from mobile-ui/. Run: cd mobile-ui && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install');
   process.exit(1);
 }
+
+/** Which Chromium to drive.
+ *
+ * This directory's harnesses were written on a machine with a system
+ * Chromium, and hardcoded its path. That is right for the ones that need a
+ * conductor — they only ever run where one is already installed — but it is
+ * what stopped the conductor-free harnesses from running anywhere else, CI
+ * included. Resolution order: an explicit EPI_CHROMIUM, then the system
+ * browser these were written against, then Playwright's own download
+ * (`executablePath: undefined`), which is what a runner has. */
+const CHROMIUM = process.env.EPI_CHROMIUM?.trim()
+  || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
 
 const PREVIEW_PORT = 4176;
 const STORAGE_KEY = 'epistemic-mobile-ui:theme';
@@ -193,7 +206,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 4000));
 
   const url = `http://localhost:${PREVIEW_PORT}/`;
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch({ executablePath: CHROMIUM });
   try {
     // Both, always. A one-directional pin passes either one alone.
     await verifyUnderOs(browser, 'light', url);
