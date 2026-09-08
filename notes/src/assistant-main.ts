@@ -14,9 +14,23 @@
 // IT JOINS THROUGH AN INVITE LINK, like anyone else. There is no registration
 // endpoint for AI members and no configuration flag that conjures one into a
 // space: somebody in the room hands this process a link, exactly as they would
-// hand one to a person. Whoever runs it can therefore be told to stop by
-// revoking the link or removing the member — which is the point of putting the
-// assistant in the membership model rather than in the service.
+// hand one to a person — which is the point of putting the assistant in the
+// membership model rather than in the service.
+//
+// HOW A ROOM STOPS ONE, HONESTLY. This file used to say "revoke the link or
+// remove the member", and neither half is true today. An invite is consulted
+// only at join time, so revoking it stops the NEXT assistant and does nothing
+// about one already in the room. And there is no HTTP route to remove a
+// member at all: `NotesStore.removeMember` exists and nothing exposes it. So
+// the only way to stop an assistant right now is to stop its process, or to
+// restart an ephemeral notes server and take every token with it.
+//
+// That is a gap in the membership model rather than in this file, and it is
+// left open deliberately: a removal route needs an answer to "who may remove
+// whom" — any member, only the creator, nobody without a second member
+// agreeing — and that is a decision about how a room governs itself, not a
+// detail to settle inside a client fix. The 401 handling below is what makes
+// such a route work the day it exists. See notes/README.md's Status section.
 //
 // AND IT IS HELD TO THE SAME CEILINGS, which is the other half of the same
 // idea. `notes/src/limits.ts` caps answers per member per hour, and an AI
@@ -255,10 +269,10 @@ async function main(): Promise<void> {
       backoff = 2000;
     } catch (error) {
       if (error instanceof NotesHttpError && (error.status === 401 || error.status === 403)) {
-        // Revoking the invite or removing this member is the documented way
-        // to tell this assistant to stop — see this file's header. A process
-        // that retried here would make the documented way not work, which is
-        // a worse failure than stopping when it should not have.
+        // A token that no longer authenticates cannot be recovered by asking
+        // again, so retrying here is a process that spins forever by design.
+        // Stopping is also what makes a future member-removal route mean
+        // something the day somebody adds one — see this file's header.
         log(`[assistant] this membership is no longer valid (${error.status}): ${error.message}`);
         log('[assistant] nothing more to do. Stopping.');
         return;
