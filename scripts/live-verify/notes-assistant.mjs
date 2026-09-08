@@ -63,10 +63,37 @@
 //   member writing a note. Fixed by binding the form to draft state that
 //   outlives a render (`promotionDraft` in `notes-ui.ts`). Nothing was
 //   injected to find this; the strengthened assertion found it.
+//
+//   AND ONE MORE, on the section added when the room grew ceilings. Removing
+//   the assistant's back-off — the state this process was in until then —
+//   turned only two checks red at first, and the check named "one wait rather
+//   than a retry storm" stayed GREEN, because the assistant's own /events
+//   poll was pacing its retries by accident: in a quiet room a client that
+//   handles a 429 badly still only re-tries every 25 seconds. The check was
+//   counting a message the injected version no longer wrote, so zero waits
+//   passed a test for "not many waits". Fixed by counting every shape of
+//   "tried and could not", and by making the room BUSY while the ceiling is
+//   full, which is the only condition under which the difference shows.
+//   Third result: three reds. This is the second time in this file a check
+//   had to be strengthened after passing against a defect.
 // ---------------------------------------------------------------------------
 // Prereqs: `cd notes && npm install && npm run build`, and a built UI
 // (`cd mobile-ui && npm run build` — vite preview serves `dist/`). Starts and
-// stops its own notes server (port 8793) and its own assistant process.
+// stops its own notes server (port 8793), a second capped one (8803) and its
+// own assistant processes.
+//
+// THE LAST SECTION IS ABOUT AN AI MEMBER MEETING A HUMAN-SIZED CEILING.
+// `assists.answer` is capped per member, and an AI member is a member — a
+// tireless participant in a busy room is exactly who runs out first. That is
+// the cap working, so what is checked is the CLIENT: that it waits the number
+// of seconds the service named, in one wait rather than one retry per thing
+// anybody else writes; that it does not call the suggester (a paid model
+// call) for answers it cannot post; that it says whose friction this is, so
+// nobody goes looking at their agent key; and that a membership which has
+// stopped existing stops the process rather than being retried forever —
+// because removing the member is the documented way to switch this assistant
+// off, and a process that spins on a dead token makes the documented way not
+// work.
 // ============================================================================
 
 import { spawn } from 'node:child_process';
@@ -110,11 +137,11 @@ function setupFail(lines) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function call(method, path, { token, body } = {}) {
+async function callAt(origin, method, path, { token, body } = {}) {
   const headers = {};
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(`${ORIGIN}${path}`, {
+  const res = await fetch(`${origin}${path}`, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
   });
   let payload = null;
@@ -122,30 +149,44 @@ async function call(method, path, { token, body } = {}) {
   return { status: res.status, body: payload };
 }
 
-async function startNotesServer() {
+const call = (method, path, options) => callAt(ORIGIN, method, path, options);
+
+async function startNotesServerAt(port, extraEnv = {}) {
+  const origin = `http://localhost:${port}`;
   const child = spawn(process.execPath, [NOTES_MAIN], {
-    env: { ...process.env, EPI_NOTES_PORT: String(PORT), EPI_NOTES_ORIGIN: ORIGIN, EPI_NOTES_STATE: '' },
+    env: {
+      ...process.env,
+      EPI_NOTES_PORT: String(port),
+      EPI_NOTES_ORIGIN: origin,
+      EPI_NOTES_STATE: '',
+      ...extraEnv,
+    },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   child.stderr.on('data', (d) => process.stderr.write(`[notes stderr] ${d}`));
   for (let i = 0; i < 100; i++) {
     await sleep(50);
-    try { if ((await fetch(`${ORIGIN}/health`)).ok) return child; } catch { /* not up */ }
+    try { if ((await fetch(`${origin}/health`)).ok) return child; } catch { /* not up */ }
   }
   child.kill('SIGKILL');
-  setupFail([`the notes server never answered /health on ${ORIGIN}.`]);
+  setupFail([`the notes server never answered /health on ${origin}.`]);
 }
 
-function startAssistant(inviteUrl) {
+const startNotesServer = () => startNotesServerAt(PORT);
+
+function startAssistantAt(origin, inviteUrl, name = 'Tutor') {
   const child = spawn(process.execPath, [ASSISTANT_MAIN, inviteUrl], {
-    env: { ...process.env, EPI_NOTES_ORIGIN: ORIGIN, EPI_ASSISTANT_NAME: 'Tutor' },
+    env: { ...process.env, EPI_NOTES_ORIGIN: origin, EPI_ASSISTANT_NAME: name },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const lines = [];
   child.stdout.on('data', (d) => { lines.push(String(d)); });
   child.stderr.on('data', (d) => process.stderr.write(`[assistant stderr] ${d}`));
-  return { child, lines };
+  const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code ?? 0)));
+  return { child, lines, exited, get log() { return lines.join(''); } };
 }
+
+const startAssistant = (inviteUrl) => startAssistantAt(ORIGIN, inviteUrl);
 
 async function main() {
   if (!existsSync(ASSISTANT_MAIN)) {
@@ -156,6 +197,8 @@ async function main() {
   let assistant = null;
   let preview = null;
   let browser = null;
+  let capNotes = null;
+  let capAssistant = null;
 
   try {
     // === 1. The assistant joins like anyone else ==========================
@@ -354,10 +397,139 @@ async function main() {
     if (pageErrors.length) for (const e of pageErrors) log(`    ${e}`);
 
     await context.close();
+
+    // === 4. The room's ceilings apply to the assistant, and it behaves ====
+    // An AI member is a member, so `assists.answer` bounds it like anyone
+    // else — and a tireless participant in a busy room is precisely who meets
+    // a ceiling sized for people. That is the cap working. What matters is
+    // what the client does next, and the previous version of this process did
+    // the wrong thing three ways: it retried a documented refusal on a timer
+    // of its own invention, it called the suggester (a paid model call, with
+    // a key set) for answers it could not post, and it treated a dead
+    // membership as something to retry forever.
+    log('\n--- An AI member meets a ceiling meant for people ---');
+    // Deliberately not PORT + 1: notes-live.mjs binds 8794, and two harnesses
+    // that cannot be run at the same time would be a new rule in a directory
+    // whose whole point is that these three need no coordination.
+    const CAP_PORT = PORT + 10;
+    const CAP_ORIGIN = `http://localhost:${CAP_PORT}`;
+    // One answer per eight seconds: a real ceiling, hit deliberately, on a
+    // window short enough to watch roll over.
+    capNotes = await startNotesServerAt(CAP_PORT, { EPI_NOTES_CAP_ASSISTS_ANSWER: '1/8' });
+    const capRoom = await callAt(CAP_ORIGIN, 'POST', '/spaces', {
+      body: {
+        name: `Busy room ${STAMP}`,
+        description: 'A room whose assistant is about to run out of answers.',
+        creator: { displayName: 'Ada' },
+      },
+    });
+    const capSpace = capRoom.body.space.id;
+    const capAda = capRoom.body.token;
+    capAssistant = startAssistantAt(CAP_ORIGIN, capRoom.body.invite.url, 'Tutor');
+
+    let capAi = null;
+    for (let i = 0; i < 80; i++) {
+      await sleep(250);
+      const members = (await callAt(CAP_ORIGIN, 'GET', `/spaces/${capSpace}/members`, { token: capAda })).body.members;
+      capAi = members.find((m) => m.kind === 'ai');
+      if (capAi) break;
+    }
+    if (!capAi) setupFail(['the second assistant never joined the capped room.']);
+
+    const ask = async (text) => {
+      const note = await callAt(CAP_ORIGIN, 'POST', `/spaces/${capSpace}/notes`, {
+        token: capAda, body: { text },
+      });
+      const asked = await callAt(CAP_ORIGIN, 'POST', `/spaces/${capSpace}/assists`, {
+        token: capAda,
+        body: { kind: 'critique-mode', prompt: text, noteId: note.body.note.id },
+      });
+      return asked.body.assist.id;
+    };
+    const answeredWithin = async (assistId, ms) => {
+      const deadline = Date.now() + ms;
+      while (Date.now() < deadline) {
+        const current = await callAt(CAP_ORIGIN, 'GET', `/assists/${assistId}`, { token: capAda });
+        if (current.body.assist.answeredAt !== null) return true;
+        await sleep(250);
+      }
+      return false;
+    };
+
+    const firstAsk = await ask(`The first question in a capped room ${STAMP}.`);
+    check('the first question is answered normally — the ceiling is not in the way yet',
+      await answeredWithin(firstAsk, 20000));
+
+    const secondAsk = await ask(`The second question, one past the ceiling ${STAMP}.`);
+    check('the second is NOT answered while the answer ceiling is full',
+      !(await answeredWithin(secondAsk, 3000)));
+
+    // A BUSY room while the ceiling is full, which is the only condition
+    // under which the difference is visible. The assistant's own /events poll
+    // wakes on every change in the space, so in a quiet room it re-tries the
+    // refused question about once every 25 seconds no matter how badly it
+    // handles the refusal — the long-poll paces it by accident. Four writes
+    // in five seconds remove that accident: a client that does not honour the
+    // wait now re-tries on each wake, and calls the suggester every time.
+    for (let i = 0; i < 4; i++) {
+      await callAt(CAP_ORIGIN, 'POST', `/spaces/${capSpace}/notes`, {
+        token: capAda, body: { text: `Somebody else writing while the ceiling is full, ${i} ${STAMP}.` },
+      });
+      await sleep(1200);
+    }
+    const waitingLines = (capAssistant.log.match(/answer ceiling is full/g) ?? []).length;
+    check('the assistant says out loud that it is waiting, rather than failing silently',
+      waitingLines >= 1);
+    check('and says whose friction this is, so nobody goes looking at their agent key',
+      /not the protocol's/.test(capAssistant.log));
+    // Counts every shape of "I tried to answer and could not", not only the
+    // one a well-behaved client writes. Written the narrow way first, it
+    // could not fail: removing the back-off removed the message it counted,
+    // so a storm of retries logged zero waits and passed. That is the same
+    // trap this file's auto-apply injection fell into, one section up.
+    const refusals = (capAssistant.log.match(/answer ceiling is full|could not post an answer/g) ?? []).length;
+    check('it waits the number of seconds the service named, in ONE wait rather than one retry per '
+      + 'thing anybody else writes',
+      refusals >= 1 && refusals <= 2);
+    check('the question is answered once the window rolls over — the pause is a pause, not a drop',
+      await answeredWithin(secondAsk, 25000));
+    check('and the assistant is still running throughout — a ceiling is not a crash',
+      capAssistant.child.exitCode === null);
+
+    // The other refusal a long-running member process has to handle. An
+    // ephemeral server restarting takes every token with it, and the header
+    // of assistant-main.ts promises that removing this assistant's membership
+    // is how you stop it — which is only true if it actually stops.
+    // Waiting for the old process to actually be gone, rather than assuming
+    // a signal is an exit. Skipping this wait is how the first version of
+    // this check fooled itself: the replacement failed to bind, the ORIGINAL
+    // server answered its /health, and every token was still valid.
+    const oldServerGone = new Promise((resolve) => capNotes.once('exit', resolve));
+    capNotes.kill('SIGTERM');
+    await Promise.race([oldServerGone, sleep(8000)]);
+    capNotes = await startNotesServerAt(CAP_PORT);
+    // That the replacement is really a fresh store, and not the old process
+    // still answering because a parked poll kept it alive. Asserted rather
+    // than assumed: this harness fooled itself exactly that way once, and
+    // reported two clean-looking failures that were its own teardown. The
+    // shutdown property itself is checked deterministically in
+    // notes-layer.mjs, where a poll can be parked on purpose first.
+    if ((await callAt(CAP_ORIGIN, 'GET', `/spaces/${capSpace}`, { token: capAda })).status === 200) {
+      setupFail(['the replacement notes server is still serving the old room — the first process never exited.']);
+    }
+    const stopped = await Promise.race([
+      capAssistant.exited.then(() => true),
+      sleep(20000).then(() => false),
+    ]);
+    check('an assistant whose membership is gone stops, instead of retrying a dead token forever',
+      stopped);
+    check('and says why it stopped', /no longer valid/.test(capAssistant.log));
   } finally {
     if (browser) await browser.close();
     if (preview) preview.kill();
     if (assistant) assistant.child.kill('SIGTERM');
+    if (capAssistant) capAssistant.child.kill('SIGTERM');
+    if (capNotes) capNotes.kill('SIGTERM');
     notes.kill('SIGTERM');
   }
 
