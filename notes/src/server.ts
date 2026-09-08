@@ -29,6 +29,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { NotesError, NotesStore } from './store.js';
+import {
+  capsFromEnv, clientAddress, Limiter, MEMBER_CAPS, RateLimitError, type CapName,
+} from './limits.js';
 
 /** How long an /events long-poll waits before answering "nothing yet".
  * Short enough to sit inside every proxy's idle timeout, long enough that an
@@ -42,9 +45,18 @@ interface Ctx {
   url: URL;
   body: any;
   token: string | null;
+  /** Who to charge for the unauthenticated routes. Resolved once per request
+   * so a handler cannot accidentally pick a different answer than the one the
+   * limiter is keyed on. */
+  address: string;
 }
 
-function send(res: ServerResponse, status: number, payload: unknown): void {
+function send(
+  res: ServerResponse,
+  status: number,
+  payload: unknown,
+  extra: Record<string, string> = {},
+): void {
   const text = JSON.stringify(payload);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -52,9 +64,13 @@ function send(res: ServerResponse, status: number, payload: unknown): void {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': 'authorization, content-type',
     'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    // Retry-After is the one header a client should be able to act on without
+    // having parsed our JSON, so it has to reach the browser's own fetch.
+    'access-control-expose-headers': 'retry-after',
     // A notes server's answers are live state, and a cached member list is
     // worse than a slow one.
     'cache-control': 'no-store',
+    ...extra,
   });
   res.end(text);
 }
@@ -102,10 +118,18 @@ export interface NotesServerOptions {
    * explicit rather than guessed from a Host header an intermediary may have
    * rewritten. */
   publicOrigin: string;
+  /** Optional so a caller cannot construct a server with no ceilings at all:
+   * omitting it builds one from the environment, it does not disable them.
+   * Turning a cap off is `EPI_NOTES_CAP_*=off`, which is a thing an operator
+   * writes down. */
+  limiter?: Limiter;
+  /** Whether anything is in front of this process. See `clientAddress`. */
+  trustProxy?: boolean;
 }
 
 export function buildRoutes(options: NotesServerOptions): Route[] {
   const { store, publicOrigin } = options;
+  const limiter = options.limiter ?? new Limiter(capsFromEnv());
   const inviteUrl = (token: string) => `${publicOrigin.replace(/\/$/, '')}/invites/${token}`;
 
   const withInviteUrl = (invite: { token: string }) => ({ ...invite, url: inviteUrl(invite.token) });
@@ -119,7 +143,10 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
     // --- Creating and finding spaces -------------------------------------
     {
       method: 'POST', pattern: /^\/spaces$/,
-      handler: ({ body }) => {
+      handler: ({ body, address }) => {
+        // The only unauthenticated create in the service, and so the only one
+        // that can be charged to nothing but an address.
+        limiter.charge('spacesCreate', address);
         const created = store.createSpace(body);
         return { ...created, invite: withInviteUrl(created.invite) };
       },
@@ -174,7 +201,10 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
     {
       method: 'POST', pattern: /^\/spaces\/([^/]+)\/invites$/,
       handler: ({ token, body }, [spaceId]) => {
-        store.requireMemberOf(token, spaceId);
+        const member = store.requireMemberOf(token, spaceId);
+        // The fleet-multiplier route: one member already inside can mint doors
+        // for an arbitrary number of others.
+        limiter.charge('invitesCreate', member.id);
         const invite = store.createInvite(spaceId, body?.mode ?? 'open', body?.ttlSeconds ?? null);
         return { invite: withInviteUrl(invite) };
       },
@@ -205,7 +235,17 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
     },
     {
       method: 'POST', pattern: /^\/invites\/([^/]+)\/join$/,
-      handler: ({ body }, [inviteToken]) => store.joinViaInvite(inviteToken, body),
+      handler: ({ body, address }, [inviteToken]) => {
+        // Two keys, because there are two different things going wrong. The
+        // address cap stops one machine becoming a hundred members; the invite
+        // cap bounds what a single leaked link can do no matter how many
+        // machines follow it. Charged in that order, and both charged even
+        // when the join then fails, because a caller hammering a revoked
+        // invite is exactly who these ceilings are for.
+        limiter.charge('joinAddress', address);
+        limiter.charge('joinInvite', inviteToken);
+        return store.joinViaInvite(inviteToken, body);
+      },
     },
 
     // --- Request-to-join --------------------------------------------------
@@ -249,6 +289,7 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       method: 'POST', pattern: /^\/spaces\/([^/]+)\/notes$/,
       handler: ({ token, body }, [spaceId]) => {
         const member = store.requireMemberOf(token, spaceId);
+        limiter.charge('notesCreate', member.id);
         return { note: store.createNote(spaceId, member.id, body?.text, body?.exemplar === true) };
       },
     },
@@ -256,15 +297,20 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       method: 'PATCH', pattern: /^\/notes\/([^/]+)$/,
       handler: ({ token, body }, [noteId]) => {
         const note = store.getNote(noteId);
-        store.requireMemberOf(token, note.spaceId);
-        return { note: store.editNote(noteId, body?.text) };
+        const member = store.requireMemberOf(token, note.spaceId);
+        // Editing shares one ceiling with deleting: both are "changing what is
+        // already there", any member may do either to any note, and splitting
+        // them would let a loop spend twice the budget doing the same damage.
+        limiter.charge('notesEdit', member.id);
+        return { note: store.editNote(noteId, body?.text, body?.expectedRev) };
       },
     },
     {
       method: 'DELETE', pattern: /^\/notes\/([^/]+)$/,
       handler: ({ token }, [noteId]) => {
         const note = store.getNote(noteId);
-        store.requireMemberOf(token, note.spaceId);
+        const member = store.requireMemberOf(token, note.spaceId);
+        limiter.charge('notesEdit', member.id);
         store.deleteNote(noteId);
         return { deleted: true };
       },
@@ -272,6 +318,15 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
 
     // --- The gate, recorded ----------------------------------------------
     {
+      // DELIBERATELY UNCAPPED, and the one place in this file where that needs
+      // saying. The publish this records already spent the protocol's own
+      // friction budget, under the member's agent key, one layer down. A
+      // second ceiling here would mean a practitioner with protocol budget
+      // remaining could be refused by the soft layer — making the hard layer's
+      // limit unpredictable from inside the room, which is exactly the
+      // coupling the two-layer design exists to prevent. Recording a promotion
+      // is also the least attractive thing to flood: it writes one small entry
+      // and asserts nothing this service can verify.
       method: 'POST', pattern: /^\/notes\/([^/]+)\/promotions$/,
       handler: ({ token, body }, [noteId]) => {
         const note = store.getNote(noteId);
@@ -285,6 +340,9 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       method: 'POST', pattern: /^\/spaces\/([^/]+)\/assists$/,
       handler: ({ token, body }, [spaceId]) => {
         const member = store.requireMemberOf(token, spaceId);
+        // Each question is work somebody else's process is expected to do, and
+        // possibly to pay a model for.
+        limiter.charge('assistsAsk', member.id);
         return { assist: store.askAssist(spaceId, member.id, body) };
       },
     },
@@ -316,6 +374,10 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       handler: ({ token, body }, [assistId]) => {
         const assist = store.getAssist(assistId);
         const member = store.requireMemberOf(token, assist.spaceId);
+        // First answer wins, so racing to answer costs the racer nothing and a
+        // losing race is silent. Charged before the store so a lost race still
+        // costs the loser something.
+        limiter.charge('assistsAnswer', member.id);
         return { assist: store.answerAssist(assistId, member.id, body) };
       },
     },
@@ -327,33 +389,78 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       // changes. A client that has never polled passes since=0 and gets an
       // immediate snapshot.
       method: 'GET', pattern: /^\/spaces\/([^/]+)\/events$/,
-      handler: async ({ token, url }, [spaceId]) => {
-        store.requireMemberOf(token, spaceId);
-        const since = Number(url.searchParams.get('since') ?? '0');
-        const deadline = Date.now() + POLL_TIMEOUT_MS;
-        while (store.currentRevision <= since && Date.now() < deadline) {
-          await sleep(POLL_TICK_MS);
+      handler: async ({ req, token, url }, [spaceId]) => {
+        const member = store.requireMemberOf(token, spaceId);
+        // Concurrency, not rate. This route is MEANT to park for 25 seconds
+        // and answer late, so a requests-per-hour ceiling would punish exactly
+        // the client that is using it correctly. What is actually scarce is
+        // held sockets, so that is what is counted — and released in a finally,
+        // because a leaked slot locks a member out until the process restarts.
+        const release = limiter.hold(member.id);
+        // A client that hangs up must stop counting against its own ceiling
+        // AT ONCE, not when this poll would have timed out anyway. Without
+        // this, a browser leaving a room holds a slot for up to 25 more
+        // seconds: walk in and out of a room four times inside half a minute
+        // and the member is locked out of their own room by a limit that
+        // exists to bound machines, not people. The client aborts on the way
+        // out; this is the half that makes the abort mean something.
+        let hungUp = false;
+        const noteHangUp = () => { hungUp = true; };
+        req.on('close', noteHangUp);
+        try {
+          const since = Number(url.searchParams.get('since') ?? '0');
+          const deadline = Date.now() + POLL_TIMEOUT_MS;
+          while (store.currentRevision <= since && Date.now() < deadline && !hungUp) {
+            await sleep(POLL_TICK_MS);
+          }
+          const changed = store.currentRevision > since;
+          return {
+            revision: store.currentRevision,
+            changed,
+            // Only send a snapshot when something actually moved; an idle poll
+            // should cost as close to nothing as a poll can.
+            notes: changed ? store.listNotes(spaceId) : null,
+            members: changed ? store.publicMembers(spaceId) : null,
+            signals: changed ? store.signals(spaceId) : null,
+            assists: changed ? store.listAssists(spaceId, false) : null,
+          };
+        } finally {
+          req.off('close', noteHangUp);
+          release();
         }
-        const changed = store.currentRevision > since;
-        return {
-          revision: store.currentRevision,
-          changed,
-          // Only send a snapshot when something actually moved; an idle poll
-          // should cost as close to nothing as a poll can.
-          notes: changed ? store.listNotes(spaceId) : null,
-          members: changed ? store.publicMembers(spaceId) : null,
-          signals: changed ? store.signals(spaceId) : null,
-          assists: changed ? store.listAssists(spaceId, false) : null,
-        };
+      },
+    },
+
+    // --- Your own budget, and nobody else's -------------------------------
+    {
+      // Answers for the bearer token in hand and takes no parameter that could
+      // name anyone else. That is what keeps a friction meter from becoming a
+      // comparison: there is no shape of this call that returns two members,
+      // so there is nothing here to sort. It mirrors the protocol layer, where
+      // an agent can see its own remaining friction and no one else's.
+      //
+      // Address-keyed caps are absent on purpose — a member is not an address,
+      // and reporting "you have 3 space-creations left" against a token would
+      // be answering a question nobody asked with a number that is wrong for
+      // anyone sharing a NAT.
+      method: 'GET', pattern: /^\/me\/budget$/,
+      handler: ({ token }) => {
+        const member = store.authenticate(token);
+        return { budget: limiter.peek(MEMBER_CAPS as CapName[], member.id) };
       },
     },
   ];
 }
 
 export function createNotesServer(options: NotesServerOptions): Server {
-  const routes = buildRoutes(options);
+  // Resolved once and passed down, so the routes and the sweeper are looking
+  // at the same counters. Building one in each place would give a server whose
+  // ceilings worked and whose memory never got reclaimed.
+  const limiter = options.limiter ?? new Limiter(capsFromEnv());
+  const trustProxy = options.trustProxy === true;
+  const routes = buildRoutes({ ...options, limiter });
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'access-control-allow-origin': '*',
@@ -374,11 +481,22 @@ export function createNotesServer(options: NotesServerOptions): Server {
       if (!match) continue;
       try {
         const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readBody(req);
-        const ctx: Ctx = { req, res, url, body, token: bearer(req) };
+        const address = clientAddress(req, trustProxy);
+        const ctx: Ctx = { req, res, url, body, token: bearer(req), address };
         const payload = await route.handler(ctx, match.slice(1).map(decodeURIComponent));
         send(res, 200, payload);
       } catch (error) {
-        if (error instanceof NotesError) {
+        if (error instanceof RateLimitError) {
+          // The retry hint goes in both places on purpose: the header so an
+          // ordinary HTTP client backs off without having been taught this
+          // service's JSON, the body so a person reading a failed request in a
+          // console can see it without opening the network tab.
+          send(
+            res, error.status,
+            { error: error.code, message: error.message, bucket: error.bucket, retryAfter: error.retryAfter },
+            { 'retry-after': String(error.retryAfter) },
+          );
+        } else if (error instanceof NotesError) {
           send(res, error.status, { error: error.code, message: error.message });
         } else {
           // Deliberately terse to the caller and loud in the log: an
@@ -392,4 +510,14 @@ export function createNotesServer(options: NotesServerOptions): Server {
     }
     send(res, 404, { error: 'no_such_route', message: `no route for ${req.method} ${path}` });
   });
+
+  // Without this the counter map grows one entry per distinct address forever
+  // — a slow leak whose rate an unauthenticated caller chooses. Unref'd so it
+  // never holds the process open, and cleared on close so a harness starting
+  // and stopping servers in a loop does not accumulate timers.
+  const sweeper = setInterval(() => limiter.sweep(), 5 * 60 * 1000);
+  sweeper.unref();
+  server.on('close', () => clearInterval(sweeper));
+
+  return server;
 }

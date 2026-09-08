@@ -31,6 +31,8 @@ cd notes && npm install && npm run build
 npm start                                        # ephemeral, http://localhost:8790
 EPI_NOTES_STATE=./notes.json npm start           # opt-in persistence
 EPI_NOTES_PORT=9000 EPI_NOTES_ORIGIN=https://notes.example npm start
+EPI_NOTES_CAP_NOTES_CREATE=120/3600 npm start   # a ceiling, count/seconds
+EPI_NOTES_CAP_SPACES_CREATE=off npm start       # or no ceiling at all
 ```
 
 **Ephemeral is the default**, and that is a statement about the layer rather
@@ -66,6 +68,8 @@ absence structurally against the built bundle.
 | Comparative signals of any kind | `SpaceSignals` is space-local; no endpoint compares two spaces |
 | Automatic promotion | no code path exists; see above |
 | Permanent notes | `deleteNote` really deletes |
+| Charging the protocol's friction twice | promotion is uncapped in `server.ts`, on purpose |
+| A save that silently overwrites another's | `editNote` refuses a stale `expectedRev` with a 409 |
 
 The directory offers exactly two orderings — `recent` and `alphabetical`.
 One is a fact about time, the other a fact about names, and neither reads as
@@ -108,14 +112,117 @@ cryptographic weight starts one layer down.
 | `POST /invites/:token/join` | join, or file a request |
 | `GET /spaces/:id/requests` · `POST /requests/:id/decision` | a member decides |
 | `GET /requests/:id` | the requester collects their own token |
-| `GET/POST /spaces/:id/notes` · `PATCH/DELETE /notes/:id` | the notes themselves |
+| `GET/POST /spaces/:id/notes` · `PATCH/DELETE /notes/:id` | the notes themselves; a PATCH may carry `expectedRev` |
 | `POST /notes/:id/promotions` | record that something crossed the gate |
 | `GET /spaces/:id/events?since=` | long-poll; wakes on the next change |
+| `GET /me/budget` | your own remaining friction, and nobody else's |
 
 Any member may rewrite or delete any note in their space. This is a shared
 notebook, not a set of adjacent private ones, and the argument for freeform
 notes over threads — a note lets you be wrong first — only pays off if being
 wrong is correctable by whoever spots it.
+
+## The room is live
+
+`GET /spaces/:id/events?since=<revision>` parks for up to 25 seconds and
+answers the moment anything in the space changes, carrying the whole room —
+notes, members, signals, assists — in one reply. `changed: false` is the
+honest "nothing happened, ask again", and carries no snapshot, so an idle room
+costs one held socket and nothing else.
+
+**This was built before anything called it**, which is worth recording rather
+than quietly fixing: the browser client refreshed only when the person using
+it did something, so two members in the same room never saw each other write.
+Every harness in `scripts/live-verify/` drove one client, and one client is
+exactly the configuration in which that bug does not appear. `notes-live.mjs`
+now drives two.
+
+Three things the liveness needed on the client side, each of which is a
+property rather than a detail:
+
+- **A draft is not kept in the DOM.** A screen that rebuilds whenever a
+  stranger writes will throw away a half-typed sentence if the sentence lives
+  in a textarea. Composer and editor drafts are held in module state, and the
+  caret is restored across the rebuild.
+- **The client hangs up when it leaves.** The `events.parked` ceiling counts
+  held sockets, so a browser that wanders out of a room still holding one
+  spends its own allowance on a room nobody is looking at. The server releases
+  the slot the moment the socket closes rather than when the poll would have
+  timed out — an abort the server ignores is not an abort.
+- **A hidden tab parks nothing.** Same ceiling, same reasoning.
+
+### Two people, one note
+
+Any member may rewrite any note. What was wrong is that the second save won
+*silently*: the first person's paragraph vanished with nothing on either
+screen to say so — a defect that was invisible while nobody could see anybody
+else's writing arrive, and unavoidable the moment they could.
+
+Every note now carries `rev`, the version its text is on. A `PATCH` may send
+`expectedRev`, and a save written against a version somebody has already
+replaced comes back **409 `note_changed`** instead of overwriting. The browser
+always sends it; `curl` need not, and omitting it means "I do not care what I
+overwrite", which is a legitimate thing to mean and a dangerous default.
+
+On screen the refusal is not the end of it. Both versions are shown, the
+person's own draft is left exactly as typed, and the choice — keep theirs,
+or overwrite with mine having read theirs — is a second, deliberate press.
+Refusing a save and then discarding what was refused would be worse than the
+silent overwrite it replaced.
+
+A counter rather than a timestamp because two edits inside the same
+millisecond are indistinguishable by clock, and "rare" is not "impossible"
+for a check whose whole job is to catch a race.
+
+## Ceilings, and whose they are
+
+The room has its own friction, and it is **unrelated to the protocol's**. The
+SWO temporal friction one layer down is a statement about publishing: it makes
+a Claim cost something, under an agent key, on a source chain. These ceilings
+are a statement about a *port* — they exist because one unauthenticated create
+endpoint on the open internet is an unbounded write endpoint, and for no
+larger reason than that. Nothing you spend up here is subtracted from what you
+have down there, and the 429 says so in as many words, because a practitioner
+who reads "rate limited" and assumes their publishing budget is gone has been
+misled by their own tooling.
+
+| Cap | Default | Keyed on |
+|---|---|---|
+| `spaces.create` | 5/hour | address — the only unauthenticated create |
+| `join.address` · `join.invite` | 10/hour · 60/hour | address · invite token |
+| `notes.create` · `notes.edit` | 60/hour · 120/hour | member |
+| `invites.create` | 20/hour | member — one participant minting many |
+| `assists.ask` · `assists.answer` | 30/hour · 60/hour | member |
+| `events.parked` | 4 at once | member — *concurrency, not rate* |
+
+Every one is `EPI_NOTES_CAP_<BUCKET>=count/seconds`, or `off`. A malformed
+value stops the process at startup rather than falling back to a default the
+operator does not know they are running.
+
+**What is deliberately uncapped.** Reads, at any rate, because a room that
+will not answer is not a room. And **promotions**, because the publish one
+records has already spent the protocol's own budget one layer down — charging
+again here would let the soft layer refuse a practitioner who still has real
+friction remaining, making the hard layer's limit unpredictable from inside
+the room. That is precisely the coupling the two-layer design exists to
+prevent, so it is a comment in `server.ts` and a check in the harness rather
+than an omission.
+
+Three smaller decisions worth keeping:
+
+- **`/events` counts held sockets, not requests.** That route is *meant* to
+  park for 25 seconds and answer late, so a requests-per-hour ceiling would
+  punish exactly the client using it correctly.
+- **`/me/budget` takes no parameter naming anyone else.** There is no shape of
+  the call that returns two members, so there is nothing to sort — the same
+  reason the directory refuses to rank.
+- **`X-Forwarded-For` is read only under `EPI_NOTES_TRUST_PROXY=1`.**
+  Honouring it unconditionally makes every address-keyed ceiling resettable by
+  one header, which is worse than having none: it looks like a defence.
+
+Counters are in memory and reset with the process. A restart forgives
+everyone, which is the cheaper failure for a layer whose entire default is to
+keep nothing.
 
 ## The AI in the room
 
@@ -168,15 +275,17 @@ other, and any member — not only an AI one — may answer.
 ```bash
 cd notes && npm install && npm run build
 node scripts/live-verify/notes-layer.mjs        # the rules, over real HTTP
+node scripts/live-verify/notes-live.mjs         # two browsers, one room
 node scripts/live-verify/notes-assistant.mjs    # the assistant, in a real browser
 ```
 
-Both drive a real server with several members at once; the second also runs a
-real assistant process and a real Chromium. Neither needs a conductor or
-spends any friction budget, so unlike most of that directory they are safe to
-run at any time in any order. See their headers for what they prove and for
-the fault injections that show they can fail — including one that *passed*
-first time and had to be strengthened.
+All three drive a real server with several members at once; the second drives
+two browser contexts that never see each other's clicks, and the third also
+runs a real assistant process. None needs a conductor or spends any friction
+budget, so unlike most of that directory they are safe to run at any time in
+any order. See their headers for what they prove and for the fault injections
+that show they can fail — including one that *passed* first time and had to be
+strengthened.
 
 ## The client, and the gate
 
@@ -202,7 +311,13 @@ from the screen.
 
 ## Status
 
-**Proposed, now largely built.** The service, its rules, the browser client,
-the promotion flow and the in-space assistant are real code, with three
-verification harnesses. What is *not* here yet, and is tracked separately: the
-Linked Data face for published entries.
+**Built, and now actually collaborative.** The service, its rules, the browser
+client, the promotion flow, the in-space assistant, the room's own ceilings
+and live updates between members are real code, with four verification
+harnesses. The Linked Data face for published entries shipped separately.
+
+What is deliberately *not* here: a directory door (a space publishing its own
+invite so strangers can walk in). The design for it is written and holds, but
+it is discovery built before there is anything to discover, and it would trade
+away a real property — nobody gets in unless somebody let them in — for a use
+case nobody has yet. It waits for a room where someone knocks.

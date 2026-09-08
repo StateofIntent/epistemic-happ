@@ -98,6 +98,20 @@ export interface Note {
   exemplar: boolean;
   createdAt: number;
   updatedAt: number;
+  /** How many times this note's text has been rewritten, starting at 0.
+   *
+   * It exists so a save can refuse to clobber. Any member may rewrite any
+   * note, which is the point of a shared notebook — but two people editing
+   * the same note at once used to mean the second save silently discarded the
+   * first, with nothing on either screen to say so. A client that sends the
+   * `rev` it was looking at gets a 409 instead of a silent loss.
+   *
+   * A counter rather than `updatedAt` because two edits inside the same
+   * millisecond are indistinguishable by timestamp, and "rare" is not the
+   * same as "impossible" for a check whose whole job is to catch a race.
+   * Absent in state files written before this existed, so read it as
+   * `rev ?? 0` rather than trusting it to be there. */
+  rev: number;
   promotions: Promotion[];
 }
 

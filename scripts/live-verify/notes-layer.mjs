@@ -26,6 +26,23 @@
 // unrecognised sort is a 400 that says why, never a silent fall back to a
 // default that leaves the caller believing they got what they asked for.
 //
+// THE THIRD PROPERTY, added when the browser client started showing other
+// people's writing as it arrives, is that a shared notebook must not let the
+// second save win silently. Any member may rewrite any note — that is the
+// point — but a save may now say which version it was written against, and
+// one written against a version somebody has already replaced is refused
+// rather than applied. The checks live in the notes section below; the
+// screen-level half is `notes-live.mjs`.
+//
+// THE SECOND PROPERTY WORTH CHECKING is the room's own friction. Ceilings are
+// the part of a service that is written once, believed thereafter, and quietly
+// stops working — so they are hit here rather than described: a real server
+// started with tiny caps from the environment, refused at the wall, and asked
+// what it refuses. Two of those checks exist because the failure they catch is
+// invisible in review — a charge that lands after the store has already
+// written, and an X-Forwarded-For honoured with nothing in front of the
+// process, both of which read as a working defence and are not one.
+//
 // Prereqs: `cd notes && npm install && npm run build`. Needs NO sandbox
 // conductor and spends no friction budget, so unlike most of this directory it
 // is safe to run at any time, in any order, alongside anything else. It binds
@@ -45,9 +62,24 @@
 //   `sort=activity` check, which is correct: that value was still refused, and
 //   a harness that went red on it too would have been asserting something
 //   vaguer than it claims. Reverted; 56 checks green.
+//
+//   Injection: `clientAddress` widened to read X-Forwarded-For unconditionally
+//   — the shape this arrives in, since honouring the header is what you do the
+//   day a proxy goes in front, and the `trustProxy` argument is right there.
+//   Result: exactly one red — "X-Forwarded-For is ignored unless an operator
+//   says something is in front". The two TRUST_PROXY=1 checks stayed green,
+//   correctly: that server was told to trust the header, and the injection did
+//   not change what it does. Reverted.
+//
+//   Injection: the `spaces.create` charge moved to after `store.createSpace`,
+//   which is where it lands if you are thinking "charge for what happened"
+//   rather than "refuse before anything happens".
+//   Result: exactly one red — "a refused create wrote nothing". Every 429
+//   check stayed green, which is the point: the refusal still looked perfect
+//   from outside while the room had already grown a space. Reverted.
 // ---------------------------------------------------------------------------
-// Runtime: ~8 seconds, most of it the deliberate 1.2s wait for a 1-second
-// invite to actually expire. Real clock, real expiry.
+// Runtime: ~4 seconds, a third of it the deliberate 1.2s wait for a 1-second
+// invite to actually expire. Real clock, real expiry. 89 checks.
 // ============================================================================
 
 import { spawn } from 'node:child_process';
@@ -79,21 +111,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Deliberately not the browser client from mobile-ui: a harness that shares a
 // client with the thing it verifies can only find bugs both halves agree
 // about. This talks to the documented HTTP surface directly.
-async function call(method, path, { token, body } = {}) {
-  const headers = {};
+async function call(method, path, { token, body, headers: extra, signal } = {}) {
+  const headers = { ...extra };
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
   const res = await fetch(`${ORIGIN}${path}`, {
     method,
     headers,
+    signal,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let payload = null;
   try { payload = await res.json(); } catch { /* a body-less response is fine */ }
-  return { status: res.status, body: payload };
+  // `retryAfter` is checked in both places deliberately: the header is what an
+  // ordinary HTTP client acts on, the body is what a person reads.
+  return { status: res.status, body: payload, retryAfter: res.headers.get('retry-after') };
 }
 
-async function startServer(statePath) {
+async function startServer(statePath, extraEnv = {}) {
   // An empty EPI_NOTES_STATE is passed deliberately for the ephemeral case
   // rather than deleting the key. That is how a shell says "unset" — and it
   // is the shape that broke the service once: `?? null` does not catch an
@@ -105,6 +140,11 @@ async function startServer(statePath) {
     EPI_NOTES_PORT: String(PORT),
     EPI_NOTES_ORIGIN: ORIGIN,
     EPI_NOTES_STATE: statePath ?? '',
+    // The ceilings are per-deployment config, so the harness sets them the
+    // only way an operator can: through the environment, on a server it
+    // actually starts. Poking a Limiter in-process would verify a class this
+    // service might not be wiring up.
+    ...extraEnv,
   };
   const child = spawn(process.execPath, [MAIN], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stderr.on('data', (d) => process.stderr.write(`[notes stderr] ${d}`));
@@ -117,6 +157,32 @@ async function startServer(statePath) {
   }
   child.kill('SIGKILL');
   setupFail([`the notes server never answered /health on ${ORIGIN}.`]);
+}
+
+/** Starts the service expecting it NOT to come up.
+ *
+ * A malformed ceiling has to be a process that dies loudly, and the only way
+ * to prove that is to let one die: a harness that asserted the parse function
+ * throws would leave `main.ts` free to catch it and start on defaults nobody
+ * chose. */
+async function startExpectingRefusal(extraEnv) {
+  const env = {
+    ...process.env,
+    EPI_NOTES_PORT: String(PORT),
+    EPI_NOTES_ORIGIN: ORIGIN,
+    EPI_NOTES_STATE: '',
+    ...extraEnv,
+  };
+  const child = spawn(process.execPath, [MAIN], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', (d) => { stderr += d; });
+  const code = await new Promise((resolve) => {
+    child.once('exit', (c) => resolve(c ?? 1));
+    // Resolving 0 on the timeout is deliberate: "it stayed up" must read as a
+    // failed check here, not as a hung harness.
+    setTimeout(() => { child.kill('SIGKILL'); resolve(0); }, 5000);
+  });
+  return { code, stderr };
 }
 
 async function stopServer(child) {
@@ -300,6 +366,38 @@ async function main() {
     check('rewriting moves updatedAt but not the original authorship',
       edited.body.note.authorId === note.body.note.authorId && edited.body.note.updatedAt >= note.body.note.createdAt);
 
+    // --- Two people, one note ---
+    // Any member may rewrite any note, which is the point. What was wrong was
+    // that the second save won SILENTLY: the first person's paragraph
+    // vanished with nothing on either screen to say it had. A save may now
+    // state which version it was written against.
+    check('a note carries the version its text is on, starting at zero',
+      note.body.note.rev === 0 && edited.body.note.rev === 1);
+    const stale = await call('PATCH', `/notes/${note.body.note.id}`, {
+      token: brun, body: { text: 'Written against the version Brun was looking at.', expectedRev: 0 },
+    });
+    check('a save written against a version somebody has already replaced is REFUSED, not applied',
+      stale.status === 409 && stale.body.error === 'note_changed');
+    check('and the refusal says nothing was lost, because nothing was',
+      /nothing you typed is gone/i.test(stale.body?.message ?? ''));
+    check('the refused save really did not touch the note',
+      (await call('GET', `/spaces/${space.id}/notes`, { token: brun }))
+        .body.notes.find((n) => n.id === note.body.note.id).text.endsWith('or both.'));
+    const fresh = await call('PATCH', `/notes/${note.body.note.id}`, {
+      token: brun, body: { text: 'Brun, having read Ada\'s line, rewrites it anyway.', expectedRev: 1 },
+    });
+    check('the same save against the version that is actually there succeeds, and moves the version on',
+      fresh.status === 200 && fresh.body.note.rev === 2);
+    const blind = await call('PATCH', `/notes/${note.body.note.id}`, {
+      token: ada, body: { text: 'An edit that did not say what it was replacing.' },
+    });
+    check('an edit that names no version still overwrites — the check is opt-in, so curl stays usable',
+      blind.status === 200 && blind.body.note.rev === 3);
+    check('a version that is not an integer is refused as a bad request rather than ignored',
+      (await call('PATCH', `/notes/${note.body.note.id}`, {
+        token: ada, body: { text: 'x', expectedRev: 'two' },
+      })).status === 400);
+
     const doomed = await call('POST', `/spaces/${space.id}/notes`, {
       token: brun, body: { text: 'Nonsense I want to take back.' },
     });
@@ -401,6 +499,156 @@ async function main() {
     });
     check('an empty EPI_NOTES_STATE means "no file", and writes succeed rather than 500',
       ephemeralWrite.status === 200);
+
+    // === Friction limits: the room's own ceilings, not the protocol's ======
+    // Run last and against fresh servers with deliberately tiny caps, because
+    // the only honest way to check a ceiling is to hit it. The caps are set
+    // through the environment — the same surface an operator has — so what is
+    // verified is the wiring, not a class in isolation.
+    log('\n--- Friction limits ---');
+    await stopServer(server);
+    server = await startServer(null, {
+      EPI_NOTES_CAP_SPACES_CREATE: '2/3600',
+      EPI_NOTES_CAP_NOTES_CREATE: '2/3600',
+      EPI_NOTES_CAP_INVITES_CREATE: 'off',
+      EPI_NOTES_PARKED_POLLS: '1',
+    });
+
+    const makeSpace = (name, headers) => call('POST', '/spaces', {
+      headers,
+      body: {
+        name: `${name} ${STAMP}`, description: 'A room with small ceilings.',
+        listed: true, creator: { displayName: 'Ada' },
+      },
+    });
+
+    const room = await makeSpace('Capped room');
+    const secondRoom = await makeSpace('Second room');
+    if (room.status !== 200 || secondRoom.status !== 200) {
+      setupFail([`the first two creates under a 2/hour cap should both succeed; got ${room.status} and ${secondRoom.status}`]);
+    }
+    const third = await makeSpace('Third room');
+    check('the one unauthenticated create is capped per address — the third is refused',
+      third.status === 429 && third.body.error === 'rate_limited');
+    check('the refusal names the ceiling that ran out, so a caller knows which call to slow down',
+      third.body.bucket === 'spaces.create');
+    check('the retry hint is in the Retry-After header AND the body — one for a client, one for a person',
+      third.retryAfter === String(third.body.retryAfter) && Number(third.retryAfter) > 0);
+    check('the refusal says this ceiling is the room\'s own and spends none of the protocol\'s friction',
+      /nothing you do above the gate/i.test(third.body?.message ?? ''));
+    check('a refused create wrote nothing — the charge lands before the store, not after',
+      (await call('GET', '/directory')).body.entries.length === 2);
+    const reads = await Promise.all(Array.from({ length: 12 }, () => call('GET', '/directory')));
+    check('reads are capped at no rate at all — a room that will not answer is not a room',
+      reads.every((r) => r.status === 200));
+
+    // --- inside the room: per member, and the gate stays untaxed ---
+    const capRoom = room.body.space.id;
+    const capAda = room.body.token;
+    const capBrun = (await call('POST', `/invites/${room.body.invite.token}/join`, {
+      body: { displayName: 'Brun' },
+    })).body.token;
+    const write = (token, text) => call('POST', `/spaces/${capRoom}/notes`, { token, body: { text } });
+
+    const adaNote = await write(capAda, 'First of two.');
+    await write(capAda, 'Second of two.');
+    const adaThird = await write(capAda, 'One past the ceiling.');
+    check('writing inside a room is capped per member', adaThird.status === 429 && adaThird.body.bucket === 'notes.create');
+    check('and the ceiling belongs to that member, not to the room — everybody else writes on',
+      (await write(capBrun, 'Brun has budget of his own.')).status === 200);
+
+    const promotions = [];
+    for (let i = 0; i < 5; i++) {
+      promotions.push(await call('POST', `/notes/${adaNote.body.note.id}/promotions`, {
+        token: capAda,
+        body: {
+          kind: 'claim', excerpt: `Promoted ${i}.`,
+          actionHash: Buffer.from(`uhCkk-capped-${STAMP}-${i}`).toString('base64'),
+        },
+      }));
+    }
+    check('promotion stays uncapped while the same member\'s note budget is spent — the gate is not taxed twice',
+      promotions.every((p) => p.status === 200));
+
+    const minted = [];
+    for (let i = 0; i < 22; i++) {
+      minted.push(await call('POST', `/spaces/${capRoom}/invites`, { token: capAda, body: { mode: 'open' } }));
+    }
+    check('a cap set to "off" is no ceiling at all, well past where the default (20) would have stopped',
+      minted.every((m) => m.status === 200));
+
+    // --- a meter you can only point at yourself ---
+    const budget = await call('GET', '/me/budget', { token: capAda });
+    const noteLine = budget.body.budget.find((b) => b.bucket === 'notes.create');
+    check('a member can read their own remaining budget before they hit the wall',
+      noteLine.used === 2 && noteLine.limit === 2 && noteLine.resetsAt > Date.now());
+    check('a cap that is off reports as a zero limit rather than vanishing from the meter',
+      budget.body.budget.find((b) => b.bucket === 'invites.create').limit === 0);
+    check('address-keyed ceilings are absent from a member\'s budget — a member is not an address',
+      !budget.body.budget.some((b) => b.bucket === 'spaces.create' || b.bucket === 'join.address'));
+    check('a budget line carries a count and a reset and nothing sortable between members',
+      budget.body.budget.every((b) => Object.keys(b).sort().join(',') === 'bucket,limit,resetsAt,used'));
+    check('and the meter is a member route like any other, so it can only answer for a token in hand',
+      (await call('GET', '/me/budget')).status === 401);
+
+    // --- /events is limited by held sockets, not by rate ---
+    const rev = (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).body.revision;
+    const parked = call('GET', `/spaces/${capRoom}/events?since=${rev}`, { token: capAda });
+    await sleep(300);
+    const secondPoll = await call('GET', `/spaces/${capRoom}/events?since=${rev}`, { token: capAda });
+    check('a second parked poll past the concurrency ceiling is refused, and says which ceiling',
+      secondPoll.status === 429 && secondPoll.body.bucket === 'events.parked');
+    await write(capBrun, 'A write that wakes the parked poll.');
+    check('the poll that was holding the slot still answers normally', (await parked).body.changed === true);
+    check('and the slot is released when it answers, rather than leaking until the process restarts',
+      (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).status === 200);
+
+    // Hanging up has to free the slot IMMEDIATELY, which is a different
+    // property. A browser leaving a room aborts its poll; if the server only
+    // released on timeout, walking in and out of a room would spend a
+    // member's whole allowance on rooms they have already left — the ceiling
+    // locking out the one caller it was never meant to bound.
+    const liveRev = (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).body.revision;
+    const hangUp = new AbortController();
+    const abandoned = call('GET', `/spaces/${capRoom}/events?since=${liveRev}`, {
+      token: capAda, signal: hangUp.signal,
+    }).catch(() => null);
+    await sleep(300);
+    hangUp.abort();
+    await abandoned;
+    await sleep(600);
+    check('a poll the client hangs up on frees its slot at once, rather than 25 seconds later',
+      (await call('GET', `/spaces/${capRoom}/events?since=0`, { token: capAda })).status === 200);
+
+    // --- whose address it is, and who gets to say ---
+    // The failure mode this pair guards against is the worst kind: a ceiling
+    // that looks present in the code, reads as a defence in review, and can be
+    // reset by any caller willing to send one header.
+    await stopServer(server);
+    server = await startServer(null, { EPI_NOTES_CAP_SPACES_CREATE: '1/3600' });
+    await makeSpace('Behind nothing', { 'x-forwarded-for': '10.0.0.1' });
+    const spoofed = await makeSpace('Spoofed', { 'x-forwarded-for': '10.0.0.2' });
+    check('X-Forwarded-For is ignored unless an operator says something is in front — one header must not reset a ceiling',
+      spoofed.status === 429);
+
+    await stopServer(server);
+    server = await startServer(null, { EPI_NOTES_CAP_SPACES_CREATE: '1/3600', EPI_NOTES_TRUST_PROXY: '1' });
+    const viaProxy = await makeSpace('Behind a proxy', { 'x-forwarded-for': '10.0.0.1' });
+    const otherClient = await makeSpace('A different client', { 'x-forwarded-for': '10.0.0.2' });
+    const sameClient = await makeSpace('The first client again', { 'x-forwarded-for': '10.0.0.1' });
+    check('with EPI_NOTES_TRUST_PROXY=1 two forwarded clients are two budgets, not one shared proxy',
+      viaProxy.status === 200 && otherClient.status === 200);
+    check('and the first of them is still held to its own ceiling',
+      sameClient.status === 429);
+
+    // --- a ceiling nobody can typo their way out of ---
+    await stopServer(server);
+    server = null;
+    const refusal = await startExpectingRefusal({ EPI_NOTES_CAP_NOTES_CREATE: '120 per hour' });
+    check('a malformed ceiling stops the process at startup rather than quietly running a default',
+      refusal.code !== 0);
+    check('and the complaint names the variable and the shape it wanted',
+      /EPI_NOTES_CAP_NOTES_CREATE/.test(refusal.stderr) && /count\/seconds/.test(refusal.stderr));
   } finally {
     await stopServer(server);
     rmSync(stateDir, { recursive: true, force: true });

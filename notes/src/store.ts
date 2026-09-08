@@ -515,6 +515,7 @@ export class NotesStore {
       exemplar,
       createdAt: now,
       updatedAt: now,
+      rev: 0,
       promotions: [],
     };
     this.state.notes[note.id] = note;
@@ -546,11 +547,38 @@ export class NotesStore {
    * design's argument for freeform notes over threads — "a note lets you be
    * wrong first" — only pays off if being wrong is correctable by whoever
    * spots it. Authorship of the ORIGINAL is kept on the note; the protocol
-   * below the gate is where authorship becomes cryptographic and permanent. */
-  editNote(noteId: string, text: unknown): Note {
+   * below the gate is where authorship becomes cryptographic and permanent.
+   *
+   * `expectedRev` is how a save says which version it was looking at. It is
+   * OPTIONAL, and that is a deliberate asymmetry: a person editing a note
+   * with `curl` should not have to read it first, and requiring a token would
+   * put ceremony back in front of the room built to remove it. Omitting it
+   * means "I do not care what I overwrite" — which is a legitimate thing to
+   * mean, and a dangerous default, which is why the browser client always
+   * sends one. Anything that CAN lose someone else's writing should have to
+   * say so. */
+  editNote(noteId: string, text: unknown, expectedRev?: unknown): Note {
     const note = this.getNote(noteId);
+    const rev = note.rev ?? 0;
+    if (expectedRev !== undefined && expectedRev !== null) {
+      if (typeof expectedRev !== 'number' || !Number.isInteger(expectedRev)) {
+        throw new NotesError(400, 'bad_rev', 'expectedRev must be the integer rev of the note you read.');
+      }
+      if (expectedRev !== rev) {
+        // 409 rather than 412: the caller's request was well-formed and their
+        // text is fine, the room simply moved. The message is written for the
+        // person who is about to see their paragraph refused — it says what
+        // happened, and that nothing was lost.
+        throw new NotesError(
+          409, 'note_changed',
+          'Somebody else rewrote this note while you were writing. Nothing has been overwritten and '
+          + 'nothing you typed is gone — read the note as it stands now and decide what to keep.',
+        );
+      }
+    }
     note.text = trimmed(text, 'text', 40000);
     note.updatedAt = Date.now();
+    note.rev = rev + 1;
     this.touched();
     return note;
   }

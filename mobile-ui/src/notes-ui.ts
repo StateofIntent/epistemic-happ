@@ -105,7 +105,28 @@ const invitesBySpace = new Map<string, NotesInvite[]>();
 const assistsBySpace = new Map<string, Assist[]>();
 const requestsBySpace = new Map<string, JoinRequest[]>();
 
-let editingNoteId: string | null = null;
+/** The note open in the editor, the text typed into it so far, and the
+ * version that text was written against.
+ *
+ * All three are held here rather than in the DOM because main.ts's render()
+ * rebuilds the screen from scratch, and this screen now rerenders whenever
+ * ANYBODY in the room writes something — not only when this person acts. A
+ * draft living in a textarea's value would be discarded by a stranger's note
+ * arriving, which is a worse failure than the one live updates fix. */
+let editing: {
+  noteId: string;
+  draft: string;
+  /** The `rev` the draft was started from. Sent with the save so the service
+   * can refuse to overwrite somebody else's rewrite. */
+  baseRev: number;
+  /** Set when this edit has been overtaken — either the save came back 409,
+   * or a live snapshot arrived carrying a newer rev while the editor was
+   * open. Holds the sentence shown to the person, never a silent flag. */
+  conflict: string | null;
+} | null = null;
+
+/** What has been typed into each space's composer, for the same reason. */
+const composerDrafts = new Map<string, string>();
 /** The note whose promotion form is open, and the exact text that will cross.
  * Captured at the moment the form opens: the note is editable by anyone in
  * the space, and what gets published must be what was read. */
@@ -136,6 +157,29 @@ let promotionResult: string | null = null;
  * rebuilt on every render. */
 let pendingAssistId: string | null = null;
 let assistError: string | null = null;
+
+// --- Liveness --------------------------------------------------------------
+// The service has had `GET /spaces/:id/events` since it was written — a
+// long-poll that parks for 25 seconds and answers the moment the space
+// changes. Until now nothing in this client called it, so a shared notebook
+// only ever showed what the person looking at it had done themselves: two
+// members in one room did not see each other write. That was a shipped
+// feature not doing the thing its README described, and this is the half that
+// was missing.
+
+/** The open long-poll, if any, and the handle that hangs up on it.
+ *
+ * Aborting on the way out is not tidiness. The service caps CONCURRENT parked
+ * polls per member, so a client that walks out of a room leaving a socket
+ * parked for 25 seconds can lock the member out of their own room by
+ * navigating in and out four times. The ceiling is right; the client has to
+ * hang up. */
+let watching: { spaceId: string; controller: AbortController } | null = null;
+/** The revision the next poll asks about. Reset with the watch, because it
+ * means nothing outside the space it was counted in. */
+let watchRevision = 0;
+type LiveState = 'connecting' | 'live' | 'retrying' | 'off';
+let liveState: LiveState = 'off';
 
 function setOrigin(next: string): void {
   origin = next.replace(/\/$/, '');
@@ -185,6 +229,163 @@ function whenText(at: number | null): string {
   return `${Math.round(hours / 24)} days ago`;
 }
 
+// --- Staying live ----------------------------------------------------------
+
+/** Rerender without pulling the caret out of whatever is being typed into.
+ *
+ * main.ts's render() replaces the whole DOM, which was harmless while this
+ * screen only rerendered in response to the person's own actions. Once
+ * another member's note can arrive mid-sentence it stops being harmless: the
+ * textarea holding a half-written thought is destroyed and rebuilt, and
+ * without this the caret lands at the start of a different element. Draft
+ * text is kept in module state; this keeps the cursor that was in it. */
+function rerenderLive(ctx: NotesContext): void {
+  const active = document.activeElement;
+  const testid = active instanceof HTMLElement ? active.dataset.testid ?? null : null;
+  const field = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ? active : null;
+  const start = field?.selectionStart ?? null;
+  const end = field?.selectionEnd ?? null;
+  const scroll = field?.scrollTop ?? 0;
+
+  ctx.rerender();
+
+  if (testid === null) return;
+  const restored = document.querySelector(`[data-testid="${CSS.escape(testid)}"]`);
+  if (!(restored instanceof HTMLElement)) return;
+  restored.focus();
+  if (start !== null && (restored instanceof HTMLTextAreaElement || restored instanceof HTMLInputElement)) {
+    try {
+      restored.setSelectionRange(start, end ?? start);
+      restored.scrollTop = scroll;
+    } catch { /* the element came back as something without a selection */ }
+  }
+}
+
+/** Folds a snapshot from `/events` into what the screen reads from.
+ *
+ * The snapshot is the server's answer for the whole room, so it replaces
+ * rather than merges — the one thing deliberately NOT touched is anything the
+ * person is in the middle of writing. */
+function applySnapshot(
+  spaceId: string,
+  snapshot: { notes: Note[] | null; members: NotesMember[] | null; signals: NotesSignals | null; assists: Assist[] | null },
+): void {
+  if (snapshot.notes) notesBySpace.set(spaceId, snapshot.notes);
+  if (snapshot.members) membersBySpace.set(spaceId, snapshot.members);
+  if (snapshot.signals) signalsBySpace.set(spaceId, snapshot.signals);
+  if (snapshot.assists) assistsBySpace.set(spaceId, snapshot.assists);
+
+  // If the note being edited moved underneath the editor, say so NOW rather
+  // than letting the save find out. The draft is left exactly as typed: the
+  // whole point is that nobody's writing is thrown away, including the
+  // writing that is about to lose the race.
+  if (editing !== null && snapshot.notes) {
+    const current = snapshot.notes.find((n) => n.id === editing!.noteId);
+    if (current === undefined) {
+      editing.conflict = 'Somebody deleted this note while you were editing it. What you typed is still here.';
+    } else if ((current.rev ?? 0) !== editing.baseRev && editing.conflict === null) {
+      editing.conflict =
+        'Somebody else rewrote this note while you were editing it. Nothing you typed is lost — read '
+        + 'what it says now and decide what to keep.';
+    }
+  }
+}
+
+function startWatching(ctx: NotesContext, spaceId: string): void {
+  if (watching?.spaceId === spaceId) return;
+  stopWatching();
+  const controller = new AbortController();
+  watching = { spaceId, controller };
+  watchRevision = 0;
+  liveState = 'connecting';
+  void watchLoop(ctx, spaceId, controller);
+}
+
+function stopWatching(): void {
+  watching?.controller.abort();
+  watching = null;
+  watchRevision = 0;
+  liveState = 'off';
+}
+
+/** Long-polls the room until somebody hangs up.
+ *
+ * `since=0` on the first pass is how a client that has never polled asks for
+ * an immediate snapshot, so this both populates the room and keeps it fresh —
+ * there is no separate "first load" path to disagree with the live one. */
+async function watchLoop(ctx: NotesContext, spaceId: string, controller: AbortController): Promise<void> {
+  let backoff = 1000;
+  while (!controller.signal.aborted) {
+    const membership = membershipFor(spaceId);
+    if (!membership) return;
+    // A hidden tab parks no socket. The ceiling on /events counts held
+    // connections, and a browser with this room open in four background tabs
+    // would otherwise spend the member's whole allowance on rooms nobody is
+    // looking at.
+    if (typeof document !== 'undefined' && document.hidden) {
+      await sleep(2000);
+      continue;
+    }
+    try {
+      const snapshot = await client.events(spaceId, membership.token, watchRevision, controller.signal);
+      if (controller.signal.aborted) return;
+      backoff = 1000;
+      watchRevision = snapshot.revision;
+      const wasLive = liveState === 'live';
+      liveState = 'live';
+      if (snapshot.changed) {
+        applySnapshot(spaceId, snapshot);
+        serverError = null;
+        rerenderLive(ctx);
+      } else if (!wasLive) {
+        // Nothing in the room changed, but the indicator did.
+        rerenderLive(ctx);
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof NotesRequestError && error.code === 'aborted') return;
+      if (error instanceof NotesRequestError && (error.status === 401 || error.status === 403)) {
+        // The same reading loadSpace makes: this browser's membership is gone,
+        // most likely because an ephemeral server restarted.
+        forgetMembership(spaceId);
+        stopWatching();
+        screen = { kind: 'home' };
+        ctx.rerender();
+        return;
+      }
+      if (error instanceof NotesRequestError && error.status === 429) {
+        // Wait the number the service named rather than one invented here.
+        // Reaching this at all means a slot leaked somewhere; backing off by
+        // guesswork would turn that into a busy loop against a ceiling.
+        liveState = 'retrying';
+        rerenderLive(ctx);
+        await sleep(Math.min(30000, Math.max(1000, (error.retryAfter ?? 5) * 1000)));
+        continue;
+      }
+      liveState = 'retrying';
+      rerenderLive(ctx);
+      await sleep(backoff);
+      backoff = Math.min(15000, backoff * 2);
+    }
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Every screen change goes through here, so leaving a room always hangs up
+ * on its poll and entering one always starts one. Setting `screen` directly
+ * is how a leaked socket gets written. */
+function setScreen(ctx: NotesContext, next: Screen): void {
+  const leavingSpace = screen.kind === 'space'
+    && (next.kind !== 'space' || next.spaceId !== screen.spaceId);
+  if (leavingSpace) {
+    stopWatching();
+    editing = null;
+  }
+  screen = next;
+  if (next.kind === 'space') startWatching(ctx, next.spaceId);
+}
+
 // --- Loading ---------------------------------------------------------------
 
 async function loadDirectory(ctx: NotesContext): Promise<void> {
@@ -221,7 +422,7 @@ async function loadSpace(ctx: NotesContext, spaceId: string): Promise<void> {
     // so beats leaving a space on screen that answers nothing.
     if (error instanceof NotesRequestError && (error.status === 401 || error.status === 403)) {
       forgetMembership(spaceId);
-      screen = { kind: 'home' };
+      setScreen(ctx, { kind: 'home' });
     }
   }
   // Invites and pending requests are secondary: a failure to read them must
@@ -305,7 +506,7 @@ function renderHome(ctx: NotesContext): HTMLElement {
     mineBlock.appendChild(list);
   }
   mineBlock.appendChild(button('Start a space', 'notes-start-space', () => {
-    screen = { kind: 'create' };
+    setScreen(ctx, { kind: 'create' });
     ctx.rerender();
   }, 'primary-button'));
   wrap.appendChild(mineBlock);
@@ -320,7 +521,7 @@ function renderHome(ctx: NotesContext): HTMLElement {
 function renderMembershipRow(ctx: NotesContext, membership: Membership): HTMLElement {
   const row = el('li', 'notes-space-row');
   const open = button(membership.spaceName, `notes-open-${membership.spaceId}`, () => {
-    screen = { kind: 'space', spaceId: membership.spaceId };
+    setScreen(ctx, { kind: 'space', spaceId: membership.spaceId });
     void loadSpace(ctx, membership.spaceId);
     ctx.rerender();
   }, 'link-button notes-space-name');
@@ -356,7 +557,7 @@ function renderJoinBox(ctx: NotesContext): HTMLElement {
     error.hidden = true;
     invitePreview = null;
     inviteError = null;
-    screen = { kind: 'joining', inviteToken: token };
+    setScreen(ctx, { kind: 'joining', inviteToken: token });
     void loadPreview(ctx, token);
     ctx.rerender();
   }, 'primary-button');
@@ -452,7 +653,7 @@ function renderDirectory(ctx: NotesContext): HTMLElement {
     const membership = membershipFor(entry.space.id);
     if (membership) {
       row.appendChild(button('Open', `notes-directory-open-${entry.space.id}`, () => {
-        screen = { kind: 'space', spaceId: entry.space.id };
+        setScreen(ctx, { kind: 'space', spaceId: entry.space.id });
         void loadSpace(ctx, entry.space.id);
         ctx.rerender();
       }));
@@ -485,7 +686,7 @@ function renderPendingJoin(ctx: NotesContext): HTMLElement {
         });
         const spaceId = request.spaceId;
         pendingJoin = null;
-        screen = { kind: 'space', spaceId };
+        setScreen(ctx, { kind: 'space', spaceId });
         void loadSpace(ctx, spaceId);
       } else if (request.granted === false) {
         serverError = 'That request was declined.';
@@ -504,7 +705,7 @@ function renderPendingJoin(ctx: NotesContext): HTMLElement {
 function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
   const block = el('div', 'notes-block');
   block.appendChild(button('← Back', 'notes-join-back', () => {
-    screen = { kind: 'home' };
+    setScreen(ctx, { kind: 'home' });
     ctx.rerender();
   }));
 
@@ -585,11 +786,11 @@ function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
             displayName,
             spaceName: preview.space.name,
           });
-          screen = { kind: 'space', spaceId: preview.space.id };
+          setScreen(ctx, { kind: 'space', spaceId: preview.space.id });
           void loadSpace(ctx, preview.space.id);
         } else {
           pendingJoin = { requestId: result.request.id, spaceName: preview.space.name };
-          screen = { kind: 'home' };
+          setScreen(ctx, { kind: 'home' });
         }
         ctx.rerender();
       } catch (err) {
@@ -607,7 +808,7 @@ function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
 function renderCreateSpace(ctx: NotesContext): HTMLElement {
   const block = el('div', 'notes-block');
   block.appendChild(button('← Back', 'notes-create-back', () => {
-    screen = { kind: 'home' };
+    setScreen(ctx, { kind: 'home' });
     ctx.rerender();
   }));
   block.appendChild(el('h2', undefined, 'Start a space'));
@@ -682,7 +883,7 @@ function renderCreateSpace(ctx: NotesContext): HTMLElement {
         displayName,
         spaceName: created.space.name,
       });
-      screen = { kind: 'space', spaceId: created.space.id };
+      setScreen(ctx, { kind: 'space', spaceId: created.space.id });
       void loadSpace(ctx, created.space.id);
       ctx.rerender();
     } catch (err) {
@@ -699,7 +900,7 @@ function renderSpace(ctx: NotesContext, spaceId: string): HTMLElement {
   const block = el('div', 'notes-space');
   const membership = membershipFor(spaceId);
   block.appendChild(button('← All spaces', 'notes-space-back', () => {
-    screen = { kind: 'home' };
+    setScreen(ctx, { kind: 'home' });
     ctx.rerender();
   }));
   if (!membership) {
@@ -708,6 +909,7 @@ function renderSpace(ctx: NotesContext, spaceId: string): HTMLElement {
   }
 
   block.appendChild(el('h2', undefined, membership.spaceName));
+  block.appendChild(renderLiveState());
   block.appendChild(renderSignals(spaceId));
   block.appendChild(renderMembers(spaceId));
   block.appendChild(renderRequests(ctx, spaceId, membership));
@@ -715,6 +917,26 @@ function renderSpace(ctx: NotesContext, spaceId: string): HTMLElement {
   block.appendChild(renderComposer(ctx, spaceId, membership));
   block.appendChild(renderNotes(ctx, spaceId, membership));
   return block;
+}
+
+/** Whether this room is currently showing other people's writing as it
+ * happens, in one short sentence.
+ *
+ * Worth a line on screen rather than a silent behaviour, because the failure
+ * mode is invisible: a room that has quietly stopped listening looks exactly
+ * like a room where nobody is writing. That is the same reasoning this
+ * codebase applies to a disabled promotion form — say what is unavailable
+ * rather than letting absence read as a fact about the world. */
+function renderLiveState(): HTMLElement {
+  const wrap = el('p', 'hint notes-live');
+  wrap.dataset.testid = 'notes-live';
+  wrap.dataset.state = liveState;
+  wrap.textContent =
+    liveState === 'live' ? 'Live — notes from other people appear as they are written.'
+      : liveState === 'connecting' ? 'Connecting to this room…'
+        : liveState === 'retrying' ? 'Not live right now — reconnecting. Anything you write still saves.'
+          : 'Not live.';
+  return wrap;
 }
 
 /** Descriptive activity, as sentences about this room.
@@ -831,6 +1053,11 @@ function renderComposer(ctx: NotesContext, spaceId: string, membership: Membersh
   const area = el('textarea');
   area.dataset.testid = 'notes-composer';
   area.placeholder = 'Write anything. Half-formed is the point — nothing here is published, permanent or validated.';
+  // The draft lives in module state, not in this element. Somebody else's
+  // note arriving rebuilds this textarea, and a half-written thought must
+  // survive that — the room going live is not worth losing a sentence over.
+  area.value = composerDrafts.get(spaceId) ?? '';
+  area.oninput = () => composerDrafts.set(spaceId, area.value);
   form.appendChild(area);
   const submit = el('button', 'primary-button', 'Add note');
   submit.type = 'submit';
@@ -846,6 +1073,7 @@ function renderComposer(ctx: NotesContext, spaceId: string, membership: Membersh
     try {
       await client.createNote(spaceId, membership.token, area.value);
       area.value = '';
+      composerDrafts.delete(spaceId);
       await loadSpace(ctx, spaceId);
     } catch (err) {
       error.hidden = false;
@@ -894,18 +1122,62 @@ function renderNote(
   if (note.exemplar) byline.textContent += ' · example note';
   item.appendChild(byline);
 
-  if (editingNoteId === note.id) {
+  if (editing?.noteId === note.id) {
+    const open = editing;
     const area = el('textarea');
-    area.value = note.text;
+    area.value = open.draft;
     area.dataset.testid = `note-edit-${note.id}`;
+    area.oninput = () => { open.draft = area.value; };
     item.appendChild(area);
+
+    // A save that was overtaken. Both texts are on screen, and the choice of
+    // what survives is the person's — this screen never merges for them and
+    // never picks a winner by arrival order.
+    if (open.conflict !== null) {
+      const clash = el('div', 'error-box note-conflict');
+      clash.dataset.testid = `note-conflict-${note.id}`;
+      clash.appendChild(el('p', undefined, open.conflict));
+      const theirs = el('p', 'note-conflict-theirs', note.text);
+      theirs.dataset.testid = `note-conflict-theirs-${note.id}`;
+      clash.appendChild(el('span', 'hint', 'It now reads:'));
+      clash.appendChild(theirs);
+      clash.appendChild(button('Keep theirs, discard mine', `note-conflict-theirs-take-${note.id}`, () => {
+        editing = null;
+        ctx.rerender();
+      }));
+      clash.appendChild(button('Overwrite with mine', `note-conflict-mine-${note.id}`, async () => {
+        // Deliberately possible, and deliberately a second press. Having read
+        // what they wrote, a member may still decide their own version is the
+        // one the room should keep — that is what "anyone may rewrite any
+        // note" means. What is refused is doing it without knowing.
+        try {
+          await client.editNote(note.id, membership.token, open.draft, note.rev ?? 0);
+          editing = null;
+          await loadSpace(ctx, note.spaceId);
+        } catch (err) {
+          open.conflict = err instanceof Error ? err.message : String(err);
+          ctx.rerender();
+        }
+      }, 'primary-button'));
+      item.appendChild(clash);
+      return item;
+    }
+
     item.appendChild(button('Save', `note-save-${note.id}`, async () => {
-      await client.editNote(note.id, membership.token, area.value);
-      editingNoteId = null;
-      await loadSpace(ctx, note.spaceId);
+      try {
+        await client.editNote(note.id, membership.token, open.draft, open.baseRev);
+        editing = null;
+        await loadSpace(ctx, note.spaceId);
+      } catch (err) {
+        // The 409 path. The draft stays exactly where it is: refusing a save
+        // and then throwing away what was refused would be worse than the
+        // silent overwrite this replaced.
+        open.conflict = err instanceof Error ? err.message : String(err);
+        ctx.rerender();
+      }
     }, 'primary-button'));
     item.appendChild(button('Cancel', `note-cancel-${note.id}`, () => {
-      editingNoteId = null;
+      editing = null;
       ctx.rerender();
     }));
     return item;
@@ -916,7 +1188,10 @@ function renderNote(
 
   const actions = el('div', 'note-actions');
   actions.appendChild(button('Edit', `note-edit-open-${note.id}`, () => {
-    editingNoteId = note.id;
+    // The rev is captured here, with the text, for the same reason the
+    // promotion form captures its excerpt here: what is being edited is what
+    // was on screen at this moment, and the room does not stand still.
+    editing = { noteId: note.id, draft: note.text, baseRev: note.rev ?? 0, conflict: null };
     ctx.rerender();
   }));
   actions.appendChild(button('Delete', `note-delete-${note.id}`, async () => {
@@ -1395,8 +1670,19 @@ function bytesFromB64(text: string): Uint8Array {
  * without every render firing a request. */
 export function onNotesTabOpened(ctx: NotesContext): void {
   if (screen.kind === 'space') {
+    startWatching(ctx, screen.spaceId);
     void loadSpace(ctx, screen.spaceId);
     return;
   }
   if (directory.length === 0 && directoryError === null) void loadDirectory(ctx);
+}
+
+/** Called by main.ts when the practitioner leaves this tab.
+ *
+ * Hangs up on the parked poll. Without it, wandering between tabs holds one
+ * of this member's four concurrent /events slots per visit for up to 25
+ * seconds each — the client spending a ceiling that exists to bound clients.
+ * The room is re-entered, and re-watched, by `onNotesTabOpened`. */
+export function onNotesTabClosed(): void {
+  stopWatching();
 }
