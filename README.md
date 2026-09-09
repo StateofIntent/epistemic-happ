@@ -943,6 +943,7 @@ them has a deadline.
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
 | **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
+| **Retrying the binary download in CI** | **Nothing — the evidence is in hand** | §9, this section |
 
 **The one with real outside impact is the npm republish.**
 `@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
@@ -1016,6 +1017,33 @@ holds the note — which splits "the screen did not show it" from "the write nev
 landed" — and both halves of that have been watched failing. It tracks machine
 load: green 8/8 run alone, and it has failed only deep inside a long sequential
 batch.
+
+**One item here is blocked on nothing at all, and is the cheapest thing on this
+page.** Every conductor-bound workflow — `conductor.yml`, `ui.yml` and
+`network.yml` — begins by downloading `hc` and `holochain` from the
+`holochain-0.7.0` release with `gh release download`, and that step has no retry.
+It failed **three separate ways in a single afternoon**, none of them anything
+this repository controls:
+
+| Times | Failure | Asset |
+|---|---|---|
+| 4 | `HTTP 500` from `api.github.com` | `hc-x86_64-unknown-linux-gnu` |
+| 1 | `connection reset by peer` from `release-assets.githubusercontent.com` | `holochain-x86_64-unknown-linux-gnu` (54 MB) |
+
+Every one of them passed on re-run against an identical tree, and the same asset
+downloaded cleanly from a development machine three times in a row while CI was
+failing on it. It is the **first real step** in those jobs, so when it flakes it
+takes a whole job with it and produces a red tick that means nothing — which is
+the specific thing this repository has twice decided is worth more than a green
+one it cannot read. A bounded retry with a short backoff, and an assertion on the
+downloaded binary rather than on the exit code alone, would remove the most
+common cause of a meaningless red.
+
+**Worth doing carefully rather than quickly**, for the reason this repository
+already applies to timeouts: a retry that hides a *real* outage is the same
+mistake as a timeout raised to hide a stall. The retry should be bounded and
+loud — say how many attempts it made — so a genuine break still surfaces instead
+of turning into a slow success.
 
 #### Smaller items, all of them documentation
 
