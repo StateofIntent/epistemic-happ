@@ -42,20 +42,31 @@
 # below installs into `~/.cargo/bin`: it reproduces the development machine's
 # own layout exactly, and needs no change to either script.
 #
-# WHAT RUNS, and why these four. They are the conductor-bound harnesses that
-# need nothing but `@holochain/client`: `domain-index` (the by-domain index and
-# validation refusing three separate attempts to poison it), `read-scope` (two
-# real agents — the harness that proved the most consequential defect this
-# project has recorded), `mew-lifecycle` (the bridge's zome surface carrying a
-# Mew to a Claim) and `friction-limits` (the SWO rolling-hour cap refusing a
-# critique for real). Together, about 75 seconds plus conductor restarts.
+# WHAT RUNS. Four harnesses that need nothing but `@holochain/client`:
+# `domain-index` (the by-domain index and validation refusing three separate
+# attempts to poison it), `read-scope` (two real agents — the harness that
+# proved the most consequential defect this project has recorded),
+# `mew-lifecycle` (the bridge's zome surface carrying a Mew to a Claim) and
+# `friction-limits` (the SWO rolling-hour cap refusing a critique for real).
+# Then `notes-ui` — the promotion gate itself, three real processes with a real
+# browser the only thing touching all three, verifying what was published by an
+# independent zome call rather than believing the screen. About 100 seconds
+# together, plus conductor restarts.
+#
+# ONE HARNESS HAD TO CHANGE, AND ONLY ONE. `notes-ui.mjs` hardcoded
+# `/usr/bin/chromium`, as all eighteen conductor-bound browser harnesses do.
+# #103 left them alone on the grounds that editing files it could not exercise
+# would be churn asserting itself as safe — the right call then, and a reason
+# that expires exactly here, since this job is a conductor on a machine with no
+# system Chromium. So `notes-ui` now resolves EPI_CHROMIUM, then the system
+# path, then Playwright's download, matching the three conductor-free harnesses
+# — and the other seventeen keep the hardcoded path, unchanged, because the
+# original argument still holds for every one of them that nothing yet
+# exercises. They wait their turn behind a check, not behind a preference.
 #
 # WHAT DELIBERATELY DOES NOT RUN, and none of it is a wall:
-#   - The browser harnesses below the gate, `notes-ui.mjs` included. They still
-#     hardcode `/usr/bin/chromium`; #103 left that alone on the grounds that
-#     editing files it could not exercise would be churn asserting itself as
-#     safe. That reason expires the moment this job exists, so it is a follow-up
-#     with a real check behind it rather than a permanent exclusion.
+#   - The other seventeen conductor-bound browser harnesses, per the paragraph
+#     above.
 #   - `agent-sdk`, `mcp-server` and `linked-data-gateway`, which each need their
 #     own package built (`agent-sdk/dist`, `mcp-server/dist`, `gateway/dist`)
 #     before they can run.
@@ -146,6 +157,7 @@ jobs:
           cache-dependency-path: |
             mobile-ui/package-lock.json
             federation/package-lock.json
+            notes/package-lock.json
 
       # `scripts/live-verify/` has no dependencies of its own: it reaches
       # `@holochain/client` through a symlink into `federation/node_modules`,
@@ -166,6 +178,22 @@ jobs:
       - name: Install the UI's dependencies
         working-directory: mobile-ui
         run: npm ci
+
+      # `notes-ui.mjs` drives three real processes, and the notes service is
+      # one of them. Built, not just installed — the "packing does not compile"
+      # trap in a different package.
+      - name: Install and build the notes service
+        working-directory: notes
+        run: |
+          npm ci
+          npm run build
+
+      # The runner has no system Chromium; `notes-ui.mjs` falls back to
+      # Playwright's own download, exactly as the conductor-free browser
+      # harnesses already do.
+      - name: Install Chromium for Playwright
+        working-directory: mobile-ui
+        run: npx playwright install --with-deps chromium
 
       # The documented path, run as documented: two cargo release builds, then
       # `hc dna pack`, `hc app pack`, the UI build, and `hc web-app pack`. This
@@ -196,6 +224,16 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/friction-limits.mjs
+
+      # The gate itself, and the reason this whole workflow was worth building:
+      # three real processes — the notes service, `vite preview` serving the
+      # production bundle, and the conductor — with a real browser the only
+      # thing touching all three, and the published entry read back by an
+      # INDEPENDENT zome call rather than believed off the screen.
+      - name: notes-ui — the promotion gate, in a real browser against a real DHT
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/notes-ui.mjs
 
       # A harness failure and a conductor that never came up look identical from
       # the step's exit code, and they are diagnosed completely differently.
