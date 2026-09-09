@@ -920,6 +920,53 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ## 9. Roadmap
 
+### Where this is up to
+
+Everything that was blocked on *effort* is done. CI now covers every layer that
+had a harness waiting for one — `zomes` (it compiles and its units hold),
+`live-verify` (the soft layer above the promotion gate), `conductor` (the
+protocol against a real DHT), `network` (an entry crossing between peers), and
+`ui` (the screen held to the same invariants, in a real browser). What remains
+is blocked on **decisions** or on **credentials**, so this section says which,
+rather than leaving a reader to infer it from four open checkboxes.
+
+| Item | Blocked on | Where it is written up |
+|---|---|---|
+| Republish the npm packages | **Credentials** — a person with publish rights | `agent-sdk/README.md`, `mcp-server/README.md` |
+| Who may remove a member from a notes room | **A governance decision** — three shapes costed | `notes/README.md` |
+| Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
+| Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
+| The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
+
+**The one with real outside impact is the npm republish.**
+`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
+registry and **broken for anyone installing them today**: the published SDK
+predates the `@holochain/client` 0.21 upgrade, matches no cell, authorizes no
+signing credentials, and fails every zome call. `scripts/check-packages.mjs` is
+green on both, correctly — it proves they publish, install and import, which the
+broken build does perfectly, because listing tools touches no conductor. The
+defect lives past the point where a package stops being a package and starts
+making zome calls. A version bump and a publish are the fix, and no workflow
+here can do either.
+
+**The other three are deliberately parked, and each records why.** Pre-registration
+would be actively harmful built carelessly — the naive commit–reveal is gameable
+by selective revelation, which launders HARKing rather than reducing it, so it
+needs the denominator (a reveal deadline, the expired count readable beside the
+revealed) before it needs code. Member removal is a question about how a room
+governs itself, not a detail to settle inside a client fix. And the surfacing
+count is not a queue: every function still without a screen has a reason that
+survived inspection, so the next one needs an argument of its own.
+
+**The `notes-ui` intermittency is open and uncaused, and that is now a smaller
+problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
+race is recorded as plausible and unproven, together with the reason its
+injection failed. On the next occurrence the harness says whether the service
+holds the note — which splits "the screen did not show it" from "the write never
+landed" — and both halves of that have been watched failing. It tracks machine
+load: green 8/8 run alone, and it has failed only deep inside a long sequential
+batch.
+
 ### Phase 1: Foundation (Current)
 - [x] Integrity zome with all entry types
 - [x] Coordinator zome with CRUD, N4L export, bridge integration
