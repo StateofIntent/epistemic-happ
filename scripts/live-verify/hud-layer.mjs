@@ -44,6 +44,7 @@
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { CHROMIUM } from './chromium.mjs';
 
 // Playwright is a devDependency of mobile-ui (the UI it drives), not of
 // this directory — scripts/live-verify/node_modules is a symlink to
@@ -58,8 +59,8 @@ try {
   console.error(
     'Could not resolve playwright from mobile-ui/. Install it there first:\n' +
     '  cd mobile-ui && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install\n' +
-    '(the browser download is skipped on purpose — this script drives the ' +
-    "system's own /usr/bin/chromium)."
+    '(the browser download is skipped on purpose where a system Chromium is ' +
+    "already installed — see chromium.mjs for what this script actually drives)."
   );
   process.exit(1);
 }
@@ -181,7 +182,7 @@ async function main() {
   });
   await new Promise((r) => setTimeout(r, 4000));
 
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch({ executablePath: CHROMIUM });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];

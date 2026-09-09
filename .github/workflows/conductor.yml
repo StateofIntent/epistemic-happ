@@ -89,25 +89,41 @@
 # recorded in `mcp-server/README.md` and the root README — republishing is not
 # something a workflow can do.
 #
-# ONE HARNESS HAD TO CHANGE, AND ONLY ONE. `notes-ui.mjs` hardcoded
-# `/usr/bin/chromium`, as all eighteen conductor-bound browser harnesses do.
+# ONE HARNESS HAD TO CHANGE, AND ONLY ONE — AND THAT IS NO LONGER TRUE, WHICH
+# IS THE POINT OF LEAVING IT WRITTEN DOWN. `notes-ui.mjs` hardcoded
+# `/usr/bin/chromium`, as all eighteen conductor-bound browser harnesses did.
 # #103 left them alone on the grounds that editing files it could not exercise
 # would be churn asserting itself as safe — the right call then, and a reason
-# that expires exactly here, since this job is a conductor on a machine with no
-# system Chromium. So `notes-ui` now resolves EPI_CHROMIUM, then the system
-# path, then Playwright's download, matching the three conductor-free harnesses
-# — and the other seventeen keep the hardcoded path, unchanged, because the
-# original argument still holds for every one of them that nothing yet
-# exercises. They wait their turn behind a check, not behind a preference.
+# that expired exactly here, since this job is a conductor on a machine with no
+# system Chromium. So `notes-ui` resolved EPI_CHROMIUM, then the system path,
+# then Playwright's download, and the other seventeen kept the hardcoded path
+# because nothing yet exercised them: they waited their turn behind a check,
+# not behind a preference. `ui.yml` is that check, and it runs all seventeen.
+# The resolution itself now lives in `scripts/live-verify/chromium.mjs`, which
+# all twenty-one browser harnesses import — the same paragraph had by then been
+# written out four times, and seventeen more copies is not something anyone
+# should have to read.
 #
 # WHAT DELIBERATELY DOES NOT RUN, and none of it is a wall:
-#   - The other seventeen conductor-bound browser harnesses, per the paragraph
-#     above.
-#   - Two of the four multi-node harnesses. `real-gossip` and
-#     `transitive-gossip` now run in `.github/workflows/network.yml`;
-#     `partition-rejoin` (~5.5 min, and it stops and restarts a conductor
-#     mid-run) and `network-partition` (~25 min, and it needs iptables in the
-#     throwaway namespace `scripts/netns.sh` builds) do not.
+#   - The other seventeen conductor-bound browser harnesses — they have their
+#     own workflow now, `.github/workflows/ui.yml`, which asks a different
+#     question: not "does the protocol do what it says" but "does the screen
+#     tell the truth about the protocol underneath it". `notes-ui` stays here
+#     rather than moving there, because it is the promotion gate itself and
+#     moving it would quietly shrink what a green tick on THIS job covers.
+#   - Three of the four multi-node harnesses. `real-gossip` runs in
+#     `.github/workflows/network.yml`; `partition-rejoin` (~5.5 min, and it
+#     stops and restarts a conductor mid-run) and `network-partition` (~25 min,
+#     and it needs iptables in the throwaway namespace `scripts/netns.sh`
+#     builds) do not.
+#
+#     THIS SAID "TWO OF THE FOUR" AND NAMED `transitive-gossip` AS RUNNING, and
+#     that was true for exactly one commit. It shipped in `network.yml`, failed
+#     its own first CI run against an identical tree, and was taken back out —
+#     see that workflow's header for the bimodal evidence and for what would
+#     settle it. Corrected rather than quietly swapped, because the count moving
+#     is the readable part: a harness leaving CI is the same kind of event as
+#     one arriving, and this file is the only place that recorded neither.
 #
 #     THE SENTENCE THAT USED TO BE HERE WAS FALSE, and it is worth leaving the
 #     correction in place of it rather than quietly swapping the text. It said
