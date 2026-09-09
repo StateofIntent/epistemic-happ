@@ -36,7 +36,7 @@
 # hit. The version appears in the cache key so a bump invalidates it, rather
 # than a stale binary being restored under a new number.
 #
-# WHAT RUNS, and both are questions with no other home:
+# WHAT RUNS — one harness, asking a question with no other home here:
 #
 #   - `real-gossip` — an entry written on nodeA reaches nodeB over a real iroh
 #     QUIC network. nodeC is the CONTROL and is the reason this is evidence
@@ -51,23 +51,39 @@
 #     does not carry them. 47s of harness time locally, 67s as a whole step
 #     with the network bring-up in front of it.
 #
-#   - `transitive-gossip` — an entry reaches a node from a peer that did not
-#     author it. Until nodeD existed the shared DHT had exactly two members,
-#     so "B has A's entry" could never distinguish gossip from point-to-point
-#     delivery. The harness brings nodeD up itself, keeps the AUTHOR down for
-#     the whole wait, and puts nodeD back afterwards. 29s of harness time,
-#     56s as a whole step —
-#     `scripts/live-verify/README.md` estimates ~3 min for it, which this pass
-#     did not reproduce in a green run; the measurement is recorded there
-#     beside the estimate rather than replacing it, since one fast run on one
-#     machine is not grounds for deleting a figure somebody else measured.
-#
 # WHAT DELIBERATELY DOES NOT RUN, with its real cost rather than a guess:
+#   - `transitive-gossip` — IT WAS IN THIS JOB AND CAME BACK OUT, which is the
+#     part worth reading. It asks the question nothing else can: does an entry
+#     reach a node from a peer that did not author it? Until nodeD existed the
+#     shared DHT had exactly two members, so "B has A's entry" could never
+#     distinguish gossip from point-to-point delivery. It is green locally in
+#     29s and it went green here — on the second attempt. On the first, with an
+#     identical tree, it died waiting for nodeD to pick up the claim: a bare
+#     `Request timed out in 60000 ms: call_zome`, the @holochain/client default,
+#     with the baseline having crossed nodeA -> nodeB in 5.0s earlier in the
+#     same run. So the network was working and one conductor stopped answering.
+#
+#     THE EVIDENCE IS BIMODAL, and that is the most useful thing known about
+#     it. On the passing run the same wait reported `nodeD had it in 0.0s` —
+#     instant. Gossip that was merely slow on a loaded runner would produce
+#     values in between; instant-or-never instead points at nodeD not being
+#     ready to answer at all when the call arrives, a readiness race between
+#     `network.sh start-node nodeD` and the harness's first zome call that a
+#     fast machine always wins. FOUR conductors plus two services on two vCPUs
+#     is where that would first show.
+#
+#     That is a hypothesis and it has not been confirmed, so nothing is being
+#     fixed on the strength of it and the client timeout is NOT being widened —
+#     the same rule this repository already applied to the notes-ui
+#     intermittency, and the reason a red tick here stays worth reading. One
+#     failure in two runs is not a gate. It goes back in when something makes
+#     it deterministic, or when the race is demonstrated and closed.
+#
+#   - `partition-rejoin` — about five and a half minutes, and it drives
 #   - `partition-rejoin` — about five and a half minutes, and it drives
 #     `network.sh stop-node`/`start-node` itself to take a conductor offline
-#     mid-run. Not a wall; it is the next candidate, and it is left out here so
-#     the first multi-node job in this repository is one whose failures are
-#     worth reading rather than one people learn to wait out.
+#     mid-run. Left out for cost, and now also because it starts and stops
+#     conductors the way the harness above appears to trip over.
 #   - `network-partition` — about twenty-five minutes on 0.7, because
 #     reconciling entries written during a partition took ~930s in each
 #     direction once the link healed. It also installs `iptables` AND
@@ -213,11 +229,6 @@ jobs:
         run: |
           scripts/network.sh clean && scripts/network.sh start
           node scripts/live-verify/real-gossip.mjs
-
-      - name: transitive-gossip — an entry arrives from a peer that did not author it
-        run: |
-          scripts/network.sh clean && scripts/network.sh start
-          node scripts/live-verify/transitive-gossip.mjs
 
       # Three conductors and two services failing to come up looks identical to
       # a harness failing, from the step's exit code alone.
