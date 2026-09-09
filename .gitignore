@@ -50,6 +50,8 @@ dist/
 /.hc_live_*
 /.hc_sandbox.pid
 /.hc_sandbox.log
+/.hc_sandbox_bootstrap.pid
+/.hc_sandbox_bootstrap.log
 
 # OS/editor cruft
 .DS_Store

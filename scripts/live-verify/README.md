@@ -2,7 +2,13 @@
 
 Each file here drives a **real `hc sandbox` conductor** — real zome calls, real DHT validation, several of them through a real Playwright-controlled Chromium against the production UI bundle. Nothing here is a mock. That is the point: almost every defect recorded in the root `README.md`'s changelog was found by one of these, and several were invisible to `cargo test` and `tsc` by construction.
 
-**The sandbox runs on the in-memory transport.** `scripts/sandbox.sh` generates with `network mem`, because it starts exactly one conductor and a conductor with no peers has no use for a QUIC transport — but with one it still reaches for a bootstrap service, and on a CI runner that reach stalled `get_links` inside the ribosome for sixty seconds (`Host("iroh connect timed out")`), taking two workflows red. Nothing you run here needs a transport: the four harnesses that genuinely need more than one conductor use `scripts/network.sh`, which is untouched and keeps real QUIC and a real iroh relay, and the multi-*agent* harnesses share this conductor's own DHT. See `sandbox.sh`'s header for the full argument.
+**The sandbox runs its own bootstrap service, so you need one more binary.** `scripts/sandbox.sh` starts a `kitsune2-bootstrap-srv` on `:8887` and points the conductor at it for both the bootstrap and the relay role:
+
+```bash
+cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked   # once
+```
+
+Left to itself `hc sandbox generate` writes a config naming a public bootstrap service and an iroh canary relay with `request_timeout_s: 60`. On this machine that is invisible; on a CI runner that could not reach them, every zome call became a sixty-second stall and took two workflows red. `network.sh` had always run its own service, and its three-conductor job stayed green throughout — which is what identified the single-node sandbox as the misconfigured one. The port sits below 8888/8889 and clear of `network.sh`'s 8890-8899, so a network and a sandbox can still be up at once. See `sandbox.sh`'s header for the full argument.
 
 ## The one rule: one clean conductor per harness
 

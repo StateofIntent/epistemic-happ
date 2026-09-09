@@ -66,18 +66,20 @@
 #     the one deliberate overlap in intent between these two files.
 #
 # THIS WORKFLOW FOUND A DEFECT IN THE SHARED TEST ENVIRONMENT, WHICH IS WHY
-# `sandbox.sh` CHANGED IN THE SAME BRANCH. Seventeen conductor cycles per run is
+# `sandbox.sh` CHANGED ALONGSIDE IT. Seventeen conductor cycles per run is
 # roughly twice what any previous job did, and it surfaced a stall that had been
-# there all along: with the default QUIC transport, a single-node sandbox with
-# no peers still reaches for a bootstrap service, and on a runner that reach
-# blocked `get_links` inside the ribosome for sixty seconds —
-# `Host("iroh connect timed out (src: deadline has elapsed)")`. Seen three
-# times in one afternoon, on `hud-layer` here, on `neighborhood-ui` here as the
-# bare client-side `Request timed out in 60000 ms: call_zome`, and on
-# `domain-index` in `conductor.yml`, a job that had been green on `main` for
-# days. The fix is in `scripts/sandbox.sh`: generate on `network mem`, so there
-# is no transport for a host function to block on. It was NOT a longer timeout,
-# which would have made the stall slower to notice rather than absent.
+# there all along: `hc sandbox generate` writes a conductor config pointing at a
+# PUBLIC bootstrap service and an iroh canary relay, with
+# `request_timeout_s: 60`, and a runner that could not reach them turned zome
+# calls into sixty-second stalls — `Host("iroh connect timed out")` on
+# `hud-layer` here, the bare client-side `Request timed out in 60000 ms:
+# call_zome` on `neighborhood-ui` here, and the same on `domain-index` and
+# `read-scope` in `conductor.yml`, a job green on `main` for days.
+#
+# `network.yml` stayed green throughout, on THREE conductors and real QUIC,
+# because `scripts/network.sh` runs a `kitsune2-bootstrap-srv` of its own. So
+# `sandbox.sh` now runs one too. The fix was NOT a longer timeout, which would
+# have made the stall slower to notice rather than absent.
 #
 # WHAT A GREEN TICK HERE MEANS, precisely. A real Chromium loaded the production
 # bundle — `vite preview` over `dist/`, not the dev server — pointed it at a
@@ -131,6 +133,28 @@ jobs:
             ~/.cargo/git/db
           key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
+
+      # `sandbox.sh` now runs its OWN bootstrap/relay service rather than
+      # reaching for the public one `hc sandbox` defaults to — see that script's
+      # header. This is the same binary, the same version and the same cache key
+      # `network.yml` already uses, so on a runner that has built it once the
+      # step below is a cache restore rather than a two-and-a-half-minute build.
+      - name: Cache the kitsune2 bootstrap server
+        id: k2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kitsune2-bootstrap-srv
+          key: kitsune2-bootstrap-srv-0.5.1-${{ runner.os }}
+
+      - name: Build the bootstrap server and iroh relay
+        if: steps.k2cache.outputs.cache-hit != 'true'
+        run: cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+
+      - name: Prove it is there, cached or freshly built
+        run: |
+          test -x ~/.cargo/bin/kitsune2-bootstrap-srv \
+            || { echo "::error::kitsune2-bootstrap-srv is missing — sandbox.sh resolves it from PATH or ~/.cargo/bin and would fail later"; exit 1; }
+          ~/.cargo/bin/kitsune2-bootstrap-srv --help >/dev/null
 
       # Into ~/.cargo/bin, reproducing the development machine's layout exactly,
       # so `pack-webhapp.sh` and `sandbox.sh` find them with no change to either

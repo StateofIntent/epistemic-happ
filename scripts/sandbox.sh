@@ -53,16 +53,33 @@
 #     by matching its own `--config-path`, once the ports confirm it's
 #     actually up — see `start`'s `real_pid` below.
 #
-#   - THE SANDBOX IS GENERATED ON THE IN-MEMORY TRANSPORT (`network mem`),
-#     which is a correctness fix rather than a speed one and is argued in
-#     full at the `generate` call below. In short: this script starts
-#     exactly one conductor, that conductor has no peers by
-#     construction, and a QUIC transport nevertheless makes it reach for
-#     a bootstrap service — which on a CI runner stalled `get_links`
-#     inside the ribosome for a full 60 seconds with `Host("iroh connect
-#     timed out")` and took two workflows red. Anything that genuinely
-#     needs more than one conductor uses `scripts/network.sh`, which
-#     keeps real QUIC and a real iroh relay and is untouched by this.
+#   - THIS SANDBOX RUNS ITS OWN BOOTSTRAP SERVICE, and that is a
+#     correctness fix rather than a nicety. Left to itself `hc sandbox
+#     generate` writes a conductor config pointing at PUBLIC
+#     infrastructure — `bootstrap_url:
+#     https://dev-test-bootstrap2.holochain.org/` and an iroh canary
+#     relay — together with `request_timeout_s: 60`. On a development
+#     machine those are reachable and nothing is visible. On a CI runner
+#     they were not, and every stall matched that timeout exactly: zome
+#     calls dying with `Request timed out in 60000 ms: call_zome`, and
+#     once with the host-side version of the same wait,
+#     `get_links:72: Host("iroh connect timed out")`. It took two
+#     workflows red on a tree that had been green for days.
+#
+#     The evidence that named the cause was `network.yml`, which stayed
+#     green throughout while running THREE conductors on real QUIC — the
+#     difference being that `scripts/network.sh` has always pointed its
+#     conductors at a `kitsune2-bootstrap-srv` of its own. So this script
+#     now does the same thing, on its own port, and the sandbox depends
+#     on nothing outside this machine. Install the binary with:
+#
+#       cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+#
+#     One instance serves both the bootstrap and the relay role here.
+#     `network.sh` deliberately runs two on two ports; that split exists
+#     only so `network-partition.mjs` can cut peer traffic while proving
+#     the bootstrap stayed up, and nothing in a single-conductor sandbox
+#     needs it.
 #
 #   - DO NOT PIPE `start` INTO ANYTHING THAT WAITS FOR EOF, which is not
 #     a holochain quirk but the direct consequence of the point above.
@@ -116,6 +133,15 @@ APP_PORT="8888"                      # must match bridge/.env.example's HOLOCHAI
 PIDFILE="$REPO_ROOT/.hc_sandbox.pid"
 LOGFILE="$REPO_ROOT/.hc_sandbox.log"
 
+# The sandbox's own bootstrap/relay service — see the header. Port 8887 sits
+# just below this script's 8888/8889 and clear of network.sh's 8890-8899, so a
+# three-node network and this sandbox can be up at once and neither notices the
+# other, which is a property scripts/live-verify/README.md already promises.
+BOOTSTRAP_PORT="${EPI_SANDBOX_BOOTSTRAP_PORT:-8887}"
+BOOTSTRAP_URL="http://127.0.0.1:$BOOTSTRAP_PORT"
+BOOT_PIDFILE="$REPO_ROOT/.hc_sandbox_bootstrap.pid"
+BOOT_LOGFILE="$REPO_ROOT/.hc_sandbox_bootstrap.log"
+
 # Dev-only keystore passphrase — this sandbox's DHT data is throwaway local
 # state (see `clean` above), not a real deployment, so a fixed, documented
 # passphrase is fine here. Override with HC_SANDBOX_PASSPHRASE if you want
@@ -141,8 +167,76 @@ find_bin() {
 HC_BIN="$(find_bin hc)"
 HOLOCHAIN_BIN="$(find_bin holochain)"
 
+# Resolved separately from find_bin so the failure names the one command that
+# fixes it. This binary is not part of the holochain release artifacts — it is
+# built from the kitsune2 crate, exactly as scripts/network.sh's header has
+# always said — so "not found" here means "never installed", not "wrong PATH".
+find_bootstrap_bin() {
+  if command -v kitsune2-bootstrap-srv >/dev/null 2>&1; then
+    command -v kitsune2-bootstrap-srv
+  elif [ -x "$HOME/.cargo/bin/kitsune2-bootstrap-srv" ]; then
+    echo "$HOME/.cargo/bin/kitsune2-bootstrap-srv"
+  else
+    fail "kitsune2-bootstrap-srv not found on PATH or in ~/.cargo/bin.
+  This sandbox runs its own bootstrap service rather than reaching for the
+  public one — see this script's header for why. Install it with:
+    cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+  (0.5.x is the kitsune2 line holochain 0.7.0 itself builds against.)"
+  fi
+}
+K2_BOOT_BIN="$(find_bootstrap_bin)"
+
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+bootstrap_running() {
+  [ -f "$BOOT_PIDFILE" ] && kill -0 "$(cat "$BOOT_PIDFILE")" 2>/dev/null
+}
+
+port_up() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&- 2>/dev/null || true; return 0; }; return 1; }
+
+start_bootstrap() {
+  if bootstrap_running; then
+    log "Local bootstrap service already running (pid $(cat "$BOOT_PIDFILE"))."
+    return 0
+  fi
+  log "Starting local bootstrap/relay service on :$BOOTSTRAP_PORT ..."
+  ( cd "$REPO_ROOT" && setsid --fork "$K2_BOOT_BIN" --listen "127.0.0.1:$BOOTSTRAP_PORT" \
+      < /dev/null > "$BOOT_LOGFILE" 2>&1 )
+
+  local tries=30
+  while [ "$tries" -gt 0 ]; do
+    port_up "$BOOTSTRAP_PORT" && break
+    # A bind failure is fatal and instant; waiting out the full 30s for it is
+    # pure delay, and it is nearly always a leaked previous run.
+    if grep -qiE "address in use|AddrInUse" "$BOOT_LOGFILE" 2>/dev/null; then
+      cat "$BOOT_LOGFILE" >&2
+      fail "Something is already bound to :$BOOTSTRAP_PORT — check with: pgrep -af kitsune2-bootstrap-srv"
+    fi
+    sleep 1; tries=$((tries - 1))
+  done
+  port_up "$BOOTSTRAP_PORT" \
+    || fail "bootstrap service did not bind :$BOOTSTRAP_PORT within 30s. Log tail:$(echo; tail -n 20 "$BOOT_LOGFILE" 2>/dev/null)"
+
+  # THE PID MUST BE FOUND, NOT CAPTURED — `( cd X && setsid --fork Y )` leaves
+  # `$!` pointing at a subshell that is gone in milliseconds while the service
+  # keeps the port. The same leak this script's header describes for conductors.
+  local pid
+  pid="$(pgrep -f "kitsune2-bootstrap-srv .*--listen 127.0.0.1:$BOOTSTRAP_PORT" | head -n1)"
+  [ -n "$pid" ] || fail "bootstrap service bound :$BOOTSTRAP_PORT but its process could not be found."
+  echo "$pid" > "$BOOT_PIDFILE"
+  log "  bootstrap/relay: $BOOTSTRAP_URL  (pid $pid)"
+}
+
+stop_bootstrap() {
+  bootstrap_running || { rm -f "$BOOT_PIDFILE"; return 0; }
+  local pid; pid="$(cat "$BOOT_PIDFILE")"
+  log "Stopping local bootstrap service (pid $pid) ..."
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 10); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+  kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  rm -f "$BOOT_PIDFILE"
 }
 
 wait_for_ports() {
@@ -178,6 +272,10 @@ case "$cmd" in
     # with no PIDFILE recording it: exactly the orphan-process leak this
     # script's header describes fixing the first time. Observed for
     # real, so read the last line everywhere .hc is consulted.
+    # Before either path: a resumed conductor was generated against this URL
+    # and will reach for it just as a fresh one does.
+    start_bootstrap
+
     if [ -f "$REPO_ROOT/.hc" ] && [ -d "$(tail -n1 "$REPO_ROOT/.hc")" ]; then
       log "Resuming existing sandbox ($(tail -n1 "$REPO_ROOT/.hc")) ..."
       ( cd "$REPO_ROOT" && \
@@ -186,41 +284,26 @@ case "$cmd" in
     else
       [ -f "$HAPP_PATH" ] || fail "No .happ bundle at $HAPP_PATH. Build it first (README.md §6.2-6.3: cargo build --release --target wasm32-unknown-unknown in dna/integrity and dna/coordinator, then hc dna pack dna/ && hc app pack .)."
       log "No existing sandbox found — generating a fresh one from $HAPP_PATH ..."
-      # `network mem` — the in-memory transport — and it is a correctness fix
-      # rather than a speed one.
+      # Pointed at this machine's own bootstrap/relay service rather than at
+      # the public one `hc sandbox` defaults to — see this script's header for
+      # the full argument and the evidence. In short: the default config names
+      # `https://dev-test-bootstrap2.holochain.org/` and an iroh canary relay
+      # with `request_timeout_s: 60`, and a runner that could not reach them
+      # turned every zome call into a sixty-second stall.
       #
-      # A sandbox generated with the default QUIC transport opens iroh sockets
-      # and talks to a bootstrap service, on a conductor that by construction
-      # has no peers: this script starts exactly one, and every harness that
-      # genuinely needs more than one uses `scripts/network.sh` instead. On a
-      # development machine that costs nothing visible. On a runner it is a
-      # 60-second stall inside a host function, watched twice:
+      # One URL for both roles. `network.sh` passes two, on two ports, purely so
+      # `network-partition.mjs` can sever peer traffic while proving the
+      # bootstrap stayed up; one conductor has no such control to preserve.
       #
-      #   holochain::core::ribosome::host_fn::get_links:72:
-      #     Host("iroh connect timed out (src: deadline has elapsed)")
-      #
-      # — `get_links` blocking on a network it did not need, until the deadline
-      # elapsed. Seen from the client side the same stall is a bare
-      # `Request timed out in 60000 ms: call_zome` with nothing to explain it,
-      # which is what `transitive-gossip` reported before it was pulled from
-      # `network.yml`, and what `neighborhood-ui` reported on ui.yml's first
-      # run. It struck the fourteenth harness of a job once and the first
-      # harness of the next, so it is a property of the runner's network rather
-      # than of any harness.
-      #
-      # `mem` removes the possibility rather than waiting less: there is no
-      # transport to connect over, so no host function can block on one. What
-      # this deliberately gives up is nothing this script ever provided — a
-      # single-node sandbox could not gossip, partition or converge, and
-      # `conductor.yml`'s own header says a green tick there is silent on all
-      # three. Multiple AGENTS in one conductor are unaffected, which is what
-      # `read-scope`, `domain-index`, `trust-lenses`, `expertise-ui` and
-      # `mode-and-constitution` use: they share this conductor's own DHT and
-      # never needed a transport either.
+      # `network mem` was tried first and is NOT what shipped. The in-memory
+      # transport does remove the QUIC dial — the host-side
+      # `Host("iroh connect timed out")` stopped appearing — but the generated
+      # config still names both public URLs, and the sixty-second stalls
+      # continued. Recorded because it looks like it ought to work.
       ( cd "$REPO_ROOT" && \
         echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$ADMIN_PORT" generate \
           -a "$APP_ID" -r="$APP_PORT" --in-process-lair "$HAPP_PATH" \
-          network mem \
+          network -b "$BOOTSTRAP_URL" quic "$BOOTSTRAP_URL" \
           > "$LOGFILE" 2>&1 & )
     fi
 
@@ -251,6 +334,11 @@ case "$cmd" in
     ;;
 
   stop)
+    # The service is stopped whether or not a conductor is up: a `start` that
+    # failed after bringing the service up would otherwise leak it, and the next
+    # `start` would then fail on "address in use" for a reason unrelated to what
+    # actually broke.
+    stop_bootstrap
     if ! is_running; then
       log "Not running."
       exit 0
@@ -283,13 +371,18 @@ case "$cmd" in
     else
       log "Not running."
     fi
+    if bootstrap_running; then
+      log "Local bootstrap service running (pid $(cat "$BOOT_PIDFILE")) at $BOOTSTRAP_URL."
+    else
+      log "Local bootstrap service not running."
+    fi
     ;;
 
   clean)
     "$HERE/sandbox.sh" stop
     log "Removing sandbox state (hc sandbox clean) ..."
     ( cd "$REPO_ROOT" && "$HC_BIN" sandbox clean ) || true
-    rm -f "$REPO_ROOT/.hc" "$REPO_ROOT/.hc_auth" "$REPO_ROOT"/.hc_live_* "$LOGFILE"
+    rm -f "$REPO_ROOT/.hc" "$REPO_ROOT/.hc_auth" "$REPO_ROOT"/.hc_live_* "$LOGFILE" "$BOOT_LOGFILE"
     log "Clean. Next 'start' will generate a fresh sandbox with empty DHT state."
     ;;
 

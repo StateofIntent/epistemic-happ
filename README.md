@@ -595,11 +595,18 @@ But unlike a true Ricardian contract, this binding is **not mutual or enforceabl
   `web-happ.yaml` in this repo (`manifest_version: "0"`, `path:` rather
   than `bundled:`, no `origin_time`/`quantum_time`) will not parse under a
   0.4 or 0.5 `hc`, and vice versa.
-- **`kitsune2-bootstrap-srv`** — only for the multi-node network
-  (`scripts/network.sh`); the single-node sandbox does not need it.
-  Holochain 0.7 removed `hc run-local-services`, and this binary is what
-  replaced it: one process serving both the bootstrap service and an
-  embedded iroh relay.
+- **`kitsune2-bootstrap-srv`** — needed by **both** `scripts/network.sh` and
+  `scripts/sandbox.sh`. Holochain 0.7 removed `hc run-local-services`, and
+  this binary is what replaced it: one process serving both the bootstrap
+  service and an embedded iroh relay.
+
+  *This bullet used to say the single-node sandbox did not need it, which was
+  true until it stopped being.* `hc sandbox generate` writes a conductor
+  config naming a **public** bootstrap service and an iroh canary relay, with
+  a 60-second request timeout; a machine that cannot reach them turns every
+  zome call into a 60-second stall, which is how it presented on CI. The
+  sandbox now runs its own service on `:8887` and depends on nothing outside
+  your machine — see `scripts/sandbox.sh`'s header for the evidence.
 
   ```bash
   cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
@@ -1433,26 +1440,38 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   **What is still not automatic**, with measured costs rather than a guess: three of the four multi-node harnesses. `partition-rejoin` (~5.5 min, and it drives `network.sh stop-node`/`start-node` itself mid-run); `network-partition` (~25 min, and it needs `iptables` **and** `ip6tables` inside the throwaway namespace `scripts/netns.sh` builds); and `transitive-gossip`, which is out on its own evidence and goes back in when the nodeD readiness race is demonstrated and closed, or when something else makes it deterministic.
 
-- [x] **A single-node sandbox was reaching for a network it has no peers on, and it took two workflows red in one afternoon.** `scripts/sandbox.sh` now generates on the in-memory transport (`hc sandbox generate ... network mem`).
+- [x] **A single-node sandbox was reaching for public infrastructure it did not need, and it took two workflows red on a tree that had been green for days.** `scripts/sandbox.sh` now runs its own `kitsune2-bootstrap-srv`, as `scripts/network.sh` always has.
 
-  **The error names itself, which is the only reason this was an hour rather than a week.**
+  **The generated config is the whole story, and nothing in this repository had ever read it.**
+
+  ```yaml
+  network:
+    bootstrap_url: https://dev-test-bootstrap2.holochain.org/
+    relay_url: https://use1-1.relay.n0.iroh-canary.iroh.link./
+    request_timeout_s: 60
+  ```
+
+  `hc sandbox generate` writes that by default. A development machine reaches both instantly and nothing is visible, which is why it survived every green run recorded here. A CI runner that could not reach them turned zome calls into stalls of exactly `request_timeout_s`, sometimes surfacing the host-side wait and sometimes only the client's view of it:
 
   ```
   holochain::core::ribosome::host_fn::get_links:72:
     Host("iroh connect timed out (src: deadline has elapsed)")
+  Error: Request timed out in 60000 ms: call_zome
   ```
 
-  `get_links` — a read — blocking inside the ribosome until a sixty-second network deadline elapsed, on a conductor that `sandbox.sh` starts exactly one of and that therefore has no peers by construction. With the default QUIC transport it still opens iroh sockets and reaches for a bootstrap service. On a development machine with working internet that reach returns instantly and costs nothing visible, which is why this sat undisturbed through every green run this repository has recorded.
+  **Four observations, two workflows, four harnesses.** `ui.yml` lost `hud-layer` to the named error and `neighborhood-ui` to the bare client one; `conductor.yml` lost `domain-index` and then `read-scope`, on a job that had been green on `main` for days and was untouched by the work that exposed it. **`main` would have gone red on its next push regardless.** Striking the first harness of one job and the fourteenth of another also rules out the obvious hypothesis that many conductor start/stop cycles exhaust something: it is the runner's reach at that moment, not position in the run.
 
-  **Three observations, two workflows, three harnesses, and the third is what settles it.** `ui.yml` lost `hud-layer` to the error above on the first harness of one run, and `neighborhood-ui` on the fourteenth harness of another — that second one reported only the bare client-side `Request timed out in 60000 ms: call_zome`, which is the identical stall seen from the other end of the socket. Then `conductor.yml` lost `domain-index` to the named version, on a job that had been green on `main` for days and was not touched by this branch. **`main` would have gone red on its next push regardless of this work.** Striking the first harness of one job and the fourteenth of another also rules out the obvious hypothesis that many conductor start/stop cycles exhaust something: it is a property of the runner's network at that moment, not of position in the run.
+  **The job that stayed green is what named the cause, which is worth more than the failures were.** `network.yml` runs *three* conductors on real QUIC with a real iroh relay and passed every one of those runs. If the runner's networking were broken it would have been the first to die. The difference is that `scripts/network.sh` has pointed its conductors at a `kitsune2-bootstrap-srv` of its own since it was written — the single-node sandbox was the only thing here still trusting a third party. A green tick on the harder job is what proved the easier one was misconfigured.
 
-  **`network mem` removes the possibility rather than waiting longer for it.** There is no transport to connect over, so no host function can block on one. This is deliberately not a widened client timeout — the rule this changelog applied to the `notes-ui` intermittency and again to `transitive-gossip` is that a timeout raised to hide a stall makes the stall slower to notice rather than absent, and here the stall is not even in the client.
+  **`network mem` was tried first and is not what shipped.** The in-memory transport genuinely removes the QUIC dial, and the host-side `iroh connect timed out` stopped appearing — but the generated config still names both public URLs, and the sixty-second stalls continued unchanged. Recorded because it looks like it ought to work and cost a full CI cycle to disprove. Pointing the bootstrap at a black-holed address was tried too, and is worse than useless: the conductor then never finishes starting at all, which is a different failure wearing the same clothes.
 
-  **What is given up is nothing that existed.** A single-node sandbox could not gossip, partition or converge, and `conductor.yml`'s header has said in as many words since it was written that a green tick there is silent on all three. Every harness that genuinely needs more than one conductor — `real-gossip`, `partition-rejoin`, `network-partition`, `transitive-gossip` — uses `scripts/network.sh`, which keeps real QUIC and a real iroh relay and is untouched. Multiple *agents* in one conductor are also unaffected, which is what `read-scope`, `domain-index`, `trust-lenses`, `expertise-ui` and `mode-and-constitution` use: they share that conductor's own DHT and never needed a transport either.
+  **The fix is not a longer timeout, deliberately.** The rule this changelog applied to the `notes-ui` intermittency and again to `transitive-gossip` is that a timeout raised to hide a stall makes it slower to notice rather than absent — and this stall is not even in the client.
 
-  **Verified across every conductor-bound harness in the repository, not just the ones that failed.** All twenty-five — the seventeen in `ui.yml` and the eight in `conductor.yml` — run green on the in-memory transport locally, at timings indistinguishable from the QUIC ones (247s for the seventeen, the same total as before). `notes-ui` failed once in that sweep and passed on re-run, on the section-2 "note did not render after a submit" intermittency this changelog recorded as open and uncaused two entries above; it is the same shape, and nothing here claims to have touched it.
+  **What it costs, stated plainly.** `sandbox.sh` now has a service dependency: `cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked`, the same binary and version `network.sh` already required, resolved from PATH or `~/.cargo/bin` the same way and failing with that exact command in the error when it is missing. One instance serves both the bootstrap and the relay role on `:8887` — below this script's 8888/8889 and clear of `network.sh`'s 8890-8899, so a three-node network and a sandbox can be up at once, which `scripts/live-verify/README.md` already promises. `network.sh` runs two instances on two ports instead, and that split stays: it exists only so `network-partition.mjs` can sever peer traffic while proving the bootstrap stayed up, and one conductor has no such control to preserve. `conductor.yml` and `ui.yml` cache the binary under the key `network.yml` already uses, so a runner that has built it once restores it rather than spending two and a half minutes.
 
-  **A first attempt at this sweep failed almost entirely, and the cause was the person running it.** Twelve harnesses died with `unable to open database file` after a hand-run `hc sandbox generate` left stale sandbox paths behind — `hc sandbox clean` reported removing four. Recorded because the failure looked exactly like "the transport change broke everything" and was one directory of leftover state; the same clean-environment rule this directory enforces per harness applies to the machine running the sweep.
+  **Verified across every conductor-bound harness in the repository, not just the ones that failed.** All twenty-five — the seventeen in `ui.yml` and the eight in `conductor.yml` — green against the local bootstrap, at timings indistinguishable from the public-bootstrap ones (247s for the seventeen, the same total as before). `notes-ui` failed once in that sweep and passed on re-run, on the section-2 "note did not render after a submit" intermittency this changelog records as open and uncaused; it is the same shape, and nothing here claims to have touched it.
+
+  **A first attempt at that sweep failed almost entirely, and the cause was the person running it.** Twelve harnesses died with `unable to open database file` after a hand-run `hc sandbox generate` left stale sandbox paths behind — `hc sandbox clean` reported removing four. Recorded because the failure looked exactly like "the change broke everything" and was one directory of leftover state. The clean-environment rule this repository enforces per harness applies to the machine running the sweep too.
 
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
