@@ -36,6 +36,20 @@
 # hit. The version appears in the cache key so a bump invalidates it, rather
 # than a stale binary being restored under a new number.
 #
+# "ON A HIT" IS DOING REAL WORK IN THAT SENTENCE, AND A MISS IS NOT A BUG.
+# GitHub scopes caches by branch: a cache written on a branch is visible to
+# that branch alone, while a cache written on the DEFAULT branch is visible to
+# every branch. So the first run of this workflow on any new branch may find
+# nothing even though a green run cached the binary an hour earlier, and the
+# build step will run rather than skip. Observed rather than deduced: the
+# second run on the pull request that added this file hit its own branch's
+# cache and finished in 3m17s, and the very next run — the same commits, on
+# `main`, immediately after the merge — missed, rebuilt, and took 7m09s.
+# `main` has now written the cache in the scope every branch can read, so the
+# steady state is the shorter number. Worth knowing before concluding the key
+# is wrong and changing it: a step named "Cache the ..." that visibly rebuilds
+# looks exactly like a broken cache and usually is not one.
+#
 # WHAT RUNS — one harness, asking a question with no other home here:
 #
 #   - `real-gossip` — an entry written on nodeA reaches nodeB over a real iroh
