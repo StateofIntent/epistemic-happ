@@ -90,6 +90,23 @@ try {
   process.exit(1);
 }
 
+/** Which Chromium to drive.
+ *
+ * The conductor-bound harnesses in this directory hardcoded a system
+ * Chromium, and that was correct while a conductor only ever existed on a
+ * machine that already had one: resolving a path that could not be exercised
+ * would have been churn asserting itself as safe. `conductor.yml` ends that
+ * condition — a runner now has a real conductor and no `/usr/bin/chromium` —
+ * so this file resolves it the same way the conductor-free harnesses already
+ * do: an explicit EPI_CHROMIUM, then the system browser these were written
+ * against, then Playwright's own download (`executablePath: undefined`),
+ * which is what a runner has. The other seventeen conductor-bound browser
+ * harnesses still hardcode the path, deliberately: this one is changed
+ * because this one is being run in CI, and the rest wait their turn behind a
+ * check that can exercise them. */
+const CHROMIUM = process.env.EPI_CHROMIUM?.trim()
+  || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
@@ -118,6 +135,30 @@ function setupFail(lines) {
   process.exit(1);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Wait, bounded, for a note carrying `text` to render, and answer whether it
+ * did rather than throwing.
+ *
+ * Every place this replaces was a bare `waitForFunction`, which fails as a raw
+ * Playwright TimeoutError naming a line number and no check — the exact
+ * complaint this file's header records against `launcher-packaging`'s first
+ * regression report, left standing in three places here. Worse than the
+ * unhelpful shape is that it conflates two unrelated diagnoses: a note that is
+ * rendering slowly, and a write the room REFUSED, which paints an error in the
+ * composer and renders no note at all. `notes-layer.mjs` proves those ceilings
+ * refuse for real, so a refusal here is an ordinary thing to hit and was
+ * indistinguishable from a hang. On a miss this now says which it was. */
+async function noteAppeared(target, text) {
+  const ok = await target.waitForFunction(
+    (t) => Array.from(document.querySelectorAll('.note-text')).some((n) => n.textContent?.includes(t)),
+    text, { timeout: 10000 },
+  ).then(() => true).catch(() => false);
+  if (!ok) {
+    const said = (await target.locator('.error-box').allTextContents()).map((s) => s.trim()).filter(Boolean);
+    log(`    (no note rendered after 10s; the composer says: ${said.length ? said.join(' | ') : '<nothing>'})`);
+  }
+  return ok;
+}
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const nowMicros = () => Date.now() * 1000;
 const entryOf = (record) => decode(record.entry.Present.entry);
@@ -200,7 +241,7 @@ async function main() {
   });
   await sleep(3000);
 
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch({ executablePath: CHROMIUM });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await seedOrigin(context);
   const page = await context.newPage();
@@ -240,10 +281,7 @@ async function main() {
 
     await page.locator('[data-testid="notes-composer"]').fill(NOTE_TEXT);
     await page.locator('[data-testid="notes-composer-submit"]').click();
-    await page.waitForFunction(
-      (text) => Array.from(document.querySelectorAll('.note-text')).some((n) => n.textContent?.includes(text)),
-      NOTE_TEXT, { timeout: 10000 });
-    check('a note written in the browser is there', true);
+    check('a note written in the browser is there', await noteAppeared(page, NOTE_TEXT));
 
     const signals = await page.locator('[data-testid="notes-signals"]').textContent();
     check('activity is stated as a sentence about this room, not a figure to compare',
@@ -330,9 +368,8 @@ async function main() {
     check('joining through the link shows the room\'s existing notes', (brunSees ?? '').includes(NOTE_TEXT));
     await brun.locator('[data-testid="notes-composer"]').fill(SECOND_MEMBER_NOTE);
     await brun.locator('[data-testid="notes-composer-submit"]').click();
-    await brun.waitForFunction(
-      (text) => Array.from(document.querySelectorAll('.note-text')).some((n) => n.textContent?.includes(text)),
-      SECOND_MEMBER_NOTE, { timeout: 10000 });
+    check("the second member's own note appears in their own view",
+      await noteAppeared(brun, SECOND_MEMBER_NOTE));
 
     // === 6. Connect a conductor; the room is still there ==================
     log('\n=== 6. The same room, now with an agent key behind it ===');
@@ -345,6 +382,18 @@ async function main() {
       (await page.locator('[data-testid="notes-my-spaces"]').textContent() ?? '').includes(SPACE_NAME));
     await page.locator('[data-testid="notes-my-spaces"] button').first().click();
     await page.waitForSelector('[data-testid="notes-list"]', { timeout: 10000 });
+    // The list CONTAINER renders before the notes in it: they arrive on a
+    // second request, which section 5 above already accounts for and this did
+    // not. Bounded and then asserted, never a bare wait — a note that is
+    // genuinely absent still fails the check below, so the wait cannot turn
+    // the assertion into a no-op; only the read-too-early case changes.
+    //
+    // Found by CI on its first run, having raced invisibly here for as long as
+    // this harness has existed: a development machine always won the race, and
+    // a slower runner did not. The tell that it was the harness and not the
+    // room is section 7 immediately below, which finds and promotes a note
+    // from this very list and passed in the same failing run.
+    await noteAppeared(page, SECOND_MEMBER_NOTE);
     const bothNotes = await page.locator('[data-testid="notes-list"]').textContent();
     check('and the other member\'s note is there — this is one shared notebook',
       (bothNotes ?? '').includes(SECOND_MEMBER_NOTE));
