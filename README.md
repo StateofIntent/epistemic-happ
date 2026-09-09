@@ -1433,6 +1433,27 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
   **What is still not automatic**, with measured costs rather than a guess: three of the four multi-node harnesses. `partition-rejoin` (~5.5 min, and it drives `network.sh stop-node`/`start-node` itself mid-run); `network-partition` (~25 min, and it needs `iptables` **and** `ip6tables` inside the throwaway namespace `scripts/netns.sh` builds); and `transitive-gossip`, which is out on its own evidence and goes back in when the nodeD readiness race is demonstrated and closed, or when something else makes it deterministic.
 
+- [x] **A single-node sandbox was reaching for a network it has no peers on, and it took two workflows red in one afternoon.** `scripts/sandbox.sh` now generates on the in-memory transport (`hc sandbox generate ... network mem`).
+
+  **The error names itself, which is the only reason this was an hour rather than a week.**
+
+  ```
+  holochain::core::ribosome::host_fn::get_links:72:
+    Host("iroh connect timed out (src: deadline has elapsed)")
+  ```
+
+  `get_links` — a read — blocking inside the ribosome until a sixty-second network deadline elapsed, on a conductor that `sandbox.sh` starts exactly one of and that therefore has no peers by construction. With the default QUIC transport it still opens iroh sockets and reaches for a bootstrap service. On a development machine with working internet that reach returns instantly and costs nothing visible, which is why this sat undisturbed through every green run this repository has recorded.
+
+  **Three observations, two workflows, three harnesses, and the third is what settles it.** `ui.yml` lost `hud-layer` to the error above on the first harness of one run, and `neighborhood-ui` on the fourteenth harness of another — that second one reported only the bare client-side `Request timed out in 60000 ms: call_zome`, which is the identical stall seen from the other end of the socket. Then `conductor.yml` lost `domain-index` to the named version, on a job that had been green on `main` for days and was not touched by this branch. **`main` would have gone red on its next push regardless of this work.** Striking the first harness of one job and the fourteenth of another also rules out the obvious hypothesis that many conductor start/stop cycles exhaust something: it is a property of the runner's network at that moment, not of position in the run.
+
+  **`network mem` removes the possibility rather than waiting longer for it.** There is no transport to connect over, so no host function can block on one. This is deliberately not a widened client timeout — the rule this changelog applied to the `notes-ui` intermittency and again to `transitive-gossip` is that a timeout raised to hide a stall makes the stall slower to notice rather than absent, and here the stall is not even in the client.
+
+  **What is given up is nothing that existed.** A single-node sandbox could not gossip, partition or converge, and `conductor.yml`'s header has said in as many words since it was written that a green tick there is silent on all three. Every harness that genuinely needs more than one conductor — `real-gossip`, `partition-rejoin`, `network-partition`, `transitive-gossip` — uses `scripts/network.sh`, which keeps real QUIC and a real iroh relay and is untouched. Multiple *agents* in one conductor are also unaffected, which is what `read-scope`, `domain-index`, `trust-lenses`, `expertise-ui` and `mode-and-constitution` use: they share that conductor's own DHT and never needed a transport either.
+
+  **Verified across every conductor-bound harness in the repository, not just the ones that failed.** All twenty-five — the seventeen in `ui.yml` and the eight in `conductor.yml` — run green on the in-memory transport locally, at timings indistinguishable from the QUIC ones (247s for the seventeen, the same total as before). `notes-ui` failed once in that sweep and passed on re-run, on the section-2 "note did not render after a submit" intermittency this changelog recorded as open and uncaused two entries above; it is the same shape, and nothing here claims to have touched it.
+
+  **A first attempt at this sweep failed almost entirely, and the cause was the person running it.** Twelve harnesses died with `unable to open database file` after a hand-run `hc sandbox generate` left stale sandbox paths behind — `hc sandbox clean` reported removing four. Recorded because the failure looked exactly like "the transport change broke everything" and was one directory of leftover state; the same clean-environment rule this directory enforces per harness applies to the machine running the sweep.
+
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.

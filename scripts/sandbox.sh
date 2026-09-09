@@ -53,6 +53,17 @@
 #     by matching its own `--config-path`, once the ports confirm it's
 #     actually up — see `start`'s `real_pid` below.
 #
+#   - THE SANDBOX IS GENERATED ON THE IN-MEMORY TRANSPORT (`network mem`),
+#     which is a correctness fix rather than a speed one and is argued in
+#     full at the `generate` call below. In short: this script starts
+#     exactly one conductor, that conductor has no peers by
+#     construction, and a QUIC transport nevertheless makes it reach for
+#     a bootstrap service — which on a CI runner stalled `get_links`
+#     inside the ribosome for a full 60 seconds with `Host("iroh connect
+#     timed out")` and took two workflows red. Anything that genuinely
+#     needs more than one conductor uses `scripts/network.sh`, which
+#     keeps real QUIC and a real iroh relay and is untouched by this.
+#
 #   - DO NOT PIPE `start` INTO ANYTHING THAT WAITS FOR EOF, which is not
 #     a holochain quirk but the direct consequence of the point above.
 #     `start` leaves a real `holochain` process running, and that process
@@ -175,9 +186,41 @@ case "$cmd" in
     else
       [ -f "$HAPP_PATH" ] || fail "No .happ bundle at $HAPP_PATH. Build it first (README.md §6.2-6.3: cargo build --release --target wasm32-unknown-unknown in dna/integrity and dna/coordinator, then hc dna pack dna/ && hc app pack .)."
       log "No existing sandbox found — generating a fresh one from $HAPP_PATH ..."
+      # `network mem` — the in-memory transport — and it is a correctness fix
+      # rather than a speed one.
+      #
+      # A sandbox generated with the default QUIC transport opens iroh sockets
+      # and talks to a bootstrap service, on a conductor that by construction
+      # has no peers: this script starts exactly one, and every harness that
+      # genuinely needs more than one uses `scripts/network.sh` instead. On a
+      # development machine that costs nothing visible. On a runner it is a
+      # 60-second stall inside a host function, watched twice:
+      #
+      #   holochain::core::ribosome::host_fn::get_links:72:
+      #     Host("iroh connect timed out (src: deadline has elapsed)")
+      #
+      # — `get_links` blocking on a network it did not need, until the deadline
+      # elapsed. Seen from the client side the same stall is a bare
+      # `Request timed out in 60000 ms: call_zome` with nothing to explain it,
+      # which is what `transitive-gossip` reported before it was pulled from
+      # `network.yml`, and what `neighborhood-ui` reported on ui.yml's first
+      # run. It struck the fourteenth harness of a job once and the first
+      # harness of the next, so it is a property of the runner's network rather
+      # than of any harness.
+      #
+      # `mem` removes the possibility rather than waiting less: there is no
+      # transport to connect over, so no host function can block on one. What
+      # this deliberately gives up is nothing this script ever provided — a
+      # single-node sandbox could not gossip, partition or converge, and
+      # `conductor.yml`'s own header says a green tick there is silent on all
+      # three. Multiple AGENTS in one conductor are unaffected, which is what
+      # `read-scope`, `domain-index`, `trust-lenses`, `expertise-ui` and
+      # `mode-and-constitution` use: they share this conductor's own DHT and
+      # never needed a transport either.
       ( cd "$REPO_ROOT" && \
         echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$ADMIN_PORT" generate \
           -a "$APP_ID" -r="$APP_PORT" --in-process-lair "$HAPP_PATH" \
+          network mem \
           > "$LOGFILE" 2>&1 & )
     fi
 

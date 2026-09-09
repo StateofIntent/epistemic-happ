@@ -138,6 +138,25 @@
 #     that made THIS job possible, and never checked. `network.yml` caches the
 #     compiled binary so the cost is paid once rather than per run.
 #
+# THE SANDBOX RUNS ON THE IN-MEMORY TRANSPORT, and this job is why that matters
+# rather than `ui.yml`, which merely found it. `sandbox.sh` starts exactly one
+# conductor; with the default QUIC transport that conductor still reaches for a
+# bootstrap service it has no use for, and on a runner that reach stalled
+# `get_links` inside the ribosome for a full sixty seconds:
+#
+#   holochain::core::ribosome::host_fn::get_links:72:
+#     Host("iroh connect timed out (src: deadline has elapsed)")
+#
+# Watched on `domain-index` HERE — a job that had been green on `main` for days
+# — and on `hud-layer` in `ui.yml`, and a third time as the bare client-side
+# `Request timed out in 60000 ms: call_zome` that `neighborhood-ui` reported,
+# which is the same stall seen from the other end. It struck the first harness
+# of one job and the fourteenth of another, so it is a property of the runner's
+# network rather than of any harness. `network mem` removes the possibility
+# instead of waiting longer: there is no transport to connect over, so no host
+# function can block on one. Nothing this job ever claimed is given up — see the
+# paragraph below, which already said a tick here is silent on gossip.
+#
 # WHAT A GREEN TICK HERE MEANS, precisely. Real zome calls against a real DHT,
 # with real validation running: this is the first CI in this repository that is
 # evidence about the protocol itself rather than about the layer above it. It is

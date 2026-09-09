@@ -2,6 +2,8 @@
 
 Each file here drives a **real `hc sandbox` conductor** — real zome calls, real DHT validation, several of them through a real Playwright-controlled Chromium against the production UI bundle. Nothing here is a mock. That is the point: almost every defect recorded in the root `README.md`'s changelog was found by one of these, and several were invisible to `cargo test` and `tsc` by construction.
 
+**The sandbox runs on the in-memory transport.** `scripts/sandbox.sh` generates with `network mem`, because it starts exactly one conductor and a conductor with no peers has no use for a QUIC transport — but with one it still reaches for a bootstrap service, and on a CI runner that reach stalled `get_links` inside the ribosome for sixty seconds (`Host("iroh connect timed out")`), taking two workflows red. Nothing you run here needs a transport: the four harnesses that genuinely need more than one conductor use `scripts/network.sh`, which is untouched and keeps real QUIC and a real iroh relay, and the multi-*agent* harnesses share this conductor's own DHT. See `sandbox.sh`'s header for the full argument.
+
 ## The one rule: one clean conductor per harness
 
 ```bash
