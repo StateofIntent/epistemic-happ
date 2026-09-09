@@ -1,0 +1,95 @@
+# =============================================================================
+# The four harnesses that need no conductor, run on every push and pull request.
+#
+# WHY ONLY FOUR. `scripts/live-verify/` holds around thirty harnesses and most
+# of them drive a real `hc sandbox` conductor: they install a .happ, publish
+# entries to a DHT, and spend a real SWO friction budget. Those are not being
+# smuggled into CI here. They need a Holochain toolchain, a built WASM DNA and
+# a clean conductor per run, and a green tick that quietly stopped covering
+# them would be worse than no tick at all.
+#
+# The four below are the ones this directory's own README already marks as
+# exempt: they drive the `notes/` service and the built UI bundle, hold no
+# Holochain credentials, and by construction never touch a DHT. Together they
+# take about a minute.
+#
+# WHAT THIS DOES NOT CLAIM. A green run here means the layer above the
+# promotion gate is verified. It says nothing about the protocol below it —
+# `notes-ui.mjs`, which covers the gate itself against a real conductor, still
+# has to be run by a person on a machine with a sandbox, and this file is not
+# evidence about it. That distinction is the whole reason the notes layer is a
+# separate package.
+#
+# WHY IT EXISTS AT ALL. Every merge into this repository has so far been gated
+# by somebody remembering to run these by hand. In one pull request a harness
+# went unrun for the entire review on a mistaken claim that its prerequisites
+# were unavailable, and that was caught by a follow-up question rather than by
+# anything automatic. This is the automatic thing.
+# =============================================================================
+
+name: live-verify (no conductor)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the first: these harnesses bind
+# fixed ports, so two runs of the same job on one runner would collide.
+concurrency:
+  group: live-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  no-conductor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            notes/package-lock.json
+            mobile-ui/package-lock.json
+
+      # `npm ci` rather than `npm install`, so a run verifies the dependency
+      # set that is actually committed.
+      - name: Install and build the notes service
+        working-directory: notes
+        run: |
+          npm ci
+          npm run build
+
+      # Packing does not compile — the trap this repository records for the
+      # zomes, in a different package. A stale dist/ means verifying the
+      # previous version of the screen, so the build is never skipped.
+      - name: Install and build the UI
+        working-directory: mobile-ui
+        run: |
+          npm ci
+          npm run build
+
+      # The runner has no system Chromium; the harnesses fall back to
+      # Playwright's own download when /usr/bin/chromium is absent.
+      - name: Install Chromium for Playwright
+        working-directory: mobile-ui
+        run: npx playwright install --with-deps chromium
+
+      # Run separately rather than in one loop so a failure names itself in
+      # the job summary without anybody opening the log.
+      - name: notes-layer — the rules, over real HTTP
+        run: node scripts/live-verify/notes-layer.mjs
+
+      - name: notes-live — two browsers, one room
+        run: node scripts/live-verify/notes-live.mjs
+
+      - name: notes-assistant — the AI in the room, and its ceilings
+        run: node scripts/live-verify/notes-assistant.mjs
+
+      - name: theme-pinning — the palette, under both OS preferences
+        run: node scripts/live-verify/theme-pinning.mjs
