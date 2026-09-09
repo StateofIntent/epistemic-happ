@@ -1017,6 +1017,44 @@ landed" — and both halves of that have been watched failing. It tracks machine
 load: green 8/8 run alone, and it has failed only deep inside a long sequential
 batch.
 
+#### Smaller items, all of them documentation
+
+None of these is code. They are here because the argument for this section is
+that a gap written up somewhere other than a to-do list stays invisible, and
+each of these is currently exactly that.
+
+- **§2.3 should say *containment*, not "local sybil resistance".** The two are
+  different properties and the current wording claims the stronger one. Nothing
+  in this protocol resists the creation of a sybil; what happens is that a sybil
+  ring nothing links *into* is never traversed to, so it is unreachable rather
+  than refused. A reader who asks "so is it sybil resistant locally?" is being
+  misled by the heading, and has been.
+- **§2.3 should be linked to the traversal-versus-index asymmetry, which is
+  recorded in a different section and connected to nothing.** Containment holds
+  for reads that are *traversals* — you arrive by following `SynapticLink`s from
+  something you already hold, so a ring with no inbound links is never reached.
+  It does **not** hold for reads that are *index lookups*: `get_claims_by_domain`
+  is answered from the by-domain index rather than by walking, `Claim` creation
+  carries no friction by design, and a sybil flood therefore pollutes that
+  listing directly. §9's currency entry already says so, and says the right fix
+  is a read-layer lens rather than friction on the generative act. Neither
+  passage mentions the other, so the guarantee reads as broader than it is.
+- **A stale "not built yet" note in §9.** One changelog entry still lists the
+  browser client and promotion flow in `mobile-ui/`, the in-space AI
+  collaborator, and the Linked Data face as unbuilt. All three shipped
+  afterwards, in entries above it. A document that asserts its own obsolete
+  state is worse than one that says nothing.
+- **Nothing keeps `SPEC.md` in sync with `dna/`.** It is a hand-maintained
+  snapshot of the commit named at its own top, and §11 says so. Related to
+  protocol versioning above but separable from it, and much cheaper.
+- **Whether the remaining chain-local reads should have global indexes at all.**
+  `get_membranes` and `get_all_constitutions` would each be one global index over
+  an unbounded, ever-growing set. `SPEC.md` §10.0 names the question rather than
+  answering it, which is correct — but it is a question nobody is tracking.
+- **`mcp-server` ships no lockfile.** Left open deliberately, since adding one
+  changes what a published install resolves; recorded so the omission is not
+  read as an oversight by the next person to run `npm install` there.
+
 ### Phase 1: Foundation (Current)
 - [x] Integrity zome with all entry types
 - [x] Coordinator zome with CRUD, N4L export, bridge integration
