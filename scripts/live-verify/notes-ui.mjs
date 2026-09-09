@@ -80,6 +80,7 @@ import { decode } from '@msgpack/msgpack';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
+import { CHROMIUM } from './chromium.mjs';
 
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
 let chromium;
@@ -89,23 +90,6 @@ try {
   console.error('Could not resolve playwright from mobile-ui/. Run: cd mobile-ui && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install');
   process.exit(1);
 }
-
-/** Which Chromium to drive.
- *
- * The conductor-bound harnesses in this directory hardcoded a system
- * Chromium, and that was correct while a conductor only ever existed on a
- * machine that already had one: resolving a path that could not be exercised
- * would have been churn asserting itself as safe. `conductor.yml` ends that
- * condition — a runner now has a real conductor and no `/usr/bin/chromium` —
- * so this file resolves it the same way the conductor-free harnesses already
- * do: an explicit EPI_CHROMIUM, then the system browser these were written
- * against, then Playwright's own download (`executablePath: undefined`),
- * which is what a runner has. The other seventeen conductor-bound browser
- * harnesses still hardcode the path, deliberately: this one is changed
- * because this one is being run in CI, and the rest wait their turn behind a
- * check that can exercise them. */
-const CHROMIUM = process.env.EPI_CHROMIUM?.trim()
-  || (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
 
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';

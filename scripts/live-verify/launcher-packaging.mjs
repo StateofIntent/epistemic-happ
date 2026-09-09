@@ -64,6 +64,7 @@
 import { AdminWebsocket, AppWebsocket, CellType, signZomeCall } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { CHROMIUM } from './chromium.mjs';
 
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
 let chromium;
@@ -164,7 +165,7 @@ async function main() {
   });
   await new Promise((r) => setTimeout(r, 4000));
 
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch({ executablePath: CHROMIUM });
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [];

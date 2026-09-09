@@ -1,0 +1,291 @@
+# =============================================================================
+# Seventeen browser harnesses, against a real conductor and a real DHT, on
+# every push and pull request. This is the layer that had no automatic check
+# at all.
+#
+# WHAT WAS ACTUALLY IN THE WAY, since three files said these were excluded and
+# none of them said this. `conductor.yml`, `scripts/live-verify/README.md` and
+# the root README each recorded the same exclusion — "the other seventeen
+# conductor-bound browser harnesses still hardcode `/usr/bin/chromium`" — and
+# each was careful to add that they "wait their turn behind a check, not behind
+# a preference". The hardcoded path was the whole of it. Every other cost was
+# already paid by `conductor.yml`: the Holochain binaries are a download, the
+# friction budget is free on a fresh VM, and `pack-webhapp.sh` already builds
+# the UI bundle these drive, because packing the webhapp is what it is for.
+#
+# SO ONE LINE PER HARNESS CHANGED, AND IT MOVED TO A FILE OF ITS OWN.
+# `notes-ui` resolved the browser when it entered `conductor.yml` — EPI_CHROMIUM,
+# then the system path, then Playwright's download — and by then that same
+# paragraph had been written out four times, once per harness that reached CI.
+# Seventeen more copies is not a refactor anyone should have to read, so the
+# resolution now lives in `scripts/live-verify/chromium.mjs` and all
+# twenty-one import it. Every one of those twenty-one runs in CI as of this
+# commit, which is the condition this directory's README sets for touching
+# them: change the resolution in the harness you are adding, in the commit that
+# adds it.
+#
+# WHY A SEPARATE WORKFLOW RATHER THAN SEVENTEEN MORE STEPS IN `conductor.yml`.
+# Each
+# workflow here answers one question, and its header says what a green tick
+# means so that a tick is readable without opening it. `zomes.yml` answers "does
+# it compile and do its units hold", `live-verify.yml` "does the layer above the
+# promotion gate work", `conductor.yml` "does the protocol do what it says
+# against a real DHT", `network.yml` "does an entry cross between peers". This
+# one answers a different question from all four: DOES THE SCREEN TELL THE TRUTH
+# ABOUT THE PROTOCOL UNDERNEATH IT. Folding it into `conductor.yml` would make
+# one tick mean two things and a red one ambiguous — and would roughly triple
+# the runtime of the job that currently gives the fastest protocol answer.
+#
+# WHAT RUNS, and it is the whole set rather than a tranche. Every conductor-
+# bound browser harness in `scripts/live-verify/`, each preceded by
+# `sandbox.sh clean && sandbox.sh start`, which is this repository's one hard
+# rule and not a precaution: exact counts are the assertion in several of these,
+# and `affordance-surfacing` spends the entire hourly critique budget on
+# purpose. A runner is a fresh VM, so the rule that is a chore locally is free
+# here.
+#
+# MEASURED, NOT ESTIMATED, on a development machine before this workflow
+# existed: 247 seconds of harness time for the seventeen, from 9s
+# (`hud-layer`, `membranes-ui`, `founding-ui`, `graph-ui`) to 36s
+# (`layout-fits`, which drives six tabs at three widths). Conductor restarts add
+# about six seconds each. All seventeen were run green locally TWICE — 247s
+# against the tree as it stood, and 243s again after the Chromium change, with
+# `notes-ui` and the three conductor-free harnesses added to the second pass
+# because they were converted in the same commit. A red tick here is therefore
+# evidence about the runner or about the change under review, not about a
+# harness nobody had ever run.
+#
+# WHAT DELIBERATELY DOES NOT RUN:
+#   - The four multi-node harnesses. They need `network.sh`, not `sandbox.sh`,
+#     and belong to `network.yml`, which runs `real-gossip`; the reasons the
+#     other three stay out are in that file's header, with measured costs.
+#   - `notes-ui`, which is a browser harness against a real conductor and would
+#     fit here perfectly. It stays in `conductor.yml` because it is the
+#     promotion gate — the seam between the soft layer and the protocol — and
+#     moving it would quietly reduce what that workflow's tick covers. It is
+#     the one deliberate overlap in intent between these two files.
+#
+# WHAT A GREEN TICK HERE MEANS, precisely. A real Chromium loaded the production
+# bundle — `vite preview` over `dist/`, not the dev server — pointed it at a
+# real conductor, and the screen rendered what the DHT actually holds. It is
+# still one conductor on one machine: it says nothing about gossip, partition or
+# convergence, and nothing about whether the published packages on npm work.
+# What it does say is that the invariants these harnesses were written to
+# enforce are enforced on screen — no node drawn bigger than another, no lens on
+# by default, no chain-local read presented as global, no score beside a person
+# — rather than enforced in a document about the screen.
+# =============================================================================
+
+name: ui (real browser, real DHT)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The sandbox binds fixed ports (8888/8889, matching bridge/.env.example), so
+# two runs on one ref must not overlap. `conductor.yml` binds the same ports and
+# is a separate group deliberately: the two jobs get separate runners, so they
+# never share a port, and serialising them would double the wall clock for no
+# reason.
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # Into ~/.cargo/bin, reproducing the development machine's layout exactly,
+      # so `pack-webhapp.sh` and `sandbox.sh` find them with no change to either
+      # script. Pinned to the release tag and asserted afterwards: a conductor
+      # that silently moved to 0.7.1 would produce results about a version
+      # nothing here builds against, and a renamed asset should fail loudly at
+      # this step rather than as a confusing harness failure twenty minutes on.
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ~/.cargo/bin
+          for b in hc holochain; do
+            gh release download holochain-0.7.0 -R holochain/holochain \
+              -p "$b-x86_64-unknown-linux-gnu" -O ~/.cargo/bin/$b --clobber
+            chmod +x ~/.cargo/bin/$b
+          done
+          hc --version
+          holochain --version
+          [ "$(hc --version)" = "holochain_cli 0.7.0" ] \
+            || { echo "::error::hc is not 0.7.0"; exit 1; }
+          [ "$(holochain --version)" = "holochain 0.7.0" ] \
+            || { echo "::error::holochain is not 0.7.0"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            mobile-ui/package-lock.json
+            federation/package-lock.json
+
+      # `scripts/live-verify/` has no dependencies of its own: it reaches
+      # `@holochain/client` through a symlink into `federation/node_modules`,
+      # which is gitignored and therefore absent from a fresh checkout.
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # Playwright itself is resolved out of here by every harness below, and
+      # `pack-webhapp.sh` builds this package as part of packing the webhapp.
+      - name: Install the UI's dependencies
+        working-directory: mobile-ui
+        run: npm ci
+
+      # The runner has no system Chromium, so every harness below falls through
+      # to Playwright's own download — the third step in
+      # `scripts/live-verify/chromium.mjs`. This is the step that makes that
+      # fallback real rather than theoretical.
+      - name: Install Chromium for Playwright
+        working-directory: mobile-ui
+        run: npx playwright install --with-deps chromium
+
+      # The repository's own documented build-and-pack path, driven unmodified.
+      # It builds the zomes BEFORE packing, because `hc dna pack` compiles
+      # nothing and packing first would wrap stale wasm in a fresh timestamp —
+      # the trap once observed passing this entire suite with a deliberately
+      # broken `get_claims_by_domain`. It also builds `mobile-ui`, which is not
+      # incidental here: every harness below serves `dist/` through
+      # `vite preview`, so a stale build would verify the previous UI and pass.
+      - name: Build and pack the hApp
+        run: scripts/pack-webhapp.sh
+
+      # A clean conductor before EACH harness, not once before the batch. Run as
+      # separate steps rather than a loop so a failure names itself in the job
+      # summary, and so the timings above stay readable per harness.
+      - name: hud-layer — discourse health, conductance and antibody flags, rendered from real state
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/hud-layer.mjs
+
+      - name: membranes-ui — membranes, membership and governance
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/membranes-ui.mjs
+
+      - name: founding-ui — domain founding, and that its accountability is real
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/founding-ui.mjs
+
+      - name: graph-ui — the critique tree navigated spatially, with no node drawn bigger
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/graph-ui.mjs
+
+      - name: onboarding-ui — progressive disclosure staging
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/onboarding-ui.mjs
+
+      - name: evidence-retraction-ui — evidence, grounding, and author-only retraction
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/evidence-retraction-ui.mjs
+
+      # This one spends the ENTIRE hourly critique budget on purpose — it has to,
+      # since what it proves is that the form disappears exactly when the
+      # protocol would refuse the write. Nothing may follow it on the same
+      # conductor, which is what the clean step above is for.
+      - name: affordance-surfacing — the critique form is gone exactly when the protocol would refuse it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/affordance-surfacing.mjs
+
+      - name: write-symmetry — the write halves of two read-only surfaces
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/write-symmetry.mjs
+
+      - name: taxonomy-ui — the critique vocabulary as a tree, writable, and never ranked
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/taxonomy-ui.mjs
+
+      - name: trust-lenses — a lens is never on by default, always visible, and its effect legible
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/trust-lenses.mjs
+
+      - name: expertise-ui — an expertise assertion is findable by strangers, and reads as self-asserted
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/expertise-ui.mjs
+
+      - name: mode-and-constitution — a chain-local read is never shown as global, and absence is never scored
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/mode-and-constitution.mjs
+
+      - name: worldline-ui — the approximate HRR probe never displaces the exact period record
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/worldline-ui.mjs
+
+      - name: neighborhood-ui — the neighborhood probe is offered second, scored as approximate, and filters nothing
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/neighborhood-ui.mjs
+
+      # The fake this one has to defeat is a By Author tab that filters claims
+      # the browser already holds — correct-looking, correctly scoped, and
+      # leaving `get_claims_by_agent` as unsurfaced as it was.
+      - name: author-scope-ui — one agent's record read from the DHT, not filtered client-side
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/author-scope-ui.mjs
+
+      - name: layout-fits — every tab at every width this UI is for, with an unbreakable token on screen
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/layout-fits.mjs
+
+      # The path an installed bundle actually takes, which is not the path
+      # `vite preview` takes — this is the only check that the packed `.webhapp`
+      # produced two steps above is something a launcher could serve.
+      - name: launcher-packaging — the UI on the path an installed .webhapp actually takes
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/launcher-packaging.mjs
+
+      # A harness failure and a conductor that never came up look identical from
+      # the step's exit code, and they are diagnosed completely differently.
+      - name: The conductor's own log, if anything failed
+        if: failure()
+        run: |
+          scripts/sandbox.sh status || true
+          echo "--- .hc_sandbox.log (last 200 lines) ---"
+          tail -200 .hc_sandbox.log || echo "(no conductor log — it never started)"
