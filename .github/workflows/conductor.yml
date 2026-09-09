@@ -1,0 +1,207 @@
+# =============================================================================
+# Four protocol harnesses, against a real conductor and a real DHT, on every
+# push and pull request.
+#
+# WHY THIS WAS SAID TO BE IMPOSSIBLE, AND WHAT ACTUALLY CHANGED. Both existing
+# workflows state that the conductor-bound harnesses stay out of CI because they
+# "need a Holochain toolchain, a built WASM DNA and a clean conductor per run,
+# and would spend real SWO friction budget to prove anything". That was an
+# accurate description of the cost on a development machine. Two of the three
+# objections turn out to be *cheaper* on a runner, not dearer, and the third was
+# already paid:
+#
+#   - THE TOOLCHAIN IS A DOWNLOAD, not a build. holochain/holochain publishes
+#     prebuilt x86_64-unknown-linux-gnu binaries with each release, and the
+#     `holochain-0.7.0` tag carries both `hc` (9 MB) and `holochain` (54 MB) —
+#     the exact versions this repository targets. Nothing is compiled to get
+#     them. This was the assumption worth checking rather than inheriting.
+#
+#   - THE FRICTION BUDGET IS FREE HERE, which is the part that inverts. The one
+#     hard rule in `scripts/live-verify/README.md` is a clean conductor per
+#     harness, because `create_critique` and `create_synaptic_link` are capped
+#     per rolling hour and a harness that spends the budget strands the next
+#     one. On a development machine that rule is a chore and a documented source
+#     of false failures. On a runner every job is a fresh VM, and every step
+#     below runs `sandbox.sh clean && sandbox.sh start` first — so the budget is
+#     fresh by construction. The constraint that makes these awkward locally
+#     costs nothing here.
+#
+#   - THE WASM IS BUILT ANYWAY. `zomes.yml` already builds both zomes; this job
+#     goes one step further and runs `scripts/pack-webhapp.sh`, the repository's
+#     own documented build-and-pack path, which compiles the zomes *before*
+#     packing precisely because `hc dna pack` compiles nothing and would
+#     otherwise wrap stale code in a fresh timestamp.
+#
+# IT DRIVES THE REPOSITORY'S OWN SCRIPTS, deliberately, rather than
+# reimplementing their steps inline. `pack-webhapp.sh` and `sandbox.sh` each
+# carry a long header of constraints learned the expensive way — which flags are
+# global, that `hc sandbox run` exits on its own, that packing does not compile.
+# A workflow that open-coded those steps would drift from the documented path
+# and verify something nobody actually runs. Both scripts already resolve `hc`
+# and `holochain` from PATH or `~/.cargo/bin`, which is why the download step
+# below installs into `~/.cargo/bin`: it reproduces the development machine's
+# own layout exactly, and needs no change to either script.
+#
+# WHAT RUNS, and why these four. They are the conductor-bound harnesses that
+# need nothing but `@holochain/client`: `domain-index` (the by-domain index and
+# validation refusing three separate attempts to poison it), `read-scope` (two
+# real agents — the harness that proved the most consequential defect this
+# project has recorded), `mew-lifecycle` (the bridge's zome surface carrying a
+# Mew to a Claim) and `friction-limits` (the SWO rolling-hour cap refusing a
+# critique for real). Together, about 75 seconds plus conductor restarts.
+#
+# WHAT DELIBERATELY DOES NOT RUN, and none of it is a wall:
+#   - The browser harnesses below the gate, `notes-ui.mjs` included. They still
+#     hardcode `/usr/bin/chromium`; #103 left that alone on the grounds that
+#     editing files it could not exercise would be churn asserting itself as
+#     safe. That reason expires the moment this job exists, so it is a follow-up
+#     with a real check behind it rather than a permanent exclusion.
+#   - `agent-sdk`, `mcp-server` and `linked-data-gateway`, which each need their
+#     own package built (`agent-sdk/dist`, `mcp-server/dist`, `gateway/dist`)
+#     before they can run.
+#   - The four multi-node harnesses, which need `scripts/network.sh`: three
+#     conductors, a bootstrap server and an iroh relay. Those binaries are
+#     published on the same release tag, so this is scope rather than
+#     impossibility — and `network-partition.mjs` additionally wants iptables in
+#     a throwaway namespace, and `partition-rejoin.mjs` waits out a real gossip
+#     backoff for about nine minutes.
+#
+# WHAT A GREEN TICK HERE MEANS, precisely. Real zome calls against a real DHT,
+# with real validation running: this is the first CI in this repository that is
+# evidence about the protocol itself rather than about the layer above it. It is
+# still one conductor and one machine, so it says nothing about gossip,
+# partition or convergence between peers — the harnesses that cover those are
+# named above as not running yet.
+# =============================================================================
+
+name: conductor (real DHT)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The sandbox binds fixed ports (8888/8889, matching bridge/.env.example), so
+# two runs on one ref must not overlap.
+concurrency:
+  group: conductor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conductor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # Into ~/.cargo/bin so `pack-webhapp.sh` and `sandbox.sh` find them the
+      # same way they do on a development machine — see the header.
+      #
+      # Pinned to the release tag rather than `latest`: this repository targets
+      # 0.7.0 exactly, its zomes pin `hdk = "=0.7.0"`, and a conductor that
+      # silently moved to 0.7.1 would produce results about a version nobody
+      # here builds against. The assertion below is what makes the pin real
+      # rather than decorative — a renamed or redirected asset fails here, loudly
+      # and immediately, instead of surfacing as a confusing harness failure.
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ~/.cargo/bin
+          for b in hc holochain; do
+            gh release download holochain-0.7.0 -R holochain/holochain \
+              -p "$b-x86_64-unknown-linux-gnu" -O ~/.cargo/bin/$b --clobber
+            chmod +x ~/.cargo/bin/$b
+          done
+          hc --version
+          holochain --version
+          [ "$(hc --version)" = "holochain_cli 0.7.0" ] \
+            || { echo "::error::hc is not 0.7.0"; exit 1; }
+          [ "$(holochain --version)" = "holochain 0.7.0" ] \
+            || { echo "::error::holochain is not 0.7.0"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            mobile-ui/package-lock.json
+            federation/package-lock.json
+
+      # `scripts/live-verify/` has no dependencies of its own: it reaches
+      # `@holochain/client` through a symlink into `federation/node_modules`,
+      # which is gitignored and therefore absent from a fresh checkout. The
+      # symlink is recreated here rather than committed, matching how the
+      # working tree has it.
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          # A dangling symlink would surface as an inscrutable import failure
+          # inside the first harness, several minutes and one conductor later.
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # `pack-webhapp.sh` builds the UI as part of packing the webhapp, so the
+      # UI's own dependencies have to be present before it runs.
+      - name: Install the UI's dependencies
+        working-directory: mobile-ui
+        run: npm ci
+
+      # The documented path, run as documented: two cargo release builds, then
+      # `hc dna pack`, `hc app pack`, the UI build, and `hc web-app pack`. This
+      # step is therefore also the only automatic check that this script still
+      # works.
+      - name: Build and pack the hApp
+        run: scripts/pack-webhapp.sh
+
+      # A clean conductor before EACH harness, not once before the batch — the
+      # one hard rule in scripts/live-verify/README.md. Run as four steps rather
+      # than a loop so a failure names itself in the job summary.
+      - name: domain-index — the by-domain index, and validation refusing to be poisoned
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/domain-index.mjs
+
+      - name: read-scope — two real agents, and what each can see of the other
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/read-scope.mjs
+
+      - name: mew-lifecycle — the bridge's zome surface, Mew through to Claim
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/mew-lifecycle.mjs
+
+      - name: friction-limits — the rolling-hour cap refusing a critique for real
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/friction-limits.mjs
+
+      # A harness failure and a conductor that never came up look identical from
+      # the step's exit code, and they are diagnosed completely differently.
+      - name: The conductor's own log, if anything failed
+        if: failure()
+        run: |
+          scripts/sandbox.sh status || true
+          echo "--- .hc_sandbox.log (last 200 lines) ---"
+          tail -200 .hc_sandbox.log || echo "(no conductor log — it never started)"
