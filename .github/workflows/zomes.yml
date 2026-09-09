@@ -1,0 +1,152 @@
+# =============================================================================
+# The protocol layer, built and unit-tested, on every push and pull request.
+#
+# WHY THIS EXISTS AS A SECOND WORKFLOW. `live-verify.yml` states in its own
+# header that it is evidence about the layer ABOVE the promotion gate and says
+# nothing about the layer below. Below that gate sit two Rust zomes — around
+# 6,700 lines — carrying 77 unit tests that nothing ran automatically, and a
+# compiler that nothing invoked automatically. This is the most that can be
+# said honestly about that layer without a conductor, and it is kept in its own
+# file so the other workflow's boundary statement stays true rather than being
+# quietly widened.
+#
+# WHY A COMPILE STEP EARNS A JOB. The two most consequential defects in this
+# repository's own changelog were compile-class rather than logic. The
+# coordinator zome once had its `Mew`/`Retraction`/`Constitution` functions and
+# the `SignalPayload` enum each defined two or three times — `E0119`/`E0428`, so
+# it would not have compiled at all — and separately, every `create_X` function
+# declared `ExternResult<EntryHash>` while returning `create_entry()`'s actual
+# `ActionHash`, across twelve functions. Both are what a compiler prints in
+# seconds. Nothing was watching for either.
+#
+# WHY `cargo build --release` AND NOT `cargo check`, which would be four times
+# faster. Because this repository has already been bitten by exactly that
+# substitution and wrote the finding down. `.cargo/config.toml` exists because
+# `hdi`/`hdk` declare Holochain's `__hc__*` host functions as bodyless
+# `extern "C"`, which must become WASM *import* entries rather than resolve at
+# link time — and, in its own words, that "was never caught by this project's
+# own verification, because `cargo check` ... does NOT invoke the linker at all
+# ... `cargo check` passing is compile-time-only evidence; it says nothing about
+# whether the crate actually links into a deployable .wasm".
+#
+# Watched failing rather than taken on trust: with that link flag alone removed
+# from `.cargo/config.toml` and the `getrandom` cfg beside it left in place,
+# `cargo check --target wasm32-unknown-unknown` on the integrity zome exits 0
+# — perfectly green — while `cargo build --release` on the identical tree dies
+# with ten undefined `__hc__*` symbols out of `rust-lld`. A tick blind to that
+# class of failure would be asserting the wrong thing, so this job builds the
+# real release binary the `.happ` deploys, linker included.
+#
+# Which is also why every step below has a `working-directory` inside the
+# checkout rather than an absolute path: Cargo finds those flags by walking
+# upward from the invoking directory to the repo-root `.cargo/config.toml`, and
+# there is no workspace tying the two crates together to do it for them.
+#
+# WHAT THIS DOES NOT CLAIM, which matters more than what it does. Building is
+# not validating. Nothing here runs `hc dna pack`, starts a conductor,
+# publishes an entry, gossips, or exercises one validation rule against a real
+# DHT — the wasm this job produces is thrown away with the runner. A zome that
+# links clean and passes all 77 tests can still be wrong about everything the
+# DHT does, which is precisely why `scripts/live-verify/` exists and why most
+# of it is still run by a person with a sandbox. A green tick here means the
+# protocol layer builds into the binary it deploys as, and that its
+# pure-function tests hold. It does not mean the protocol works.
+#
+# WHY NOT `cargo clippy`. Because it is not green. The integrity zome is clean;
+# the coordinator zome produces 14 warnings today. Adding it under `-D warnings`
+# would land CI red on arrival, and clearing the 14 first would mean editing the
+# coordinator zome — the layer this job explicitly cannot exercise — for
+# cosmetic reasons. That is the churn-asserting-itself-as-safe trap the previous
+# workflow's commit already named. It belongs in a pass run beside a conductor,
+# not here.
+#
+# WHY `stable` AND NOT A PINNED VERSION. A pin would be the less honest option:
+# this project's development machine builds these zomes with `stable`, so that
+# is what a tick should mean. Pinning would make CI assert a compiler nobody
+# here actually uses. The exact version is printed by a step of its own, so
+# every run says on the record which compiler produced its result.
+#
+# WHY THE CACHE HOLDS DOWNLOADS AND NOT BUILD OUTPUT. This repository's standing
+# objection to stale artefacts — "packing does not compile"; a stale `dist/`
+# means you verified the previous version of the screen — applies to a cached
+# `target/` with equal force. A registry entry is a download and is content-
+# addressed; a target directory is a result, and a result is the thing that has
+# to be produced fresh.
+# =============================================================================
+
+name: zomes (build and unit tests)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: zomes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zomes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Named for what it produces rather than what it installs: the version
+      # this prints is the only thing that says what a green tick below meant.
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          # Separately and idempotently rather than as an `install --target`
+          # flag: the runner image already ships `stable`, and an install that
+          # decides it has nothing to do is not a promise that the target was
+          # added.
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
+
+      # The two zomes are separate crates with separate lockfiles, so the key
+      # covers both. Downloads only — see the header.
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # `--locked` throughout, so a run verifies the dependency set that is
+      # actually committed and fails rather than silently resolving something
+      # newer — the same reason the other workflow uses `npm ci`. Both
+      # lockfiles are tracked on purpose; see `.gitignore`.
+      #
+      # `--release` because that is literally the path `dna/dna.yaml` names —
+      # `./<crate>/target/wasm32-unknown-unknown/release/<crate>.wasm` — so
+      # these two steps produce exactly the binaries `hc dna pack` would
+      # consume, rather than a debug artefact that resembles them.
+      #
+      # Run as four steps rather than one loop so a failure names itself in the
+      # job summary without anybody opening the log.
+      - name: integrity zome — links to a deployable wasm32 binary
+        working-directory: dna/integrity
+        run: cargo build --locked --release --target wasm32-unknown-unknown
+
+      - name: coordinator zome — links to a deployable wasm32 binary
+        working-directory: dna/coordinator
+        run: cargo build --locked --release --target wasm32-unknown-unknown
+
+      # Host target, deliberately. These are pure-function tests over fixtures
+      # — no `hdk` mock feature, by the decision recorded in the coordinator's
+      # own Cargo.toml — so they neither need nor exercise the wasm guest.
+      - name: integrity zome — unit tests
+        working-directory: dna/integrity
+        run: cargo test --locked
+
+      - name: coordinator zome — unit tests
+        working-directory: dna/coordinator
+        run: cargo test --locked
