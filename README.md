@@ -920,6 +920,103 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ## 9. Roadmap
 
+### Where this is up to
+
+CI now covers every layer that had a harness waiting for one — `zomes` (it
+compiles and its units hold), `live-verify` (the soft layer above the promotion
+gate), `conductor` (the protocol against a real DHT), `network` (an entry
+crossing between peers), and `ui` (the screen held to the same invariants, in a
+real browser).
+
+What remains is blocked on different things, and the checkboxes below do not say
+which — so this section does. **Two of these are not checkboxes at all**: they
+are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
+somewhere other than a to-do list is exactly how they stay invisible. One of
+them has a deadline.
+
+| Item | Blocked on | Where it is written up |
+|---|---|---|
+| Republish the npm packages | **Credentials** — a person with publish rights | `agent-sdk/README.md`, `mcp-server/README.md` |
+| Who may remove a member from a notes room | **A governance decision** — three shapes costed | `notes/README.md` |
+| Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
+| Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
+| The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
+| **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
+| **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
+
+**The one with real outside impact is the npm republish.**
+`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
+registry and **broken for anyone installing them today**: the published SDK
+predates the `@holochain/client` 0.21 upgrade, matches no cell, authorizes no
+signing credentials, and fails every zome call. `scripts/check-packages.mjs` is
+green on both, correctly — it proves they publish, install and import, which the
+broken build does perfectly, because listing tools touches no conductor. The
+defect lives past the point where a package stops being a package and starts
+making zome calls. A version bump and a publish are the fix, and no workflow
+here can do either.
+
+**The other three are deliberately parked, and each records why.** Pre-registration
+would be actively harmful built carelessly — the naive commit–reveal is gameable
+by selective revelation, which launders HARKing rather than reducing it, so it
+needs the denominator (a reveal deadline, the expired count readable beside the
+revealed) before it needs code. Member removal is a question about how a room
+governs itself, not a detail to settle inside a client fix. And the surfacing
+count is not a queue: every function still without a screen has a reason that
+survived inspection, so the next one needs an argument of its own.
+
+**Protocol versioning is the one with a deadline, and it is cheap only while
+nobody is running this.** Changing the integrity zome changes the DNA hash, so a
+fixed conductor is a *different network* from a pre-fix one, and Holochain offers
+no in-place migration across that boundary. There is no protocol-wide version
+number, no feature negotiation, and no migration path defined — a genuinely
+breaking change, such as a new required field on an existing entry type, is
+currently just a commit with no compatibility story for DHT data written under
+the old shape. With no deployed network that costs nothing. The moment anyone is
+running this it costs everything, and the option to design it calmly is gone.
+`SPEC.md` §11 names it as a real, open gap; the changelog attaches a worked
+example. Related and smaller: nothing automatically keeps `SPEC.md` in sync with
+`dna/`, so it is a manually maintained snapshot of the commit named at its top.
+
+**Sybil resistance is open and is expected to stay open, which is a different
+statement from the rest of this table.** It is an accepted architectural ceiling,
+not a queued task: global sybil resistance requires a global scarce resource, and
+an agent-centric DHT deliberately does not have one. Raising the cost of identity
+creation would close it and is refused on principle, because it charges people
+for merely existing. What *is* shipped is real and worth not re-deriving: local
+containment falls out of the topology (a membrane full of self-attested sybils
+has no links from anyone outside it, so the attack creates entries nobody
+traverses), `get_effective_conductance` fades un-reinforced sybil links toward
+zero at read time, `AttestationPolicy` lets a *caller* state its own trust policy
+without the protocol computing one, and `AttestationGrant` puts a 30-day tenure
+bar and a rate limit on the ability to vouch — so a fresh sybil's vouching is
+worthless even though the sybil is free to create. What remains untouched is the
+cost of creating the identity itself, and that is the ceiling, stated honestly in
+§2.3 rather than papered over.
+
+**A second, different browser intermittency turned up while this section was
+being written, and is recorded here before it is understood.** `notes-live`
+failed twice in CI on the same afternoon — once on an unrelated branch, once on a
+documentation-only change that cannot have caused it — both times in `joinAs`,
+waiting for `[data-testid="notes-join-name"]` to become visible, after the live
+arrival checks above it had already passed. It is **not** the `notes-ui`
+intermittency below: that one is a note failing to render after a submit, this
+one is a join form failing to appear at all. It also dies as a bare Playwright
+`TimeoutError` naming a line number and no check — the exact shape this
+directory's README records against `launcher-packaging`'s first regression
+report, and the shape `notes-ui` was given a diagnostic to escape. Whoever picks
+this up should give `joinAs` the same treatment before hunting the cause: two
+occurrences in one day is enough to expect a third, and a third that says only
+"timeout at line 150" teaches nothing.
+
+**The `notes-ui` intermittency is open and uncaused, and that is now a smaller
+problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
+race is recorded as plausible and unproven, together with the reason its
+injection failed. On the next occurrence the harness says whether the service
+holds the note — which splits "the screen did not show it" from "the write never
+landed" — and both halves of that have been watched failing. It tracks machine
+load: green 8/8 run alone, and it has failed only deep inside a long sequential
+batch.
+
 ### Phase 1: Foundation (Current)
 - [x] Integrity zome with all entry types
 - [x] Coordinator zome with CRUD, N4L export, bridge integration
