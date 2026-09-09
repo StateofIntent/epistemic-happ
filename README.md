@@ -922,13 +922,17 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ### Where this is up to
 
-Everything that was blocked on *effort* is done. CI now covers every layer that
-had a harness waiting for one — `zomes` (it compiles and its units hold),
-`live-verify` (the soft layer above the promotion gate), `conductor` (the
-protocol against a real DHT), `network` (an entry crossing between peers), and
-`ui` (the screen held to the same invariants, in a real browser). What remains
-is blocked on **decisions** or on **credentials**, so this section says which,
-rather than leaving a reader to infer it from four open checkboxes.
+CI now covers every layer that had a harness waiting for one — `zomes` (it
+compiles and its units hold), `live-verify` (the soft layer above the promotion
+gate), `conductor` (the protocol against a real DHT), `network` (an entry
+crossing between peers), and `ui` (the screen held to the same invariants, in a
+real browser).
+
+What remains is blocked on different things, and the checkboxes below do not say
+which — so this section does. **Two of these are not checkboxes at all**: they
+are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
+somewhere other than a to-do list is exactly how they stay invisible. One of
+them has a deadline.
 
 | Item | Blocked on | Where it is written up |
 |---|---|---|
@@ -937,6 +941,8 @@ rather than leaving a reader to infer it from four open checkboxes.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
+| **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
+| **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
 
 **The one with real outside impact is the npm republish.**
 `@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
@@ -957,6 +963,35 @@ revealed) before it needs code. Member removal is a question about how a room
 governs itself, not a detail to settle inside a client fix. And the surfacing
 count is not a queue: every function still without a screen has a reason that
 survived inspection, so the next one needs an argument of its own.
+
+**Protocol versioning is the one with a deadline, and it is cheap only while
+nobody is running this.** Changing the integrity zome changes the DNA hash, so a
+fixed conductor is a *different network* from a pre-fix one, and Holochain offers
+no in-place migration across that boundary. There is no protocol-wide version
+number, no feature negotiation, and no migration path defined — a genuinely
+breaking change, such as a new required field on an existing entry type, is
+currently just a commit with no compatibility story for DHT data written under
+the old shape. With no deployed network that costs nothing. The moment anyone is
+running this it costs everything, and the option to design it calmly is gone.
+`SPEC.md` §11 names it as a real, open gap; the changelog attaches a worked
+example. Related and smaller: nothing automatically keeps `SPEC.md` in sync with
+`dna/`, so it is a manually maintained snapshot of the commit named at its top.
+
+**Sybil resistance is open and is expected to stay open, which is a different
+statement from the rest of this table.** It is an accepted architectural ceiling,
+not a queued task: global sybil resistance requires a global scarce resource, and
+an agent-centric DHT deliberately does not have one. Raising the cost of identity
+creation would close it and is refused on principle, because it charges people
+for merely existing. What *is* shipped is real and worth not re-deriving: local
+containment falls out of the topology (a membrane full of self-attested sybils
+has no links from anyone outside it, so the attack creates entries nobody
+traverses), `get_effective_conductance` fades un-reinforced sybil links toward
+zero at read time, `AttestationPolicy` lets a *caller* state its own trust policy
+without the protocol computing one, and `AttestationGrant` puts a 30-day tenure
+bar and a rate limit on the ability to vouch — so a fresh sybil's vouching is
+worthless even though the sybil is free to create. What remains untouched is the
+cost of creating the identity itself, and that is the ceiling, stated honestly in
+§2.3 rather than papered over.
 
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
