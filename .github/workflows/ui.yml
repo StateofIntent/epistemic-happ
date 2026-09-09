@@ -65,6 +65,20 @@
 #     moving it would quietly reduce what that workflow's tick covers. It is
 #     the one deliberate overlap in intent between these two files.
 #
+# THIS WORKFLOW FOUND A DEFECT IN THE SHARED TEST ENVIRONMENT, WHICH IS WHY
+# `sandbox.sh` CHANGED IN THE SAME BRANCH. Seventeen conductor cycles per run is
+# roughly twice what any previous job did, and it surfaced a stall that had been
+# there all along: with the default QUIC transport, a single-node sandbox with
+# no peers still reaches for a bootstrap service, and on a runner that reach
+# blocked `get_links` inside the ribosome for sixty seconds —
+# `Host("iroh connect timed out (src: deadline has elapsed)")`. Seen three
+# times in one afternoon, on `hud-layer` here, on `neighborhood-ui` here as the
+# bare client-side `Request timed out in 60000 ms: call_zome`, and on
+# `domain-index` in `conductor.yml`, a job that had been green on `main` for
+# days. The fix is in `scripts/sandbox.sh`: generate on `network mem`, so there
+# is no transport for a host function to block on. It was NOT a longer timeout,
+# which would have made the stall slower to notice rather than absent.
+#
 # WHAT A GREEN TICK HERE MEANS, precisely. A real Chromium loaded the production
 # bundle — `vite preview` over `dist/`, not the dev server — pointed it at a
 # real conductor, and the screen rendered what the DHT actually holds. It is
