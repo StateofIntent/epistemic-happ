@@ -82,4 +82,6 @@ npm run build      # tsc -> dist/
 npm run typecheck
 ```
 
-Verified live against a real conductor by [`scripts/live-verify/agent-sdk.mjs`](../scripts/live-verify/agent-sdk.mjs).
+Verified live against a real conductor by [`scripts/live-verify/agent-sdk.mjs`](../scripts/live-verify/agent-sdk.mjs), on every push since `.github/workflows/conductor.yml` picked it up.
+
+**The published `0.1.1` on npm is stale and does not work against Holochain 0.7 — build from this tree until it is republished.** It predates the `@holochain/client` 0.21 upgrade, where `CellInfo` became a discriminated union (`{ type, value }`) rather than an object keyed by cell type. The published build still tests `CellType.Provisioned in cell`, which compiles fine against the new client — these values are `any` — and matches nothing at runtime: no cell ids are collected, `authorizeSigningCredentials` runs over an empty list, and the first real zome call fails with `NoSigningCredentialsForCell`. It also reads `record.signed_action.hashed.content.entry_hash`, one level shallower than the current `…content.data.entry_hash`. Both are fixed here and unreleased, so the fix is a version bump and a publish by someone holding the credentials. This was found by building `mcp-server` against the registry copy and watching its live harness go red on eight checks; the same harness is green against this tree.

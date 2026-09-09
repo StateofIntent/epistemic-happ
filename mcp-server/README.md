@@ -31,18 +31,61 @@ cd agent-sdk  && npm install && npm run build
 cd ../mcp-server && npm install --no-save ../agent-sdk && npm run build
 ```
 
-The second line is not the usual `npm install`, and the reason is worth a
-sentence. This package depends on `@stateofintent/agent-sdk@^0.1.0` — the correct
-declaration for a published package, and the one thing that must NOT be
-`file:../agent-sdk`, since a relative path cannot resolve on anyone else's
-machine. Until the SDK is on the registry that version does not exist to fetch,
-so a plain `npm install` fails with a 404. Installing the local path with
-`--no-save` satisfies the dependency without rewriting `package.json`, so the
-published form stays correct while local development works.
+The second line is not the usual `npm install`, and the reason has changed
+since it was first written. This package depends on
+`@stateofintent/agent-sdk@^0.1.1` — the correct declaration for a published
+package, and the one thing that must NOT be `file:../agent-sdk`, since a
+relative path cannot resolve on anyone else's machine. That note originally
+said the version simply did not exist to fetch yet, so a plain `npm install`
+returned a 404, and that once the SDK was published this whole paragraph could
+go. **The SDK is published now, and the paragraph gets longer rather than
+shorter**, because a plain `npm install` no longer fails — it succeeds, and
+gives you the wrong SDK. Installing the local path with `--no-save` satisfies
+the dependency without rewriting `package.json`, so the published form stays
+correct while what you actually run is the tree in front of you.
+`node scripts/check-packages.mjs` from the repo root fails if the `file:` form
+ever comes back.
 
-Once `@stateofintent/agent-sdk` is published, `npm install` on its own is enough
-and this note can go. `node scripts/check-packages.mjs` from the repo root
-fails if the `file:` form ever comes back.
+**Two things follow from that, and the second is a defect, not a preference.**
+
+The first is about what a test is testing. `npm install` on its own resolves
+`^0.1.1` from the registry and installs a copy of the SDK that is not this
+checkout, so a change to `agent-sdk/src` would be verified against code it did
+not touch — and pass. `.github/workflows/conductor.yml` installs the local path
+for exactly this reason and then asserts that what landed is a symlink.
+
+The second is about the registry. **The published `@stateofintent/agent-sdk@0.1.1`
+does not work against Holochain 0.7, and neither does the published
+`@stateofintent/mcp-server@0.1.1` that pulls it in.** It predates the
+`@holochain/client` 0.21 upgrade, in which `CellInfo` became a discriminated
+union; the published build still tests `CellType.Provisioned in cell`, which now
+matches nothing, so it collects no cell ids, authorizes no signing credentials,
+and fails every zome call with `NoSigningCredentialsForCell`. It also reads
+`record.signed_action.hashed.content.entry_hash` where the current shape is
+`…content.data.entry_hash`. Both are fixed in this tree and neither fix has been
+released. Observed rather than inferred: `scripts/live-verify/mcp-server.mjs`
+built against the registry copy goes red on eight checks, and green on the same
+conductor once the local path is installed instead.
+
+**`node scripts/check-packages.mjs` stays green on both packages while this is
+true**, and that is the right behaviour rather than a hole in it: it installs
+each tarball into an empty project, imports it, and runs this server until it
+advertises its nine tools — none of which touches a conductor. The defect begins
+exactly where a packaging check ends. "Publishes, installs and imports" was never
+evidence for "works".
+
+**Only a republish fixes that**, which no workflow here can do — it needs
+someone with credentials to bump both packages and publish. Anyone installing
+either from npm today gets something that connects and then fails on its first
+real call. Recorded here rather than in a merged pull request, because this is
+where a person installing the package would look.
+
+**This package also ships no `package-lock.json`**, which is why every
+instruction above says `npm install` and never `npm ci`. That is a smaller gap
+in the same area — the dependency set that gets built here is whatever the
+ranges resolve to on the day — and it is left open rather than closed quietly,
+since generating a lockfile changes what a published install pulls and is worth
+deciding deliberately.
 
 It speaks MCP over stdio and talks to a conductor you are already running —
 your own, since this protocol has no central server and "the backend" is a peer

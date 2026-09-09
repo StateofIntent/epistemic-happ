@@ -53,6 +53,42 @@
 # independent zome call rather than believing the screen. About 100 seconds
 # together, plus conductor restarts.
 #
+# AND THREE MORE THAT ONLY EVER NEEDED A PACKAGE BUILT, which is the exclusion
+# this revision deletes rather than restates. `agent-sdk` drives the SDK's own
+# contract headlessly — an agent has no screen — including the friction budget
+# to exhaustion, twenty critiques until the twenty-first is refused as a TYPED
+# `FrictionLimitError`, because an agent loop's whole pacing strategy depends on
+# telling "wait" apart from "something is broken". `mcp-server` drives the MCP
+# server the way an agent actually reaches it: over stdio, as JSON-RPC, listing
+# tools and pasting a hash from one call verbatim into the next. And
+# `linked-data-gateway` spawns the gateway and holds it to the absence that
+# defines it — no `aggregateRating`, no `upvoteCount`, nothing schema.org offers
+# that would publish a canonical comparative score under this protocol's name.
+# About ten seconds each including the conductor restart; the cost here is three
+# `npm` installs, not the runs.
+#
+# THE SDK UNDER TEST MUST BE THIS TREE'S, AND A PLAIN `npm install` NO LONGER
+# GIVES YOU THAT. `mcp-server` depends on `@stateofintent/agent-sdk` BY VERSION
+# — the correct declaration for a published package, and `check-packages.mjs`
+# fails if the `file:../agent-sdk` form ever comes back. That version is now on
+# the registry, so `npm install` resolves cleanly, looks right, and installs a
+# copy of the SDK that is not the one in this checkout. A pull request changing
+# `agent-sdk/src` would then be verified against code it did not touch, and pass.
+# So this job installs the local path with `--no-save`, exactly as
+# `mcp-server/README.md` documents for development: the dependency is satisfied
+# without rewriting the published declaration.
+#
+# THAT IS NOT A HYPOTHETICAL, AND THE DIFFERENCE IS CURRENTLY FATAL — watched,
+# not reasoned. Built against the registry's 0.1.1, `mcp-server.mjs` goes RED on
+# eight checks. The published SDK predates the `@holochain/client` 0.21 upgrade
+# and still tests `CellType.Provisioned in cell` against what became a
+# discriminated union: it matches nothing, collects no cell ids, authorizes no
+# signing credentials, and every zome call afterwards fails. Rebuilt against the
+# local path, the same harness is green. That is a real defect for anyone
+# installing this package from npm today rather than a CI detail, so it is
+# recorded in `mcp-server/README.md` and the root README — republishing is not
+# something a workflow can do.
+#
 # ONE HARNESS HAD TO CHANGE, AND ONLY ONE. `notes-ui.mjs` hardcoded
 # `/usr/bin/chromium`, as all eighteen conductor-bound browser harnesses do.
 # #103 left them alone on the grounds that editing files it could not exercise
@@ -67,9 +103,6 @@
 # WHAT DELIBERATELY DOES NOT RUN, and none of it is a wall:
 #   - The other seventeen conductor-bound browser harnesses, per the paragraph
 #     above.
-#   - `agent-sdk`, `mcp-server` and `linked-data-gateway`, which each need their
-#     own package built (`agent-sdk/dist`, `mcp-server/dist`, `gateway/dist`)
-#     before they can run.
 #   - The four multi-node harnesses, which need `scripts/network.sh`: three
 #     conductors, a bootstrap server and an iroh relay. Those binaries are
 #     published on the same release tag, so this is scope rather than
@@ -195,6 +228,37 @@ jobs:
         working-directory: mobile-ui
         run: npx playwright install --with-deps chromium
 
+      # Three harnesses need a package of this repository's own built first, and
+      # that is all they ever needed. `tsc` only — no wasm, no browser — so this
+      # is the cheapest coverage in the job by a wide margin.
+      - name: Build the agent SDK
+        working-directory: agent-sdk
+        run: |
+          npm ci
+          npm run build
+
+      # `--no-save ../agent-sdk`, not a plain install, and the header says why:
+      # the registry copy of this dependency now resolves, and is not this tree.
+      # `npm ci` is not available here — mcp-server ships no lockfile, which is
+      # its own small gap and is recorded in mcp-server/README.md.
+      - name: Build the MCP server, against THIS tree's SDK
+        working-directory: mcp-server
+        run: |
+          npm install --no-save ../agent-sdk
+          npm run build
+          # The assertion the paragraph above is worried about. A registry copy
+          # here is a real directory and a symlink is the local tree, so this
+          # distinguishes them — and it fails now, loudly, rather than three
+          # steps later as eight inscrutable reds inside the harness.
+          test -L node_modules/@stateofintent/agent-sdk \
+            || { echo "::error::@stateofintent/agent-sdk resolved to the registry, not this checkout — mcp-server.mjs would verify a package this PR cannot change"; exit 1; }
+
+      - name: Build the linked-data gateway
+        working-directory: gateway
+        run: |
+          npm ci
+          npm run build
+
       # The documented path, run as documented: two cargo release builds, then
       # `hc dna pack`, `hc app pack`, the UI build, and `hc web-app pack`. This
       # step is therefore also the only automatic check that this script still
@@ -234,6 +298,26 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/notes-ui.mjs
+
+      # The three that needed nothing but their own package built. No browser
+      # and no packing involved — each talks to the conductor through the
+      # surface an agent actually uses, and the same clean-conductor rule
+      # applies. `agent-sdk` in particular spends the ENTIRE hourly critique
+      # budget on purpose, so nothing may follow it on the same conductor.
+      - name: agent-sdk — the SDK's contract, and the friction budget to exhaustion
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/agent-sdk.mjs
+
+      - name: mcp-server — the MCP tool surface, over stdio as an agent drives it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/mcp-server.mjs
+
+      - name: linked-data-gateway — the one-way export, and the score it must not emit
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/linked-data-gateway.mjs
 
       # A harness failure and a conductor that never came up look identical from
       # the step's exit code, and they are diagnosed completely differently.
