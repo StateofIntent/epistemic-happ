@@ -138,24 +138,34 @@
 #     that made THIS job possible, and never checked. `network.yml` caches the
 #     compiled binary so the cost is paid once rather than per run.
 #
-# THE SANDBOX RUNS ON THE IN-MEMORY TRANSPORT, and this job is why that matters
-# rather than `ui.yml`, which merely found it. `sandbox.sh` starts exactly one
-# conductor; with the default QUIC transport that conductor still reaches for a
-# bootstrap service it has no use for, and on a runner that reach stalled
-# `get_links` inside the ribosome for a full sixty seconds:
+# THE SANDBOX RUNS ITS OWN BOOTSTRAP SERVICE, and this job is why that matters
+# rather than `ui.yml`, which merely found it. Left to itself `hc sandbox
+# generate` writes a conductor config naming PUBLIC infrastructure —
+# `bootstrap_url: https://dev-test-bootstrap2.holochain.org/` and an iroh canary
+# relay — with `request_timeout_s: 60`. On a runner that could not reach them,
+# every stall matched that timeout exactly:
 #
 #   holochain::core::ribosome::host_fn::get_links:72:
 #     Host("iroh connect timed out (src: deadline has elapsed)")
 #
 # Watched on `domain-index` HERE — a job that had been green on `main` for days
-# — and on `hud-layer` in `ui.yml`, and a third time as the bare client-side
-# `Request timed out in 60000 ms: call_zome` that `neighborhood-ui` reported,
-# which is the same stall seen from the other end. It struck the first harness
-# of one job and the fourteenth of another, so it is a property of the runner's
-# network rather than of any harness. `network mem` removes the possibility
-# instead of waiting longer: there is no transport to connect over, so no host
-# function can block on one. Nothing this job ever claimed is given up — see the
-# paragraph below, which already said a tick here is silent on gossip.
+# — on `hud-layer` in `ui.yml`, and a third time on `read-scope` as the bare
+# client-side `Request timed out in 60000 ms: call_zome`, which is the same wait
+# seen from the other end of the socket. It struck the first harness of one job
+# and the fourteenth of another, so it is a property of the runner's reach
+# rather than of any harness.
+#
+# THE JOB THAT STAYED GREEN IS WHAT NAMED THE CAUSE. `network.yml` runs THREE
+# conductors on real QUIC and passed every single one of those runs — because
+# `scripts/network.sh` has always pointed its conductors at a
+# `kitsune2-bootstrap-srv` of its own. `sandbox.sh` now does the same, on its
+# own port, so this job depends on nothing outside the runner. That is why the
+# k2 cache step below appears in a workflow that starts one conductor.
+#
+# `network mem` WAS TRIED FIRST AND IS NOT WHAT SHIPPED. The in-memory transport
+# does remove the QUIC dial — the host-side error above stopped appearing — but
+# the generated config still names both public URLs, and the sixty-second stalls
+# continued. Recorded because it looks like it ought to work.
 #
 # WHAT A GREEN TICK HERE MEANS, precisely. Real zome calls against a real DHT,
 # with real validation running: this is the first CI in this repository that is
@@ -203,6 +213,28 @@ jobs:
             ~/.cargo/git/db
           key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
+
+      # `sandbox.sh` now runs its OWN bootstrap/relay service rather than
+      # reaching for the public one `hc sandbox` defaults to — see that script's
+      # header. This is the same binary, the same version and the same cache key
+      # `network.yml` already uses, so on a runner that has built it once the
+      # step below is a cache restore rather than a two-and-a-half-minute build.
+      - name: Cache the kitsune2 bootstrap server
+        id: k2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kitsune2-bootstrap-srv
+          key: kitsune2-bootstrap-srv-0.5.1-${{ runner.os }}
+
+      - name: Build the bootstrap server and iroh relay
+        if: steps.k2cache.outputs.cache-hit != 'true'
+        run: cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+
+      - name: Prove it is there, cached or freshly built
+        run: |
+          test -x ~/.cargo/bin/kitsune2-bootstrap-srv \
+            || { echo "::error::kitsune2-bootstrap-srv is missing — sandbox.sh resolves it from PATH or ~/.cargo/bin and would fail later"; exit 1; }
+          ~/.cargo/bin/kitsune2-bootstrap-srv --help >/dev/null
 
       # Into ~/.cargo/bin so `pack-webhapp.sh` and `sandbox.sh` find them the
       # same way they do on a development machine — see the header.
