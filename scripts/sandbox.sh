@@ -53,6 +53,18 @@
 #     by matching its own `--config-path`, once the ports confirm it's
 #     actually up — see `start`'s `real_pid` below.
 #
+#   - DO NOT PIPE `start` INTO ANYTHING THAT WAITS FOR EOF, which is not
+#     a holochain quirk but the direct consequence of the point above.
+#     `start` leaves a real `holochain` process running, and that process
+#     inherits this script's stdout — so `sandbox.sh start | tail -3`
+#     never terminates: `tail` cannot print until the write end closes,
+#     and the write end is held open by a conductor that is meant to
+#     outlive the command. Costs ten minutes and looks exactly like a
+#     conductor that failed to come up, which is the wrong thing to go
+#     and debug. Redirect to a file or to /dev/null instead
+#     (`start >/dev/null 2>&1`), and read `status` afterwards if you want
+#     to know whether it worked.
+#
 #   - Upgrading 0.4.4 -> 0.7.0 moved two of the things below. `run`'s
 #     "use every sandbox in .hc" flag is now `-a`/`--all`; the `-l` this
 #     script passed under 0.4 no longer exists and is a clap parse error.
