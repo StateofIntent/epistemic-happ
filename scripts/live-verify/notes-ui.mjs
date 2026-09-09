@@ -53,6 +53,17 @@
 //   the soft copy surviving, which is a different property and is asserted
 //   separately for exactly this reason.
 //
+//   Injection C and D: the two halves of the open intermittency, forced, to
+//   prove the diagnostic that reports it can tell them apart.
+//     C — `renderNotes` renders an empty list while every write succeeds.
+//     D — `NotesClient.createNote` resolves without ever issuing the POST.
+//   Result: one red each, in section 2, and BOTH print the identical composer
+//   line `<nothing>` — which is the whole point. Two defects in two different
+//   processes were indistinguishable from the screen until the service was
+//   asked directly; now C says "the service HAS the note … the SCREEN did not
+//   show it" and D says "the service does NOT have the note — the WRITE never
+//   landed". Watched in both directions before either was believed.
+//
 //   A THIRD DEFECT WAS FOUND WITHOUT ANY INJECTION, on the first run: an
 //   empty `EPI_NOTES_STATE` was treated as a filename rather than as
 //   "unset", so the notes service started, served every read, and threw
@@ -140,8 +151,59 @@ async function noteAppeared(target, text) {
   if (!ok) {
     const said = (await target.locator('.error-box').allTextContents()).map((s) => s.trim()).filter(Boolean);
     log(`    (no note rendered after 10s; the composer says: ${said.length ? said.join(' | ') : '<nothing>'})`);
+    log(`    (${await serviceVerdict(target, text)})`);
   }
   return ok;
+}
+
+/** On a miss, ask the SERVICE whether the note exists — the split the previous
+ * diagnostic could not make.
+ *
+ * That one distinguished a refused write from a hang, which was real progress
+ * and is why this file's open intermittency has any evidence at all. It is not
+ * enough. Both recorded failures reported `<nothing>` in the composer, meaning
+ * no refusal — and "the write was accepted" and "the write never happened" are
+ * still indistinguishable from the screen alone, while being completely
+ * different defects living in different processes.
+ *
+ * Asked from INSIDE the browser that just failed to show the note, with that
+ * browser's own stored token and origin, deliberately: a second client built
+ * here would need its own membership, its own token and its own idea of which
+ * space is on screen, and would answer a question about a room the failing
+ * browser might not even be in. `fetch` from the page is the same origin the
+ * app itself uses, and reads the same room by construction.
+ *
+ * Diagnostics must never turn a miss into a different failure, so every path
+ * here returns a sentence rather than throwing. */
+async function serviceVerdict(target, text) {
+  try {
+    return await target.evaluate(async (t) => {
+      const origin = localStorage.getItem('epistemic-mobile-ui:notes-origin');
+      const raw = localStorage.getItem('epistemic-mobile-ui:notes-memberships');
+      if (!origin || !raw) return 'the service could not be asked: this browser holds no membership';
+      let memberships;
+      try { memberships = JSON.parse(raw); } catch { return 'the service could not be asked: stored memberships are unreadable'; }
+      if (!Array.isArray(memberships) || memberships.length === 0) return 'the service could not be asked: this browser holds no membership';
+      const reasons = [];
+      for (const m of memberships) {
+        let res;
+        try {
+          res = await fetch(`${origin}/spaces/${m.spaceId}/notes`, { headers: { authorization: `Bearer ${m.token}` } });
+        } catch (e) { reasons.push(`${m.spaceId}: unreachable`); continue; }
+        if (!res.ok) { reasons.push(`${m.spaceId}: HTTP ${res.status}`); continue; }
+        const body = await res.json();
+        const notes = Array.isArray(body.notes) ? body.notes : [];
+        if (notes.some((n) => typeof n.text === 'string' && n.text.includes(t))) {
+          return `the service HAS the note (space ${m.spaceId}, revision ${body.revision}, ${notes.length} note(s)) `
+            + '— the write landed and the SCREEN did not show it';
+        }
+        reasons.push(`${m.spaceId}: ${notes.length} note(s), none matching`);
+      }
+      return `the service does NOT have the note — the WRITE never landed [${reasons.join('; ')}]`;
+    }, text);
+  } catch (error) {
+    return `the service could not be asked: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const nowMicros = () => Date.now() * 1000;
