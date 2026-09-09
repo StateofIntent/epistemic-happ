@@ -993,6 +993,21 @@ worthless even though the sybil is free to create. What remains untouched is the
 cost of creating the identity itself, and that is the ceiling, stated honestly in
 §2.3 rather than papered over.
 
+**A second, different browser intermittency turned up while this section was
+being written, and is recorded here before it is understood.** `notes-live`
+failed twice in CI on the same afternoon — once on an unrelated branch, once on a
+documentation-only change that cannot have caused it — both times in `joinAs`,
+waiting for `[data-testid="notes-join-name"]` to become visible, after the live
+arrival checks above it had already passed. It is **not** the `notes-ui`
+intermittency below: that one is a note failing to render after a submit, this
+one is a join form failing to appear at all. It also dies as a bare Playwright
+`TimeoutError` naming a line number and no check — the exact shape this
+directory's README records against `launcher-packaging`'s first regression
+report, and the shape `notes-ui` was given a diagnostic to escape. Whoever picks
+this up should give `joinAs` the same treatment before hunting the cause: two
+occurrences in one day is enough to expect a third, and a third that says only
+"timeout at line 150" teaches nothing.
+
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
 race is recorded as plausible and unproven, together with the reason its
