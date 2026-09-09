@@ -1,0 +1,242 @@
+# =============================================================================
+# Three conductors on a real network, on every push and pull request.
+#
+# WHAT THIS ANSWERS THAT NOTHING ELSE HERE DOES. `conductor.yml`'s own header
+# ends by saying that a green tick there "says nothing about gossip, partition
+# or convergence between peers", because it is one conductor on one machine.
+# That is the gap this job closes. `scripts/sandbox.sh` does not merely happen
+# to be single-node — `hc sandbox generate` produces `transport_pool: []` and
+# `bootstrap_service: null`, so there is no transport to gossip over and nobody
+# to gossip to, and every multi-agent harness in this repository installs its
+# extra agents on THAT conductor. Two agents there share one local DHT store:
+# an entry written by one is visible to the other instantly, because it never
+# travelled. `README.md` has claimed since Phase 1 that "gossip protocol is
+# wave propagation", and until `scripts/network.sh` existed nothing here had
+# ever run two conductors that could reach each other at all.
+#
+# A CORRECTION FIRST, BECAUSE THIS JOB EXISTS ON THE RUINS OF A FALSE CLAIM.
+# `conductor.yml` and `scripts/live-verify/README.md` both said the multi-node
+# harnesses were held back only by scope, because "their bootstrap and iroh
+# relay binaries are published on the same release tag". THAT IS NOT TRUE, and
+# it was written without being checked. The `holochain-0.7.0` tag publishes
+# exactly three binaries — `hc`, `hcterm` and `holochain` — and no bootstrap
+# server. The bootstrap service and the iroh relay are one binary from a
+# different project, `kitsune2-bootstrap-srv`, and the `kitsune2` v0.5.1
+# release carries NO release assets whatsoever. There is nothing to download.
+# It has to be COMPILED, with `cargo install kitsune2_bootstrap_srv --version
+# 0.5.1 --locked`, exactly as `scripts/network.sh`'s own header has said all
+# along — the header that the exclusion note contradicted. Both files are
+# corrected in the same commit as this one.
+#
+# SO THE COST IS REAL, AND IT IS PAID ONCE RATHER THAN PER RUN. That compile
+# takes about two and a half minutes on a warm registry locally and more on a
+# runner, which would be a poor thing to repeat on every push for a harness
+# that runs in under a minute. The binary is therefore cached on its own, keyed
+# by the exact version, and the `cargo install` step is skipped entirely on a
+# hit. The version appears in the cache key so a bump invalidates it, rather
+# than a stale binary being restored under a new number.
+#
+# WHAT RUNS — one harness, asking a question with no other home here:
+#
+#   - `real-gossip` — an entry written on nodeA reaches nodeB over a real iroh
+#     QUIC network. nodeC is the CONTROL and is the reason this is evidence
+#     rather than an anecdote: same .happ, same code, same bootstrap server,
+#     same machine, differing from A and B in the network SEED alone, so its
+#     DNA hash differs and it is on a different DHT. "B received it over the
+#     network" and "any conductor pointed at these services would have shown
+#     it" are indistinguishable without C. It also re-asks the read-scope
+#     question on a network that demonstrably carries claims: chain-local
+#     reads stay chain-local, which on one conductor could always be answered
+#     "it simply had not gossiped yet". Here there is gossip, and it still
+#     does not carry them. 47s of harness time locally, 67s as a whole step
+#     with the network bring-up in front of it.
+#
+# WHAT DELIBERATELY DOES NOT RUN, with its real cost rather than a guess:
+#   - `transitive-gossip` — IT WAS IN THIS JOB AND CAME BACK OUT, which is the
+#     part worth reading. It asks the question nothing else can: does an entry
+#     reach a node from a peer that did not author it? Until nodeD existed the
+#     shared DHT had exactly two members, so "B has A's entry" could never
+#     distinguish gossip from point-to-point delivery. It is green locally in
+#     29s and it went green here — on the second attempt. On the first, with an
+#     identical tree, it died waiting for nodeD to pick up the claim: a bare
+#     `Request timed out in 60000 ms: call_zome`, the @holochain/client default,
+#     with the baseline having crossed nodeA -> nodeB in 5.0s earlier in the
+#     same run. So the network was working and one conductor stopped answering.
+#
+#     THE EVIDENCE IS BIMODAL, and that is the most useful thing known about
+#     it. On the passing run the same wait reported `nodeD had it in 0.0s` —
+#     instant. Gossip that was merely slow on a loaded runner would produce
+#     values in between; instant-or-never instead points at nodeD not being
+#     ready to answer at all when the call arrives, a readiness race between
+#     `network.sh start-node nodeD` and the harness's first zome call that a
+#     fast machine always wins. FOUR conductors plus two services on two vCPUs
+#     is where that would first show.
+#
+#     That is a hypothesis and it has not been confirmed, so nothing is being
+#     fixed on the strength of it and the client timeout is NOT being widened —
+#     the same rule this repository already applied to the notes-ui
+#     intermittency, and the reason a red tick here stays worth reading. One
+#     failure in two runs is not a gate. It goes back in when something makes
+#     it deterministic, or when the race is demonstrated and closed.
+#
+#   - `partition-rejoin` — about five and a half minutes, and it drives
+#   - `partition-rejoin` — about five and a half minutes, and it drives
+#     `network.sh stop-node`/`start-node` itself to take a conductor offline
+#     mid-run. Left out for cost, and now also because it starts and stops
+#     conductors the way the harness above appears to trip over.
+#   - `network-partition` — about twenty-five minutes on 0.7, because
+#     reconciling entries written during a partition took ~930s in each
+#     direction once the link healed. It also installs `iptables` AND
+#     `ip6tables` rules and refuses to run outside the throwaway namespace
+#     `scripts/netns.sh` builds for it. Both of those are real reasons, and
+#     neither is "it might work".
+#
+# THE ONE HARD RULE APPLIES HERE TOO, and it is not the same rule as the
+# single-node one even though it reads identically. `network.sh clean && start`
+# before EACH harness: observed, not assumed — `partition-rejoin` run straight
+# after `transitive-gossip` on the same network died in its baseline phase with
+# a 60-second zome-call timeout and passed in full on a freshly started one.
+# `transitive-gossip` restores what it changes and still leaves the network in
+# a state the next harness cannot rely on.
+#
+# WHY IT PACKS THE .happ INLINE INSTEAD OF RUNNING `pack-webhapp.sh`. That
+# script builds and zips the UI and packs a webhapp, and no harness here opens
+# a browser — it would install `mobile-ui`'s dependencies and run a `vite`
+# build to produce a bundle nothing in this job reads. The four commands up to
+# `hc app pack .` are the ones that matter, and `conductor.yml` still drives
+# the whole script unmodified on every push, so the script itself does not stop
+# being covered by this choice.
+# =============================================================================
+
+name: network (three conductors)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# nodeA/B/C bind 8894-8899 and the services 8892/8893, so two runs on one ref
+# must not overlap. Disjoint from sandbox.sh's 8888/8889 by design, which is
+# why this job and `conductor.yml` can run at the same time.
+concurrency:
+  group: network-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # The binary itself, not its registry downloads. A restored `~/.cargo/bin`
+      # entry is the whole compile skipped; the version is in the key so a bump
+      # cannot silently restore the previous binary under the new number.
+      - name: Cache the kitsune2 bootstrap server
+        id: k2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kitsune2-bootstrap-srv
+          key: kitsune2-bootstrap-srv-0.5.1-${{ runner.os }}
+
+      # 0.5.x is the kitsune2 line holochain 0.7.0 itself builds against, and
+      # `--locked` is deliberate: the published lockfile is what this version
+      # was tested with. It warns about three yanked transitive packages
+      # (`chacha20`, `der`, `spin`) and installs them anyway — yanking prevents
+      # NEW resolution, not download of an already-locked version — so the
+      # warning is noise here rather than a fragility to route around.
+      - name: Build the bootstrap server and iroh relay
+        if: steps.k2cache.outputs.cache-hit != 'true'
+        run: cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+
+      - name: Prove it is there, cached or freshly built
+        run: |
+          test -x ~/.cargo/bin/kitsune2-bootstrap-srv \
+            || { echo "::error::kitsune2-bootstrap-srv is missing — network.sh resolves it from PATH or ~/.cargo/bin and would fail later with a bare 'not found'"; exit 1; }
+          ~/.cargo/bin/kitsune2-bootstrap-srv --help >/dev/null
+
+      # Same download and the same pin as conductor.yml, into the same place,
+      # for the same reason: network.sh resolves both binaries from PATH or
+      # ~/.cargo/bin exactly as a development machine has them.
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ~/.cargo/bin
+          for b in hc holochain; do
+            gh release download holochain-0.7.0 -R holochain/holochain \
+              -p "$b-x86_64-unknown-linux-gnu" -O ~/.cargo/bin/$b --clobber
+            chmod +x ~/.cargo/bin/$b
+          done
+          [ "$(hc --version)" = "holochain_cli 0.7.0" ] \
+            || { echo "::error::hc is not 0.7.0"; exit 1; }
+          [ "$(holochain --version)" = "holochain 0.7.0" ] \
+            || { echo "::error::holochain is not 0.7.0"; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: federation/package-lock.json
+
+      # As conductor.yml: the harnesses reach `@holochain/client` through a
+      # gitignored symlink into federation/node_modules, absent from a fresh
+      # checkout and recreated rather than committed.
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # The four commands from pack-webhapp.sh that produce the .happ — see the
+      # header for why the UI half is skipped. Building BEFORE packing is not
+      # optional: `hc dna pack` compiles nothing, so packing first would wrap
+      # stale wasm in a fresh timestamp and every harness would verify the
+      # previous build and pass.
+      - name: Build the zomes and pack the hApp
+        run: |
+          ( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+          ( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
+          hc dna pack dna/
+          hc app pack .
+          test -f epistemic-resonance-happ.happ \
+            || { echo "::error::no .happ bundle — network.sh installs this on all three nodes"; exit 1; }
+
+      # A clean network before EACH harness, not once before the batch, for the
+      # reason in the header. Separate steps rather than a loop so a failure
+      # names itself in the job summary.
+      - name: real-gossip — an entry crosses to a different conductor, and an isolated one never sees it
+        run: |
+          scripts/network.sh clean && scripts/network.sh start
+          node scripts/live-verify/real-gossip.mjs
+
+      # Three conductors and two services failing to come up looks identical to
+      # a harness failing, from the step's exit code alone.
+      - name: What the network was doing, if anything failed
+        if: failure()
+        run: |
+          scripts/network.sh status || true
+          for f in /tmp/epi-net/*.log; do
+            echo "--- $f (last 100 lines) ---"
+            tail -100 "$f" || true
+          done
