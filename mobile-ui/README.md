@@ -126,3 +126,24 @@ This is the invariant `notes-live.mjs` already holds the notes composer to — a
 half-typed sentence and its caret both surviving an arrival — finally applied to
 the screen where a claim is written.
 
+### The same defect was in the notes screens, and is fixed there too
+
+`notes-ui.ts` had it in every typed box: the invite link, the join name, and all
+four fields of the Start-a-space form. `ctx.rerender()` rebuilds that tree, and
+`loadDirectory` runs asynchronously whenever the notes tab is opened or the
+origin changes — so an invite link pasted before that landed was silently
+discarded, and "Look at it" then refused a perfectly good link with *"That does
+not look like an invite link or token."*
+
+This is how the `notes-live` `joinAs` intermittency was finally diagnosed. It had
+died twice as a bare Playwright timeout naming a line number and stayed uncaused
+for two days; once the harness was made to explain itself it reported, on the
+very next occurrence, that the screen was showing that refusal while the service
+previewed the same invite fine — which is the whole answer. The guard in
+`notes-live.mjs` now forces the rebuild by refreshing the directory instead of
+waiting to be unlucky, so the injection fails every run rather than once a day.
+
+`inviteDraft` and `joinNameDraft` are cleared on a successful join, and
+`createDraft` on a successful create — a room that now exists should not still be
+described by the form that made it.
+

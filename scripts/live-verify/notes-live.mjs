@@ -48,6 +48,23 @@
 //   arrival check stayed green, which is the point: the room was still live,
 //   and being live is what destroyed the sentence.
 //
+//   THE INTERMITTENCY THIS DIAGNOSTIC WAS BUILT FOR HAS SINCE BEEN CAUGHT AND
+//   FIXED, on its third occurrence, and the diagnostic is what caught it. It
+//   reported that the screen was NOT on the join screen at all and was showing
+//   "That does not look like an invite link or token", while the SERVICE
+//   previewed the same invite fine. Both halves were needed: either alone is
+//   consistent with a bad invite.
+//
+//   The cause: opening the notes tab fires `loadDirectory` asynchronously, and
+//   `ctx.rerender()` rebuilds the tree when it lands. The invite box kept its
+//   value only in its DOM node, so a directory load landing between the paste
+//   and the click emptied it, and "Look at it" parsed the empty string. Fixed in
+//   `notes-ui.ts` (`inviteDraft`, and the same for every other typed box on
+//   those screens), and guarded above by FORCING that rebuild — refreshing the
+//   directory — rather than waiting to be unlucky. Injecting the old DOM-only
+//   invite box now fails every run with "the invite box lost the link before it
+//   could be followed", where it used to fail roughly once a day.
+//
 //   Injections A, B and C: the three ways a join form can fail to appear,
 //   forced one at a time, to prove the diagnostic in `joinAs` tells them
 //   apart. This was written BEFORE the cause of the real intermittency was
@@ -196,6 +213,39 @@ async function joinAs(browser, inviteUrl, displayName) {
   await page.locator('[data-testid="connect-to-notes"]').click();
   await step('notes-invite-input', 'the invite box, after opening the notes tab');
   await page.locator('[data-testid="notes-invite-input"]').fill(inviteUrl);
+
+  // THE CAUSE OF THIS HARNESS'S OWN INTERMITTENCY, now an assertion.
+  //
+  // Opening the notes tab fires `loadDirectory` asynchronously, and it
+  // re-renders when it lands. `ctx.rerender()` rebuilds the tree, so a pasted
+  // invite link survived only if nothing outside the DOM had to remember it —
+  // and nothing did. A directory load landing between the paste and the click
+  // silently emptied the box, and "Look at it" then parsed the empty string and
+  // refused a link that was perfectly good.
+  //
+  // That is what the diagnostic below finally reported on the third occurrence:
+  // the screen showing "That does not look like an invite link or token" while
+  // the SERVICE previewed the same invite fine. Checked here rather than left to
+  // luck, and checked BEFORE the click, because after it the evidence is gone.
+  //
+  // The rebuild is FORCED rather than waited for. Refreshing the directory is
+  // the same `loadDirectory` -> `ctx.rerender()` path that used to land at an
+  // unlucky moment, so this turns the intermittency into something that is
+  // simply true or false on every run instead of once a day.
+  const refresh = page.locator('[data-testid="notes-directory-refresh"]');
+  if (await refresh.count() > 0) {
+    await refresh.first().click();
+    await page.waitForTimeout(400);
+  }
+  const heldInvite = await page.locator('[data-testid="notes-invite-input"]').inputValue();
+  if (heldInvite !== inviteUrl) {
+    log('');
+    log(`  JOIN FAILED for ${displayName}: the invite box lost the link before it could be followed`);
+    log(`    it holds ${JSON.stringify(heldInvite)}, not the invite that was pasted`);
+    log('    this is the notes-ui rebuild discarding typed input — see notes-ui.ts `inviteDraft`');
+    throw new Error(`joinAs(${displayName}): the invite box was emptied by a re-render before the click`);
+  }
+
   await page.locator('[data-testid="notes-invite-open"]').click();
   await step('notes-join-name', 'the join form, after following the invite link');
   await page.locator('[data-testid="notes-join-name"]').fill(displayName);
