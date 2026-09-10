@@ -716,7 +716,13 @@ function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
     return block;
   }
   if (!invitePreview) {
-    block.appendChild(el('p', 'hint', 'Reading the invite…'));
+    // Named so a harness can tell "the preview is still in flight" apart from
+    // "the preview failed" and from "this is not the join screen at all".
+    // Without it, all three look identical from outside: a join form that is
+    // simply absent. `scripts/live-verify/notes-live.mjs` reports which.
+    const reading = el('p', 'hint', 'Reading the invite…');
+    reading.dataset.testid = 'notes-invite-reading';
+    block.appendChild(reading);
     return block;
   }
 
