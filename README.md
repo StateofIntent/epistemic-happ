@@ -936,7 +936,7 @@ them has a deadline.
 
 | Item | Blocked on | Where it is written up |
 |---|---|---|
-| Republish the npm packages | **Credentials** — a person with publish rights | `agent-sdk/README.md`, `mcp-server/README.md` |
+| Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | Who may remove a member from a notes room | **A governance decision** — three shapes costed | `notes/README.md` |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
@@ -955,8 +955,37 @@ signing credentials, and fails every zome call. `scripts/check-packages.mjs` is
 green on both, correctly — it proves they publish, install and import, which the
 broken build does perfectly, because listing tools touches no conductor. The
 defect lives past the point where a package stops being a package and starts
-making zome calls. A version bump and a publish are the fix, and no workflow
-here can do either.
+making zome calls.
+
+**That gap is now closed, and the republish is prepared down to the one step
+nobody here can take.** Three things were missing and only one of them was
+credentials:
+
+- **A check that would have caught it.**
+  `scripts/live-verify/published-packages.mjs` packs both packages, installs them
+  into an empty project with a *fresh* dependency resolution, and writes a claim
+  to a real conductor **from that install** — then reads it back, and calls an MCP
+  tool that reaches the conductor rather than one that lists tools. It is
+  deliberately neither `check-packages` (which proves the tarball imports) nor
+  `agent-sdk`/`mcp-server` (which drive *this tree's* build through *this tree's*
+  lockfile). What a stranger installs resolves its own dependency tree, and that
+  difference is exactly where 0.1.1 lives. It runs in `conductor.yml`, and it has
+  been watched failing: pointing the installed copy at a cell that does not exist
+  leaves every packaging check green and turns the first conductor call red,
+  which is the whole shape of the bug.
+- **The bump.** Both packages are at `0.1.2` in this tree, and `mcp-server`'s
+  dependency range was tightened from `^0.1.1` to `^0.1.2` — otherwise an
+  installer could resolve the very SDK version being replaced.
+- **A publish that cannot be done carelessly.** `scripts/publish-packages.sh`
+  refuses on a dirty tree, on a version already on the registry, on an
+  `mcp-server` range that does not name the SDK version being published, and
+  without `npm whoami`. It runs the packaging checks and the live check, then
+  publishes `agent-sdk` first and waits until the registry can actually serve it
+  before publishing `mcp-server` — because otherwise the first person to install
+  `mcp-server` resolves the broken SDK. It is a dry run unless given `--publish`.
+
+**What remains is one command, by somebody with publish rights on the
+`@stateofintent` scope:** `scripts/publish-packages.sh --publish`.
 
 **The other three are deliberately parked, and each records why.** Pre-registration
 would be actively harmful built carelessly — the naive commit–reveal is gameable

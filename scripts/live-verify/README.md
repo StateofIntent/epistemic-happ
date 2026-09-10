@@ -115,6 +115,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `evidence-retraction-ui` | browser | 1 | Evidence, grounding, author-only retraction |
 | `affordance-surfacing` | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
 | `write-symmetry` | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
+| `published-packages` | conductor, network | 1 + a throwaway npm project | The tarball a stranger installs, driven against a real conductor — packed, installed into an empty project with a fresh dependency resolution, and then made to write a claim and read it back from that install. The gap `check-packages` (proves it imports) and `agent-sdk`/`mcp-server` (drive this tree's build) leave between them, and where the broken 0.1.1 on the registry lives |
 | `protocol-version` | conductor | 1 + one deliberately misdeclared DNA | The network declares which protocol it is and cannot lie about it — the version is inside the DNA hash (checked by packing two DNAs that differ only in it), and a DNA whose manifest and zome disagree is installed for real and refuses every write while still answering what is wrong with it |
 | `launcher-packaging` | browser | 1 | The UI works on the path an installed `.webhapp` actually takes |
 | `taxonomy-ui` | browser | 1 | The critique vocabulary renders as a tree, is writable, and is never ranked |
