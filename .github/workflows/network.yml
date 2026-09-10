@@ -190,21 +190,13 @@ jobs:
 
       # Same download and the same pin as conductor.yml, into the same place,
       # for the same reason: network.sh resolves both binaries from PATH or
-      # ~/.cargo/bin exactly as a development machine has them.
+      # ~/.cargo/bin exactly as a development machine has them. Literally the
+      # same script now, so the bounded retry its header explains applies to
+      # all three jobs at once rather than to whichever was edited last.
       - name: Install the Holochain 0.7.0 binaries
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p ~/.cargo/bin
-          for b in hc holochain; do
-            gh release download holochain-0.7.0 -R holochain/holochain \
-              -p "$b-x86_64-unknown-linux-gnu" -O ~/.cargo/bin/$b --clobber
-            chmod +x ~/.cargo/bin/$b
-          done
-          [ "$(hc --version)" = "holochain_cli 0.7.0" ] \
-            || { echo "::error::hc is not 0.7.0"; exit 1; }
-          [ "$(holochain --version)" = "holochain 0.7.0" ] \
-            || { echo "::error::holochain is not 0.7.0"; exit 1; }
+        run: scripts/ci/install-holochain.sh
 
       - uses: actions/setup-node@v4
         with:

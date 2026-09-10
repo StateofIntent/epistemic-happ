@@ -943,7 +943,7 @@ them has a deadline.
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
 | **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
-| **Retrying the binary download in CI** | **Nothing — the evidence is in hand** | §9, this section |
+| ~~Retrying the binary download in CI~~ | **Done** — `scripts/ci/install-holochain.sh` | §9, this section |
 
 **The one with real outside impact is the npm republish.**
 `@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
@@ -1018,12 +1018,12 @@ landed" — and both halves of that have been watched failing. It tracks machine
 load: green 8/8 run alone, and it has failed only deep inside a long sequential
 batch.
 
-**One item here is blocked on nothing at all, and is the cheapest thing on this
-page.** Every conductor-bound workflow — `conductor.yml`, `ui.yml` and
-`network.yml` — begins by downloading `hc` and `holochain` from the
-`holochain-0.7.0` release with `gh release download`, and that step has no retry.
-It failed **three separate ways in a single afternoon**, none of them anything
-this repository controls:
+**One item here was blocked on nothing at all, and is now done** — see
+`scripts/ci/install-holochain.sh`. Every conductor-bound workflow —
+`conductor.yml`, `ui.yml` and `network.yml` — began by downloading `hc` and
+`holochain` from the `holochain-0.7.0` release with `gh release download`, in
+three copies of the same four lines, with no retry. It failed **three separate
+ways in a single afternoon**, none of them anything this repository controls:
 
 | Times | Failure | Asset |
 |---|---|---|
@@ -1035,15 +1035,33 @@ downloaded cleanly from a development machine three times in a row while CI was
 failing on it. It is the **first real step** in those jobs, so when it flakes it
 takes a whole job with it and produces a red tick that means nothing — which is
 the specific thing this repository has twice decided is worth more than a green
-one it cannot read. A bounded retry with a short backoff, and an assertion on the
-downloaded binary rather than on the exit code alone, would remove the most
-common cause of a meaningless red.
+one it cannot read.
 
-**Worth doing carefully rather than quickly**, for the reason this repository
-already applies to timeouts: a retry that hides a *real* outage is the same
-mistake as a timeout raised to hide a stall. The retry should be bounded and
-loud — say how many attempts it made — so a genuine break still surfaces instead
-of turning into a slow success.
+The three copies are now one script, and the retry in it is deliberately not
+just a retry, for the reason this repository already applies to timeouts: one
+that hides a *real* outage is the same mistake as a timeout raised to hide a
+stall. So three properties carry more weight than the retrying does.
+
+- **It asserts on the binary, not on the exit code.** An attempt succeeds when
+  the downloaded file *runs and reports the pinned version*, not when `gh`
+  returns 0. A truncated 54 MB asset, an HTML error page written to the output
+  path, and a redirect that quietly served a neighbouring release all exit 0
+  somewhere and all fail here. This is also what finally makes the version pin
+  real rather than decorative.
+- **It does not retry a permanent failure.** A missing release, a renamed asset
+  or a wrong-but-working version is a real break in this repository's
+  assumptions; retrying it four times converts a clear error into a slow,
+  confusing one. Those fail on the first attempt.
+- **It says how many attempts it made.** A retry that succeeds silently turns a
+  degrading dependency into an invisible one. Any download needing more than one
+  attempt raises a `::warning::` on the job, naming what the previous attempt
+  failed with, so a slow success still reads as something that happened.
+
+The bound is four attempts with a 5s/15s/30s backoff — against jobs that run for
+six to twenty-six minutes, so a genuine outage still fails in under a minute
+rather than parking a runner. Each path is exercisable locally by stubbing `gh`
+on `PATH`; the script takes `DEST`, `INSTALL_ATTEMPTS`, `HOLOCHAIN_TAG` and
+`HOLOCHAIN_VERSION` from the environment for exactly that.
 
 #### Smaller items, all of them documentation
 
