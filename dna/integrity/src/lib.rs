@@ -1,6 +1,90 @@
 use hdi::prelude::*;
 
 // ============================================================================
+// PROTOCOL VERSION
+// ============================================================================
+
+/// The protocol version this integrity zome implements.
+///
+/// WHY THIS EXISTS, AND WHY IT LIVES IN THE DNA'S `properties`. A Holochain
+/// network *is* its integrity zome: the DNA hash is computed over the integrity
+/// manifest — `network_seed`, `properties`, and the integrity zomes — and only
+/// peers sharing that hash share a DHT at all. Three things follow, and they
+/// are constraints rather than preferences (SPEC.md §11.1 has the citations):
+///
+///   - Every edit to this file forks the network. There is no in-place
+///     migration across that boundary, and no such thing as an additive,
+///     backward-compatible entry change: adding an `Option<T>` field forks it
+///     exactly as violently as deleting a required one.
+///   - A network therefore runs exactly ONE version, by construction. There is
+///     no version skew between validating peers, so a per-entry version
+///     discriminant would enable no coexistence and feature negotiation would
+///     have nothing to negotiate. Both were considered and rejected for that
+///     reason, not overlooked.
+///   - Coordinator-zome changes are NOT in the hash and are hot-swappable.
+///     They are not protocol changes and must not bump this.
+///
+/// So this number is not a compatibility mechanism — there is nothing for it to
+/// be compatible with. It is a DECLARATION, and its whole value is that a fork
+/// becomes legible: two DNA hashes differing only by this bump are provably a
+/// protocol change rather than two mystery hashes nobody can tell apart. It is
+/// in `properties` rather than on each entry because `properties` is inside the
+/// hash, which makes the declaration impossible to disagree with — the network
+/// cannot contain a peer that thinks it is running something else.
+///
+/// BUMP THIS whenever anything in this file changes in a way that alters what
+/// is accepted or what an entry means. Do not bump it for a coordinator change.
+pub const PROTOCOL_VERSION: u16 = 1;
+
+/// The DNA's `properties`, as authored in `dna/dna.yaml`.
+///
+/// Deliberately a struct with exactly one required field rather than a loose
+/// map: an unvalidated region inside the DNA's own identity is where invariants
+/// quietly stop applying, which is the same reason §5 validates entries
+/// exhaustively rather than accepting unknown fields.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, SerializedBytes)]
+pub struct DnaProperties {
+    pub protocol_version: u16,
+}
+
+/// The zome and the manifest must agree about which protocol this is.
+///
+/// This is the one non-tautological thing validation can say about the version.
+/// It can never catch a peer running a different version — the hash makes that
+/// impossible — but it does catch the mistake that is actually available: a DNA
+/// packed with `properties` saying one thing and a zome compiled saying another,
+/// which is one forgotten edit away at every bump. That produces a network
+/// MISDECLARING itself, and a network that lies about which protocol it speaks
+/// is worse than one that refuses to start.
+///
+/// So it refuses to start: every write fails, loudly, naming both numbers.
+/// Absent or unparseable properties fail the same way — a DNA packed without
+/// them is inert rather than silently unversioned, which is what makes the
+/// declaration real instead of decorative.
+fn validate_protocol_version() -> ExternResult<ValidateCallbackResult> {
+    let properties = dna_info()?.modifiers.properties;
+    let declared = match DnaProperties::try_from(properties) {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "This DNA declares no readable protocol version in its properties \
+                 ({e}). dna.yaml must set `properties: {{ protocol_version: {PROTOCOL_VERSION} }}` \
+                 to match this integrity zome. See SPEC.md §11."
+            )));
+        }
+    };
+    if declared.protocol_version != PROTOCOL_VERSION {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "This DNA misdeclares itself: dna.yaml says protocol_version \
+             {}, the integrity zome implements {}. One of the two was not \
+             updated at the last bump. See SPEC.md §11.",
+            declared.protocol_version, PROTOCOL_VERSION
+        )));
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+// ============================================================================
 // ENTRY TYPES
 // ============================================================================
 
@@ -566,7 +650,29 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
     // RegisterDelete -> Delete, and the two link variants were folded
     // out of FlatOp itself into a single Link(OpLink) arm.
     match op.flattened::<EntryTypes, LinkTypes>()? {
-        FlatOp::CreateEntry(create_entry) => validate_create_entry(create_entry),
+        // The version gate sits on the two ops that write PROTOCOL DATA, and
+        // deliberately not on the whole callback.
+        //
+        // It was written the other way first — one check at the top of this
+        // function, covering everything — and a live conductor showed what that
+        // costs. A capability grant is itself a source-chain write, so blanket
+        // refusal makes `authorizeSigningCredentials` fail, and a misdeclaring
+        // network becomes one nothing can call: no client can even ASK it what
+        // it thinks it is. The refusal was correct and the diagnosis was
+        // unreachable, which is the failure shape this repository keeps refusing
+        // elsewhere.
+        //
+        // Scoped here instead, the property that matters is unchanged — no
+        // Claim, no Critique, no link is writable under a DNA that misdeclares
+        // itself — while the conductor's own plumbing keeps working, so
+        // `get_protocol_version` can be called and will name both numbers.
+        // Refuse the protocol, not the ability to be questioned.
+        FlatOp::CreateEntry(create_entry) => {
+            if let ValidateCallbackResult::Invalid(reason) = validate_protocol_version()? {
+                return Ok(ValidateCallbackResult::Invalid(reason));
+            }
+            validate_create_entry(create_entry)
+        }
         FlatOp::Update(_) => Ok(ValidateCallbackResult::Valid),
         FlatOp::Delete(_) => Ok(ValidateCallbackResult::Invalid(
             "Deletion is not permitted. Entries are immutable.".into()
@@ -575,8 +681,12 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
         // base_address/target_address/tag fields. Those fields now live
         // on the action's own CreateLinkData, which TypedAction derefs
         // to, so pass the action through and read them off it.
-        FlatOp::Link(OpLink::CreateLink { link_type, action }) =>
-            validate_create_link(link_type, action),
+        FlatOp::Link(OpLink::CreateLink { link_type, action }) => {
+            if let ValidateCallbackResult::Invalid(reason) = validate_protocol_version()? {
+                return Ok(ValidateCallbackResult::Invalid(reason));
+            }
+            validate_create_link(link_type, action)
+        }
         FlatOp::Link(OpLink::DeleteLink { .. }) => Ok(ValidateCallbackResult::Valid),
         _ => Ok(ValidateCallbackResult::Valid),
     }

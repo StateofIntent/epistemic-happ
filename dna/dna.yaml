@@ -13,7 +13,26 @@ integrity:
   # ignored. The 0.7 `IntegrityManifest` is exactly network_seed +
   # properties + zomes.
   network_seed: ~
-  properties: ~
+  # THE PROTOCOL VERSION, and the reason it is here rather than on each entry.
+  #
+  # `properties` is inside the DNA hash (DnaModifiers says so in its own doc
+  # comment), so this is a declaration the network cannot disagree with: there
+  # is no peer that thinks it is running something else, because a peer that
+  # did would be on a different hash and therefore a different network.
+  #
+  # It is not a compatibility mechanism. Nothing on this substrate is: every
+  # edit to the integrity zome forks the network, additive changes included, so
+  # a network always runs exactly one version and has nothing to negotiate with.
+  # What this buys is that a fork becomes LEGIBLE — two DNA hashes differing
+  # only by this number are provably a protocol change rather than two mystery
+  # hashes. See SPEC.md §11.1 for the full account.
+  #
+  # The integrity zome hardcodes the same number as PROTOCOL_VERSION and
+  # validation refuses every write if the two disagree, so this cannot drift
+  # from the code that implements it. Bump BOTH, or neither. A coordinator-zome
+  # change is not a protocol change and must not bump either.
+  properties:
+    protocol_version: 1
   zomes:
     - name: epistemic_integrity
       hash: ~

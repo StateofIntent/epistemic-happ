@@ -941,7 +941,8 @@ them has a deadline.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
-| **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
+| ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
+| Migration across a fork | **A decision** — whether provenance is an entry type or stays outside | `SPEC.md` §11.3 |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
 | ~~Retrying the binary download in CI~~ | **Done** — `scripts/ci/install-holochain.sh` | §9, this section |
 
@@ -1003,15 +1004,45 @@ and what carries across when a new one replaces it. Three shapes, costed:
 | **B — A version in `properties`, plus a migration contract** | Put a protocol version in the DNA's `properties` (currently `~`), so it is in the hash and readable from validation via `dna_info()`; define what an export/re-publish across a fork must preserve | One field now — but it **changes the DNA hash**, invalidating the shipped `.happ`/`.webhapp` and any existing sandbox state. Migration tooling later | A network that can state its own version, and a defined answer to "what carries across". The export half is largely built already — N4L export and the gateway's JSON-LD both walk the same data |
 | **C — Per-entry version discriminant** | A `v: u8` on every entry, with validation accepting a listed set | A field on every entry type, forever | **On inspection, almost nothing** — see §11.1. It cannot produce in-network coexistence, because every peer runs the same integrity zome. Recorded so it is not re-proposed as the obvious answer |
 
-**The recommendation is B**, and the reason C is listed at all is that it is what
-most people reach for first, including this document's earlier framing of the
-gap. B's real cost is the one worth arguing about: setting `properties` now
-changes the DNA hash, so the currently shipped bundle stops being the same
-network. That is precisely the "free now, never again" window — it costs a
-rebuild today and an unmigratable fork later.
+**B was chosen and is now shipped.** C is kept in the table because it is what
+most people reach for first, including this document's own earlier framing of
+the gap — and §11.1 is why it buys nothing.
 
-**This is the open decision.** Nothing below is implemented; §11.1 is the
-substrate analysis, this table is the choice, and neither is a commitment yet.
+`dna/dna.yaml` sets `properties.protocol_version: 1`, the integrity zome carries
+the same number as `PROTOCOL_VERSION`, and **validation refuses every entry and
+every link when the two disagree**, naming both numbers. Absent properties fail
+identically, so a DNA that declares no version accepts no protocol data at all —
+which is what makes the declaration real rather than decorative. The gate is
+scoped to protocol writes and deliberately not to the whole validation callback:
+a blanket check also refuses capability grants, leaving a misdeclaring network
+unable to answer the very call that would explain it. Refuse the protocol, not
+the ability to be questioned. `get_protocol_version` reads back the declared
+version, the implemented version, and the DNA hash, on an empty network.
+
+That cost was paid rather than avoided: **setting `properties` changed the DNA
+hash**, so the bundle shipped before this is a different network from the one
+shipped now. That was the whole "free now, never again" argument, and it is now
+spent — a rebuild today instead of an unmigratable fork later.
+
+`scripts/live-verify/protocol-version.mjs` proves the three claims against a
+running conductor: the declaration is readable, it is *inside* the identity (two
+DNAs differing only in that number pack to different hashes — checked by packing
+both, not by citing a doc comment), and a misdeclaring DNA is installed for real
+and refuses writes. It has been watched failing in both directions; removing the
+gate turns the third section red while the first two stay green, which is the
+finding — a version can be readable and in the hash and still be decorative, and
+only the third section can tell.
+
+**What is NOT built is migration.** `SPEC.md` §11.3 states the contract instead,
+because §11.1's constraints are knowable without the tooling and the hardest one
+is already decided: §5.2 binds an entry's author to its action's author, so **no
+agent can re-publish another's entries**, and no exemption may be added for
+migration without handing everyone a way to forge authorship. Migration across a
+fork is therefore necessarily partial and voluntary, entry hashes change, and
+anything referencing an entry by hash must be re-resolved. The one open question
+left is whether provenance across a fork belongs *in* the protocol as an entry
+type or entirely outside it; neither has been chosen and nothing should be built
+until one is.
 
 **Sybil resistance is open and is expected to stay open, which is a different
 statement from the rest of this table.** It is an accepted architectural ceiling,

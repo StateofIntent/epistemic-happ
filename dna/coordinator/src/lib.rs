@@ -302,6 +302,49 @@ impl ToN4L for Constitution {
 }
 
 // ============================================================================
+// PROTOCOL VERSION
+// ============================================================================
+
+/// What this network says it is.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ProtocolIdentity {
+    /// The version declared in the DNA's `properties` — inside the DNA hash,
+    /// so every peer on this network necessarily agrees with it.
+    pub declared_version: u16,
+    /// The version the integrity zome running here implements. Validation
+    /// refuses every write unless this equals `declared_version`, so seeing
+    /// them differ here means reading a network that cannot be written to.
+    pub implemented_version: u16,
+    /// The network's own identity. Two hashes differing only by a version bump
+    /// are a protocol change; this is what makes that legible from outside.
+    pub dna_hash: DnaHash,
+}
+
+/// Read the protocol version this network is running.
+///
+/// Surfaced deliberately, against §9's rule that a new zome function needs an
+/// argument of its own: a version declared where nothing can read it is
+/// decorative. The gateway and the federation bridge both need to state which
+/// protocol they are speaking about, and neither parses DNA manifests. It is a
+/// pure read of `dna_info()` — no DHT access, nothing to rate-limit, and it
+/// cannot fail on an empty network, which matters because "which protocol is
+/// this" is a question asked BEFORE anything has been written.
+#[hdk_extern]
+pub fn get_protocol_version(_: ()) -> ExternResult<ProtocolIdentity> {
+    let info = dna_info()?;
+    let declared = DnaProperties::try_from(info.modifiers.properties)
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!(
+            "This DNA declares no readable protocol version in its properties ({e}). \
+             Nothing can be written to it — see SPEC.md §11."
+        ))))?;
+    Ok(ProtocolIdentity {
+        declared_version: declared.protocol_version,
+        implemented_version: PROTOCOL_VERSION,
+        dna_hash: info.hash,
+    })
+}
+
+// ============================================================================
 // CLAIM FUNCTIONS
 // ============================================================================
 

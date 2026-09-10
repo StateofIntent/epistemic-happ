@@ -342,6 +342,14 @@ jobs:
       # A clean conductor before EACH harness, not once before the batch — the
       # one hard rule in scripts/live-verify/README.md. Run as four steps rather
       # than a loop so a failure names itself in the job summary.
+      # First, because it is the cheapest thing that can be wrong: if the DNA
+      # misdeclares its own protocol version, nothing below can write at all,
+      # and every one of those failures would report something else.
+      - name: protocol-version — the network declares which protocol it is, and cannot lie
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/protocol-version.mjs
+
       - name: domain-index — the by-domain index, and validation refusing to be poisoned
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
