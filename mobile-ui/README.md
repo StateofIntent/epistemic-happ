@@ -146,6 +146,18 @@ marks the live input first, and since a rebuild cannot preserve that mark, a run
 where the read landed before the typing began says it proved nothing rather than
 going green.
 
+**Every field this app builds was then audited against that rule, and one
+failed it.** The New Claim form's Tags box named itself in none of the four
+ways — no test id, no placeholder, no name, no aria-label — because it says
+what it is through the `<label>` wrapped around it. It would have gone on
+silently losing the caret while every box beside it kept it, on the screen
+somebody spends the most time in. Two changes rather than one: the box is now
+`new-claim-tags`, and **`focusKey` falls back to the wrapping label's text**,
+so the next field somebody adds without remembering any of this keeps its caret
+anyway. Checked in both directions on a page carrying only that shape — a field
+named by its label alone — losing 22 fills in 152 without the restore and 0 in
+152 with it.
+
 `layout-fits.mjs` keeps its fill-and-click-twice retry. It was added blind to
 this cause and would now be redundant against it, but it also covers a genuinely
 slow read, and `hud-layer` is where the defect is named. Removing it would trade
