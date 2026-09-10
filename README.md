@@ -1242,6 +1242,33 @@ failed: the New Claim form's Tags box, which identifies itself through the
 to the wrapping label, so the next field added without remembering any of this
 keeps its caret regardless.
 
+**`real-gossip` failed on `main`'s pull request queue, and the shape of the
+failure is worth more than the failure.** It went red on a change that touched
+only the notes layer: nodeB did not receive nodeA's claim inside 120 seconds.
+Then, seconds later, **the reverse direction arrived in about two** — the same
+two conductors, the same DHT, the same run — and the isolated control node
+correctly never saw anything at all. So the network was working and the DNA
+hashes were right; whatever was missing happened *before* gossip.
+
+That is the "instant-or-never" bimodality this section already records for
+`transitive-gossip`, and the reverse leg passing is the sharpest evidence yet
+for the standing hypothesis: **the suspect is peer DISCOVERY, not gossip.** By
+the time the second leg ran, the two nodes had found each other. `real-gossip`
+connects and publishes immediately, so nothing in it has ever distinguished
+"gossip is slow" from "these two had not met yet".
+
+**No timeout was raised and no precondition was invented, deliberately.** The
+harness now reports how many peers each conductor has heard of, before the
+publish and again after a miss — so the next occurrence says which of the two
+it was, and the failure carries its own diagnosis. Both counts above one means
+they had met and gossip still missed; a count of one on either means that node
+was alone on the DHT when it mattered. That is the same rule this changelog
+applied to `notes-ui` and to `joinAs`: make it explain itself before hunting the
+cause, because a diagnostic cannot be added retroactively to a failure that has
+already happened. When the answer is known the fix belongs in
+`scripts/network.sh`, which starts the nodes, rather than in the harness that
+measures them.
+
 **A fourth intermittency is open, has been seen exactly once, and is recorded
 here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is
 ignored unless an operator says something is in front — one header must not reset

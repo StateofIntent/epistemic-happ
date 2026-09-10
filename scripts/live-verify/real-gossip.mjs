@@ -228,7 +228,7 @@ async function connectNode(name, { admin: adminPort, app: appPort, appId }) {
   }
   const call = (fn, payload) =>
     app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
-  return { name, dna: cellIds[0][0], me: cellIds[0][1], call, adminPort, appPort };
+  return { name, dna: cellIds[0][0], me: cellIds[0][1], call, admin, adminPort, appPort };
 }
 
 const claimEntry = (record) => decode(record.entry.Present.entry);
@@ -245,6 +245,41 @@ async function publishClaim(node, domain, content) {
     attestation_policy: null,
   });
 }
+
+/** How many peers a conductor has actually heard of on this DHT.
+ *
+ * WHY THIS IS REPORTED RATHER THAN ASSUMED. `real-gossip` failed on CI on a
+ * pull request that touched only the notes layer: nodeB did not receive
+ * nodeA's claim inside 120 seconds, and then — seconds later, on the same pair
+ * of conductors — the REVERSE direction arrived in about two. So the network
+ * was working and the DHT was right; what was missing was earlier than gossip.
+ * That is the same "instant-or-never" shape README.md §9 records for
+ * `transitive-gossip`, and the reverse leg passing is the sharpest evidence yet
+ * that the suspect is peer DISCOVERY rather than gossip itself: by the time the
+ * second leg ran, the nodes had found each other.
+ *
+ * This harness connects and publishes immediately, so nothing in it has ever
+ * distinguished "gossip is slow" from "these two had not met yet". The count
+ * below is logged before the first publish and again in the failure
+ * diagnostic, so the NEXT occurrence says which. It is deliberately NOT a
+ * check and NOT a wait that can fail the run: adding a red to a job that is
+ * already intermittently red would obscure exactly the evidence being
+ * gathered, and this repository's rule is that a timeout raised — or a
+ * precondition invented — to paper over a stall makes it slower to notice
+ * rather than absent. When the answer is known, the fix goes in the harness
+ * that starts the nodes, not here. */
+async function peerCount(node) {
+  try {
+    const infos = await node.admin.agentInfo({ dna_hashes: [node.dna] });
+    return Array.isArray(infos) ? infos.length : null;
+  } catch {
+    return null;
+  }
+}
+
+const peersLine = async (a, b) =>
+  `node${a.name} knows of ${await peerCount(a) ?? '?'} peer(s), `
+  + `node${b.name} knows of ${await peerCount(b) ?? '?'}`;
 
 // Polls `receiver` until the claim shows up, while checking on every
 // iteration that `isolated` still has not seen it. Returns how long
@@ -311,6 +346,10 @@ async function main() {
 
   // ---- 3. The finding ---------------------------------------------------
   log('\n--- 3. nodeA publishes; does nodeB receive it over the network? ---');
+  // Recorded BEFORE the publish, because after a failure it is too late to
+  // ask: see `peerCount`. This says whether the two conductors had found each
+  // other at the moment the claim was written.
+  log(`  at publish time: ${await peersLine(A, B)}`);
   await publishClaim(A, DOMAIN, CONTENT);
   const ownRead = await A.call('get_claims_by_domain', DOMAIN);
   check('nodeA sees its own claim (control: the write itself worked)', ownRead.length === 1);
@@ -328,6 +367,17 @@ async function main() {
   check(`nodeB receives nodeA's claim over the network (within ${GOSSIP_WINDOW_MS / 1000}s)`,
     arrivedMs !== null);
   if (arrivedMs !== null) log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s`);
+  if (arrivedMs === null) {
+    // The whole point of the peer counts. A miss with both nodes knowing about
+    // each other is a gossip problem; a miss with either of them alone on the
+    // DHT is a discovery problem, and the fix for the second lives in
+    // scripts/network.sh rather than in this file. Section 6 below publishes
+    // in the OTHER direction on the same pair of conductors — if that arrives
+    // in seconds after this waited two minutes, discovery is the answer.
+    log(`    after the window: ${await peersLine(A, B)}`);
+    log('    (both counts >1 means they had found each other and gossip still missed;');
+    log('     a count of 1 on either means this node was alone on the DHT when it mattered)');
+  }
 
   // ---- 4. It is the same entry -----------------------------------------
   //
