@@ -264,7 +264,42 @@ export function clientAddress(req: IncomingMessage, trustProxy: boolean): string
   if (trustProxy) {
     const header = req.headers['x-forwarded-for'];
     const first = (Array.isArray(header) ? header[0] : header)?.split(',')[0]?.trim();
-    if (first) return first;
+    if (first) return normaliseAddress(first);
   }
-  return req.socket.remoteAddress ?? 'unknown';
+  return normaliseAddress(req.socket.remoteAddress);
+}
+
+/** One machine reaching this service is ONE key, whichever way it connects.
+ *
+ * A ceiling keyed on `socket.remoteAddress` verbatim is keyed on the address
+ * FAMILY as much as on the caller. A dual-stack client that connects over IPv6
+ * is `::1` and over IPv4 is `127.0.0.1` — two keys, two budgets, for one
+ * machine — and a client on a dual-stack listener arrives as `::ffff:1.2.3.4`
+ * rather than `1.2.3.4`, so the same caller changes key when the LISTENER
+ * changes. Neither is a different caller in any sense a ceiling means.
+ *
+ * That is the smaller cousin of the failure `clientAddress` above exists to
+ * prevent: a ceiling present in the code, readable as a defence, and openable
+ * by a caller who does nothing cleverer than connect the other way.
+ *
+ * FOUND THROUGH THE HARNESS THAT KEPT FLAKING ON IT. `notes-layer`'s
+ * X-Forwarded-For check failed twice on CI, months apart, and was recorded as
+ * open and uncaused — it asks a 1-per-hour ceiling to refuse the SECOND create,
+ * so a single call landing on the other family makes it the first call again
+ * and the refusal never comes. The harness reached `http://localhost`, and
+ * Node's fetch picks a family per connection. Proved by hand: two creates over
+ * 127.0.0.1 give 200 then 429, and a third over [::1] gives 200.
+ *
+ * WHAT THIS DOES NOT DO, and it is a real limit rather than an oversight: a
+ * caller with a whole IPv6 /64 to itself still has as many keys as it has
+ * addresses. Bucketing IPv6 by prefix is the standard answer and is a decision
+ * about what an "address" means here, not a detail to settle inside a
+ * normalisation function — see notes/README.md. */
+export function normaliseAddress(raw: string | undefined): string {
+  if (!raw) return 'unknown';
+  // An IPv4 client on a dual-stack listener, wearing an IPv6 costume.
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  const address = mapped ? mapped[1] : raw;
+  // The same machine reaching itself, by the other family.
+  return address === '::1' ? '127.0.0.1' : address;
 }

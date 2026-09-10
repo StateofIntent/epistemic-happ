@@ -219,6 +219,26 @@ Three smaller decisions worth keeping:
 - **`X-Forwarded-For` is read only under `EPI_NOTES_TRUST_PROXY=1`.**
   Honouring it unconditionally makes every address-keyed ceiling resettable by
   one header, which is worse than having none: it looks like a defence.
+- **One machine is one key, whichever family it connects over.**
+  `socket.remoteAddress` verbatim is keyed on the address FAMILY as much as on
+  the caller: the same machine arrives as `::1` over IPv6 and `127.0.0.1` over
+  IPv4, and an IPv4 client on a dual-stack listener arrives as
+  `::ffff:1.2.3.4` — so a caller had two budgets, and the same caller changed
+  key when the LISTENER changed. `normaliseAddress` folds both, and
+  `notes-layer` checks it by making a create over `[::1]` after the ceiling has
+  been spent over `127.0.0.1`. It is the smaller cousin of the header rule
+  above: a ceiling that reads as a defence and is opened by connecting the
+  other way.
+
+**What that fix does NOT cover, and it is a decision rather than an oversight.**
+A caller with a whole IPv6 `/64` to itself still has as many keys as it has
+addresses, and folding a prefix is the standard answer. It is not done here
+because it is a statement about what "an address" means for this layer, with a
+real cost: a `/64` is one household on some networks and one customer of a
+large provider on others, so bucketing by prefix charges neighbours for each
+other. Nothing here has an operator with a reason to choose yet. The honest
+position is that these ceilings are friction against casual abuse, not sybil
+resistance — which the protocol's own README says it cannot offer either.
 
 Counters are in memory and reset with the process. A restart forgives
 everyone, which is the cheaper failure for a layer whose entire default is to
