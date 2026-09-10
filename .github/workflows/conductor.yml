@@ -395,6 +395,16 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/mcp-server.mjs
 
+      # The one that would have caught what is on the registry right now. The
+      # two harnesses above drive THIS TREE's build; this one packs both
+      # packages, installs them into an empty project with a fresh dependency
+      # resolution, and writes to the conductor from that install. A package can
+      # import cleanly and still fail its first zome call — see the header.
+      - name: published-packages — the tarball a stranger installs, against a real conductor
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/published-packages.mjs
+
       - name: linked-data-gateway — the one-way export, and the score it must not emit
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
