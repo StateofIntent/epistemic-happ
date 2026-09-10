@@ -941,6 +941,7 @@ them has a deadline.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
+| The `notes-live` `joinAs` intermittency | **A recurrence** — it now names which of three causes it was | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | **Protocol versioning and migration** | **A decision, before a network exists** — free now, never again | `SPEC.md` §11, §9 changelog |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
 | **Retrying the binary download in CI** | **Nothing — the evidence is in hand** | §9, this section |
@@ -1004,10 +1005,27 @@ intermittency below: that one is a note failing to render after a submit, this
 one is a join form failing to appear at all. It also dies as a bare Playwright
 `TimeoutError` naming a line number and no check — the exact shape this
 directory's README records against `launcher-packaging`'s first regression
-report, and the shape `notes-ui` was given a diagnostic to escape. Whoever picks
-this up should give `joinAs` the same treatment before hunting the cause: two
-occurrences in one day is enough to expect a third, and a third that says only
-"timeout at line 150" teaches nothing.
+report, and the shape `notes-ui` was given a diagnostic to escape.
+
+**`joinAs` has now been given that treatment, before the cause is known**, on
+the reasoning that two occurrences in one day is enough to expect a third and a
+third saying only "timeout at line 150" teaches nothing. A missing join form has
+three unrelated causes that look identical from outside, and the third
+occurrence will now name which one it was:
+
+| What the screen shows | What it means |
+|---|---|
+| the service's refusal, quoted | a revoked, expired or unknown invite — **the screen is working** |
+| stuck on "Reading the invite…" | the preview went out and **never came back** — a hung read, not a refusal |
+| not the join screen at all | the invite link **never took the browser there**, and the error it *is* showing |
+
+Alongside that it asks the service about the same invite directly, from inside
+the failing browser and over the same origin the app itself uses, which splits
+"the screen never rendered the form" from "this join was never going to happen".
+All three were forced one at a time and watched producing three different
+sentences; the harness header records them as injections A, B and C. The
+intermittency itself remains **open and uncaused** — this makes the next
+occurrence legible, it does not fix anything.
 
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot

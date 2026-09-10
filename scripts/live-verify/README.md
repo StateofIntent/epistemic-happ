@@ -168,6 +168,8 @@ Two of the seventeen were **not** caught by their own assertions on the first at
 
 A third, `launcher-packaging`, caught its regression but reported it as a bare `waiting for locator(friction-meter)` timeout — true, and useless. It now says what that means.
 
+That shape has since turned up twice more, both times as an *intermittency* rather than as a caught regression, and both are worth stating as a rule: **when a wait here flakes, make it explain itself before hunting the cause.** `notes-ui` was given a diagnostic that asks the service whether the note exists, which splits "the screen did not show it" from "the write never landed" — two defects in two different processes that were indistinguishable from the screen. `notes-live`'s `joinAs` was given one after failing twice in a single afternoon, and it separates three unrelated causes of an absent join form: a refused invite (the screen is working), a preview that hung (not a refusal), and never reaching the join screen at all. Neither intermittency is fixed. Both will now say something the next time, which is the part that cannot be done retrospectively — a third occurrence reporting "timeout at line 150" teaches exactly as little as the first two did.
+
 This is what the sweep was for. A green suite tells you nothing about assertions that cannot go red, and reading them will not reliably reveal it: both weak checks above look correct, and their labels describe the strong version.
 
 And check that a new harness can actually fail. `affordance-surfacing.mjs` passed on its first run, which proved nothing until the feature was disabled and the harness observed going red. A suite that has only ever been green has not been shown to test anything.
