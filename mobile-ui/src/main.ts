@@ -38,6 +38,27 @@ let connection: HolochainConnection | null = null;
  * retry from and so no other place this could be reported. */
 let hostedConnectError: string | null = null;
 let currentDomain = '';
+/** What is TYPED in the browse tab's domain box right now, as distinct from
+ * `currentDomain`, which is the domain whose claims are currently loaded.
+ *
+ * These have to be two variables, and the reason is a real defect this screen
+ * shipped with. `render()` rebuilds the DOM wholesale, so an input's value
+ * survives a rebuild only if something outside the DOM remembers it. Nothing
+ * did: the box was seeded from `currentDomain`, which is written only when a
+ * load COMPLETES, so anything typed lived in the DOM node alone and any
+ * re-render silently discarded it. Connecting fires two independent async
+ * loads — the friction status and the taxonomy — and each calls `render()` when
+ * it resolves, so a domain typed in the first seconds after connecting was
+ * liable to vanish between the keystroke and the button; "Load claims" then
+ * loaded the empty string and rendered nothing.
+ *
+ * It is the failure `notes-live.mjs` exists to prevent, on a screen that never
+ * had the same treatment: a screen that rebuilds when something arrives is a
+ * screen that can throw away what somebody is halfway through typing. It
+ * surfaced as an intermittent CI failure in `hud-layer` — a bare timeout
+ * waiting for `.claim-card` — and `layout-fits.mjs` had already been given a
+ * click-twice workaround for the same cause, before the cause was known. */
+let domainDraft = '';
 let claims: DecodedRecord<Claim>[] = [];
 
 // --- Epistemic state (README.md §9's "surface what the backend already
@@ -260,6 +281,9 @@ const resonanceLoading = new Set<string>();
 let authorClaims: DecodedRecord<Claim>[] = [];
 /** the agent whose claims `authorClaims` holds, base64, '' if none asked for. */
 let currentAuthor = '';
+/** The by-author tab's input, kept for exactly the reason `domainDraft` is
+ * kept — the same shape, the same rebuild, the same loss. */
+let authorDraft = '';
 /** set once a read has come back, so an empty list can be reported as the
  * real and different answer it is rather than as "nothing loaded yet".
  * The taxonomy adoption count makes the same distinction for the same
@@ -836,7 +860,8 @@ function renderByAuthorTab(): HTMLElement {
   const agentInput = document.createElement('input');
   agentInput.type = 'text';
   agentInput.placeholder = 'Agent key (base64)';
-  agentInput.value = currentAuthor;
+  agentInput.value = authorDraft;
+  agentInput.oninput = () => { authorDraft = agentInput.value; };
   agentInput.setAttribute('data-testid', 'author-key-input');
   const loadBtn = document.createElement('button');
   loadBtn.textContent = 'Load claims';
@@ -906,7 +931,11 @@ function renderBrowseTab(): HTMLElement {
   const domainInput = document.createElement('input');
   domainInput.type = 'text';
   domainInput.placeholder = 'Domain, e.g. LumbarRehab';
-  domainInput.value = currentDomain;
+  domainInput.value = domainDraft;
+  // Persisted on every keystroke, so a rebuild underneath restores what was
+  // typed rather than replacing it with the last LOADED domain. See
+  // `domainDraft`'s own comment for the failure this fixes.
+  domainInput.oninput = () => { domainDraft = domainInput.value; };
   const loadBtn = document.createElement('button');
   loadBtn.textContent = 'Load claims';
   loadBtn.onclick = () => loadClaims(domainInput.value.trim());
@@ -1674,6 +1703,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
 async function loadClaims(domain: string) {
   if (!connection || !domain) return;
   currentDomain = domain;
+  domainDraft = domain;
   markDone('browsed-domain');
   const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
   claims = decodeRecords<Claim>(records);
@@ -1695,6 +1725,7 @@ async function loadClaims(domain: string) {
 async function loadClaimsByAuthor(agentB64: string) {
   if (!connection || !agentB64) return;
   currentAuthor = agentB64;
+  authorDraft = agentB64;
   authorError = '';
   authorLoaded = false;
   authorClaims = [];

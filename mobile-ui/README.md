@@ -76,3 +76,36 @@ To build the installable bundle rather than a static site, use the root `scripts
 - **Bundle size**: ~940KB minified (~332KB gzipped), almost entirely `@holochain/client` and its crypto/msgpack dependencies (`libsodium-wrappers`, `@bitgo/blake2b`, `@msgpack/msgpack`). Not code-split in this pass — acceptable for a practitioner tool used repeatedly (cached after first load), worth revisiting if this needs to load quickly on a poor connection every time.
 - **PWA installability was not verified against a real Lighthouse audit or an actual mobile device this pass** — `manifest.webmanifest` and `public/sw.js` are present and syntactically real (the service worker was confirmed to register and intercept same-origin GETs during the Playwright run), but full install-prompt behavior varies by browser and wasn't independently audited.
 - **`npm audit` flags a moderate advisory in `esbuild` (via `vite@5`)**: the advisory is specific to `esbuild`'s local dev server accepting cross-origin requests — it affects `npm run dev` only, not the built `dist/` output, and `vite@5`'s fix requires the breaking `vite@8`. Left as-is for this pass; worth revisiting alongside a real Vite major-version upgrade, not in isolation.
+
+## A rebuild can still lose what you are typing — one place it does, and one it does not
+
+`render()` rebuilds this app's DOM wholesale, so anything typed into an input
+survives a rebuild only if something outside the DOM remembers it. Two inputs now
+do: the Browse tab's domain box (`domainDraft`) and the By Author tab's agent key
+(`authorDraft`), each persisted on every keystroke and restored on the next
+render.
+
+They were not, and it was a real defect rather than a theoretical one. Connecting
+fires two independent async loads — the friction status and the taxonomy — and
+each calls `render()` when it resolves. A domain typed in the first seconds after
+connecting could therefore vanish between the keystroke and the button, and
+"Load claims" would load the empty string and render nothing, with no error
+anywhere. It reached CI as an intermittent failure in
+`scripts/live-verify/hud-layer.mjs` — a bare timeout waiting for `.claim-card`
+with the seed confirmed written — and `scripts/live-verify/layout-fits.mjs` had
+already been given a click-twice workaround for it before anyone knew the cause.
+`hud-layer` now forces the rebuild by switching tabs and asserts the box still
+holds what was typed, which is what turns it from an intermittency into a check.
+
+**The New Claim form is the same shape and is NOT fixed.** Its fields — content,
+domain, confidence, tags — live only in the DOM, so any `render()` while a claim
+is being composed discards the lot. It is recorded here rather than fixed in the
+same change because it is a larger piece of work than persisting two strings: the
+form has several fields of different kinds, and the right answer is probably one
+draft object for the whole form rather than a variable per input. Nobody has hit
+it in CI, because no harness composes a claim slowly enough to be interrupted —
+which is a statement about the harnesses, not about the form. The invariant this
+codebase already applies to the notes composer (`notes-live.mjs` checks that a
+half-typed sentence and its caret both survive an arrival) is the one this form
+does not yet meet.
+

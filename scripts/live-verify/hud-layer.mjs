@@ -37,6 +37,25 @@
 //   Regression injected: rendering a constant '⟿ 9.99' instead of the real conductance.
 //   Result: one FAIL — the fresh link no longer reads ~1.00. Note that DELETING the element instead produces only an opaque Playwright timeout, not a named FAIL.
 //
+//   Regression injected: the browse tab's domain box seeded from the last
+//   LOADED domain with nothing persisting what is typed — i.e. this screen
+//   exactly as it shipped, restored with `git checkout mobile-ui/src/main.ts`.
+//   Result: two FAILs and a named error. The survival check goes red saying the
+//   box now holds "", and the listing check goes red quoting the box and the
+//   list's own empty-state text. That pairing is the point: this file's real CI
+//   failure was a bare `TimeoutError` on `.claim-card` with the seed confirmed
+//   written and the friction meter already rendering real state, and nothing in
+//   it said whether the screen had lost the domain or the read had returned
+//   nothing. It now says which.
+//
+//   Worth knowing about that injection: it fails DETERMINISTICALLY here while
+//   the CI failure was intermittent. Both are the same defect. The
+//   intermittency came from depending on an async re-render (the taxonomy load)
+//   landing in the window between the keystroke and the click; the check forces
+//   the same rebuild by switching tabs, which is what converts it from
+//   something you wait to be unlucky about into something that is simply true
+//   or false.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -203,11 +222,47 @@ async function main() {
 
     log('\n=== Browsing the seeded domain ===');
     await page.getByPlaceholder(/domain/i).first().fill(DOMAIN);
+
+    // THE CHECK THAT WOULD HAVE NAMED THIS FILE'S INTERMITTENCY, and the
+    // reason it is here rather than in a harness about typing.
+    //
+    // This wait timed out in CI on a bare `TimeoutError` naming a line number,
+    // with the seed confirmed written and the friction meter already rendered
+    // from real state — so the conductor had the claim and the screen would not
+    // show it. The cause was not the read. `render()` rebuilds the DOM
+    // wholesale, the domain box was seeded from the last LOADED domain, and
+    // nothing outside the DOM remembered what had been typed; connecting fires
+    // two independent async loads that each re-render when they resolve, so the
+    // typed domain could vanish between the keystroke and the click and "Load
+    // claims" would load the empty string.
+    //
+    // Forcing the rebuild rather than waiting to be unlucky is what turns an
+    // intermittency into a check: switching tabs and back is a real re-render,
+    // and the box must still hold what a person typed.
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    const survived = await page.getByPlaceholder(/domain/i).first().inputValue();
+    check('a typed domain survives the screen rebuilding underneath it',
+      survived === DOMAIN);
+    if (survived !== DOMAIN) log(`    (the box now holds ${JSON.stringify(survived)}, not the typed domain)`);
+
     // Exact name, not a loose pattern: the tab row also has a "Browse"
     // button, and a fuzzy match grabs the tab rather than the loader.
     await page.getByRole('button', { name: 'Load claims', exact: true }).click();
-    await page.waitForSelector('.claim-card', { timeout: 20000 });
-    check('the seeded claim is listed', true);
+    const listed = await page.waitForSelector('.claim-card', { timeout: 20000 })
+      .then(() => true).catch(() => false);
+    check('the seeded claim is listed', listed);
+    if (!listed) {
+      // Never a bare timeout again: say which of the two it was. The service
+      // half is asked through the page's own connection, so it is a statement
+      // about the same conductor the screen is reading.
+      const box = await page.getByPlaceholder(/domain/i).first().inputValue();
+      const hint = (await page.locator('.claim-list .hint').allTextContents()).join(' | ');
+      log(`    (domain box holds ${JSON.stringify(box)}; the list says ${JSON.stringify(hint)})`);
+      log('    (if the box is empty the screen lost the typed domain; if it is right,');
+      log('     the read returned nothing and the seed never became visible)');
+      throw new Error('the seeded claim never appeared — see the two lines above for which half failed');
+    }
 
     log('\n=== Epistemic state on the claim ===');
     await page.waitForSelector('[data-testid="retraction-banner"]', { timeout: 20000 });
