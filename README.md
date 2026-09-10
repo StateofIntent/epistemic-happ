@@ -950,7 +950,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Item | Blocked on | Where it is written up |
 |---|---|---|
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
-| Who may remove a member from a notes room | **A governance decision** — three shapes costed | `notes/README.md` |
+| ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
@@ -1002,7 +1002,49 @@ credentials:
 **What remains is one command, by somebody with publish rights on the
 `@stateofintent` scope:** `scripts/publish-packages.sh --publish`.
 
-**The other three are deliberately parked, and each records why.** Pre-registration
+**A room can now ask somebody to leave, and that was the item most worth
+closing** — not because it was the largest, but because three documents in this
+repository described it as working. They said an assistant could be stopped by
+"revoking the link or removing the member", and **neither half was true**: an
+invite is consulted only at join time, so revoking one stops the *next* arrival
+and does nothing about anyone already inside, and the `NotesStore.removeMember`
+those documents named as existing-but-unexposed **did not exist at all**. The
+store had `leave`, which is somebody removing themselves. A claim repeated in
+three places for long enough reads as verified, which is how this one survived
+being written down twice more.
+
+**The decision was the blocker, not the code, and the shape chosen is that a
+removal is a note in the room.** No owner and no admin: any member may ask any
+member to leave, which is the same answer this layer already gives for
+rewriting and deleting anybody's note. What keeps that from being a hole is not
+a permission but the record — attributed, in the room, readable by everyone it
+happened to. Four consequences are load-bearing, and each is checked:
+
+- **The record is the one note nobody may rewrite or delete.** A real exception
+  to this layer's "anyone may edit anything", and the entire argument for the
+  shape: an account any of the people involved can quietly erase is not an
+  account.
+- **The token dies immediately**, because the member row is gone and
+  `authenticate` looks tokens up in it. `assistant-main.ts` already stops on a
+  401 rather than retrying, which is what makes stopping an assistant work the
+  moment the route exists.
+- **The door they came through closes**, because an invite checked only at join
+  time is a way back in for the person holding it — which is everybody who was
+  just removed. The cost is deliberate: anybody else holding that link is
+  stopped too, and the room can mint another.
+- **An AI member may not remove anybody.** The one asymmetry, and it is about
+  kind rather than rank: an agent is a full member, meets the same ceilings,
+  and may write, rewrite and delete any note — it does not decide who is in the
+  room.
+
+What is deliberately NOT built is a way to stop somebody holding a *different*
+live invite from walking back in. This is the soft layer, the door is a link
+anybody inside can mint, and a re-entry is visible to everyone in the room.
+`notes/README.md` carries the full reasoning; `notes-layer.mjs` holds all of it,
+and was watched failing against the service as it stood — exactly the nine
+removal checks red, every other check in the file green.
+
+**The other two are deliberately parked, and each records why.** Pre-registration
 would be actively harmful built carelessly — the naive commit–reveal is gameable
 by selective revelation, which launders HARKing rather than reducing it, so it
 needs the denominator (a reveal deadline, the expired count readable beside the
@@ -1738,7 +1780,7 @@ each of these is currently exactly that.
 
   **This is the piece the design note says replaces documentation.** An assistant sitting inside a notes space, next to the writing that is actually happening, can explain the difference between a note and a Claim *at the moment someone is trying to make one* — rather than in an onboarding flow they clicked through three days ago. It is allowed to be wrong, because every answer lands beside an accept and a reject.
 
-  **It joins through an invite link, as a member with `kind: "ai"`.** There is no registration endpoint for AI members and no configuration flag that conjures one into a space: somebody hands the process a link, exactly as they would hand one to a person. **What that does not yet buy is a way to stop one already in the room** — an invite is checked only at join time, and no route exposes member removal — which is recorded as an open governance decision in `notes/README.md` rather than quietly implied to work here. That also makes "3 AI agents helping here" a fact about who is in the room — surfaced in the directory and in the invite preview, where it is a reason to walk in the door rather than a feature listed on a page.
+  **It joins through an invite link, as a member with `kind: "ai"`.** There is no registration endpoint for AI members and no configuration flag that conjures one into a space: somebody hands the process a link, exactly as they would hand one to a person. **Stopping one already in the room is a route now, and was not when this was written** — any member removes it, the room keeps a note saying so, its token stops at once and the invite it arrived through is revoked; see `notes/README.md`. What stood in the way was never code but the answer to "who may remove whom", and the entry further down this section records how long the *documented* answer went on being false. That also makes "3 AI agents helping here" a fact about who is in the room — surfaced in the directory and in the invite preview, where it is a reason to walk in the door rather than a feature listed on a page.
 
   **The notes service still holds no model credentials and makes no outbound calls.** It routes the question and stores the answer, with `source` recorded as the answerer's own statement of what produced it. That field is rendered next to the suggestion, because "a model said so" and "a keyword table said so" deserve different amounts of trust and the reader is the one who decides.
 
@@ -1880,7 +1922,7 @@ each of these is currently exactly that.
 
   **And the ceilings turned out to bind the assistant, which nobody had checked.** `assists.answer` is 60/hour per member and an AI member is a member, so a tireless participant in a busy room is exactly who runs out first — the cap working, not failing. What was wrong was the client: `assistant-main.ts` swallowed the 429, so the question was retried on the next wake of its own `/events` poll, which means **the retry rate was whatever the room's write rate happened to be** — invisible in a quiet room, once per note anybody typed in a busy one, and with an API key set, a paid model call each time to produce an answer the room was about to refuse. It now waits the number of seconds the service named, calls no suggester while paused, says whose friction this is so nobody goes looking at their agent key, and **stops on a dead membership** instead of retrying a 401 forever, since a token that no longer authenticates cannot be recovered by asking again.
 
-  **And it turned out the documented way to stop an assistant did not exist.** Three places in this repository said an assistant could be stopped by "revoking the link or removing the member". Neither half is true: an invite is consulted only at join time, so revoking it stops the *next* arrival and not one already in the room, and while `NotesStore.removeMember` exists, no HTTP route reaches it. The claim had been repeated for long enough to read as verified — including, briefly, in this roadmap entry. What is missing is not code but an answer to **who may remove whom**, which is a decision about how a room governs itself and not a detail to settle inside a client fix; the three candidate shapes and their costs are written up in `notes/README.md`. The 401 handling above is what makes any of them work the day one is chosen.
+  **And it turned out the documented way to stop an assistant did not exist.** Three places in this repository said an assistant could be stopped by "revoking the link or removing the member". Neither half was true: an invite is consulted only at join time, so revoking it stops the *next* arrival and not one already in the room, and `NotesStore.removeMember` — named here and in two other places as existing but unexposed — **did not exist either**. The store had `leave`, which is somebody removing themselves. The claim had been repeated for long enough to read as verified, including, briefly, in this roadmap entry, which then repeated the half about `removeMember` as well: a false claim checked against another document rather than against the code stays false and gains a citation. **It is built now** — a removal is a note in the room, any member may write one, the token dies immediately and the door closes behind them — and the decision that blocked it, "who may remove whom", is recorded with its costs in `notes/README.md`. The 401 handling above is what makes it land.
 
   **Two checks in this work had to be strengthened after passing against a live defect, which is worth recording as a pattern rather than as two anecdotes.** The retry-storm check counted a log message that the broken version no longer wrote, so zero waits passed a test for "not many waits"; it now counts every shape of "tried and could not", and makes the room busy while the ceiling is full, which is the only condition under which a bad client and a good one differ. The shutdown check asserted that `SIGTERM` does not wait out a parked long-poll — but sat in a harness where whether anything was parked at kill time was luck, and passed cleanly against a server with the defect still in it; it moved to `notes-layer.mjs`, where the poll is parked on purpose first. Both now go red on injection. The lesson is the one this project already recorded against the auto-apply check: a green result is evidence only about a check that has been watched failing.
 

@@ -377,35 +377,59 @@ it is discovery built before there is anything to discover, and it would trade
 away a real property — nobody gets in unless somebody let them in — for a use
 case nobody has yet. It waits for a room where someone knocks.
 
-### Open: there is no way to remove a member
+### A room can ask somebody to leave, and the room says so
 
-**A room cannot currently ask anybody to leave**, and this document said
-otherwise until it was checked. An invite is consulted only at join time, so
-revoking it stops the next arrival and does nothing about anyone already
-inside; and while `NotesStore.removeMember` exists, **no HTTP route exposes
-it**. For an assistant that means the only ways to stop one are to stop its
-process or to restart an ephemeral server and take every token with it.
+**This section used to say the opposite, and three documents said something
+worse.** They claimed an assistant could be stopped by "revoking the link or
+removing the member". Neither half was true: an invite is consulted only at
+join time, so revoking it stops the *next* arrival and does nothing about
+anyone already inside — and `NotesStore.removeMember`, which those documents
+named as existing but unexposed, **did not exist either**. The store had
+`leave`, which is somebody removing themselves. A claim repeated in three
+places for long enough reads as verified, which is exactly how this one
+survived.
 
-The client half is ready: `assistant-main.ts` stops on a 401 or 403 rather
-than retrying a dead token, so a removal route would work the day it exists.
-What is missing is not code but a decision — **who may remove whom** — and it
-is a decision about how a room governs itself rather than a detail to settle
-inside a client fix. Three shapes, none obviously right:
+**The shape chosen is that a removal is a note in the room.** `POST
+/spaces/:id/removals` with a `memberId` writes it. Three shapes were costed
+here; this is the one that adds no privileged role and leaves the history where
+everyone it happened to can read it.
 
-- **Any member may remove any member.** Consistent with the rest of this layer
-  — anyone may rewrite or delete any note — and the same argument applies: a
-  shared room whose participants cannot correct it is not shared. It also
-  makes one compromised token enough to empty a room.
-- **Only the creator may.** Simple, and quietly introduces the one asymmetry
-  this layer has so far avoided: a member who is more than a member. The space
-  has no owner today, and adding one to solve a moderation problem is how a
-  soft layer grows an admin.
-- **Removal is itself a note in the room.** No privileged role, and the
-  history of who removed whom is readable by everyone it happened to — which
-  fits a layer whose whole posture is that nothing here is hidden from the
-  people in the room. Slower, and needs a rule for how a removal takes effect.
+- **Any member may remove any member.** No owner, no admin — the same answer
+  this layer already gives for rewriting and deleting anybody's note. A room
+  whose participants cannot correct it is not shared, and adding a creator who
+  is more than a member to solve moderation is how a soft layer grows an admin.
+- **The record is a note**, attributed, in the room, saying who removed whom.
+  It carries the subject's name and kind because their member row is gone by
+  the time anybody reads it — removal really removes, the way deletion really
+  deletes here.
+- **That one note is the only note nobody may rewrite or delete.** Both are
+  refused with a 403 that says why. It is a real exception to this layer's
+  "anyone may edit anything", and it is the entire argument for recording a
+  removal as a note: an account any of the people involved can quietly erase is
+  not an account.
+- **The token dies immediately.** `authenticate` looks a token up in the member
+  map and now finds nothing, so a parked long-poll fails its next call rather
+  than being hunted down. `assistant-main.ts` already stops on a 401 instead of
+  retrying, which is what makes stopping an assistant work the moment this
+  route exists.
+- **The door they came through is closed.** Removal revokes the invite that
+  member joined through, because an invite checked only at join time is a way
+  back in for the person holding it — which is everybody who was just removed.
+  This has a real cost, and it is the deliberate one: anybody else holding that
+  same link is stopped too, and the room can mint another.
+- **An AI member may not remove anybody.** The one asymmetry here, and it is
+  about kind rather than rank: an agent is a full member, meets the same
+  ceilings, and may write, rewrite and delete any note — it does not decide who
+  is in the room. One line to reverse if a room ever wants otherwise.
 
-Whichever is chosen, an assistant is the easy case and a person is the hard
-one, so this waits for a room where somebody actually needs to be asked to
-leave. Recorded here rather than in a pull request comment, which is where it
-first got written down and where it would have been lost.
+**What this deliberately does not do is stop somebody who holds a *different*
+live invite from walking back in.** That is not an oversight waiting for a
+blocklist of names — this is the soft layer, the door is a link anybody inside
+can mint, and a re-entry is visible to everyone in the room, including in the
+note that says they were removed. A room that needs more than that has outgrown
+what this layer is for.
+
+`scripts/live-verify/notes-layer.mjs` holds all of it: the removal is a note,
+the record cannot be rewritten or deleted, the token stops at once, the door
+closes, you cannot remove yourself, an AI member is refused, and an assistant
+already in the room can be stopped.

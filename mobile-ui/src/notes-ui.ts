@@ -173,6 +173,13 @@ interface PromotionDraft {
   mode: string;
 }
 let promotionDraft: PromotionDraft | null = null;
+/** The member whose removal has been asked for once and not yet confirmed.
+ *
+ * Held out here rather than in the button, for the reason every other draft on
+ * these screens is: `render()` rebuilds the tree whenever anything arrives, and
+ * a confirmation living in the DOM would be cancelled by a stranger writing a
+ * note at the wrong moment. */
+let removalPending: string | null = null;
 let promotionError: string | null = null;
 let promotionResult: string | null = null;
 /** The question currently out to the room's AI members, if any. Held by id
@@ -947,7 +954,7 @@ function renderSpace(ctx: NotesContext, spaceId: string): HTMLElement {
   block.appendChild(el('h2', undefined, membership.spaceName));
   block.appendChild(renderLiveState());
   block.appendChild(renderSignals(spaceId));
-  block.appendChild(renderMembers(spaceId));
+  block.appendChild(renderMembers(ctx, spaceId, membership));
   block.appendChild(renderRequests(ctx, spaceId, membership));
   block.appendChild(renderInvites(ctx, spaceId, membership));
   block.appendChild(renderComposer(ctx, spaceId, membership));
@@ -1003,15 +1010,42 @@ function renderSignals(spaceId: string): HTMLElement {
   return wrap;
 }
 
-function renderMembers(spaceId: string): HTMLElement {
+function renderMembers(ctx: NotesContext, spaceId: string, membership: Membership): HTMLElement {
   const wrap = el('div', 'notes-members');
   wrap.dataset.testid = 'notes-members';
   const members = membersBySpace.get(spaceId) ?? [];
+  const me = members.find((m) => m.id === membership.memberId);
   for (const member of members) {
     const chip = el('span', member.kind === 'ai' ? 'member-chip ai' : 'member-chip');
     chip.textContent = member.kind === 'ai' ? `${member.displayName} (AI)` : member.displayName;
     if (member.kind === 'ai' && member.offers.length) chip.title = `Offers: ${member.offers.join(', ')}`;
     wrap.appendChild(chip);
+
+    // Offered beside every member but yourself, and not offered at all to an
+    // AI member, which is the one asymmetry this layer has: a model is a full
+    // member and does not decide who is in the room. Leaving is a different
+    // act with its own button — see the room's footer.
+    if (member.id === membership.memberId || me?.kind === 'ai') continue;
+    const ask = button(`Remove ${member.displayName}`, `notes-remove-${member.id}`, async () => {
+      // Two presses, deliberately. It is reversible only in the sense that
+      // somebody can be invited back, and the room keeps a permanent note
+      // saying it happened — so it should not be one stray tap on a phone.
+      if (removalPending !== member.id) { removalPending = member.id; ctx.rerender(); return; }
+      removalPending = null;
+      try {
+        const result = await client.removeMember(spaceId, membership.token, member.id);
+        membersBySpace.set(spaceId, result.members);
+        await loadSpace(ctx, spaceId);
+      } catch (error) {
+        serverError = error instanceof Error ? error.message : String(error);
+        ctx.rerender();
+      }
+    });
+    if (removalPending === member.id) {
+      ask.textContent = `Really remove ${member.displayName}?`;
+      ask.className = 'link-button removal-confirm';
+    }
+    wrap.appendChild(ask);
   }
   return wrap;
 }
@@ -1151,6 +1185,24 @@ function renderNote(
 ): HTMLElement {
   const item = el('li', 'note-card');
   item.dataset.testid = `note-${note.id}`;
+
+  // The room's own record, not somebody's writing. It reads differently, it
+  // carries none of the affordances below — no edit, no delete, no promotion —
+  // and the service refuses all three anyway. A removal that could be quietly
+  // rewritten out of the room is a removal with no history, which is the whole
+  // reason it is a note at all.
+  if (note.removal) {
+    const author = members.find((m) => m.id === note.authorId);
+    item.className = 'note-card note-removal';
+    item.dataset.testid = `note-removal-${note.id}`;
+    const line = el('p', 'note-removal-text', note.text);
+    item.appendChild(line);
+    const when = el('div', 'hint note-byline',
+      `${author?.displayName ?? 'someone no longer here'} · ${whenText(note.createdAt)}`
+      + (note.removal.inviteClosed ? ' · the invite they arrived through was closed' : ''));
+    item.appendChild(when);
+    return item;
+  }
 
   const author = members.find((m) => m.id === note.authorId);
   const byline = el('div', 'hint note-byline');

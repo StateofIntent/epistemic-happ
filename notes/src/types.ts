@@ -34,6 +34,13 @@ export interface Member {
   /** Touched on every authenticated request. Feeds the "N people active
    * today" signal, which is descriptive and space-local by construction. */
   lastSeenAt: number;
+  /** The invite this member walked in through, or null for a space's creator.
+   *
+   * Recorded for one reason: removal closes the door somebody came through.
+   * An invite is checked only at join time, so a removal that left the link
+   * alive would be theatre — the person removed holds it and rejoins as a new
+   * member seconds later. See `NotesStore.removeMember`. */
+  joinedVia: string | null;
 }
 
 /** A member as anyone in the space may see them. The access token never
@@ -87,6 +94,22 @@ export interface JoinRequest {
   memberId: string | null;
 }
 
+/** What a removal note records, beyond the sentence a reader sees.
+ *
+ * The subject's own row is gone by the time anyone reads this — removal
+ * really removes, the way deletion really deletes here — so the name and kind
+ * are copied onto the note. Otherwise the room's account of who was asked to
+ * leave would be a dangling id, which is exactly the history this shape of
+ * removal exists to keep readable. */
+export interface Removal {
+  subjectId: string;
+  subjectName: string;
+  subjectKind: MemberKind;
+  /** The invite closed alongside the removal, or null if they were a creator
+   * or arrived through a link that was already revoked. */
+  inviteClosed: string | null;
+}
+
 export interface Note {
   id: string;
   spaceId: string;
@@ -98,6 +121,12 @@ export interface Note {
   exemplar: boolean;
   createdAt: number;
   updatedAt: number;
+  /** Set on the one kind of note nobody may rewrite or delete: the record
+   * that a member was removed from this room. Ordinary notes are freely
+   * editable by anybody, which is the point of a shared notebook — but a
+   * removal whose record can be quietly erased is a removal with no history,
+   * and the history is the whole argument for recording it as a note. */
+  removal?: Removal;
   /** How many times this note's text has been rewritten, starting at 0.
    *
    * It exists so a save can refuse to clobber. Any member may rewrite any

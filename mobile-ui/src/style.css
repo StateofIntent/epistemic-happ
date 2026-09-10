@@ -1371,6 +1371,19 @@ button:disabled { opacity: 0.6; cursor: default; }
   margin-bottom: 0.7rem;
 }
 
+/* The room's record of a removal, which is not somebody's writing and should
+   not read like it: quieter, no card of its own to speak of, and set apart
+   from the notes it sits between. */
+.note-removal {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-dim);
+}
+.note-removal-text { margin: 0 0 0.3rem; font-style: italic; overflow-wrap: anywhere; }
+
+/* Asked once, and asking again is the confirmation. */
+.removal-confirm { font-weight: 600; }
+
 .note-byline { margin: 0 0 0.35rem; }
 .note-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 

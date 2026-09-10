@@ -394,7 +394,7 @@ export class NotesStore {
       this.touched();
       return { outcome: 'requested', request };
     }
-    const { member, token: memberToken } = this.addMember(invite.spaceId, input);
+    const { member, token: memberToken } = this.addMember(invite.spaceId, input, invite.token);
     this.touched();
     return { outcome: 'joined', member, token: memberToken };
   }
@@ -450,7 +450,11 @@ export class NotesStore {
 
   // --- Members -----------------------------------------------------------
 
-  private addMember(spaceId: string, input: JoinInput): { member: Member; token: string } {
+  private addMember(
+    spaceId: string,
+    input: JoinInput,
+    joinedVia: string | null = null,
+  ): { member: Member; token: string } {
     const now = Date.now();
     const stored: StoredMember = {
       id: id('mem'),
@@ -460,6 +464,7 @@ export class NotesStore {
       offers: stringList(input.offers, 'offers', 8, 60),
       joinedAt: now,
       lastSeenAt: now,
+      joinedVia,
       token: secret(),
     };
     this.state.members[stored.id] = stored;
@@ -501,6 +506,90 @@ export class NotesStore {
     if (!member) throw new NotesError(404, 'no_such_member', 'no such member');
     delete this.state.members[memberId];
     this.touched();
+  }
+
+  /** Asks somebody to leave, and writes the room's account of it.
+   *
+   * WHO MAY DO THIS: any member, which is the same answer this layer already
+   * gives for rewriting or deleting anybody's note. A room whose participants
+   * cannot correct it is not shared, and the alternative — a creator who is
+   * more than a member — is how a soft layer grows an admin. What keeps that
+   * from being a hole is not a permission, it is the record: the removal is a
+   * NOTE, in the room, attributed, and readable by everyone it happened to.
+   *
+   * THREE THINGS HAPPEN AT ONCE, and each is load-bearing.
+   *
+   * The note is written first, carrying the subject's name and kind, because
+   * the member row is about to stop existing — deletion really deletes here,
+   * and an account of a removal that resolved to a dangling id would be no
+   * account at all.
+   *
+   * The member is removed, which kills the token immediately: `authenticate`
+   * looks the token up in this map and finds nothing. A parked long-poll
+   * belonging to them fails its next authenticated call rather than being
+   * hunted down, and `assistant-main.ts` already stops on a 401 rather than
+   * retrying, which is what makes stopping an assistant work at all.
+   *
+   * The invite they walked in through is revoked, and this is the part worth
+   * arguing about. An invite is checked ONLY at join time, so a removal that
+   * left the link alive would be theatre: the person removed is holding it and
+   * rejoins as a new member seconds later. Closing the door has a real cost —
+   * anybody else holding that same link is stopped too — and the room can mint
+   * another. A room that cannot make a removal stick is not moderating, it is
+   * asking politely, and this layer already has `leave` for asking politely.
+   *
+   * WHAT THIS DELIBERATELY DOES NOT DO is stop somebody who holds a DIFFERENT
+   * live invite from walking back in. That is not an oversight to be patched
+   * with a blocklist of names: this is the soft layer, the door is a link
+   * anybody inside can mint, and a re-entry is visible to everyone in the room
+   * — including in the note that says they were removed. See notes/README.md. */
+  removeMember(spaceId: string, actor: Member, subjectId: unknown): Note {
+    if (typeof subjectId !== 'string' || subjectId === '') {
+      throw new NotesError(400, 'bad_member', 'memberId must be the id of a member of this room');
+    }
+    const subject = this.state.members[subjectId];
+    if (!subject || subject.spaceId !== spaceId) {
+      throw new NotesError(404, 'no_such_member', 'no such member in this space');
+    }
+    if (subject.id === actor.id) {
+      // Not a permission check — a signpost. Leaving is a different act from
+      // being asked to leave, and conflating them would put a removal note in
+      // the room every time somebody closed the tab on their own room.
+      throw new NotesError(
+        400, 'remove_self',
+        'you cannot remove yourself — POST /spaces/:id/leave is how somebody leaves a room',
+      );
+    }
+    if (actor.kind === 'ai') {
+      // THE ONE ASYMMETRY HERE, and it is about kind rather than rank: an AI
+      // member is a full member in every other respect, meets the same
+      // ceilings, and may write, rewrite and delete any note. It may not
+      // decide who is in the room. Reversible in one line if a room ever
+      // wants otherwise, and stated in notes/README.md rather than left for
+      // somebody to discover from a 403.
+      throw new NotesError(
+        403, 'ai_may_not_remove',
+        'an AI member is a full member and may not remove people from the room',
+      );
+    }
+
+    const invite = subject.joinedVia === null ? null : this.state.invites[subject.joinedVia] ?? null;
+    const closable = invite !== null && invite.revokedAt === null;
+
+    const note = this.insertNote(
+      spaceId, actor.id,
+      `${actor.displayName} removed ${subject.displayName} from this room.`, false,
+    );
+    note.removal = {
+      subjectId: subject.id,
+      subjectName: subject.displayName,
+      subjectKind: subject.kind,
+      inviteClosed: closable ? invite.token : null,
+    };
+    if (closable) invite.revokedAt = Date.now();
+    delete this.state.members[subject.id];
+    this.touched();
+    return note;
   }
 
   // --- Notes -------------------------------------------------------------
@@ -559,6 +648,7 @@ export class NotesStore {
    * say so. */
   editNote(noteId: string, text: unknown, expectedRev?: unknown): Note {
     const note = this.getNote(noteId);
+    refuseIfRemoval(note, 'rewritten');
     const rev = note.rev ?? 0;
     if (expectedRev !== undefined && expectedRev !== null) {
       if (typeof expectedRev !== 'number' || !Number.isInteger(expectedRev)) {
@@ -583,9 +673,10 @@ export class NotesStore {
     return note;
   }
 
-  /** Really deletes. See this file's header. */
+  /** Really deletes. See this file's header — with the one exception the
+   * header cannot know about, because it predates removals existing. */
   deleteNote(noteId: string): void {
-    this.getNote(noteId);
+    refuseIfRemoval(this.getNote(noteId), 'deleted');
     delete this.state.notes[noteId];
     this.touched();
   }
@@ -765,4 +856,25 @@ function normaliseSuggestion(value: unknown): AssistSuggestion | null {
 function publicShape(stored: StoredMember): Member {
   const { token: _token, ...rest } = stored;
   return rest;
+}
+
+/** The one note in this layer that is not anybody's to rewrite.
+ *
+ * Every other note here is freely editable and freely deletable by any member,
+ * deliberately: a shared notebook whose participants cannot correct it is not
+ * shared, and nothing here is permanent. A removal note is the exception
+ * because it is not somebody's writing, it is the room's account of who was
+ * asked to leave — and an account that any of the people involved can quietly
+ * erase is not an account. Keeping it is the entire argument for recording a
+ * removal as a note rather than as a silent state change.
+ *
+ * The refusal is a 403 with a reason rather than a 404, because pretending the
+ * note is not there would be its own small lie about the room's history. */
+function refuseIfRemoval(note: Note, verb: string): void {
+  if (!note.removal) return;
+  throw new NotesError(
+    403, 'removal_note',
+    `this note is the room's record that ${note.removal.subjectName} was removed, `
+    + `and it cannot be ${verb} — it is the room's history, not somebody's writing`,
+  );
 }
