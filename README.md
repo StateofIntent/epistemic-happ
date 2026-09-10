@@ -954,7 +954,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
-| The `notes-layer` X-Forwarded-For intermittency | **A recurrence** — seen once, hypothesis written down, not understood | §9 below |
+| ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
 | ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `hud-layer` typing intermittency~~ | **Done** — the draft fix was half of it; the caret was the other half | §9 below, `mobile-ui/README.md` |
 | ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
@@ -1255,6 +1255,33 @@ expected 429 — which is exactly the observed shape, and would be load-sensitiv
 fitting a CI runner under concurrent load and not a development machine. Unlike
 the browser intermittencies this one already reports as a named check rather than
 a bare timeout, so there is something to work with on the next occurrence.
+
+**The recurrence came, the hypothesis was wrong in its mechanism and right in
+its shape, and underneath it was a real defect.** The second occurrence was on a
+pull request that touched nothing but the mobile UI, which is what makes the
+next part worth stating: *no budget is consumed* was the correct reading, but
+not because a server was unready. **A ceiling keyed on `socket.remoteAddress`
+verbatim is keyed on the address FAMILY as much as on the caller.** The same
+machine is `::1` over IPv6 and `127.0.0.1` over IPv4 — two keys, two budgets,
+one caller — and an IPv4 client on a dual-stack listener arrives as
+`::ffff:1.2.3.4`, so a caller even changes key when the *listener* changes. This
+harness reached `http://localhost`, which resolves to both, and Node's fetch
+picks a family per connection. The check asks a 1-per-hour ceiling to refuse the
+**second** create, so a single call landing on the other family made it the first
+call again and the refusal never came.
+
+**Proved by hand rather than argued for**: with the ceiling at 1/hour, two
+creates over `127.0.0.1` give `200` then `429`, and a third over `[::1]` gives
+`200`. After `normaliseAddress`, that third create is `429`.
+
+It is the smaller cousin of the failure the X-Forwarded-For rule exists to
+prevent — a ceiling that reads as a defence in review and is opened by a caller
+who does nothing cleverer than connect the other way — which is why not
+re-running it away was worth the two red ticks it cost. **What is fixed is one
+machine being one key; what is not is a caller with a whole IPv6 `/64`**, and
+`notes/README.md` records why folding a prefix is a decision about what an
+address means here rather than a line of code: a `/64` is one household on some
+networks and one customer of a provider on others.
 
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot

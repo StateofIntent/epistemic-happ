@@ -71,6 +71,25 @@
 //   correctly: that server was told to trust the header, and the injection did
 //   not change what it does. Reverted.
 //
+//   Injection: `clientAddress` returning `socket.remoteAddress` verbatim, with
+//   no normalisation — the service exactly as it shipped, and the shape this
+//   arrives in, since the address is right there on the socket and looks like
+//   the whole answer.
+//   Result: exactly one red — "one machine is one ceiling, whichever family it
+//   connects over". The X-Forwarded-For check beside it stayed GREEN, which is
+//   correct and is the reason both checks exist: the header rule was never
+//   broken by this, and a harness that went red on both would be asserting
+//   something vaguer than either. Reverted; the whole file green.
+//
+//   That injection is the defect this file kept flaking on rather than one
+//   invented for the block. The X-Forwarded-For check failed on CI twice,
+//   months apart, and was recorded in the root README as open and uncaused: it
+//   asks a 1-per-hour ceiling to refuse the SECOND create, this harness reached
+//   `http://localhost`, and Node's fetch picks an address family per
+//   connection — so a call landing on the other family made it the first call
+//   again and no refusal came. The connection is pinned to 127.0.0.1 now, and
+//   the family question is asked on purpose instead of by accident.
+//
 //   Injection: the `spaces.create` charge moved to after `store.createSpace`,
 //   which is where it lands if you are thinking "charge for what happened"
 //   rather than "refuse before anything happens".
@@ -90,6 +109,17 @@ import { join } from 'node:path';
 
 const PORT = Number(process.env.EPI_NOTES_TEST_PORT ?? 8791);
 const ORIGIN = `http://localhost:${PORT}`;
+/** Where this harness actually connects, and it is NOT `localhost`.
+ *
+ * `localhost` resolves to both ::1 and 127.0.0.1, and Node's fetch picks a
+ * family per connection — so a harness that asks a per-address ceiling to
+ * refuse the SECOND call is really asking two questions at once, and the one it
+ * does not mean to ask is answered by the resolver. That is what made the
+ * X-Forwarded-For check below fail twice on CI, months apart, for no reason
+ * anybody could name: one call landing on the other family makes it the first
+ * call again, and the refusal never comes. ORIGIN stays `localhost` because
+ * that is the origin the SERVER is configured with; the connection is pinned. */
+const BASE = `http://127.0.0.1:${PORT}`;
 const MAIN = new URL('../../notes/dist/main.js', import.meta.url).pathname;
 const SERVER_JS = new URL('../../notes/dist/server.js', import.meta.url).pathname;
 const STORE_JS = new URL('../../notes/dist/store.js', import.meta.url).pathname;
@@ -112,11 +142,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Deliberately not the browser client from mobile-ui: a harness that shares a
 // client with the thing it verifies can only find bugs both halves agree
 // about. This talks to the documented HTTP surface directly.
+/** A create over a base this harness does not otherwise use, for asking
+ * whether the address family changes who the caller is. Returns the status, or
+ * null when nothing is listening on that family at all. */
+async function createOver(base, name) {
+  try {
+    const res = await fetch(`${base}/spaces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: `${name} ${STAMP}`, description: 'A room with small ceilings.',
+        listed: true, creator: { displayName: 'Ada' },
+      }),
+    });
+    return res.status;
+  } catch {
+    return null;
+  }
+}
+
 async function call(method, path, { token, body, headers: extra, signal } = {}) {
   const headers = { ...extra };
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(`${ORIGIN}${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     signal,
@@ -152,12 +201,12 @@ async function startServer(statePath, extraEnv = {}) {
   for (let i = 0; i < 100; i++) {
     await sleep(50);
     try {
-      const res = await fetch(`${ORIGIN}/health`);
+      const res = await fetch(`${BASE}/health`);
       if (res.ok) return child;
     } catch { /* not up yet */ }
   }
   child.kill('SIGKILL');
-  setupFail([`the notes server never answered /health on ${ORIGIN}.`]);
+  setupFail([`the notes server never answered /health on ${BASE}.`]);
 }
 
 /** Starts the service expecting it NOT to come up.
@@ -652,6 +701,25 @@ async function main() {
     const spoofed = await makeSpace('Spoofed', { 'x-forwarded-for': '10.0.0.2' });
     check('X-Forwarded-For is ignored unless an operator says something is in front — one header must not reset a ceiling',
       spoofed.status === 429);
+
+    // THE SAME QUESTION ASKED OF THE TRANSPORT INSTEAD OF A HEADER, and the
+    // answer used to be different. A ceiling keyed on socket.remoteAddress
+    // verbatim is keyed on the address FAMILY as much as on the caller: the
+    // same machine is `::1` over IPv6 and `127.0.0.1` over IPv4, which was two
+    // budgets for one caller — openable by anybody who connects the other way
+    // and nothing cleverer. It is also what made the check above flake, since
+    // this harness reached `localhost` and Node's fetch chooses a family per
+    // connection. Both halves are fixed; this is the half that stays checked.
+    const overTheOtherFamily = await createOver(`http://[::1]:${PORT}`, 'Over the other family');
+    if (overTheOtherFamily === null) {
+      // Reported, not skipped silently: a machine with no IPv6 loopback cannot
+      // answer this, and a green tick that proved nothing would be worse than
+      // a line saying so.
+      log('  (no IPv6 loopback here — the address-family check did not run)');
+    } else {
+      check('one machine is one ceiling, whichever family it connects over',
+        overTheOtherFamily === 429);
+    }
 
     await stopServer(server);
     server = await startServer(null, { EPI_NOTES_CAP_SPACES_CREATE: '1/3600', EPI_NOTES_TRUST_PROXY: '1' });
