@@ -438,10 +438,20 @@ type Field = HTMLInputElement | HTMLTextAreaElement;
  * so the match has to be on what a person would say is "the same box". The
  * test id where there is one, then the placeholder, then the name — the
  * fallbacks matter, because most inputs in this file carry no test id and
- * they lose the caret exactly like the ones that do. */
+ * they lose the caret exactly like the ones that do.
+ *
+ * The LABEL is the last of them, and it is the one that makes this safe to
+ * forget. Auditing every field this app builds turned up exactly one that
+ * named itself in none of the other ways — the New Claim form's Tags box,
+ * which says what it is only through the `<label>` wrapped around it, and
+ * which would therefore have gone on silently losing the caret while every
+ * box beside it kept it. A field nobody remembered to name is precisely the
+ * field that will be added next, so the fallback is worth more than the one
+ * repair it makes today. */
 function focusKey(field: Field): string | null {
   return field.dataset.testid || field.placeholder || field.name
-    || field.getAttribute('aria-label') || null;
+    || field.getAttribute('aria-label')
+    || field.closest('label')?.textContent?.trim() || null;
 }
 
 function fieldsWithKey(key: string): Field[] {
@@ -3770,6 +3780,9 @@ function renderNewClaimTab(): HTMLElement {
   tagsLabel.textContent = 'Tags (comma-separated, optional)';
   const tagsInput = document.createElement('input');
   tagsInput.type = 'text';
+  // Named for the same reason the Browse tab's domain box is: this was the one
+  // field in the app that `focusKey` could not identify across a rebuild.
+  tagsInput.setAttribute('data-testid', 'new-claim-tags');
   tagsInput.value = newClaimDraft.tags;
   tagsInput.oninput = () => { newClaimDraft.tags = tagsInput.value; };
   tagsLabel.appendChild(tagsInput);

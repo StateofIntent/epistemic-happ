@@ -1235,6 +1235,13 @@ being wrong and the fix being right, and it is recorded in
 `scripts/live-verify/hud-layer.mjs`'s negative-evidence block because a check
 that asserts where text lands has to say where the caret was first.
 
+**Every field in the app was then audited against the same rule**, since a fix
+that depends on a box naming itself is only as good as the naming. Exactly one
+failed: the New Claim form's Tags box, which identifies itself through the
+`<label>` around it and nothing else. It is named now, and `focusKey` falls back
+to the wrapping label, so the next field added without remembering any of this
+keeps its caret regardless.
+
 **A fourth intermittency is open, has been seen exactly once, and is recorded
 here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is
 ignored unless an operator says something is in front — one header must not reset
