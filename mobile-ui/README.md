@@ -77,7 +77,7 @@ To build the installable bundle rather than a static site, use the root `scripts
 - **PWA installability was not verified against a real Lighthouse audit or an actual mobile device this pass** — `manifest.webmanifest` and `public/sw.js` are present and syntactically real (the service worker was confirmed to register and intercept same-origin GETs during the Playwright run), but full install-prompt behavior varies by browser and wasn't independently audited.
 - **`npm audit` flags a moderate advisory in `esbuild` (via `vite@5`)**: the advisory is specific to `esbuild`'s local dev server accepting cross-origin requests — it affects `npm run dev` only, not the built `dist/` output, and `vite@5`'s fix requires the breaking `vite@8`. Left as-is for this pass; worth revisiting alongside a real Vite major-version upgrade, not in isolation.
 
-## A rebuild can still lose what you are typing — one place it does, and one it does not
+## A rebuild can still lose what you are typing — the value, and the caret
 
 `render()` rebuilds this app's DOM wholesale, so anything typed into an input
 survives a rebuild only if something outside the DOM remembers it. Two inputs now
@@ -96,6 +96,60 @@ with the seed confirmed written — and `scripts/live-verify/layout-fits.mjs` ha
 already been given a click-twice workaround for it before anyone knew the cause.
 `hud-layer` now forces the rebuild by switching tabs and asserts the box still
 holds what was typed, which is what turns it from an intermittency into a check.
+
+### Keeping the value was half of it — the caret is the other half
+
+`main` went red again on the very next merge with that fix in, and the
+diagnostic added alongside it is why the second half was found rather than
+re-run away: it reported an **empty domain box**, which rules out the read and
+points at the screen.
+
+A draft keeps what has already been typed. It does not keep the caret.
+`render()` destroys the focused input, focus falls back to `<body>`, and every
+keystroke after that goes nowhere — no error, no event, and the box still
+showing the text typed before the rebuild. The screen looks fine and quietly
+stops accepting letters.
+
+Reproduced outside this repository, on a page carrying only this app's shape (a
+wholesale rebuild, a value persisted on `oninput`): a Playwright `fill()` is
+lost **35 times in 300** when the rebuild lands in the few milliseconds between
+the fill focusing the box and inserting the text — and **0 times in 300** with
+the fix. A person loses the same letters one keystroke at a time.
+
+So `render()` now captures the caret and puts it back:
+
+- **`captureFocus()` runs inside the rebuild**, so there is no window in which a
+  keystroke arrives and finds nothing focused — the rebuild is synchronous.
+- **A field is matched back across the rebuild** by `data-testid`, then
+  placeholder, then name, then aria-label, and by its position among the boxes
+  sharing that key. The fallbacks are the point: most inputs in `main.ts` carry
+  no test id, and they lose the caret exactly like the ones that do. The Browse
+  tab's domain box is now `browse-domain-input` so the thing identifying it is
+  not the wording of its placeholder.
+- **Focus is restored only when it was in a field.** A render caused by pressing
+  a button leaves the button focused, and pulling the caret back into a box
+  somebody has just left is its own defect.
+- **`loadClaims` no longer re-seeds the box when the read came from it**
+  (`fromTheBox`). With the caret kept, the next thing lost is whatever was typed
+  while the read was in flight, because the load lands a round trip later and
+  overwrote the draft with the domain it was asked for. A read started anywhere
+  else still names its domain in the box, which is what that assignment was for.
+- **`notes-ui.ts`'s `rerenderLive` collapses into `render()`.** It was this same
+  capture-and-restore, written when another member's note arriving mid-sentence
+  was the only way a screen moved by itself. It was never notes-specific, so one
+  mechanism now covers every screen instead of two covering one each.
+
+`hud-layer` holds the invariant, forced rather than waited for: it types a
+domain, presses Enter, and keeps typing while the read is in flight, then
+asserts every later keystroke reached the box and the caret is still in it. It
+marks the live input first, and since a rebuild cannot preserve that mark, a run
+where the read landed before the typing began says it proved nothing rather than
+going green.
+
+`layout-fits.mjs` keeps its fill-and-click-twice retry. It was added blind to
+this cause and would now be redundant against it, but it also covers a genuinely
+slow read, and `hud-layer` is where the defect is named. Removing it would trade
+a check that says something for a check that intermittently says nothing.
 
 **The New Claim form had the same shape, and is now fixed too.** It was the worst
 case, being the screen somebody spends real time on: all seven controls — the

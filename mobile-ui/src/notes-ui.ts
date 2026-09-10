@@ -256,32 +256,20 @@ function whenText(at: number | null): string {
 
 /** Rerender without pulling the caret out of whatever is being typed into.
  *
- * main.ts's render() replaces the whole DOM, which was harmless while this
- * screen only rerendered in response to the person's own actions. Once
- * another member's note can arrive mid-sentence it stops being harmless: the
- * textarea holding a half-written thought is destroyed and rebuilt, and
- * without this the caret lands at the start of a different element. Draft
- * text is kept in module state; this keeps the cursor that was in it. */
+ * This screen needed that first, because it is the one that moves by itself:
+ * another member's note arriving mid-sentence destroys and rebuilds the
+ * textarea holding a half-written thought, and the caret lands at the start
+ * of a different element. It was written here as a wrapper around
+ * `ctx.rerender()` for that reason.
+ *
+ * IT IS NOT NOTES-SPECIFIC AND NEVER WAS, which the `hud-layer` intermittency
+ * eventually proved: the same rebuild destroys the Browse tab's domain box
+ * while somebody is typing a domain into it, and the same async loads trigger
+ * it. So the capture-and-restore now lives in main.ts's `render()`, where it
+ * covers every screen this app has, and this function is the same call by a
+ * name that says why it is safe to make it during a long-poll. */
 function rerenderLive(ctx: NotesContext): void {
-  const active = document.activeElement;
-  const testid = active instanceof HTMLElement ? active.dataset.testid ?? null : null;
-  const field = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ? active : null;
-  const start = field?.selectionStart ?? null;
-  const end = field?.selectionEnd ?? null;
-  const scroll = field?.scrollTop ?? 0;
-
   ctx.rerender();
-
-  if (testid === null) return;
-  const restored = document.querySelector(`[data-testid="${CSS.escape(testid)}"]`);
-  if (!(restored instanceof HTMLElement)) return;
-  restored.focus();
-  if (start !== null && (restored instanceof HTMLTextAreaElement || restored instanceof HTMLInputElement)) {
-    try {
-      restored.setSelectionRange(start, end ?? start);
-      restored.scrollTop = scroll;
-    } catch { /* the element came back as something without a selection */ }
-  }
 }
 
 /** Folds a snapshot from `/events` into what the screen reads from.

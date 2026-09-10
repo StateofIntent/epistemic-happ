@@ -934,9 +934,11 @@ are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
 somewhere other than a to-do list is exactly how they stay invisible.
 
 **Everything blocked on nothing but effort is now done.** Protocol versioning
-shipped and its deadline is spent; the CI binary download retries; three browser
-intermittencies were traced to one defect and fixed; and the npm republish is
-prepared down to a single command. **Exactly one open item needs a person rather
+shipped and its deadline is spent; the CI binary download retries; four browser
+intermittencies were traced to one defect and fixed — the fourth being the same
+defect's second half, which only became visible because the first fix let `main`
+fail again in a way that named it; and the npm republish is prepared down to a
+single command. **Exactly one open item needs a person rather
 than a decision**, and it is the only one with outside impact:
 
 > `scripts/publish-packages.sh --publish`, run by somebody with publish rights on
@@ -954,6 +956,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
 | The `notes-layer` X-Forwarded-For intermittency | **A recurrence** — seen once, hypothesis written down, not understood | §9 below |
 | ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
+| ~~The `hud-layer` typing intermittency~~ | **Done** — the draft fix was half of it; the caret was the other half | §9 below, `mobile-ui/README.md` |
 | ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
 | Migration across a fork | **A decision** — whether provenance is an entry type or stays outside | `SPEC.md` §11.3 |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
@@ -1165,6 +1168,59 @@ Two things about how it was found are the transferable part:
   the rebuild — switching tabs, refreshing the directory — rather than waiting to
   be unlucky. The injections now fail on every run where the defect used to
   surface about once a day.
+
+**That fix was half the defect, and `main` went red again within the hour saying
+so.** `hud-layer` failed on a documentation-only merge with the draft fix already
+in it, and this time the diagnostic written in the same commit did its job: it
+reported an *empty domain box* rather than a bare timeout, which rules out the
+read and names the screen. Persisting a draft keeps what has already been typed
+when the screen rebuilds. **It does not keep the caret.** `render()` destroys the
+focused input, focus falls back to `<body>`, and every keystroke after that
+lands nowhere at all — no error, no event, and the box still showing the text
+typed before the rebuild, so the screen looks fine and simply stops accepting
+letters.
+
+**It was reproduced outside this repository, which is what turned a third
+occurrence into an answer.** A minimal page carrying only this app's shape — a
+wholesale rebuild, a value persisted on `oninput` — loses a Playwright `fill()`
+in **35 runs out of 300** when the rebuild lands in the few milliseconds the
+fill spends between focusing the box and inserting the text: no `input` event
+fires anywhere and the value is never written, because text goes to whatever
+holds focus and by then that is the body. The same page with the fix below loses
+**0 of 300**. A person types one keystroke at a time and loses the same letters,
+so this is a defect somebody meets, not a harness artefact — the difference is
+that a harness types fast enough to lose the whole domain in one go.
+
+Three changes, and the second and third only became visible once the first was
+made:
+
+- **`render()` captures the caret and puts it back**, in `mobile-ui/src/main.ts`.
+  Capture and restore happen inside the one synchronous rebuild, so there is no
+  window in which a keystroke arrives and finds nothing focused. Focus is
+  restored only when it was in a field — a render caused by pressing a button
+  leaves the button focused, and dragging the caret back into a box somebody has
+  just left would be its own defect.
+- **`loadClaims` no longer re-seeds the box when the read was started from it.**
+  With the caret kept, the next thing a person loses is the letters typed while
+  the read is in flight: the load lands a round trip later and overwrote the
+  draft with the domain it had been asked for. A read started anywhere else —
+  publishing into the domain being browsed, following a domain from a card —
+  still names its domain in the box, which was the affordance that assignment
+  existed for.
+- **The notes layer's `rerenderLive` collapses into it.** That function was this
+  same capture-and-restore, written when a stranger's note arriving mid-sentence
+  was the only way a screen moved by itself. It was never notes-specific: the
+  identical rebuild takes the caret out of the Browse tab's domain box, so the
+  behaviour now lives in `render()` where it covers every screen, and one
+  mechanism does the job two were doing.
+
+**The check is forced rather than waited for, like the three before it.**
+`hud-layer` now types a domain, presses Enter, and keeps typing while the read is
+in flight — the exact sequence a practitioner performs — then asserts that every
+later keystroke reached the box and that the caret is still in it. It carries a
+witness against passing vacuously: the live input is marked before the read, and
+because a rebuild cannot preserve that mark, a run where the read landed before
+the typing began reports itself as proving nothing instead of going green.
 
 **A fourth intermittency is open, has been seen exactly once, and is recorded
 here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is

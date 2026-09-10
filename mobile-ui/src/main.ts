@@ -401,19 +401,111 @@ function notesContext(): NotesContext {
   };
 }
 
+// --- Keeping the caret across a rebuild -----------------------------------
+//
+// THE HALF OF THE INPUT-LOSS DEFECT THAT PERSISTING DRAFTS DOES NOT FIX, and
+// it is the half a person actually feels. `domainDraft`, `authorDraft`,
+// `newClaimDraft` and the notes drafts keep what has ALREADY been typed when
+// this app rebuilds its DOM wholesale. None of them keeps the CARET: the
+// focused input is destroyed, focus falls back to `<body>`, and every
+// keystroke after that lands nowhere at all. Nothing reports it — no error,
+// no event, and the box still shows the text typed before the rebuild, so the
+// screen looks fine and simply stops accepting letters.
+//
+// It is the same trigger as the value loss and therefore just as reachable:
+// connecting fires two independent async loads, `loadClaims` re-renders when a
+// read lands, and a note arriving in an open room re-renders too. Type into
+// the domain box while any of those resolve and the rest of the word goes
+// into nothing.
+//
+// FOUND BY REPRODUCING THE `hud-layer` INTERMITTENCY OUTSIDE THIS REPOSITORY.
+// It survived the draft fix and went red again on main — the domain box empty,
+// the harness's own diagnostic naming which half had failed. A minimal page
+// with this app's exact shape (a wholesale rebuild, a value persisted on
+// `oninput`) loses a Playwright `fill()` in 35 runs out of 300 when the
+// rebuild lands in the few milliseconds the fill spends between focusing the
+// box and inserting the text: no `input` event fires anywhere, and the value
+// is never written, because the text is delivered to whatever holds focus and
+// by then that is the body. A person types the same way, one keystroke at a
+// time, and loses the same letters.
+//
+// The notes screens already had this, as `rerenderLive` — written when a
+// stranger's note could arrive mid-sentence. It is app-wide now rather than
+// notes-only, because every one of those triggers rebuilds every screen.
+type Field = HTMLInputElement | HTMLTextAreaElement;
+
+/** What identifies a field across a rebuild: it is a NEW element afterwards,
+ * so the match has to be on what a person would say is "the same box". The
+ * test id where there is one, then the placeholder, then the name — the
+ * fallbacks matter, because most inputs in this file carry no test id and
+ * they lose the caret exactly like the ones that do. */
+function focusKey(field: Field): string | null {
+  return field.dataset.testid || field.placeholder || field.name
+    || field.getAttribute('aria-label') || null;
+}
+
+function fieldsWithKey(key: string): Field[] {
+  return [...app.querySelectorAll<Field>('input, textarea')]
+    .filter((field) => focusKey(field) === key);
+}
+
+/** Captures where the caret is, and returns the function that puts it back.
+ *
+ * Both halves run inside one `render()` call, so there is no window in which
+ * a keystroke can arrive and find nothing focused: the DOM is single-threaded
+ * and the rebuild is synchronous. Focus is restored ONLY when it was in a
+ * field — a render caused by pressing a button leaves the button focused, and
+ * dragging the caret back into a box the person just left would be its own
+ * defect. */
+function captureFocus(): () => void {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) {
+    return () => { /* nothing was being typed into */ };
+  }
+  const key = focusKey(active);
+  if (key === null) return () => { /* nothing names this box across a rebuild */ };
+  // Several boxes can share a key — the evidence rows, for one — so remember
+  // which of them it was rather than always restoring the first.
+  const ordinal = fieldsWithKey(key).indexOf(active);
+  let start: number | null = null;
+  let end: number | null = null;
+  // `selectionStart` throws on input types that have no caret (number, email
+  // in some browsers), which is a normal field to be focused in, not an error.
+  try { start = active.selectionStart; end = active.selectionEnd; } catch { /* no caret */ }
+  const scroll = active.scrollTop;
+
+  return () => {
+    const restored = fieldsWithKey(key)[ordinal];
+    if (!restored) return;
+    restored.focus();
+    if (start === null) return;
+    try {
+      restored.setSelectionRange(start, end ?? start);
+      restored.scrollTop = scroll;
+    } catch { /* it came back as something without a selection */ }
+  };
+}
+
 function render() {
-  app.innerHTML = '';
-  conceptNoteShownThisPass = false;
-  app.appendChild(renderHeader());
-  if (!connection) {
-    if (notesWithoutConductor) {
-      app.appendChild(renderNotesWithoutConductor());
+  const restoreFocus = captureFocus();
+  // `finally`, because the early returns below are real exits and a rebuilt
+  // connect screen loses the caret exactly like a rebuilt tab.
+  try {
+    app.innerHTML = '';
+    conceptNoteShownThisPass = false;
+    app.appendChild(renderHeader());
+    if (!connection) {
+      if (notesWithoutConductor) {
+        app.appendChild(renderNotesWithoutConductor());
+        return;
+      }
+      app.appendChild(renderConnectScreen());
       return;
     }
-    app.appendChild(renderConnectScreen());
-    return;
+    app.appendChild(renderTabs());
+  } finally {
+    restoreFocus();
   }
-  app.appendChild(renderTabs());
 }
 
 /** The notes layer on its own, before any conductor exists. */
@@ -990,6 +1082,10 @@ function renderBrowseTab(): HTMLElement {
   const domainInput = document.createElement('input');
   domainInput.type = 'text';
   domainInput.placeholder = 'Domain, e.g. LumbarRehab';
+  // Named, so that what identifies this box across a rebuild (see
+  // `focusKey`) is not the placeholder's wording, and so a harness driving
+  // the input-loss checks does not have to match on prose either.
+  domainInput.setAttribute('data-testid', 'browse-domain-input');
   domainInput.value = domainDraft;
   // Persisted on every keystroke, so a rebuild underneath restores what was
   // typed rather than replacing it with the last LOADED domain. See
@@ -997,7 +1093,7 @@ function renderBrowseTab(): HTMLElement {
   domainInput.oninput = () => { domainDraft = domainInput.value; };
   const loadBtn = document.createElement('button');
   loadBtn.textContent = 'Load claims';
-  loadBtn.onclick = () => loadClaims(domainInput.value.trim());
+  loadBtn.onclick = () => loadClaims(domainInput.value.trim(), true);
   domainInput.onkeydown = (e) => { if (e.key === 'Enter') loadBtn.click(); };
   searchRow.appendChild(domainInput);
   searchRow.appendChild(loadBtn);
@@ -1759,10 +1855,20 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   return panel;
 }
 
-async function loadClaims(domain: string) {
+/** Reads a domain's claims and shows them.
+ *
+ * `fromTheBox` says whether the Browse tab's own domain box started this
+ * read, and it decides one thing: whether the box is re-seeded when the read
+ * lands. A read started ANYWHERE ELSE — publishing a claim into the domain
+ * being browsed, following a domain from a card — should leave the box
+ * naming the domain now on screen. A read started from the box should not,
+ * because it lands a network round trip later and somebody may have gone on
+ * typing in the meantime; re-seeding then throws away exactly what
+ * `domainDraft` exists to keep. */
+async function loadClaims(domain: string, fromTheBox = false) {
   if (!connection || !domain) return;
   currentDomain = domain;
-  domainDraft = domain;
+  if (!fromTheBox) domainDraft = domain;
   markDone('browsed-domain');
   const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
   claims = decodeRecords<Claim>(records);

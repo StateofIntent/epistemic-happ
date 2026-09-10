@@ -264,6 +264,66 @@ async function main() {
       throw new Error('the seeded claim never appeared — see the two lines above for which half failed');
     }
 
+    // THE OTHER HALF OF THE SAME DEFECT, and the half that survived the fix
+    // the check above was written for.
+    //
+    // Persisting the draft keeps what has ALREADY been typed when the screen
+    // rebuilds. It does not keep the CARET: `render()` destroys the focused
+    // input, focus falls back to the body, and every keystroke after that
+    // goes nowhere — no error, no event, and the box still showing the text
+    // typed before the rebuild. This file went red on main with the draft fix
+    // already in, its own diagnostic reporting an empty box, and the cause was
+    // reproduced outside this repository: a wholesale rebuild landing inside
+    // the few milliseconds Playwright's fill() spends between focusing a box
+    // and inserting text loses the text entirely, 35 runs in 300. A person
+    // types one keystroke at a time and loses the same letters.
+    //
+    // FORCED, NOT WAITED FOR. Pressing Enter starts a real read, and the
+    // re-render when it lands is the rebuild — so this drives the exact
+    // sequence a practitioner does (type a domain, load it, keep typing)
+    // rather than hoping an async load falls in the right millisecond.
+    log('\n=== Typing that outlives the read landing underneath it ===');
+    const box = page.getByTestId('browse-domain-input');
+    await box.click();
+    // A witness rather than an assumption: `render()` rebuilds wholesale, so
+    // this mark cannot survive one. If it is still there afterwards, no
+    // rebuild happened and the two checks below would have passed vacuously.
+    await page.evaluate(() => {
+      const live = document.querySelector('[data-testid="browse-domain-input"]');
+      if (live) live.dataset.epiWitness = 'before the read landed';
+    });
+    await box.press('Enter');
+
+    const TYPED = 'Interrupted';
+    for (const ch of TYPED) {
+      await page.keyboard.type(ch);
+      await page.waitForTimeout(60);
+    }
+
+    const rebuilt = await page.evaluate(() =>
+      document.querySelector('[data-testid="browse-domain-input"]')?.dataset.epiWitness === undefined);
+    check('the screen rebuilt itself while the domain was being typed', rebuilt);
+    if (!rebuilt) {
+      log('    (the read landed before the typing began, so nothing below was exercised —');
+      log('     this is a statement about this harness, not about the screen)');
+    }
+
+    const afterTyping = await box.inputValue();
+    check('every keystroke after that rebuild reached the box',
+      afterTyping === DOMAIN + TYPED);
+    if (afterTyping !== DOMAIN + TYPED) {
+      log(`    (the box holds ${JSON.stringify(afterTyping)}, not ${JSON.stringify(DOMAIN + TYPED)})`);
+      log('    (a prefix means the rebuild took the caret and the rest was typed into nothing)');
+    }
+
+    const stillFocused = await page.evaluate(() =>
+      document.activeElement instanceof HTMLElement
+      && document.activeElement.dataset.testid === 'browse-domain-input');
+    check('the caret is still in the box somebody was typing into', stillFocused);
+
+    // Put the box back the way the rest of this file expects to find it.
+    await box.fill(DOMAIN);
+
     log('\n=== Epistemic state on the claim ===');
     await page.waitForSelector('[data-testid="retraction-banner"]', { timeout: 20000 });
     const retraction = await page.locator('[data-testid="retraction-banner"]').innerText();
