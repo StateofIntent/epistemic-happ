@@ -937,13 +937,49 @@ somewhere other than a to-do list is exactly how they stay invisible.
 shipped and its deadline is spent; the CI binary download retries; four browser
 intermittencies were traced to one defect and fixed — the fourth being the same
 defect's second half, which only became visible because the first fix let `main`
-fail again in a way that named it; and the npm republish is prepared down to a
-single command. **Exactly one open item needs a person rather
-than a decision**, and it is the only one with outside impact:
+fail again in a way that named it; the address-keyed ceilings hold for one
+machine however it connects; a room can ask somebody to leave; and the npm
+republish is prepared down to a single command. **Exactly one open item needs a
+person rather than a decision**, and it is the only one with outside impact:
 
 > `scripts/publish-packages.sh --publish`, run by somebody with publish rights on
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
+
+**Open right now, and the first thing to look at next: pull request #127.** It
+is a diagnostic rather than a fix — `real-gossip` reporting how many peers each
+conductor has heard of, so the next missed gossip says whether the two nodes had
+even met. It went green on its own branch; it is in review and not merged. The
+occurrence that prompted it is recorded further down this section.
+
+**The `notes-ui` intermittency is still open, and there is now a concrete
+hypothesis to start from rather than a blank page.** Nothing here is proven, and
+it is written down because the reasoning cost something and would otherwise be
+lost:
+
+- **The server side is ruled out.** `NotesStore.createNote` inserts the note and
+  THEN bumps the revision (`store.ts`), and the service is single-threaded, so a
+  waking long-poll cannot see the new revision without the note. A snapshot
+  generated after the write always contains it.
+- **The client has two unordered writers to the same state.** The submit path
+  (`notes-ui.ts`, composer `onsubmit` → `createNote` → `loadSpace` →
+  `notesBySpace.set`) and the parked long-poll (`applySnapshot` →
+  `notesBySpace.set`) both replace the note list wholesale, and neither compares
+  which is newer. A snapshot generated *before* your note that lands *after*
+  your own read would put the list back without it — your own note vanishing
+  from the screen that wrote it, which is the reported shape.
+- **If that is the cause, the fix needs no new plumbing.** Both responses
+  already carry a revision — `GET /spaces/:id/notes` returns
+  `{ notes, revision }` and the events snapshot returns `revision` — so the rule
+  is to apply state only when its revision is newer than what is held.
+- **It was not reproduced.** The attempt drove one browser against a real notes
+  server and used Playwright route interception to hold a parked poll's response
+  until after a note was submitted. Two things to know before trying again: a
+  route must be installed on the CONTEXT before the room is opened, because the
+  poll parks for 25 seconds and a route only catches requests that start after
+  it; and the disappearance may be transient, since the next poll answers at a
+  newer revision and would put the note back — so a check must sample
+  immediately rather than wait.
 
 The rest are decisions, and each is recorded with what it would cost to answer.
 
@@ -951,9 +987,10 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 |---|---|---|
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
+| The `notes-ui` intermittency | **A recurrence** — but with a hypothesis and a fix shape now, see above | §9 above, `scripts/live-verify/notes-ui.mjs` header |
+| The `real-gossip` discovery flake | **In review** — pull request #127 makes the next one explain itself | §9 below |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
-| The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
 | ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `hud-layer` typing intermittency~~ | **Done** — the draft fix was half of it; the caret was the other half | §9 below, `mobile-ui/README.md` |
