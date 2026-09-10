@@ -48,6 +48,22 @@
 //   arrival check stayed green, which is the point: the room was still live,
 //   and being live is what destroyed the sentence.
 //
+//   Injections A, B and C: the three ways a join form can fail to appear,
+//   forced one at a time, to prove the diagnostic in `joinAs` tells them
+//   apart. This was written BEFORE the cause of the real intermittency was
+//   known — see `joinAs` for why that order.
+//     A — an invite token the service has never heard of.
+//     B — the preview request routed into a black hole exactly once, so it
+//         goes out and never comes back.
+//     C — an invite box that never takes the browser to the join screen.
+//   Result: three different sentences where there had been one bare
+//   `TimeoutError` naming a line number. A says the service refused and the
+//   screen was right; B says the read HUNG rather than being refused, and —
+//   the split that matters — that the service previews the same invite fine
+//   when asked directly a moment later; C says the browser is not on the join
+//   screen at all, and quotes the error it IS showing. Watched in all three
+//   directions before any of them was believed.
+//
 //   Injection: `store.editNote` ignoring `expectedRev` — the state this code
 //   was in until this work, and the state one deleted `if` returns it to.
 //   Result: two reds. The refusal itself, and then — one step later, without
@@ -134,6 +150,38 @@ async function startNotesServer() {
 
 /** Walks a fresh browser context in through an invite link, as a person does:
  * the notes door on the connect screen, paste the link, pick a name. */
+const JOIN_STEP_TIMEOUT = 15000;
+
+/** Get two browsers into one room.
+ *
+ * Every wait here is bounded AND EXPLAINED, which it was not. This function
+ * failed twice in CI on the same afternoon — once on an unrelated branch, once
+ * on a documentation-only change that cannot have caused it — both times on the
+ * same wait, for `notes-join-name`, after the live-arrival checks above it had
+ * already passed. Both times it died as a bare Playwright `TimeoutError` naming
+ * a line number and no check, which is the exact shape this directory's README
+ * records against `launcher-packaging`'s first regression report and the shape
+ * `notes-ui.mjs` was given a diagnostic to escape. Two occurrences in a day is
+ * enough to expect a third, and a third that says only "timeout at line 150"
+ * teaches nothing, so this is done BEFORE the cause is hunted rather than after.
+ *
+ * It is NOT the `notes-ui` intermittency, and the diagnostic is built not to
+ * fold them together: that one is a note failing to render after a submit, this
+ * one is a join form failing to appear at all.
+ *
+ * A missing join form has three unrelated causes that look identical from
+ * outside, and naming which one it was is most of the value here:
+ *
+ *   1. The service refused the preview — a revoked, expired or unknown invite.
+ *      The screen is working perfectly and is showing the refusal.
+ *   2. The preview never came back. The screen is stuck on "Reading the
+ *      invite…", which is a hung or lost request, not a refusal.
+ *   3. The click never got us to the join screen at all — the invite box
+ *      rejected the link, or the app is on some other screen entirely.
+ *
+ * So on a miss this reports what the SCREEN is showing, what the SERVICE says
+ * about that same invite when asked directly, and whether anything threw in the
+ * page — and then throws a sentence rather than a stack trace. */
 async function joinAs(browser, inviteUrl, displayName) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript((origin) => {
@@ -142,16 +190,117 @@ async function joinAs(browser, inviteUrl, displayName) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  const step = (testid, what) => joinStep(page, testid, what, { displayName, inviteUrl, errors });
+
   await page.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-testid="connect-to-notes"]').click();
-  await page.waitForSelector('[data-testid="notes-invite-input"]', { timeout: 15000 });
+  await step('notes-invite-input', 'the invite box, after opening the notes tab');
   await page.locator('[data-testid="notes-invite-input"]').fill(inviteUrl);
   await page.locator('[data-testid="notes-invite-open"]').click();
-  await page.waitForSelector('[data-testid="notes-join-name"]', { timeout: 15000 });
+  await step('notes-join-name', 'the join form, after following the invite link');
   await page.locator('[data-testid="notes-join-name"]').fill(displayName);
   await page.locator('[data-testid="notes-join-submit"]').click();
-  await page.waitForSelector('[data-testid="notes-composer"]', { timeout: 15000 });
+  await step('notes-composer', 'the room itself, after submitting the join form');
   return { context, page, errors };
+}
+
+/** One bounded wait in the join sequence, and everything worth knowing if it
+ * misses. Throws, because this is setup and there is nothing to check after
+ * it — but throws having already said which step, what was on screen, and what
+ * the service thought. */
+async function joinStep(page, testid, what, { displayName, inviteUrl, errors }) {
+  const appeared = await page.waitForSelector(`[data-testid="${testid}"]`, { timeout: JOIN_STEP_TIMEOUT })
+    .then(() => true).catch(() => false);
+  if (appeared) return;
+
+  const screen = await screenVerdict(page);
+  const service = await inviteVerdict(page, inviteUrl);
+  log('');
+  log(`  JOIN FAILED for ${displayName}: waited ${JOIN_STEP_TIMEOUT / 1000}s for ${what}`);
+  log(`    the screen:  ${screen}`);
+  log(`    the service: ${service}`);
+  log(`    page errors: ${errors.length ? errors.join(' | ') : 'none — nothing threw in this browser'}`);
+  throw new Error(
+    `joinAs(${displayName}) gave up waiting for ${what}. `
+    + `SCREEN: ${screen} SERVICE: ${service}`,
+  );
+}
+
+/** What the screen is actually showing, in the vocabulary of the three causes
+ * above. Reads the room rather than guessing at it: the visible test hooks are
+ * listed because "which screen is this" is otherwise unanswerable from a
+ * timeout, and every `.error-box` is quoted because a refusal the app is
+ * displaying correctly must never be reported as a hang.
+ *
+ * A diagnostic must never turn a miss into a different failure, so every path
+ * returns a sentence rather than throwing. */
+async function screenVerdict(page) {
+  try {
+    return await page.evaluate(() => {
+      const text = (sel) => document.querySelector(sel)?.textContent?.trim() ?? null;
+      const hooks = Array.from(document.querySelectorAll('[data-testid]'))
+        .map((n) => n.dataset.testid).filter(Boolean);
+      const boxes = Array.from(document.querySelectorAll('.error-box'))
+        .map((n) => n.textContent?.trim() ?? '')
+        .filter((t) => t.length > 0);
+      const where = `[on screen: ${hooks.length ? hooks.join(', ') : 'no test hooks at all'}]`;
+
+      const inviteError = text('[data-testid="notes-invite-error"]');
+      if (inviteError !== null) {
+        return `the join screen is showing the service's refusal — "${inviteError}". `
+          + `The SCREEN is fine; the INVITE was not accepted. ${where}`;
+      }
+      if (document.querySelector('[data-testid="notes-invite-reading"]')) {
+        return 'the join screen is stuck on "Reading the invite…" — the preview request went out '
+          + `and never came back, which is a HUNG READ and not a refusal. ${where}`;
+      }
+      if (document.querySelector('[data-testid="notes-composer"]')) {
+        return `this browser is already inside a room — the join form was skipped, not lost. ${where}`;
+      }
+      const said = boxes.length ? ` Errors on screen: ${boxes.join(' | ')}.` : ' Nothing is showing an error.';
+      return `not on the join screen at all — the invite link never took this browser there.${said} ${where}`;
+    });
+  } catch (error) {
+    return `could not be read: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+/** Ask the SERVICE about the same invite, and split "the screen never rendered
+ * it" from "this join was never going to happen".
+ *
+ * Asked from inside the failing browser, with that browser's own stored origin,
+ * for the reason `notes-ui.mjs` gives at length: a client built out here would
+ * be asking about a service the failing page might not even be pointed at. The
+ * invite preview is public by design — holding the link is the credential — so
+ * no token is needed, which is why this works before anyone has joined. */
+async function inviteVerdict(page, inviteUrl) {
+  try {
+    return await page.evaluate(async (url) => {
+      const origin = localStorage.getItem('epistemic-mobile-ui:notes-origin');
+      if (!origin) return 'could not be asked: this browser has no notes origin stored';
+      const token = url.replace(/\/+$/, '').split('/').pop();
+      if (!token) return `could not be asked: no invite token in ${url}`;
+      let res;
+      try {
+        res = await fetch(`${origin}/invites/${encodeURIComponent(token)}`);
+      } catch (e) {
+        return `unreachable from this browser at ${origin} (${String(e)}) — the notes server is gone or the origin is wrong`;
+      }
+      if (!res.ok) {
+        let detail = '';
+        try { detail = JSON.stringify(await res.json()); } catch { /* not JSON */ }
+        return `refuses this invite: HTTP ${res.status} ${detail} — the join was never going to happen, `
+          + 'and the screen was right not to show a form';
+      }
+      const body = await res.json();
+      const preview = body?.preview;
+      return `previews this invite fine (space "${preview?.space?.name ?? '?'}", `
+        + `${preview?.totalMembers ?? '?'} member(s), mode ${preview?.mode ?? '?'}) `
+        + '— the invite is good and the SCREEN did not render the form';
+    }, inviteUrl);
+  } catch (error) {
+    return `could not be asked: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 /** The member token this browser is holding, read the only place it exists. */
