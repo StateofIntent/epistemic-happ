@@ -158,26 +158,17 @@ jobs:
 
       # Into ~/.cargo/bin, reproducing the development machine's layout exactly,
       # so `pack-webhapp.sh` and `sandbox.sh` find them with no change to either
-      # script. Pinned to the release tag and asserted afterwards: a conductor
-      # that silently moved to 0.7.1 would produce results about a version
-      # nothing here builds against, and a renamed asset should fail loudly at
-      # this step rather than as a confusing harness failure twenty minutes on.
+      # script. Pinned to the release tag and asserted on the downloaded binary
+      # itself: a conductor that silently moved to 0.7.1 would produce results
+      # about a version nothing here builds against, and a renamed asset should
+      # fail loudly at this step rather than as a confusing harness failure
+      # twenty minutes on. The same script as conductor.yml and network.yml —
+      # its header carries the download flakiness this job kept losing whole
+      # runs to, and the bound on the retry that answers it.
       - name: Install the Holochain 0.7.0 binaries
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p ~/.cargo/bin
-          for b in hc holochain; do
-            gh release download holochain-0.7.0 -R holochain/holochain \
-              -p "$b-x86_64-unknown-linux-gnu" -O ~/.cargo/bin/$b --clobber
-            chmod +x ~/.cargo/bin/$b
-          done
-          hc --version
-          holochain --version
-          [ "$(hc --version)" = "holochain_cli 0.7.0" ] \
-            || { echo "::error::hc is not 0.7.0"; exit 1; }
-          [ "$(holochain --version)" = "holochain 0.7.0" ] \
-            || { echo "::error::holochain is not 0.7.0"; exit 1; }
+        run: scripts/ci/install-holochain.sh
 
       - uses: actions/setup-node@v4
         with:
