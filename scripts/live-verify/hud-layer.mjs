@@ -56,6 +56,28 @@
 //   something you wait to be unlucky about into something that is simply true
 //   or false.
 //
+//   Regression injected: the screen with only HALF the input-loss fix — the
+//   draft persisted, nothing restoring focus, and loadClaims re-seeding the box
+//   from the domain it was asked for. That is this screen exactly as it stood
+//   when `main` went red for the third time, restored with
+//   `git checkout main -- mobile-ui/src/main.ts mobile-ui/src/notes-ui.ts`.
+//   Result: two FAILs, both in the typing section, every other check in this
+//   file green. The box held "HudLayer1789050644890" — the domain, and not one
+//   of the eleven characters typed after it — and the caret check reported that
+//   focus had left the box entirely. The witness check stayed GREEN, which is
+//   what makes those two reds mean anything: the screen really had rebuilt
+//   itself while the typing was going on, so the letters had somewhere to be
+//   lost from.
+//
+//   Worth knowing, because it is the more interesting run: the FIRST version of
+//   this check went red on the FIXED screen too, quoting a box holding
+//   "HudLayer17890Interrupted50340358". All eleven keystrokes had arrived,
+//   contiguously, at character 13 — the fix working exactly as intended and the
+//   assertion being wrong, because `click()` leaves the caret where it landed
+//   and a 390px-wide box shows the middle of a 21-character domain rather than
+//   its end. Hence the `press('End')` before the typing starts. A check that
+//   asserts where text lands has to say where the caret was first.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------

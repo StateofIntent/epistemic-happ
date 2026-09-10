@@ -1222,6 +1222,19 @@ witness against passing vacuously: the live input is marked before the read, and
 because a rebuild cannot preserve that mark, a run where the read landed before
 the typing began reports itself as proving nothing instead of going green.
 
+**Both halves of that were watched in CI rather than argued for.** Against the
+screen with only the draft fix, the section goes red twice — the box holding
+`HudLayer1789050644890`, the domain and not one of the eleven characters typed
+after it, and the caret gone from the box entirely — while the witness check
+stays green and every other check in the file passes. Against the fixed screen
+all three pass. The first version of the check went red on the FIXED screen too,
+quoting `HudLayer17890Interrupted50340358`: every keystroke had arrived,
+contiguously, at character 13, because a click leaves the caret where it lands
+and a 390px box shows the middle of a 21-character domain. That was the check
+being wrong and the fix being right, and it is recorded in
+`scripts/live-verify/hud-layer.mjs`'s negative-evidence block because a check
+that asserts where text lands has to say where the caret was first.
+
 **A fourth intermittency is open, has been seen exactly once, and is recorded
 here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is
 ignored unless an operator says something is in front — one header must not reset
