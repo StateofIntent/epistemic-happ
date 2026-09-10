@@ -267,6 +267,11 @@ Every row is a Holochain typed link (`#[hdk_link_types]`). "Base → Target" giv
 
 Validation is enforced by **every validating peer independently** (Holochain's `validate(Op)` callback), not by a coordinator/client convention — this is what makes each MUST below a real protocol requirement rather than the reference implementation's own preference.
 
+### 5.0 Global rule: the DNA must not misdeclare its protocol version
+Every `CreateEntry` and `CreateLink` op is refused unless `properties.protocol_version` (§11.2) equals the version the integrity zome implements, and refused with a message naming both numbers. Absent or unparseable properties are refused identically: a DNA declaring no version accepts no protocol data at all.
+
+This cannot catch a peer running a different version — the DNA hash makes that impossible (§11.1) — and is not trying to. It catches the one mistake the hash cannot prevent: a DNA packed with the manifest bumped and the zome not, or the reverse. Deliberately scoped to these two op kinds rather than the whole callback, so that a misdeclaring network still answers `get_protocol_version` and can say what is wrong with it; see §11.2.
+
 ### 5.1 Global rule: no deletion
 Any `RegisterDelete` operation is **rejected outright** — `ValidateCallbackResult::Invalid("Deletion is not permitted. Entries are immutable.")`. This applies to every entry type without exception. See Invariant #6 (§7).
 
@@ -521,6 +526,13 @@ The consequence, for the historical record and because it explains the shape of 
 
 **Confirmed live, with controls**, by `scripts/live-verify/read-scope.mjs`: two real agents on one conductor, every chain-local read paired with a link-based read of the *same* entry by the *same* agent at the *same* moment, so an observed zero cannot be explained by "not yet gossiped". That harness now asserts the corrected behaviour for the two fixed reads and the still-chain-local behaviour for the other three, making it the executable form of this section. `scripts/live-verify/domain-index.mjs` covers the indexes themselves, including three attempts to poison the by-domain index — a claim filed under a domain it does not declare, a third party filing someone else's claim, and a non-`Claim` target — each performed for real through the `attempt_false_domain_index` prober and each observed being refused by validation.
 
+### 10.0b Protocol version
+| Function | Payload | Returns |
+|---|---|---|
+| `get_protocol_version` | `()` | `ProtocolIdentity { declared_version: u16, implemented_version: u16, dna_hash: DnaHash }` — a pure `dna_info()` read (§11.2) |
+
+`declared_version` is what the DNA's `properties` say; `implemented_version` is what the running integrity zome implements. They can only differ on a DNA that accepts no writes (§5.0), which is exactly when something needs to be able to say so. No DHT access, so it answers on an empty network.
+
 ### 10.1 Claim
 | Function | Payload | Returns |
 |---|---|---|
@@ -645,3 +657,56 @@ Two independently-run Holochain networks share no DHT — one cannot query the o
 This document tracks a specific commit of `main` (noted at the top) — there is currently **no automated check** keeping it in sync with the DNA source as the implementation evolves; it is a manually maintained snapshot, honestly labeled as such rather than implied to be self-updating. A change to any entry type, link type, validation rule, rate limit, invariant, HRR encoding, N4L vocabulary, or zome function signature in `dna/` or `n4l/arrows-epistemic.sst` **SHOULD** be accompanied by a corresponding update to this document in the same change, the same discipline this codebase already applies to keeping `README.md`'s own code-walkthrough sections current with what actually shipped.
 
 Forward-compatibility within the protocol itself is currently handled locally, not globally: `WorldlineTrace.binding_key`/`NeighborhoodBinding.binding_key` (§8) are the only versioned wire values today, each guarding its own narrow scheme. There is no protocol-wide version number, feature-negotiation mechanism, or migration path defined yet — a genuinely breaking change (e.g. a new required field on an existing entry type) would currently just be a new commit with no compatibility story for DHT data written under the old shape. This is a real, open gap, not a hidden one.
+
+### 11.1 What a change actually costs on this substrate
+
+This subsection is **descriptive, not aspirational**: it states what Holochain 0.7 does, which constrains every versioning scheme that could be chosen. It is here because the gap above cannot be closed sensibly without it, and because the usual toolkit for protocol versioning turns out not to apply.
+
+**The DNA hash is computed over the integrity manifest, and nothing else.** `dna/dna.yaml`'s `integrity:` block is exactly `network_seed`, `properties` and the integrity zomes; `DnaModifiers` in `holochain_integrity_types` states in its own doc comment that the modifiers "are included in the DNA hash computation", and the network seed's doc adds that the DNA hash "in turn determines the network peers and the DHT, meaning that only peers with the same DNA hash of a shared DNA participate in the same network and co-create the DHT."
+
+Three consequences follow, and they are hard constraints rather than preferences:
+
+| Change | DNA hash | What it means |
+|---|---|---|
+| Any edit to the integrity zome — an entry struct field, a link type, a validation rule | **changes** | A different network. Old and new peers never gossip. No in-place migration exists. |
+| Any edit to `network_seed` or `properties` | **changes** | Same as above, deliberately: this is the supported way to fork a network on purpose. |
+| Any edit to a coordinator zome — a new function, a changed signature, a fixed courtesy check | **unchanged** | Hot-swappable on a running conductor via the admin `update_coordinators` call. Not a protocol change at all. |
+
+**The uncomfortable corollary is that this substrate has no such thing as an additive, backward-compatible entry change.** Adding an `Option<T>` field to an existing entry type — the canonical non-breaking change in almost every other protocol — edits the integrity zome, so it changes the DNA hash, so it forks the network exactly as violently as removing a required field would. Nothing about the field being optional makes any difference.
+
+That has a direct bearing on what a version number could be for. **A Holochain network is always running exactly one version of its integrity zome, by construction**, because the zome *is* the network's identity. There can be no version skew between validating peers, and therefore:
+
+- a per-entry version discriminant cannot enable in-network coexistence of two entry shapes, because the shapes are fixed by the one integrity zome every peer runs;
+- feature negotiation between peers has nothing to negotiate;
+- permissive "accept unknown fields" validation buys no compatibility, and costs the thing this protocol is *for* — §5 and §7 are only worth anything because validation is exhaustive. An unvalidated extension region inside an entry would be where the invariants quietly stop applying.
+
+So the question a versioning scheme has to answer here is **not** "how do two versions interoperate" — they cannot. It is **"what happens at a fork"**: how a network states which protocol it is running, and what, if anything, carries across when a new one replaces it. Both halves are open; `README.md` §9 records the decision and what each option costs.
+
+One narrower point is settled and worth stating, because it is the only genuinely non-breaking change class available: **coordinator-only changes are free.** Everything in §5.21 ("coordinator courtesies that are NOT validation rules"), every zome function signature in §10, and every read path can change without touching the network's identity. A change confined there **SHOULD** be recognised as such rather than batched into an integrity change that forks the network for no reason.
+
+### 11.2 The declared protocol version
+
+**Implemented and enforced.** `dna/dna.yaml` sets `properties.protocol_version`, and the integrity zome carries the same number as `PROTOCOL_VERSION`.
+
+- The version **MUST** equal the value the integrity zome implements. Validation refuses every `CreateEntry` and `CreateLink` op when the two disagree, naming both numbers, so a DNA packed with one edited and not the other is inert rather than silently misdeclared. Absent or unparseable `properties` fail identically — a DNA that declares no version cannot be written to at all.
+- The version **MUST** be bumped by any change to the integrity zome that alters what is accepted or what an entry means. It **MUST NOT** be bumped for a coordinator-only change, which is not a protocol change (§11.1).
+- `get_protocol_version` (§10) reads it, along with the version the running zome implements and the DNA hash. It is a pure `dna_info()` read: no DHT access, and it answers on an empty network, which is when the question is actually asked.
+
+The version is **not** a compatibility mechanism, and §11.1 explains why there can be no such thing here. Its purpose is that a fork is legible: two DNA hashes differing only by this number are provably a protocol change rather than two hashes nobody can tell apart. Because `properties` is inside the hash, the declaration is one no peer on the network can disagree with.
+
+The gate is scoped to ops that write protocol data, deliberately. A blanket check over the whole validation callback also refuses capability grants — which are source-chain writes — leaving a misdeclaring network unable to answer any call at all, including the one that would explain the problem. Refusing the protocol while remaining answerable is the intended behaviour: `scripts/live-verify/protocol-version.mjs` checks both halves against a running conductor.
+
+### 11.3 Migration across a fork
+
+**Not implemented.** This subsection is the contract a migration would have to satisfy, recorded now because §11.1's constraints do not change and the requirements are knowable without the tooling. It is stated as requirements on a conforming migration, not as a description of code that exists.
+
+A network at version *n* and one at version *n+1* are different DHTs with no shared data (§11.1). "Migration" therefore means **re-publishing** into the new network, and the hard constraint is §5.2: an entry's `author` field must equal the real authoring action's author, checked independently by every validator. That single rule decides the shape of everything below.
+
+- A migration **MUST NOT** re-publish another agent's entries under the migrator's key. It cannot: §5.2 refuses it, and no exemption may be added for migration — an exemption would let anyone forge authorship by declaring it a migration. **Only an agent can migrate its own entries.**
+- A migration is therefore **necessarily partial and voluntary**. A network at *n+1* will hold the entries of whichever agents chose to re-publish, and no others. Any design that assumes a complete carry-over is wrong on this substrate.
+- Entry hashes **MUST** be expected to change. Anything that references an entry by hash (§5.3 referential integrity, `evidence_hashes`, `source_mew`, `target_claim`, and every link) must be re-resolved against the new network's hashes, not carried across. A migration that preserves a hash from the old network is either wrong or has recreated a byte-identical entry by coincidence.
+- Original timestamps **MUST** be preserved in the entry's own `timestamp` field, which is data rather than action metadata. The new action's timestamp is necessarily the migration's, and that divergence is a fact about the fork, not something to hide.
+- The old network's data **MUST NOT** be presented as having been validated by the new one. It was validated under version *n*'s rules; if *n+1* validates differently, the re-published entry is accepted or refused on *n+1*'s terms and no other.
+- What can be carried faithfully is what the export layers already produce: the N4L export (§9) and the gateway's JSON-LD both walk this data and neither depends on Holochain hashes.
+
+**The open question this leaves** is whether provenance across a fork should be recorded *in* the protocol — an entry type saying "this is a re-publication of a claim I made on network X" — or left entirely outside it. Recording it is honest and makes a migrated network self-describing; it is also a new entry type whose only purpose is to talk about a network the reader cannot query, and §5.3 could not check its reference. Neither option has been chosen, and nothing should be built until one is.

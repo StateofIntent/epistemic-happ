@@ -33,7 +33,7 @@ cd ../mcp-server && npm install --no-save ../agent-sdk && npm run build
 
 The second line is not the usual `npm install`, and the reason has changed
 since it was first written. This package depends on
-`@stateofintent/agent-sdk@^0.1.1` — the correct declaration for a published
+`@stateofintent/agent-sdk@^0.1.2` — the correct declaration for a published
 package, and the one thing that must NOT be `file:../agent-sdk`, since a
 relative path cannot resolve on anyone else's machine. That note originally
 said the version simply did not exist to fetch yet, so a plain `npm install`
@@ -74,8 +74,24 @@ advertises its nine tools — none of which touches a conductor. The defect begi
 exactly where a packaging check ends. "Publishes, installs and imports" was never
 evidence for "works".
 
+**That gap now has a harness of its own.**
+`scripts/live-verify/published-packages.mjs` packs both packages, installs them
+into an empty project with a FRESH dependency resolution, and then writes a claim
+to a real conductor *from that install* and reads it back — including a tool call
+through this server that reaches the conductor, rather than one that lists tools.
+It is deliberately not `scripts/live-verify/mcp-server.mjs`, which drives this
+tree's `dist/` through this tree's `node_modules` and this tree's lockfile: what
+a stranger installs resolves its own dependency tree, and that difference is
+precisely what neither existing check could see. It runs in `conductor.yml`.
+
 **Only a republish fixes that**, which no workflow here can do — it needs
-someone with credentials to bump both packages and publish. Anyone installing
+someone with credentials to publish. Everything else is now done: both packages
+are at `0.1.2` in this tree, this package's dependency range was tightened to
+`^0.1.2` so an installer cannot resolve the SDK version being replaced, and
+`scripts/publish-packages.sh` runs the packaging checks and the live check,
+refuses on a dirty tree or an already-published version, and publishes
+`agent-sdk` first and this package only once the registry can actually serve it.
+It is a dry run unless given `--publish`. Anyone installing
 either from npm today gets something that connects and then fails on its first
 real call. Recorded here rather than in a merged pull request, because this is
 where a person installing the package would look.

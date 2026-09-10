@@ -342,6 +342,14 @@ jobs:
       # A clean conductor before EACH harness, not once before the batch — the
       # one hard rule in scripts/live-verify/README.md. Run as four steps rather
       # than a loop so a failure names itself in the job summary.
+      # First, because it is the cheapest thing that can be wrong: if the DNA
+      # misdeclares its own protocol version, nothing below can write at all,
+      # and every one of those failures would report something else.
+      - name: protocol-version — the network declares which protocol it is, and cannot lie
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/protocol-version.mjs
+
       - name: domain-index — the by-domain index, and validation refusing to be poisoned
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
@@ -386,6 +394,16 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/mcp-server.mjs
+
+      # The one that would have caught what is on the registry right now. The
+      # two harnesses above drive THIS TREE's build; this one packs both
+      # packages, installs them into an empty project with a fresh dependency
+      # resolution, and writes to the conductor from that install. A package can
+      # import cleanly and still fail its first zome call — see the header.
+      - name: published-packages — the tarball a stranger installs, against a real conductor
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/published-packages.mjs
 
       - name: linked-data-gateway — the one-way export, and the score it must not emit
         run: |
