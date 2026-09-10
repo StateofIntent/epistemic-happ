@@ -56,6 +56,28 @@
 //   something you wait to be unlucky about into something that is simply true
 //   or false.
 //
+//   Regression injected: the screen with only HALF the input-loss fix — the
+//   draft persisted, nothing restoring focus, and loadClaims re-seeding the box
+//   from the domain it was asked for. That is this screen exactly as it stood
+//   when `main` went red for the third time, restored with
+//   `git checkout main -- mobile-ui/src/main.ts mobile-ui/src/notes-ui.ts`.
+//   Result: two FAILs, both in the typing section, every other check in this
+//   file green. The box held "HudLayer1789050644890" — the domain, and not one
+//   of the eleven characters typed after it — and the caret check reported that
+//   focus had left the box entirely. The witness check stayed GREEN, which is
+//   what makes those two reds mean anything: the screen really had rebuilt
+//   itself while the typing was going on, so the letters had somewhere to be
+//   lost from.
+//
+//   Worth knowing, because it is the more interesting run: the FIRST version of
+//   this check went red on the FIXED screen too, quoting a box holding
+//   "HudLayer17890Interrupted50340358". All eleven keystrokes had arrived,
+//   contiguously, at character 13 — the fix working exactly as intended and the
+//   assertion being wrong, because `click()` leaves the caret where it landed
+//   and a 390px-wide box shows the middle of a 21-character domain rather than
+//   its end. Hence the `press('End')` before the typing starts. A check that
+//   asserts where text lands has to say where the caret was first.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -263,6 +285,76 @@ async function main() {
       log('     the read returned nothing and the seed never became visible)');
       throw new Error('the seeded claim never appeared — see the two lines above for which half failed');
     }
+
+    // THE OTHER HALF OF THE SAME DEFECT, and the half that survived the fix
+    // the check above was written for.
+    //
+    // Persisting the draft keeps what has ALREADY been typed when the screen
+    // rebuilds. It does not keep the CARET: `render()` destroys the focused
+    // input, focus falls back to the body, and every keystroke after that
+    // goes nowhere — no error, no event, and the box still showing the text
+    // typed before the rebuild. This file went red on main with the draft fix
+    // already in, its own diagnostic reporting an empty box, and the cause was
+    // reproduced outside this repository: a wholesale rebuild landing inside
+    // the few milliseconds Playwright's fill() spends between focusing a box
+    // and inserting text loses the text entirely, 35 runs in 300. A person
+    // types one keystroke at a time and loses the same letters.
+    //
+    // FORCED, NOT WAITED FOR. Pressing Enter starts a real read, and the
+    // re-render when it lands is the rebuild — so this drives the exact
+    // sequence a practitioner does (type a domain, load it, keep typing)
+    // rather than hoping an async load falls in the right millisecond.
+    log('\n=== Typing that outlives the read landing underneath it ===');
+    const box = page.getByTestId('browse-domain-input');
+    await box.click();
+    // To the END, deliberately. A click puts the caret where it landed, which
+    // on a 390px-wide box is the middle of a long domain — and the first run of
+    // this check proved that by quoting a box holding
+    // "HudLayer17890Interrupted50340358". Every keystroke had arrived, exactly
+    // where the caret was, which is the fix working and the assertion below
+    // being wrong. Anchoring the caret makes what is typed contiguous, and the
+    // assertion then says what it means: the letters landed AND they landed
+    // where the person left off.
+    await box.press('End');
+    // A witness rather than an assumption: `render()` rebuilds wholesale, so
+    // this mark cannot survive one. If it is still there afterwards, no
+    // rebuild happened and the two checks below would have passed vacuously.
+    await page.evaluate(() => {
+      const live = document.querySelector('[data-testid="browse-domain-input"]');
+      if (live) live.dataset.epiWitness = 'before the read landed';
+    });
+    await box.press('Enter');
+
+    const TYPED = 'Interrupted';
+    for (const ch of TYPED) {
+      await page.keyboard.type(ch);
+      await page.waitForTimeout(60);
+    }
+
+    const rebuilt = await page.evaluate(() =>
+      document.querySelector('[data-testid="browse-domain-input"]')?.dataset.epiWitness === undefined);
+    check('the screen rebuilt itself while the domain was being typed', rebuilt);
+    if (!rebuilt) {
+      log('    (the read landed before the typing began, so nothing below was exercised —');
+      log('     this is a statement about this harness, not about the screen)');
+    }
+
+    const afterTyping = await box.inputValue();
+    check('every keystroke after that rebuild reached the box',
+      afterTyping === DOMAIN + TYPED);
+    if (afterTyping !== DOMAIN + TYPED) {
+      log(`    (the box holds ${JSON.stringify(afterTyping)}, not ${JSON.stringify(DOMAIN + TYPED)})`);
+      log('    (a prefix means the rebuild took the caret and the rest was typed into nothing;');
+      log('     text landing anywhere but the end means the caret came back in the wrong place)');
+    }
+
+    const stillFocused = await page.evaluate(() =>
+      document.activeElement instanceof HTMLElement
+      && document.activeElement.dataset.testid === 'browse-domain-input');
+    check('the caret is still in the box somebody was typing into', stillFocused);
+
+    // Put the box back the way the rest of this file expects to find it.
+    await box.fill(DOMAIN);
 
     log('\n=== Epistemic state on the claim ===');
     await page.waitForSelector('[data-testid="retraction-banner"]', { timeout: 20000 });
