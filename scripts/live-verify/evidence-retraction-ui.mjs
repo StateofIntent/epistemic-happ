@@ -38,6 +38,16 @@
 //   Regression injected: adding error-box to the ungrounded badge and rewording it as 'UNVERIFIED'.
 //   Result: three FAILs — but only after this file's check was strengthened. It previously asserted that .grounding.ungrounded EXISTED, which stays true when an error class is added alongside it, so the injected regression left that check green.
 //
+//   Regression injected: the New Claim form as it shipped — nothing outside the
+//   DOM remembering what has been typed into it.
+//   Result: three FAILs in the draft-survival section, quoting the emptied form
+//   ({"content":"","domain":"","evidence":"", ...}). The rest of this file stays
+//   green, which is the informative part: publishing works perfectly, and what
+//   breaks is only what somebody had written and not yet published. That is the
+//   kind of defect a harness which only ever publishes immediately cannot see —
+//   no harness here composed a claim slowly enough to be interrupted, which was
+//   a statement about the harnesses rather than about the form.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -125,7 +135,51 @@ async function main() {
       await page.waitForTimeout(2500);
     };
 
-    log('=== Evidence and grounding ===');
+    // === A half-composed claim survives the screen rebuilding ===========
+    // The New Claim form is the screen somebody spends real time on, and every
+    // one of its seven controls used to live only in its DOM node — so any
+    // `render()` mid-composition discarded the lot, silently. Publishing into
+    // the domain being browsed does exactly that, through `loadClaims`.
+    //
+    // Checked here because this is the harness that fills the form richly, and
+    // forced rather than waited for: switching tabs is a real rebuild, so this
+    // is an assertion rather than a race. Same rule as `notes-live.mjs` applies
+    // to the notes composer — a screen that rebuilds when something arrives is
+    // a screen that can throw away what somebody is halfway through typing.
+    log('=== A half-composed claim survives a rebuild ===');
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+    await page.locator('[data-testid="new-claim-content"]').fill('Half-written, not yet published.');
+    await page.locator('[data-testid="new-claim-domain"]').fill(`${DOMAIN}Draft`);
+    await page.locator('[data-testid="evidence-content"]').fill('Half-written evidence.');
+    await page.locator('[data-testid="evidence-type"]').selectOption('CaseReport');
+    await page.locator('[data-testid="evidence-url"]').fill('https://example.org/draft');
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+    const draft = {
+      content: await page.locator('[data-testid="new-claim-content"]').inputValue(),
+      domain: await page.locator('[data-testid="new-claim-domain"]').inputValue(),
+      evidence: await page.locator('[data-testid="evidence-content"]').inputValue(),
+      type: await page.locator('[data-testid="evidence-type"]').inputValue(),
+      url: await page.locator('[data-testid="evidence-url"]').inputValue(),
+    };
+    check('the claim being written survives the screen rebuilding underneath it',
+      draft.content === 'Half-written, not yet published.');
+    check('and so does its domain, which is not the one being browsed',
+      draft.domain === `${DOMAIN}Draft`);
+    check('and the evidence being cited with it — text, type and source together',
+      draft.evidence === 'Half-written evidence.'
+      && draft.type === 'CaseReport'
+      && draft.url === 'https://example.org/draft');
+    if (draft.content !== 'Half-written, not yet published.') log(`    (the form now holds ${JSON.stringify(draft)})`);
+
+    // Cleared by hand so the composition above cannot leak into the claims
+    // published below — this harness asserts one of them is UNGROUNDED, and a
+    // stray evidence field is exactly how that would stop being true.
+    await page.locator('[data-testid="new-claim-content"]').fill('');
+    await page.locator('[data-testid="evidence-content"]').fill('');
+    await page.locator('[data-testid="evidence-url"]').fill('');
+
+    log('\n=== Evidence and grounding ===');
     // Content chosen so neither string is a substring of the other:
     // "Grounded claim" also matches "UNgrounded claim" under Playwright's
     // case-insensitive substring filter, which made both cards match.

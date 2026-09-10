@@ -97,15 +97,32 @@ already been given a click-twice workaround for it before anyone knew the cause.
 `hud-layer` now forces the rebuild by switching tabs and asserts the box still
 holds what was typed, which is what turns it from an intermittency into a check.
 
-**The New Claim form is the same shape and is NOT fixed.** Its fields — content,
-domain, confidence, tags — live only in the DOM, so any `render()` while a claim
-is being composed discards the lot. It is recorded here rather than fixed in the
-same change because it is a larger piece of work than persisting two strings: the
-form has several fields of different kinds, and the right answer is probably one
-draft object for the whole form rather than a variable per input. Nobody has hit
-it in CI, because no harness composes a claim slowly enough to be interrupted —
-which is a statement about the harnesses, not about the form. The invariant this
-codebase already applies to the notes composer (`notes-live.mjs` checks that a
-half-typed sentence and its caret both survive an arrival) is the one this form
-does not yet meet.
+**The New Claim form had the same shape, and is now fixed too.** It was the worst
+case, being the screen somebody spends real time on: all seven controls — the
+claim, its domain, confidence, tags, and the three evidence fields — lived only
+in their DOM nodes, so any `render()` mid-composition discarded the lot. One
+`newClaimDraft` object now holds them, rather than a variable per input, because
+a form is a single thing a person is in the middle of.
+
+Two consequences of that worth knowing, both visible in `clearAfterPublish`:
+
+- **The "Claim published." confirmation is state now, not DOM.** It was destroyed
+  by the very re-render publishing triggers — publishing into the domain you are
+  browsing calls `loadClaims`, which re-renders — so the confirmation vanished
+  exactly when it had become true. Typing the next claim retires it.
+- **Evidence is cleared after a successful publish, which is a change rather
+  than a restoration.** It was never cleared before, but the form was also being
+  wiped unpredictably by the rebuild, so the hazard was intermittent. Making the
+  draft reliable would have made it reliable too: evidence is cited at
+  publication and fixed from then on, so carrying the same text into the next
+  claim would silently create a *second* `Evidence` entry and cite it. Domain and
+  confidence are kept, which was the original code's intent — publishing several
+  claims into one domain is the normal case.
+
+`scripts/live-verify/evidence-retraction-ui.mjs` fills the form richly, forces a
+rebuild by switching tabs, and asserts every field is still there. It has been
+watched failing against the pre-fix form: three reds, quoting the emptied form.
+This is the invariant `notes-live.mjs` already holds the notes composer to — a
+half-typed sentence and its caret both surviving an arrival — finally applied to
+the screen where a claim is written.
 

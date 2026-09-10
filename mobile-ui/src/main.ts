@@ -284,6 +284,65 @@ let currentAuthor = '';
 /** The by-author tab's input, kept for exactly the reason `domainDraft` is
  * kept — the same shape, the same rebuild, the same loss. */
 let authorDraft = '';
+
+/** Everything a half-composed claim consists of, held outside the DOM.
+ *
+ * The New Claim form is the worst case of the problem `domainDraft` describes,
+ * because it is the screen somebody spends real time on. Seven controls — the
+ * claim itself, its domain, confidence, tags, and three evidence fields — all
+ * lived only in their DOM nodes, so any `render()` while a claim was being
+ * composed discarded the lot with no warning and no error. Publishing into the
+ * domain you are browsing does exactly that, via `loadClaims`, which is why the
+ * explicit `contentArea.value = ''` on success was doing nothing recognisable:
+ * sometimes the rebuild cleared everything, sometimes nothing, depending on
+ * which path ran.
+ *
+ * One object rather than a variable per field, deliberately. A form is a single
+ * thing a person is in the middle of, and `clearAfterPublish` below is only
+ * coherent when there is one place that says what "in the middle of" means. */
+interface NewClaimDraft {
+  content: string;
+  /** Empty means "not typed yet", which is what lets the box keep pre-filling
+   * from the domain being browsed without overwriting a real edit. */
+  domain: string;
+  confidence: string;
+  tags: string;
+  evidenceContent: string;
+  evidenceType: EvidenceType;
+  evidenceUrl: string;
+}
+const emptyClaimDraft = (): NewClaimDraft => ({
+  content: '', domain: '', confidence: 'Moderate', tags: '',
+  evidenceContent: '', evidenceType: EVIDENCE_TYPES[0], evidenceUrl: '',
+});
+let newClaimDraft: NewClaimDraft = emptyClaimDraft();
+
+/** The "Claim published." confirmation, which also lived only in the DOM and
+ * was therefore destroyed by the very re-render that publishing triggers. */
+let newClaimNotice: string | null = null;
+
+/** What a successful publish resets, and what it deliberately keeps.
+ *
+ * Content and tags are cleared because the claim is written. Domain and
+ * confidence are kept because publishing several claims into one domain is the
+ * normal case — that was the original code's intent, readable in the two lines
+ * it cleared by hand.
+ *
+ * EVIDENCE IS CLEARED, and that is a change rather than a restoration. It was
+ * never cleared before, but the form was also being wiped unpredictably by the
+ * rebuild, so the hazard was intermittent. Making the draft reliable would make
+ * it reliable too: evidence is cited at publication and fixed from then on, so
+ * carrying the same text forward would silently create a SECOND Evidence entry
+ * and cite it from the next claim, which is not something anybody asked for. */
+function clearAfterPublish(): void {
+  newClaimDraft = {
+    ...newClaimDraft,
+    content: '',
+    tags: '',
+    evidenceContent: '',
+    evidenceUrl: '',
+  };
+}
 /** set once a read has come back, so an empty list can be reported as the
  * real and different answer it is rather than as "nothing loaded yet".
  * The taxonomy adoption count makes the same distinction for the same
@@ -3566,6 +3625,12 @@ function renderNewClaimTab(): HTMLElement {
   contentArea.required = true;
   contentArea.placeholder = 'What are you asserting?';
   contentArea.dataset.testid = 'new-claim-content';
+  contentArea.value = newClaimDraft.content;
+  contentArea.oninput = () => {
+    newClaimDraft.content = contentArea.value;
+    // Typing the next claim is what retires the last one's confirmation.
+    if (newClaimNotice !== null) { newClaimNotice = null; successBox.hidden = true; }
+  };
   contentLabel.appendChild(contentArea);
 
   const domainLabel = document.createElement('label');
@@ -3575,7 +3640,11 @@ function renderNewClaimTab(): HTMLElement {
   domainInput.required = true;
   domainInput.placeholder = 'e.g. LumbarRehab';
   domainInput.dataset.testid = 'new-claim-domain';
-  domainInput.value = currentDomain;
+  // An untouched box still pre-fills from the domain being browsed, which is
+  // the affordance this line always provided; once it has been typed into, the
+  // draft wins and a rebuild no longer overwrites the edit.
+  domainInput.value = newClaimDraft.domain || currentDomain;
+  domainInput.oninput = () => { newClaimDraft.domain = domainInput.value; };
   domainLabel.appendChild(domainInput);
 
   const confidenceLabel = document.createElement('label');
@@ -3585,15 +3654,18 @@ function renderNewClaimTab(): HTMLElement {
     const opt = document.createElement('option');
     opt.value = level;
     opt.textContent = level;
-    if (level === 'Moderate') opt.selected = true;
+    if (level === newClaimDraft.confidence) opt.selected = true;
     confidenceSelect.appendChild(opt);
   }
+  confidenceSelect.onchange = () => { newClaimDraft.confidence = confidenceSelect.value; };
   confidenceLabel.appendChild(confidenceSelect);
 
   const tagsLabel = document.createElement('label');
   tagsLabel.textContent = 'Tags (comma-separated, optional)';
   const tagsInput = document.createElement('input');
   tagsInput.type = 'text';
+  tagsInput.value = newClaimDraft.tags;
+  tagsInput.oninput = () => { newClaimDraft.tags = tagsInput.value; };
   tagsLabel.appendChild(tagsInput);
 
   const submitBtn = document.createElement('button');
@@ -3605,7 +3677,11 @@ function renderNewClaimTab(): HTMLElement {
   errorBox.hidden = true;
   const successBox = document.createElement('div');
   successBox.className = 'success-box';
-  successBox.hidden = true;
+  // Restored from state rather than left to the DOM, because the re-render that
+  // publishing triggers is what used to destroy it — the confirmation vanished
+  // exactly when it had just become true.
+  successBox.hidden = newClaimNotice === null;
+  if (newClaimNotice !== null) successBox.textContent = newClaimNotice;
 
   // Evidence, cited at publication.
   //
@@ -3630,6 +3706,8 @@ function renderNewClaimTab(): HTMLElement {
   const evidenceContent = document.createElement('textarea');
   evidenceContent.placeholder = 'What is the evidence? Leave blank to publish without any.';
   evidenceContent.dataset.testid = 'evidence-content';
+  evidenceContent.value = newClaimDraft.evidenceContent;
+  evidenceContent.oninput = () => { newClaimDraft.evidenceContent = evidenceContent.value; };
   evidenceFieldset.appendChild(evidenceContent);
   const evidenceTypeSelect = document.createElement('select');
   evidenceTypeSelect.dataset.testid = 'evidence-type';
@@ -3637,13 +3715,19 @@ function renderNewClaimTab(): HTMLElement {
     const opt = document.createElement('option');
     opt.value = t;
     opt.textContent = t;
+    if (t === newClaimDraft.evidenceType) opt.selected = true;
     evidenceTypeSelect.appendChild(opt);
   }
+  evidenceTypeSelect.onchange = () => {
+    newClaimDraft.evidenceType = evidenceTypeSelect.value as EvidenceType;
+  };
   evidenceFieldset.appendChild(evidenceTypeSelect);
   const evidenceUrl = document.createElement('input');
   evidenceUrl.type = 'text';
   evidenceUrl.placeholder = 'Source URL (optional)';
   evidenceUrl.dataset.testid = 'evidence-url';
+  evidenceUrl.value = newClaimDraft.evidenceUrl;
+  evidenceUrl.oninput = () => { newClaimDraft.evidenceUrl = evidenceUrl.value; };
   evidenceFieldset.appendChild(evidenceUrl);
 
   form.appendChild(contentLabel);
@@ -3698,10 +3782,14 @@ function renderNewClaimTab(): HTMLElement {
     };
     try {
       await connection.callZome('create_claim', claim);
+      newClaimNotice = 'Claim published.';
       successBox.hidden = false;
-      successBox.textContent = 'Claim published.';
-      contentArea.value = '';
-      tagsInput.value = '';
+      successBox.textContent = newClaimNotice;
+      clearAfterPublish();
+      contentArea.value = newClaimDraft.content;
+      tagsInput.value = newClaimDraft.tags;
+      evidenceContent.value = newClaimDraft.evidenceContent;
+      evidenceUrl.value = newClaimDraft.evidenceUrl;
       // If the practitioner is browsing this same domain, refresh it so
       // the new claim shows up without a manual reload.
       if (currentDomain === claim.domain) {
