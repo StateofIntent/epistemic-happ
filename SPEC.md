@@ -645,3 +645,29 @@ Two independently-run Holochain networks share no DHT — one cannot query the o
 This document tracks a specific commit of `main` (noted at the top) — there is currently **no automated check** keeping it in sync with the DNA source as the implementation evolves; it is a manually maintained snapshot, honestly labeled as such rather than implied to be self-updating. A change to any entry type, link type, validation rule, rate limit, invariant, HRR encoding, N4L vocabulary, or zome function signature in `dna/` or `n4l/arrows-epistemic.sst` **SHOULD** be accompanied by a corresponding update to this document in the same change, the same discipline this codebase already applies to keeping `README.md`'s own code-walkthrough sections current with what actually shipped.
 
 Forward-compatibility within the protocol itself is currently handled locally, not globally: `WorldlineTrace.binding_key`/`NeighborhoodBinding.binding_key` (§8) are the only versioned wire values today, each guarding its own narrow scheme. There is no protocol-wide version number, feature-negotiation mechanism, or migration path defined yet — a genuinely breaking change (e.g. a new required field on an existing entry type) would currently just be a new commit with no compatibility story for DHT data written under the old shape. This is a real, open gap, not a hidden one.
+
+### 11.1 What a change actually costs on this substrate
+
+This subsection is **descriptive, not aspirational**: it states what Holochain 0.7 does, which constrains every versioning scheme that could be chosen. It is here because the gap above cannot be closed sensibly without it, and because the usual toolkit for protocol versioning turns out not to apply.
+
+**The DNA hash is computed over the integrity manifest, and nothing else.** `dna/dna.yaml`'s `integrity:` block is exactly `network_seed`, `properties` and the integrity zomes; `DnaModifiers` in `holochain_integrity_types` states in its own doc comment that the modifiers "are included in the DNA hash computation", and the network seed's doc adds that the DNA hash "in turn determines the network peers and the DHT, meaning that only peers with the same DNA hash of a shared DNA participate in the same network and co-create the DHT."
+
+Three consequences follow, and they are hard constraints rather than preferences:
+
+| Change | DNA hash | What it means |
+|---|---|---|
+| Any edit to the integrity zome — an entry struct field, a link type, a validation rule | **changes** | A different network. Old and new peers never gossip. No in-place migration exists. |
+| Any edit to `network_seed` or `properties` | **changes** | Same as above, deliberately: this is the supported way to fork a network on purpose. |
+| Any edit to a coordinator zome — a new function, a changed signature, a fixed courtesy check | **unchanged** | Hot-swappable on a running conductor via the admin `update_coordinators` call. Not a protocol change at all. |
+
+**The uncomfortable corollary is that this substrate has no such thing as an additive, backward-compatible entry change.** Adding an `Option<T>` field to an existing entry type — the canonical non-breaking change in almost every other protocol — edits the integrity zome, so it changes the DNA hash, so it forks the network exactly as violently as removing a required field would. Nothing about the field being optional makes any difference.
+
+That has a direct bearing on what a version number could be for. **A Holochain network is always running exactly one version of its integrity zome, by construction**, because the zome *is* the network's identity. There can be no version skew between validating peers, and therefore:
+
+- a per-entry version discriminant cannot enable in-network coexistence of two entry shapes, because the shapes are fixed by the one integrity zome every peer runs;
+- feature negotiation between peers has nothing to negotiate;
+- permissive "accept unknown fields" validation buys no compatibility, and costs the thing this protocol is *for* — §5 and §7 are only worth anything because validation is exhaustive. An unvalidated extension region inside an entry would be where the invariants quietly stop applying.
+
+So the question a versioning scheme has to answer here is **not** "how do two versions interoperate" — they cannot. It is **"what happens at a fork"**: how a network states which protocol it is running, and what, if anything, carries across when a new one replaces it. Both halves are open; `README.md` §9 records the decision and what each option costs.
+
+One narrower point is settled and worth stating, because it is the only genuinely non-breaking change class available: **coordinator-only changes are free.** Everything in §5.21 ("coordinator courtesies that are NOT validation rules"), every zome function signature in §10, and every read path can change without touching the network's identity. A change confined there **SHOULD** be recognised as such rather than batched into an integrity change that forks the network for no reason.

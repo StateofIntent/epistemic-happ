@@ -978,6 +978,41 @@ running this it costs everything, and the option to design it calmly is gone.
 example. Related and smaller: nothing automatically keeps `SPEC.md` in sync with
 `dna/`, so it is a manually maintained snapshot of the commit named at its top.
 
+`SPEC.md` §11.1 now works out what the substrate actually permits, and the answer
+narrows this decision sharply. **The usual versioning toolkit does not apply
+here.** A Holochain network *is* its integrity zome — the DNA hash is computed
+over the integrity manifest, and only peers sharing that hash share a DHT — so a
+network always runs exactly one version, by construction. There is no version
+skew between validating peers, which means a per-entry version discriminant
+enables no coexistence, feature negotiation has nothing to negotiate, and
+permissive "accept unknown fields" validation buys no compatibility while costing
+the exhaustive validation §5 and §7 depend on. The corollary that surprises
+people: **there is no additive, backward-compatible entry change on this
+substrate.** Adding an `Option<T>` field forks the network exactly as violently
+as deleting a required one, because both edit the integrity zome. The one class
+that really is free is coordinator-only changes, which are hot-swappable via the
+admin `update_coordinators` call and are not protocol changes at all.
+
+So the open question is not "how do two versions interoperate" — they cannot. It
+is **what happens at a fork**: how a network says which protocol it is running,
+and what carries across when a new one replaces it. Three shapes, costed:
+
+| Shape | What it is | Cost | What it buys |
+|---|---|---|---|
+| **A — Name the fork, build nothing** | Document that every integrity change is a new network, and that migration is out of scope | Nothing now | Honesty, and no speculative machinery. Every future change is a migration nobody has tooling for |
+| **B — A version in `properties`, plus a migration contract** | Put a protocol version in the DNA's `properties` (currently `~`), so it is in the hash and readable from validation via `dna_info()`; define what an export/re-publish across a fork must preserve | One field now — but it **changes the DNA hash**, invalidating the shipped `.happ`/`.webhapp` and any existing sandbox state. Migration tooling later | A network that can state its own version, and a defined answer to "what carries across". The export half is largely built already — N4L export and the gateway's JSON-LD both walk the same data |
+| **C — Per-entry version discriminant** | A `v: u8` on every entry, with validation accepting a listed set | A field on every entry type, forever | **On inspection, almost nothing** — see §11.1. It cannot produce in-network coexistence, because every peer runs the same integrity zome. Recorded so it is not re-proposed as the obvious answer |
+
+**The recommendation is B**, and the reason C is listed at all is that it is what
+most people reach for first, including this document's earlier framing of the
+gap. B's real cost is the one worth arguing about: setting `properties` now
+changes the DNA hash, so the currently shipped bundle stops being the same
+network. That is precisely the "free now, never again" window — it costs a
+rebuild today and an unmigratable fork later.
+
+**This is the open decision.** Nothing below is implemented; §11.1 is the
+substrate analysis, this table is the choice, and neither is a commitment yet.
+
 **Sybil resistance is open and is expected to stay open, which is a different
 statement from the rest of this table.** It is an accepted architectural ceiling,
 not a queued task: global sybil resistance requires a global scarce resource, and
