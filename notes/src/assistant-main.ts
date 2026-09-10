@@ -17,20 +17,24 @@
 // hand one to a person — which is the point of putting the assistant in the
 // membership model rather than in the service.
 //
-// HOW A ROOM STOPS ONE, HONESTLY. This file used to say "revoke the link or
-// remove the member", and neither half is true today. An invite is consulted
-// only at join time, so revoking it stops the NEXT assistant and does nothing
-// about one already in the room. And there is no HTTP route to remove a
-// member at all: `NotesStore.removeMember` exists and nothing exposes it. So
-// the only way to stop an assistant right now is to stop its process, or to
-// restart an ephemeral notes server and take every token with it.
+// HOW A ROOM STOPS ONE. Any member of the room removes it: `POST
+// /spaces/:id/removals` with this member's id. The room keeps a note saying
+// who removed whom, the token stops validating immediately, and the invite
+// this process walked in through is revoked — so it cannot simply rejoin with
+// the link it still holds.
 //
-// That is a gap in the membership model rather than in this file, and it is
-// left open deliberately: a removal route needs an answer to "who may remove
-// whom" — any member, only the creator, nobody without a second member
-// agreeing — and that is a decision about how a room governs itself, not a
-// detail to settle inside a client fix. The 401 handling below is what makes
-// such a route work the day it exists. See notes/README.md's Status section.
+// This file used to say "revoke the link or remove the member" and neither
+// half was true. An invite is consulted only at join time, so revoking it
+// stopped the NEXT assistant and did nothing about one already in the room;
+// and the `NotesStore.removeMember` this comment named as existing-but-
+// unexposed did not exist at all. The claim was repeated in three documents
+// for long enough to read as verified. What made it true was not code in this
+// file but an answer to "who may remove whom" — any member, recorded as a
+// note — which is written up in notes/README.md.
+//
+// The 401 handling below is the half this file does own, and it is what makes
+// a removal land: this process stops on a 401 or 403 rather than retrying a
+// token the room has finished with.
 //
 // AND IT IS HELD TO THE SAME CEILINGS, which is the other half of the same
 // idea. `notes/src/limits.ts` caps answers per member per hour, and an AI

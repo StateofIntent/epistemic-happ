@@ -196,6 +196,28 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
         return { left: true };
       },
     },
+    {
+      // Asking somebody else to leave, which until now this service could not
+      // do at all — three documents said it could, by "revoking the link or
+      // removing the member", and neither half was true: an invite is checked
+      // only at join time, and the removeMember those documents named did not
+      // exist. See NotesStore#removeMember for who may do this and why.
+      //
+      // A POST that creates a note rather than a DELETE on the member, because
+      // that is what it IS: the room's account of a removal, in the room, for
+      // everyone it happened to. It answers with the whole membership as well,
+      // so a caller does not have to re-read to find out who is left.
+      method: 'POST', pattern: /^\/spaces\/([^/]+)\/removals$/,
+      handler: ({ token, body }, [spaceId]) => {
+        const member = store.requireMemberOf(token, spaceId);
+        // The same ceiling a note costs, because it writes one. Deliberately
+        // not a ceiling of its own: a room where removals are cheap and notes
+        // are not would be a strange room.
+        limiter.charge('notesCreate', member.id);
+        const note = store.removeMember(spaceId, member, body?.memberId);
+        return { note, members: store.publicMembers(spaceId) };
+      },
+    },
 
     // --- Invites ----------------------------------------------------------
     {

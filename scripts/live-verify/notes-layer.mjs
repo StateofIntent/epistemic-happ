@@ -71,6 +71,16 @@
 //   correctly: that server was told to trust the header, and the injection did
 //   not change what it does. Reverted.
 //
+//   Injection: the service without removals at all — `store.removeMember` and
+//   the `/spaces/:id/removals` route both taken out, i.e. this service exactly
+//   as it stood while three documents said an assistant could be stopped.
+//   Result: exactly nine reds, all of them in the removal section, and every
+//   other check in this file green. The two checks about the record report
+//   themselves as NOT RUN rather than throwing — there is no note to ask about
+//   when no removal happened, and a harness that turned nine honest reds into
+//   one stack trace would be breaking this directory's own rule about
+//   diagnostics. Restored; the whole file green.
+//
 //   Injection: `clientAddress` returning `socket.remoteAddress` verbatim, with
 //   no normalisation — the service exactly as it shipped, and the shape this
 //   arrives in, since the address is right there on the socket and looks like
@@ -316,6 +326,84 @@ async function main() {
     const previewWithAi = await call('GET', `/invites/${openToken}`);
     check('an invite preview says what help the room offers — the AI is a reason to walk in the door',
       previewWithAi.body.preview.aiOffers.includes('critique-tutor'));
+
+    // === Asking somebody to leave, and the room's account of it ===
+    //
+    // In its OWN space, deliberately: every check after this one reads the
+    // membership built above, and a harness that quietly removed people from
+    // under its later assertions would be testing something other than what
+    // it says. A removal is cheap to set up and expensive to share.
+    //
+    // WHAT THIS COVERS, and it is a whole feature rather than a fix: until
+    // this commit the service could not remove anybody at all, while three
+    // documents said it could, by "revoking the link or removing the member".
+    // Neither half was true — an invite is consulted only at join time, and
+    // the `NotesStore.removeMember` those documents named did not exist.
+    log('\n--- Asking somebody to leave ---');
+    const quitters = await call('POST', '/spaces', {
+      body: {
+        name: `A room somebody leaves ${STAMP}`, description: 'x', listed: false,
+        creator: { displayName: 'Ada' },
+      },
+    });
+    const roomId = quitters.body.space.id;
+    const adaHere = quitters.body.token;
+    const adaId = quitters.body.member.id;
+    const doorOne = quitters.body.invite.token;
+
+    const bo = await call('POST', `/invites/${doorOne}/join`, { body: { displayName: 'Bo' } });
+    const removal = await call('POST', `/spaces/${roomId}/removals`, {
+      token: adaHere, body: { memberId: bo.body.member.id },
+    });
+    check('a member may ask another member to leave — no owner, no admin, the same answer this layer gives for notes',
+      removal.status === 200);
+    check('the removal is a NOTE in the room, saying who removed whom',
+      /Ada removed Bo/.test(removal.body?.note?.text ?? ''));
+    check('and it carries the name of somebody whose row no longer exists, so the record does not dangle',
+      removal.body?.note?.removal?.subjectName === 'Bo');
+    check('the room answers with who is left, so nobody has to re-read to find out',
+      (removal.body?.members ?? []).length === 1);
+    check('the removed token stops working at once, rather than at the end of some session',
+      (await call('GET', `/spaces/${roomId}/notes`, { token: bo.body.token })).status === 401);
+
+    // The half that makes it a removal rather than a request. An invite is
+    // checked only at join time, so a live link is a way back in for the
+    // person holding it — which is everybody who was just removed.
+    check('the door they came through is closed behind them, or the removal is theatre',
+      (await call('POST', `/invites/${doorOne}/join`, { body: { displayName: 'Bo again' } })).status !== 200);
+
+    // Guarded rather than assumed: if no removal came back, the two checks
+    // below have nothing to ask about, and a harness that threw here would
+    // turn six honest reds into one stack trace — which is this directory's
+    // rule about diagnostics, applied to itself.
+    const record = removal.body?.note?.id ?? null;
+    if (record === null) {
+      log('    (no removal note came back, so the two checks about the record could not run)');
+    } else {
+      check('the record cannot be rewritten, though every other note here can',
+        (await call('PATCH', `/notes/${record}`, { token: adaHere, body: { text: 'nothing happened' } })).status === 403);
+      check('and it cannot be deleted, though every other note here can',
+        (await call('DELETE', `/notes/${record}`, { token: adaHere })).status === 403);
+    }
+    check('you cannot remove yourself — being asked to leave and leaving are different acts',
+      (await call('POST', `/spaces/${roomId}/removals`, { token: adaHere, body: { memberId: adaId } })).status === 400);
+
+    const doorTwo = (await call('POST', `/spaces/${roomId}/invites`, { token: adaHere, body: {} })).body.invite.token;
+    const helper = await call('POST', `/invites/${doorTwo}/join`, { body: { displayName: 'Tutor', kind: 'ai' } });
+    const doorThree = (await call('POST', `/spaces/${roomId}/invites`, { token: adaHere, body: {} })).body.invite.token;
+    const cy = await call('POST', `/invites/${doorThree}/join`, { body: { displayName: 'Cy' } });
+    check('an AI member is a full member and still may not decide who is in the room',
+      (await call('POST', `/spaces/${roomId}/removals`, {
+        token: helper.body.token, body: { memberId: cy.body.member.id },
+      })).status === 403);
+
+    // The case that motivated all of it: three documents promised this worked.
+    const stopped = await call('POST', `/spaces/${roomId}/removals`, {
+      token: adaHere, body: { memberId: helper.body.member.id },
+    });
+    check('an assistant already in the room can be stopped, which is what the documents claimed and nothing could do',
+      stopped.status === 200
+      && (await call('GET', `/spaces/${roomId}/notes`, { token: helper.body.token })).status === 401);
 
     // === The directory lists what opted in, and refuses to rank ===
     log('\n--- The directory ---');

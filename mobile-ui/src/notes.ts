@@ -65,6 +65,16 @@ export interface Note {
    * showing other people's writing as it arrives. */
   rev: number;
   promotions: NotesPromotion[];
+  /** Set on the room's record that somebody was removed. Present on exactly
+   * one kind of note, and the one kind nobody may rewrite or delete — see
+   * `notes/src/store.ts` `removeMember`. The subject's name is carried here
+   * because their member row is gone by the time anyone reads it. */
+  removal?: {
+    subjectId: string;
+    subjectName: string;
+    subjectKind: NotesMemberKind;
+    inviteClosed: string | null;
+  };
 }
 
 export interface NotesInvite {
@@ -360,6 +370,13 @@ export class NotesClient {
 
   members(spaceId: string, token: string): Promise<{ members: NotesMember[] }> {
     return this.request('GET', `/spaces/${spaceId}/members`, { token });
+  }
+
+  /** Asks somebody to leave. Answers with the note the room now carries about
+   * it and with who is left, so a screen does not have to re-read to redraw. */
+  removeMember(spaceId: string, token: string, memberId: string):
+  Promise<{ note: Note; members: NotesMember[] }> {
+    return this.request('POST', `/spaces/${spaceId}/removals`, { token, body: { memberId } });
   }
 
   signals(spaceId: string, token: string): Promise<{ signals: NotesSignals }> {

@@ -529,6 +529,39 @@ async function main() {
     // The ceiling is set to one parked poll for this run, so the question
     // "did the client actually hang up, and did the server actually let go"
     // has an answer rather than an assumption.
+    // === Being asked to leave, from both sides of it =====================
+    //
+    // LAST, and in this order on purpose: Cy is removed, so nothing after this
+    // may depend on Cy being in the room. Two browsers is the only way to
+    // check the half that matters — a removal one person performs is something
+    // ANOTHER person's screen has to notice, without them touching it, which is
+    // the same property the whole file exists for.
+    log('\n--- Being asked to leave ---');
+    const cyMemberId = await cy.page.evaluate(([key, id]) => {
+      const raw = localStorage.getItem(key);
+      return (JSON.parse(raw ?? '[]').find((m) => m.spaceId === id) ?? {}).memberId ?? null;
+    }, [MEMBERSHIPS_KEY, spaceId]);
+    await bo.page.locator(`[data-testid="notes-remove-${cyMemberId}"]`).click();
+    check('removing somebody takes two presses — it is not one stray tap on a phone',
+      (await cy.page.locator('[data-testid="notes-composer"]').count()) === 1);
+    await bo.page.locator(`[data-testid="notes-remove-${cyMemberId}"]`).click();
+
+    const roomSaysSo = await bo.page.waitForFunction(
+      () => document.querySelector('[data-testid^="note-removal-"]') !== null,
+      null, { timeout: 10000, polling: 200 },
+    ).then(() => true).catch(() => false);
+    check('the room keeps the account of it, in the room, where everyone can read it', roomSaysSo);
+    check('and it names who removed whom rather than saying somebody left',
+      /Bo removed Cy/.test(await bo.page.locator('[data-testid^="note-removal-"]').first().innerText()));
+
+    // The removed browser is not touched here either. Its next authenticated
+    // call fails, and the client already knows what a 401 means.
+    const cyIsOut = await cy.page.waitForFunction(
+      () => document.querySelector('[data-testid="notes-composer"]') === null,
+      null, { timeout: 15000, polling: 250 },
+    ).then(() => true).catch(() => false);
+    check('the removed screen puts itself out of the room, without anybody touching it', cyIsOut);
+
     log('\n--- Leaving a room lets go of it ---');
     const boToken = await tokenOf(bo.page, spaceId);
     const held = await call('GET', `/spaces/${spaceId}/events?since=999999`, { token: boToken });
