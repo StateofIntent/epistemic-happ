@@ -76,3 +76,74 @@ To build the installable bundle rather than a static site, use the root `scripts
 - **Bundle size**: ~940KB minified (~332KB gzipped), almost entirely `@holochain/client` and its crypto/msgpack dependencies (`libsodium-wrappers`, `@bitgo/blake2b`, `@msgpack/msgpack`). Not code-split in this pass — acceptable for a practitioner tool used repeatedly (cached after first load), worth revisiting if this needs to load quickly on a poor connection every time.
 - **PWA installability was not verified against a real Lighthouse audit or an actual mobile device this pass** — `manifest.webmanifest` and `public/sw.js` are present and syntactically real (the service worker was confirmed to register and intercept same-origin GETs during the Playwright run), but full install-prompt behavior varies by browser and wasn't independently audited.
 - **`npm audit` flags a moderate advisory in `esbuild` (via `vite@5`)**: the advisory is specific to `esbuild`'s local dev server accepting cross-origin requests — it affects `npm run dev` only, not the built `dist/` output, and `vite@5`'s fix requires the breaking `vite@8`. Left as-is for this pass; worth revisiting alongside a real Vite major-version upgrade, not in isolation.
+
+## A rebuild can still lose what you are typing — one place it does, and one it does not
+
+`render()` rebuilds this app's DOM wholesale, so anything typed into an input
+survives a rebuild only if something outside the DOM remembers it. Two inputs now
+do: the Browse tab's domain box (`domainDraft`) and the By Author tab's agent key
+(`authorDraft`), each persisted on every keystroke and restored on the next
+render.
+
+They were not, and it was a real defect rather than a theoretical one. Connecting
+fires two independent async loads — the friction status and the taxonomy — and
+each calls `render()` when it resolves. A domain typed in the first seconds after
+connecting could therefore vanish between the keystroke and the button, and
+"Load claims" would load the empty string and render nothing, with no error
+anywhere. It reached CI as an intermittent failure in
+`scripts/live-verify/hud-layer.mjs` — a bare timeout waiting for `.claim-card`
+with the seed confirmed written — and `scripts/live-verify/layout-fits.mjs` had
+already been given a click-twice workaround for it before anyone knew the cause.
+`hud-layer` now forces the rebuild by switching tabs and asserts the box still
+holds what was typed, which is what turns it from an intermittency into a check.
+
+**The New Claim form had the same shape, and is now fixed too.** It was the worst
+case, being the screen somebody spends real time on: all seven controls — the
+claim, its domain, confidence, tags, and the three evidence fields — lived only
+in their DOM nodes, so any `render()` mid-composition discarded the lot. One
+`newClaimDraft` object now holds them, rather than a variable per input, because
+a form is a single thing a person is in the middle of.
+
+Two consequences of that worth knowing, both visible in `clearAfterPublish`:
+
+- **The "Claim published." confirmation is state now, not DOM.** It was destroyed
+  by the very re-render publishing triggers — publishing into the domain you are
+  browsing calls `loadClaims`, which re-renders — so the confirmation vanished
+  exactly when it had become true. Typing the next claim retires it.
+- **Evidence is cleared after a successful publish, which is a change rather
+  than a restoration.** It was never cleared before, but the form was also being
+  wiped unpredictably by the rebuild, so the hazard was intermittent. Making the
+  draft reliable would have made it reliable too: evidence is cited at
+  publication and fixed from then on, so carrying the same text into the next
+  claim would silently create a *second* `Evidence` entry and cite it. Domain and
+  confidence are kept, which was the original code's intent — publishing several
+  claims into one domain is the normal case.
+
+`scripts/live-verify/evidence-retraction-ui.mjs` fills the form richly, forces a
+rebuild by switching tabs, and asserts every field is still there. It has been
+watched failing against the pre-fix form: three reds, quoting the emptied form.
+This is the invariant `notes-live.mjs` already holds the notes composer to — a
+half-typed sentence and its caret both surviving an arrival — finally applied to
+the screen where a claim is written.
+
+### The same defect was in the notes screens, and is fixed there too
+
+`notes-ui.ts` had it in every typed box: the invite link, the join name, and all
+four fields of the Start-a-space form. `ctx.rerender()` rebuilds that tree, and
+`loadDirectory` runs asynchronously whenever the notes tab is opened or the
+origin changes — so an invite link pasted before that landed was silently
+discarded, and "Look at it" then refused a perfectly good link with *"That does
+not look like an invite link or token."*
+
+This is how the `notes-live` `joinAs` intermittency was finally diagnosed. It had
+died twice as a bare Playwright timeout naming a line number and stayed uncaused
+for two days; once the harness was made to explain itself it reported, on the
+very next occurrence, that the screen was showing that refusal while the service
+previewed the same invite fine — which is the whole answer. The guard in
+`notes-live.mjs` now forces the rebuild by refreshing the directory instead of
+waiting to be unlucky, so the injection fails every run rather than once a day.
+
+`inviteDraft` and `joinNameDraft` are cleared on a successful join, and
+`createDraft` on a successful create — a room that now exists should not still be
+described by the form that made it.
+

@@ -941,7 +941,7 @@ them has a deadline.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
-| The `notes-live` `joinAs` intermittency | **A recurrence** — it now names which of three causes it was | §9 below, `scripts/live-verify/notes-live.mjs` header |
+| ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
 | Migration across a fork | **A decision** — whether provenance is an entry type or stays outside | `SPEC.md` §11.3 |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
@@ -1119,8 +1119,15 @@ the failing browser and over the same origin the app itself uses, which splits
 "the screen never rendered the form" from "this join was never going to happen".
 All three were forced one at a time and watched producing three different
 sentences; the harness header records them as injections A, B and C. The
-intermittency itself remains **open and uncaused** — this makes the next
-occurrence legible, it does not fix anything.
+**The intermittency is no longer open, and this is how it was closed.** On its
+third occurrence the diagnostic reported that the screen was not on the join
+screen at all and was showing *"That does not look like an invite link or
+token"*, while the service previewed the same invite fine — which is the whole
+answer, and which neither half gives alone. The invite box kept its value only in
+its DOM node, and `loadDirectory` re-renders asynchronously whenever the notes
+tab is opened, so a load landing between the paste and the click emptied it.
+Fixed in `notes-ui.ts`, and the guard now forces that rebuild rather than waiting
+to be unlucky, so the injection fails every run instead of once a day.
 
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot

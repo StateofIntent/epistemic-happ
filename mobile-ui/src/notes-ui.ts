@@ -94,6 +94,29 @@ let directoryError: string | null = null;
 
 let invitePreview: InvitePreview | null = null;
 let inviteError: string | null = null;
+
+/** What is TYPED into the boxes on these screens, held outside the DOM.
+ *
+ * `ctx.rerender()` rebuilds this whole tree, so an input's value survives a
+ * rebuild only if something outside it remembers. Nothing did, and it was not
+ * theoretical: `loadDirectory` runs asynchronously whenever the notes tab is
+ * opened or the origin changes, and re-renders when it lands. An invite link
+ * pasted before that landed was silently discarded, and "Look at it" then parsed
+ * the empty string and said "That does not look like an invite link or token."
+ * about a link that was perfectly good.
+ *
+ * That is exactly how the `notes-live` `joinAs` intermittency was finally
+ * diagnosed, on its third occurrence: the harness reported that the screen was
+ * showing that refusal while the SERVICE previewed the same invite fine. Before
+ * the diagnostic it had died twice as a bare Playwright timeout naming a line
+ * number, which is why it stayed uncaused for two days.
+ *
+ * The same shape, and the same fix, as `domainDraft` and `newClaimDraft` in
+ * `main.ts` — a person pasting an invite hits it as readily as a harness. */
+let inviteDraft = '';
+let joinNameDraft = '';
+const emptyCreateDraft = () => ({ name: '', description: '', tags: '', examples: '' });
+let createDraft = emptyCreateDraft();
 /** A filed request-to-join, remembered so the answer can be collected later.
  * The requester holds nothing else — see the service's own account. */
 let pendingJoin: { requestId: string; spaceName: string } | null = null;
@@ -544,6 +567,8 @@ function renderJoinBox(ctx: NotesContext): HTMLElement {
   input.type = 'text';
   input.placeholder = `${origin}/invites/…`;
   input.dataset.testid = 'notes-invite-input';
+  input.value = inviteDraft;
+  input.oninput = () => { inviteDraft = input.value; };
   block.appendChild(input);
   const error = el('div', 'error-box');
   error.hidden = true;
@@ -766,6 +791,8 @@ function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
   nameInput.type = 'text';
   nameInput.placeholder = 'What should people call you here?';
   nameInput.dataset.testid = 'notes-join-name';
+  nameInput.value = joinNameDraft;
+  nameInput.oninput = () => { joinNameDraft = nameInput.value; };
   block.appendChild(field('Your name in this space', nameInput));
 
   const error = el('div', 'error-box');
@@ -792,6 +819,10 @@ function renderJoin(ctx: NotesContext, inviteToken: string): HTMLElement {
             displayName,
             spaceName: preview.space.name,
           });
+          // Joined: neither the link that got us here nor the name typed into
+          // it should survive into the next invite somebody follows.
+          inviteDraft = '';
+          joinNameDraft = '';
           setScreen(ctx, { kind: 'space', spaceId: preview.space.id });
           void loadSpace(ctx, preview.space.id);
         } else {
@@ -822,17 +853,23 @@ function renderCreateSpace(ctx: NotesContext): HTMLElement {
   const nameInput = el('input');
   nameInput.type = 'text';
   nameInput.dataset.testid = 'notes-create-name';
+  nameInput.value = createDraft.name;
+  nameInput.oninput = () => { createDraft.name = nameInput.value; };
   block.appendChild(field('Name', nameInput));
 
   const descInput = el('textarea');
   descInput.dataset.testid = 'notes-create-description';
   descInput.placeholder = 'What is this room for? A newcomer reads this before deciding to join.';
+  descInput.value = createDraft.description;
+  descInput.oninput = () => { createDraft.description = descInput.value; };
   block.appendChild(field('Description', descInput));
 
   const tagsInput = el('input');
   tagsInput.type = 'text';
   tagsInput.dataset.testid = 'notes-create-tags';
   tagsInput.placeholder = 'comma-separated, chosen by you';
+  tagsInput.value = createDraft.tags;
+  tagsInput.oninput = () => { createDraft.tags = tagsInput.value; };
   block.appendChild(field('Tags', tagsInput));
 
   // Example notes at creation time rather than as a later nicety: an empty
@@ -843,6 +880,8 @@ function renderCreateSpace(ctx: NotesContext): HTMLElement {
   examplesInput.placeholder =
     'Two or three example notes, one per line. These are shown to anyone following your '
     + 'invite link, so they can see the tone before joining.';
+  examplesInput.value = createDraft.examples;
+  examplesInput.oninput = () => { createDraft.examples = examplesInput.value; };
   block.appendChild(field('Example notes', examplesInput));
 
   const nameYou = el('input');
@@ -882,6 +921,9 @@ function renderCreateSpace(ctx: NotesContext): HTMLElement {
         creator: { displayName, kind: 'human' },
         examples: examplesInput.value.split('\n').map((t) => t.trim()).filter(Boolean),
       });
+      // The room exists; the form that described it should not still be
+      // holding its details when "Start a space" is next opened.
+      createDraft = emptyCreateDraft();
       saveMembership({
         spaceId: created.space.id,
         token: created.token,
