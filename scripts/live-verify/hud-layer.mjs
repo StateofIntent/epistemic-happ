@@ -285,6 +285,15 @@ async function main() {
     log('\n=== Typing that outlives the read landing underneath it ===');
     const box = page.getByTestId('browse-domain-input');
     await box.click();
+    // To the END, deliberately. A click puts the caret where it landed, which
+    // on a 390px-wide box is the middle of a long domain — and the first run of
+    // this check proved that by quoting a box holding
+    // "HudLayer17890Interrupted50340358". Every keystroke had arrived, exactly
+    // where the caret was, which is the fix working and the assertion below
+    // being wrong. Anchoring the caret makes what is typed contiguous, and the
+    // assertion then says what it means: the letters landed AND they landed
+    // where the person left off.
+    await box.press('End');
     // A witness rather than an assumption: `render()` rebuilds wholesale, so
     // this mark cannot survive one. If it is still there afterwards, no
     // rebuild happened and the two checks below would have passed vacuously.
@@ -313,7 +322,8 @@ async function main() {
       afterTyping === DOMAIN + TYPED);
     if (afterTyping !== DOMAIN + TYPED) {
       log(`    (the box holds ${JSON.stringify(afterTyping)}, not ${JSON.stringify(DOMAIN + TYPED)})`);
-      log('    (a prefix means the rebuild took the caret and the rest was typed into nothing)');
+      log('    (a prefix means the rebuild took the caret and the rest was typed into nothing;');
+      log('     text landing anywhere but the end means the caret came back in the wrong place)');
     }
 
     const stillFocused = await page.evaluate(() =>
