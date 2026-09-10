@@ -931,8 +931,19 @@ real browser).
 What remains is blocked on different things, and the checkboxes below do not say
 which — so this section does. **Two of these are not checkboxes at all**: they
 are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
-somewhere other than a to-do list is exactly how they stay invisible. One of
-them has a deadline.
+somewhere other than a to-do list is exactly how they stay invisible.
+
+**Everything blocked on nothing but effort is now done.** Protocol versioning
+shipped and its deadline is spent; the CI binary download retries; three browser
+intermittencies were traced to one defect and fixed; and the npm republish is
+prepared down to a single command. **Exactly one open item needs a person rather
+than a decision**, and it is the only one with outside impact:
+
+> `scripts/publish-packages.sh --publish`, run by somebody with publish rights on
+> the `@stateofintent` npm scope. Both published packages are broken against
+> Holochain 0.7 today. Everything else about that republish is done and checked.
+
+The rest are decisions, and each is recorded with what it would cost to answer.
 
 | Item | Blocked on | Where it is written up |
 |---|---|---|
@@ -941,6 +952,7 @@ them has a deadline.
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | The `notes-ui` intermittency | **A recurrence** — it now names its own cause | §9 changelog, `scripts/live-verify/notes-ui.mjs` header |
+| The `notes-layer` X-Forwarded-For intermittency | **A recurrence** — seen once, hypothesis written down, not understood | §9 below |
 | ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
 | Migration across a fork | **A decision** — whether provenance is an entry type or stays outside | `SPEC.md` §11.3 |
@@ -1128,6 +1140,52 @@ its DOM node, and `loadDirectory` re-renders asynchronously whenever the notes
 tab is opened, so a load landing between the paste and the click emptied it.
 Fixed in `notes-ui.ts`, and the guard now forces that rebuild rather than waiting
 to be unlucky, so the injection fails every run instead of once a day.
+
+**Three browser intermittencies turned out to be one defect, and naming it is
+worth more than the three fixes.** `render()` rebuilds the DOM wholesale in both
+`mobile-ui/src/main.ts` and `mobile-ui/src/notes-ui.ts`, so an input's value
+survives a rebuild only if something outside the DOM remembers it — and nothing
+did. Any asynchronous load that re-renders when it lands could therefore discard
+what somebody had typed, between the keystroke and the button, with no error
+anywhere. It hit the browse box (the friction and taxonomy loads), the New Claim
+form (publishing into the domain being browsed), and the notes invite box (the
+directory load), and it is a defect a person meets as readily as a harness:
+paste an invite quickly enough and the app refuses a perfectly good link.
+
+Two things about how it was found are the transferable part:
+
+- **The `joinAs` diagnostic was written before the cause was known, and is what
+  found it.** On the third occurrence it reported that the screen was showing
+  *"That does not look like an invite link or token"* while the service previewed
+  the same invite fine. Neither half alone distinguishes a lost input from a bad
+  invite; together they are the whole answer. A diagnostic cannot be added
+  retroactively to a failure that has already happened, which is the argument for
+  building it before hunting the cause.
+- **Every fix converts the intermittency into a deterministic check** by FORCING
+  the rebuild — switching tabs, refreshing the directory — rather than waiting to
+  be unlucky. The injections now fail on every run where the defect used to
+  surface about once a day.
+
+**A fourth intermittency is open, has been seen exactly once, and is recorded
+here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is
+ignored unless an operator says something is in front — one header must not reset
+a ceiling"* failed once on `main`, and passed on re-run and three times in a row
+locally. It matters more than its one occurrence suggests, because of what it
+guards: a rate limit that any caller could otherwise reset by sending one header,
+which is the failure mode `notes/src/limits.ts` calls the worst kind — a ceiling
+that reads as a defence in review and is not one. **A ceiling that fails open
+occasionally is worse than one that fails visibly**, so this should not be
+re-run away.
+
+The untested hypothesis, written down so the next person does not start from
+nothing: the block immediately above it kills a server with `SIGTERM` while a
+poll is parked, and the next block starts a new server on the same port with
+different environment. If the first request lands before the new server is really
+ready, no budget is consumed and the second request returns 200 instead of the
+expected 429 — which is exactly the observed shape, and would be load-sensitive,
+fitting a CI runner under concurrent load and not a development machine. Unlike
+the browser intermittencies this one already reports as a named check rather than
+a bare timeout, so there is something to work with on the next occurrence.
 
 **The `notes-ui` intermittency is open and uncaused, and that is now a smaller
 problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
