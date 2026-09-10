@@ -115,6 +115,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `evidence-retraction-ui` | browser | 1 | Evidence, grounding, author-only retraction |
 | `affordance-surfacing` | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
 | `write-symmetry` | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
+| `protocol-version` | conductor | 1 + one deliberately misdeclared DNA | The network declares which protocol it is and cannot lie about it — the version is inside the DNA hash (checked by packing two DNAs that differ only in it), and a DNA whose manifest and zome disagree is installed for real and refuses every write while still answering what is wrong with it |
 | `launcher-packaging` | browser | 1 | The UI works on the path an installed `.webhapp` actually takes |
 | `taxonomy-ui` | browser | 1 | The critique vocabulary renders as a tree, is writable, and is never ranked |
 | `trust-lenses` | browser | **2** | A trust lens is never on by default, always visible, and its effect legible |
