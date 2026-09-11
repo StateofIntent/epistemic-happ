@@ -76,10 +76,15 @@ interface State {
    * this layer is ephemeral by default, but someone running with a state file
    * should not lose their notes to a version bump. */
   assists?: Record<string, Assist>;
+  /** The long-poll cursor, persisted because clients hold it across a
+   * restart and it MUST NOT go backwards. See `revision` below. Optional for
+   * the same reason `assists` is: a file written before this loads, and
+   * starts from zero exactly as it does today. */
+  revision?: number;
 }
 
 function emptyState(): State {
-  return { version: 1, spaces: {}, members: {}, invites: {}, requests: {}, notes: {}, assists: {} };
+  return { version: 1, spaces: {}, members: {}, invites: {}, requests: {}, notes: {}, assists: {}, revision: 0 };
 }
 
 function id(prefix: string): string {
@@ -145,12 +150,31 @@ export class NotesStore {
   private state: State;
   private readonly path: string | null;
   /** Bumped on every mutation. Clients long-poll on it (see server.ts's
-   * /events) rather than this service holding sockets open per note. */
-  private revision = 0;
+   * /events) rather than this service holding sockets open per note.
+   *
+   * IT IS PERSISTED, and that is not incidental. This number is the only
+   * ordering a client has, and clients hold it across a restart of this
+   * service: `/events` is asked for everything newer than a `since` the
+   * browser is carrying, and the browser now also uses it to refuse state
+   * older than what is already on its screen (`notes-ui.ts`,
+   * `acceptRevision`). A counter that restarted at zero under a client
+   * holding 57 would therefore park every poll for its full timeout,
+   * answering "nothing changed" while the room filled up — a room that goes
+   * quiet with nothing on screen saying so, which is the failure this layer
+   * is least able to notice.
+   *
+   * A state file written before this field simply starts from zero, which is
+   * exactly today's behaviour; from then on it only ever goes up. The one
+   * case still outside this is a state file restored from a backup, which
+   * rewinds the counter — recorded in `notes/README.md` rather than guarded
+   * against, because a client holding a stale `since` is broken there with or
+   * without this field. */
+  private revision: number;
 
   private constructor(state: State, path: string | null) {
     this.state = state;
     this.path = path;
+    this.revision = state.revision ?? 0;
   }
 
   /** `path === null` is the ephemeral mode used by tests and by anyone who
@@ -187,6 +211,7 @@ export class NotesStore {
 
   private touched(): void {
     this.revision++;
+    this.state.revision = this.revision;
     if (this.path === null) return;
     // Write-then-rename: a crash mid-write leaves the previous good file
     // rather than a truncated one. Cheap enough at this size to do on every

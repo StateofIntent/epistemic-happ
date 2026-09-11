@@ -999,6 +999,32 @@ what the successful one needed:
   since the next poll answers at a newer revision and puts the note back — which
   is why the repair poll is held at the route rather than sampled against.
 
+**Making the client trust that revision exposed a second defect underneath, and
+it was already there.** The store's revision was a field on the class and not
+part of the persisted state, so a service restarted on its own state file came
+back at zero while every client carried on holding the number it had. That is a
+client asking `since=57` of a service at revision 3: the poll parks for its full
+25 seconds and answers `changed: false`, over and over, while the room fills up.
+**A room that goes quiet with nothing on screen saying so**, which is the
+failure this layer is least able to notice. It did not need the new guard to
+exist — the long-poll cursor alone was enough — but the guard would have
+extended it to the repair path, because a reopened room reads at revision 3 too.
+
+The revision is persisted now, optional in the state file so one written before
+it loads and starts from zero exactly as today, and monotonic from then on.
+`notes-layer.mjs` checks it by doing what a client does rather than by reading
+the number back: a poll asked with the `since` it was still holding across the
+restart, which must still wake. Removing the field again turns both red, and the
+second red is the one that matters — "a state file survives a restart" stays
+green throughout, because every note and every token does come back. What does
+not is the ability to be told about the next one.
+
+**What is deliberately NOT guarded is a state file restored from a backup**,
+which rewinds the counter under clients holding a higher one. A client with a
+stale `since` is broken there with or without the persisted field, the repair is
+a reload either way, and inventing an epoch to detect it would put a number in
+every reply for a case nobody here has met. `notes/README.md` records it.
+
 The rest are decisions, and each is recorded with what it would cost to answer.
 
 | Item | Blocked on | Where it is written up |
