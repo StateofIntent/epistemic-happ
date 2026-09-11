@@ -53,7 +53,7 @@
 //   the soft copy surviving, which is a different property and is asserted
 //   separately for exactly this reason.
 //
-//   Injection C and D: the two halves of the open intermittency, forced, to
+//   Injection C and D: the two halves of the intermittency, forced, to
 //   prove the diagnostic that reports it can tell them apart.
 //     C — `renderNotes` renders an empty list while every write succeeds.
 //     D — `NotesClient.createNote` resolves without ever issuing the POST.
@@ -159,9 +159,20 @@ async function noteAppeared(target, text) {
 /** On a miss, ask the SERVICE whether the note exists — the split the previous
  * diagnostic could not make.
  *
- * That one distinguished a refused write from a hang, which was real progress
- * and is why this file's open intermittency has any evidence at all. It is not
- * enough. Both recorded failures reported `<nothing>` in the composer, meaning
+ * THE INTERMITTENCY THIS WAS BUILT FOR IS CLOSED, and this diagnostic is what
+ * narrowed it: it is the reason the hypothesis that turned out to be right —
+ * the screen, not the write — could be written down at all. The cause was two
+ * unordered writers to the same client state, the submit path's read and the
+ * parked long-poll's snapshot, either of which replaced the room wholesale; a
+ * snapshot generated before your note and landing after your own read put the
+ * list back without it. Fixed in `notes-ui.ts` with a per-space revision
+ * guard, and forced into a deterministic check in `notes-live.mjs` — which is
+ * where the race can be held open, because that harness controls the poll.
+ * This diagnostic stays: it is what makes the NEXT unexplained miss here say
+ * which process it lives in.
+ *
+ * That split — a refused write from a hang — was real progress and is why this
+ * file's intermittency had any evidence at all. It was not enough. Both recorded failures reported `<nothing>` in the composer, meaning
  * no refusal — and "the write was accepted" and "the write never happened" are
  * still indistinguishable from the screen alone, while being completely
  * different defects living in different processes.

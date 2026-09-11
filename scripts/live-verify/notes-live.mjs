@@ -91,6 +91,33 @@
 //   check order here is not rearranged for tidiness. The conflict WARNING
 //   stayed green throughout, correctly: the screen still noticed the note had
 //   moved, it just no longer stopped anything. A warning is not a guarantee.
+//
+//   THE `notes-ui` INTERMITTENCY WAS CLOSED HERE, and closing it needed the
+//   defect to be FORCED rather than met. It had been open for days as "a note
+//   sometimes does not appear after a submit", with a written hypothesis and
+//   two failed attempts to reproduce it. The cause was the one the hypothesis
+//   named: two unordered writers to the same state — the submit path's read
+//   and the parked long-poll's snapshot — either of which replaced the room
+//   wholesale, so a snapshot generated before your note and landing after your
+//   own read put the list back without it.
+//
+//   Injection: the revision guard removed from `notes-ui.ts` — which is the
+//   state that code was in until this work, and the state two deleted `if`s
+//   return it to.
+//   Result: ONE red, three runs out of three, and it is the disappearance
+//   itself. All three witnesses stay green — Bo's note reached Bo's screen,
+//   the held snapshot really was older than it, and the client really did
+//   consume that snapshot — so the red is the property and not the setup. With
+//   the guard restored: green three runs out of three. It used to surface
+//   about once a day, and only deep inside a long sequential batch.
+//
+//   WHY IT BELONGS IN THIS FILE rather than in `notes-ui.mjs`, where it was
+//   first seen and first hunted: the second writer does not exist until the
+//   room is live. `notes-ui.mjs` drives a screen with a long-poll in it, so it
+//   could meet the defect — but it has no way to make the two writers race,
+//   because it never holds an answer back. This file already owns "what
+//   arrival must not break", and this is the sharpest case of it: the thing
+//   arrival broke was your own writing.
 // ---------------------------------------------------------------------------
 // Runtime: ~30 seconds, most of it two browser contexts starting.
 // ============================================================================
@@ -524,6 +551,114 @@ async function main() {
     await sleep(800);
     check('and overwriting deliberately, after reading theirs, still works — this is a shared notebook',
       (await noteTexts(bo.page)).some((t) => t.includes('Bo insists')));
+
+    // === The other writer, and the order nothing kept =====================
+    //
+    // THE INTERMITTENCY THIS CLOSES, and why it lived in this file rather than
+    // in `notes-ui.mjs`. Going live gave this screen a SECOND writer. The
+    // submit path (`createNote` -> `loadSpace` -> replace the list) and the
+    // parked long-poll (`applySnapshot` -> replace the list) both rewrote the
+    // room wholesale, and neither compared which answer was read first. So a
+    // poll that woke on somebody else's note — generated before your note
+    // exists — could land after your own read and put the list back without
+    // it. Your own note disappearing from the screen that just wrote it, with
+    // no error anywhere.
+    //
+    // It is a defect a person meets, not a harness artefact: the room is
+    // live, so somebody else writing while you press Send is the ordinary
+    // case, not an unlucky one.
+    //
+    // FORCED, NOT WAITED FOR, like every other fix in this repository's browser
+    // layer. Two earlier attempts to reproduce it failed, and both lessons are
+    // built in here rather than rediscovered:
+    //
+    //   The route goes on the CONTEXT, and the poll it has to catch must START
+    //   after it. A poll parks for 25 seconds, so the one already in flight
+    //   when the route is installed is not intercepted at all — the room is
+    //   nudged once to retire it, and the interception then waits for evidence
+    //   (`eventsSeen`) that it is holding a poll rather than assuming it.
+    //
+    //   The disappearance REPAIRS ITSELF. The next poll answers at a newer
+    //   revision and puts the note back, which is why this reads as a flicker
+    //   and why a check that waits proves nothing. So the repair poll is held
+    //   at the route until the assertion has been made — what a person sees
+    //   for a moment is what this check gets to look at.
+    //
+    // Two witnesses guard against passing vacuously, because every one of the
+    // ways this check could go green by accident is a way it teaches nothing:
+    // the held snapshot must really be older than Bo's note, and Bo's note must
+    // really have been on screen before the stale snapshot was let through.
+    log('\n--- A note does not vanish from the screen that wrote it ---');
+
+    let eventsSeen = 0;
+    let heldPayload = null;
+    let releaseStale = () => {};
+    let openRepair = () => {};
+    const staleGate = new Promise((r) => { releaseStale = r; });
+    const repairGate = new Promise((r) => { openRepair = r; });
+
+    await bo.context.route(/\/spaces\/[^/]+\/events/, async (route) => {
+      eventsSeen += 1;
+      if (eventsSeen === 1) {
+        // Let the real poll park and answer, then keep its answer in hand.
+        const response = await route.fetch();
+        heldPayload = await response.text();
+        await staleGate;
+        await route.fulfill({ response, body: heldPayload });
+        return;
+      }
+      // Every later poll is the repair. Held, not refused — the client should
+      // come out of this with a working connection, which is checked below.
+      await repairGate;
+      await route.continue();
+    });
+
+    // Retire the poll that started before the route existed.
+    await call('POST', `/spaces/${spaceId}/notes`, {
+      token: ada, body: { text: `Retiring the poll that predates the route ${STAMP}.` },
+    });
+    for (let i = 0; i < 200 && eventsSeen < 1; i++) await sleep(50);
+    // If that nudge was itself caught by the route, the snapshot in hand is
+    // already the one wanted — it predates Bo's note either way. Otherwise the
+    // intercepted poll is parked now and needs something to wake it.
+    if (eventsSeen >= 1 && heldPayload === null) {
+      await call('POST', `/spaces/${spaceId}/notes`, {
+        token: ada, body: { text: `Ada wrote this before Bo pressed anything ${STAMP}.` },
+      });
+      for (let i = 0; i < 200 && heldPayload === null; i++) await sleep(50);
+    }
+
+    const bosNote = `Bo wrote this and it must not vanish ${STAMP}.`;
+    await bo.page.locator('[data-testid="notes-composer"]').fill(bosNote);
+    await bo.page.locator('[data-testid="notes-composer-submit"]').click();
+    const ownWrite = await waitForNote(bo.page, bosNote);
+    check('Bo\'s own note reaches Bo\'s own screen — the witness the next check needs',
+      ownWrite !== null);
+
+    const stale = heldPayload === null ? null : JSON.parse(heldPayload);
+    const staleTexts = (stale?.notes ?? []).map((n) => n.text ?? '');
+    check('the snapshot being held really is older than Bo\'s note — it carries a room without it',
+      stale !== null && stale.changed === true && Array.isArray(stale.notes)
+      && !staleTexts.some((t) => t.includes(bosNote)));
+
+    // Let the stale answer land, and wait for proof the client consumed it:
+    // asking for the next poll is something it can only do afterwards.
+    releaseStale();
+    for (let i = 0; i < 200 && eventsSeen < 2; i++) await sleep(50);
+    check('the stale snapshot was delivered and taken — the client went on to ask for the next one',
+      eventsSeen >= 2);
+    check('a note does not vanish from the screen that wrote it when an older snapshot lands late',
+      (await noteTexts(bo.page)).some((t) => t.includes(bosNote)));
+
+    // A guard that drops an answer must not drop the connection with it. The
+    // dropped snapshot's revision is still taken as the next `since`, so the
+    // room has to keep moving — and a version of this that wedged liveness
+    // would pass every check above.
+    openRepair();
+    const afterDrop = `Ada carries on after the dropped snapshot ${STAMP}.`;
+    await call('POST', `/spaces/${spaceId}/notes`, { token: ada, body: { text: afterDrop } });
+    check('the room keeps moving after an answer is dropped — dropping one is not hanging up',
+      (await waitForNote(bo.page, afterDrop, 15000)) !== null);
 
     // === Letting go of the room ==========================================
     // The ceiling is set to one parked poll for this run, so the question

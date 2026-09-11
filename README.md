@@ -933,53 +933,71 @@ which — so this section does. **Two of these are not checkboxes at all**: they
 are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
 somewhere other than a to-do list is exactly how they stay invisible.
 
-**Everything blocked on nothing but effort is now done.** Protocol versioning
-shipped and its deadline is spent; the CI binary download retries; four browser
-intermittencies were traced to one defect and fixed — the fourth being the same
-defect's second half, which only became visible because the first fix let `main`
-fail again in a way that named it; the address-keyed ceilings hold for one
-machine however it connects; a room can ask somebody to leave; and the npm
-republish is prepared down to a single command. **Exactly one open item needs a
-person rather than a decision**, and it is the only one with outside impact:
+**Everything blocked on nothing but effort is now done, and so is the one item
+that was blocked on a recurrence.** Protocol versioning shipped and its deadline
+is spent; the CI binary download retries; four browser intermittencies were
+traced to one defect and fixed — the fourth being the same defect's second half,
+which only became visible because the first fix let `main` fail again in a way
+that named it; the address-keyed ceilings hold for one machine however it
+connects; a room can ask somebody to leave; the npm republish is prepared down to
+a single command; and the `notes-ui` intermittency was closed without waiting for
+its recurrence, by forcing the race its written-up hypothesis described.
+**Exactly one open item needs a person rather than a decision**, and it is the
+only one with outside impact:
 
 > `scripts/publish-packages.sh --publish`, run by somebody with publish rights on
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**Open right now, and the first thing to look at next: pull request #127.** It
-is a diagnostic rather than a fix — `real-gossip` reporting how many peers each
-conductor has heard of, so the next missed gossip says whether the two nodes had
-even met. It went green on its own branch; it is in review and not merged. The
-occurrence that prompted it is recorded further down this section.
+**Open right now, and the first thing to look at next: pull requests #127 and
+#129.** #127 is a diagnostic rather than a fix — `real-gossip` reporting how many
+peers each conductor has heard of, so the next missed gossip says whether the two
+nodes had even met; the occurrence that prompted it is recorded further down this
+section. #129 closes the `notes-ui` intermittency described immediately below.
+Both are green on their own branches and in review, neither is merged.
 
-**The `notes-ui` intermittency is still open, and there is now a concrete
-hypothesis to start from rather than a blank page.** Nothing here is proven, and
-it is written down because the reasoning cost something and would otherwise be
-lost:
+**The `notes-ui` intermittency is closed. The hypothesis was right, and writing
+it down before it could be proved is what closed it** — the reproduction attempt
+that failed left behind two specific reasons it failed, and both of them were
+what the successful one needed:
 
-- **The server side is ruled out.** `NotesStore.createNote` inserts the note and
-  THEN bumps the revision (`store.ts`), and the service is single-threaded, so a
-  waking long-poll cannot see the new revision without the note. A snapshot
-  generated after the write always contains it.
-- **The client has two unordered writers to the same state.** The submit path
-  (`notes-ui.ts`, composer `onsubmit` → `createNote` → `loadSpace` →
+- **The server side was ruled out, and stayed ruled out.**
+  `NotesStore.createNote` inserts the note and THEN bumps the revision
+  (`store.ts`), and the service is single-threaded, so a waking long-poll cannot
+  see the new revision without the note. A snapshot generated after the write
+  always contains it.
+- **The cause was the client's two unordered writers to the same state.** The
+  submit path (`notes-ui.ts`, composer `onsubmit` → `createNote` → `loadSpace` →
   `notesBySpace.set`) and the parked long-poll (`applySnapshot` →
-  `notesBySpace.set`) both replace the note list wholesale, and neither compares
-  which is newer. A snapshot generated *before* your note that lands *after*
-  your own read would put the list back without it — your own note vanishing
-  from the screen that wrote it, which is the reported shape.
-- **If that is the cause, the fix needs no new plumbing.** Both responses
-  already carry a revision — `GET /spaces/:id/notes` returns
-  `{ notes, revision }` and the events snapshot returns `revision` — so the rule
-  is to apply state only when its revision is newer than what is held.
-- **It was not reproduced.** The attempt drove one browser against a real notes
-  server and used Playwright route interception to hold a parked poll's response
-  until after a note was submitted. Two things to know before trying again: a
-  route must be installed on the CONTEXT before the room is opened, because the
-  poll parks for 25 seconds and a route only catches requests that start after
-  it; and the disappearance may be transient, since the next poll answers at a
-  newer revision and would put the note back — so a check must sample
-  immediately rather than wait.
+  `notesBySpace.set`) both replaced the note list wholesale, and neither
+  compared which was read first. A snapshot generated *before* your note that
+  lands *after* your own read puts the list back without it — your own note
+  vanishing from the screen that wrote it, which is the reported shape.
+- **The fix needed no new plumbing, as predicted.** Both responses already carry
+  a revision — `GET /spaces/:id/notes` returns `{ notes, revision }` and the
+  events snapshot returns `revision`, both from the same store-wide counter — so
+  the rule is to apply state only when it is not known to be older than what is
+  held. `revisionBySpace` and `acceptRevision` in `notes-ui.ts`, consulted by
+  both writers. Two smaller consequences are deliberate and documented at the
+  code: equal revisions are applied rather than dropped, because the same
+  revision is the same store state; and `loadSpace`'s three concurrent reads are
+  stamped with the notes revision, the oldest of the three that is knowable,
+  because stamping HIGHER than the data's real age is the one error that would
+  lose writes.
+- **It is now a forced check rather than a hope**, in `notes-live.mjs` — the
+  harness that owns liveness, because the second writer does not exist until the
+  room is live. A poll is intercepted, its answer held until after a note is
+  submitted, and the REPAIR poll held too so the assertion is not racing the
+  next answer. Three witnesses guard it against passing vacuously. Removing the
+  guard fails it 3 runs out of 3; restoring it passes 3 out of 3, where the
+  defect used to surface about once a day and only deep inside a long batch.
+- **Both lessons from the failed attempt were load-bearing.** A route must be
+  installed on the CONTEXT and catch a poll that STARTS after it, because a
+  parked poll runs for 25 seconds and is not intercepted retroactively — so the
+  room is nudged once to retire the poll already in flight, and the check then
+  waits for evidence it is holding one. And the disappearance repairs itself,
+  since the next poll answers at a newer revision and puts the note back — which
+  is why the repair poll is held at the route rather than sampled against.
 
 The rest are decisions, and each is recorded with what it would cost to answer.
 
@@ -987,7 +1005,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 |---|---|---|
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
-| The `notes-ui` intermittency | **A recurrence** — but with a hypothesis and a fix shape now, see above | §9 above, `scripts/live-verify/notes-ui.mjs` header |
+| ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | The `real-gossip` discovery flake | **In review** — pull request #127 makes the next one explain itself | §9 below |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
@@ -1369,14 +1387,21 @@ machine being one key; what is not is a caller with a whole IPv6 `/64`**, and
 address means here rather than a line of code: a `/64` is one household on some
 networks and one customer of a provider on others.
 
-**The `notes-ui` intermittency is open and uncaused, and that is now a smaller
-problem than it was.** A refused write is ruled out by evidence; a stale-snapshot
-race is recorded as plausible and unproven, together with the reason its
-injection failed. On the next occurrence the harness says whether the service
-holds the note — which splits "the screen did not show it" from "the write never
-landed" — and both halves of that have been watched failing. It tracks machine
-load: green 8/8 run alone, and it has failed only deep inside a long sequential
-batch.
+**The `notes-ui` intermittency was caused, and the stale-snapshot race written
+up here as "plausible and unproven" is what it was.** The diagnostic is what got
+it there: on a miss the harness says whether the SERVICE holds the note, which
+splits "the screen did not show it" from "the write never landed", and both
+halves of that were watched failing. That split ruled out a refused write, which
+is the whole reason the remaining hypothesis could be narrowed to the client and
+written down in a form specific enough to act on.
+
+**What closed it was forcing the race rather than waiting for it**, and the load
+sensitivity recorded here is exactly why waiting was never going to work — green
+8/8 run alone, failing only deep inside a long sequential batch. The check now
+lives in `notes-live.mjs`, because holding one answer back while another lands is
+something only the harness that owns the long-poll can do. `notes-ui.mjs` keeps
+its diagnostic unchanged: it is what would name the process the next unexplained
+miss lives in.
 
 **One item here was blocked on nothing at all, and is now done** — see
 `scripts/ci/install-holochain.sh`. Every conductor-bound workflow —

@@ -128,6 +128,50 @@ const invitesBySpace = new Map<string, NotesInvite[]>();
 const assistsBySpace = new Map<string, Assist[]>();
 const requestsBySpace = new Map<string, JoinRequest[]>();
 
+/** The store revision the state above was last replaced at, per space.
+ *
+ * WHY THIS EXISTS. Two things write the maps above and neither knew about the
+ * other. The submit path (`createNote` -> `loadSpace` -> `set`) and the parked
+ * long-poll (`applySnapshot` -> `set`) both REPLACE a room wholesale, and
+ * whichever landed second won regardless of which was read first. A poll that
+ * woke on somebody else's note is generated before yours exists, travels the
+ * network while you submit, and lands after your own read — putting the list
+ * back without the note you just wrote, on the very screen that wrote it. No
+ * error anywhere, and the next poll answers at a newer revision and quietly
+ * puts it back, which is why it reads as a flicker rather than a defect.
+ *
+ * The service already hands out what is needed to order them: `GET
+ * /spaces/:id/notes` answers `{ notes, revision }` and the events snapshot
+ * carries `revision`, both read from the same store-wide counter. So the rule
+ * is the one-liner that was missing — apply state only when it is not known to
+ * be older than what is already held — and no new plumbing.
+ *
+ * TWO THINGS THAT ARE DELIBERATE.
+ *
+ * Equal revisions are applied, not dropped. The same revision is the same
+ * store state, so applying it writes identical content; dropping it would only
+ * add an edge to reason about.
+ *
+ * `loadSpace` reads notes, members and signals CONCURRENTLY, and only the
+ * notes read carries a revision — so the group is stamped with that one, the
+ * oldest of the three that is knowable. Stamping higher than the data's real
+ * age is the one error that loses writes, because it would drop a genuinely
+ * newer snapshot; stamping low can at worst let a slightly stale members list
+ * through, which the next poll replaces. */
+const revisionBySpace = new Map<string, number>();
+
+/** Whether state read at `revision` should replace what is on screen.
+ *
+ * Answers true for anything not known to be older, and records the stamp when
+ * it does — so the caller both asks and commits in one place, and there is no
+ * way to apply state while forgetting to move the mark. */
+function acceptRevision(spaceId: string, revision: number): boolean {
+  const held = revisionBySpace.get(spaceId);
+  if (held !== undefined && revision < held) return false;
+  revisionBySpace.set(spaceId, revision);
+  return true;
+}
+
 /** The note open in the editor, the text typed into it so far, and the
  * version that text was written against.
  *
@@ -217,6 +261,10 @@ function setOrigin(next: string): void {
   client = new NotesClient(origin);
   directory = [];
   notesBySpace.clear();
+  // Revisions are one service's counter. Another notes server starts near
+  // zero, so a stamp carried across would drop every snapshot the new origin
+  // ever sends.
+  revisionBySpace.clear();
 }
 
 // --- Small DOM helpers -----------------------------------------------------
@@ -286,8 +334,15 @@ function rerenderLive(ctx: NotesContext): void {
  * person is in the middle of writing. */
 function applySnapshot(
   spaceId: string,
-  snapshot: { notes: Note[] | null; members: NotesMember[] | null; signals: NotesSignals | null; assists: Assist[] | null },
-): void {
+  snapshot: { revision: number; notes: Note[] | null; members: NotesMember[] | null; signals: NotesSignals | null; assists: Assist[] | null },
+): boolean {
+  // A snapshot older than what is already held is a snapshot generated before
+  // something this screen has already read — most sharply, before a note the
+  // person wrote themselves. Dropping it loses nothing: this poll's revision
+  // is still taken as the next `since`, so the very next answer carries the
+  // whole room at a revision newer than anything dropped here.
+  if (!acceptRevision(spaceId, snapshot.revision)) return false;
+
   if (snapshot.notes) notesBySpace.set(spaceId, snapshot.notes);
   if (snapshot.members) membersBySpace.set(spaceId, snapshot.members);
   if (snapshot.signals) signalsBySpace.set(spaceId, snapshot.signals);
@@ -307,6 +362,7 @@ function applySnapshot(
         + 'what it says now and decide what to keep.';
     }
   }
+  return true;
 }
 
 function startWatching(ctx: NotesContext, spaceId: string): void {
@@ -352,9 +408,15 @@ async function watchLoop(ctx: NotesContext, spaceId: string, controller: AbortCo
       const wasLive = liveState === 'live';
       liveState = 'live';
       if (snapshot.changed) {
-        applySnapshot(spaceId, snapshot);
+        // A dropped snapshot must not rebuild the DOM. This app's rebuilds are
+        // wholesale, and a rebuild that changes nothing is pure risk on a
+        // screen somebody may be typing into. The error state is the one thing
+        // worth a rebuild on its own: the poll got through, so a stale "cannot
+        // reach the service" has to come off the screen either way.
+        const hadError = serverError !== null;
+        const applied = applySnapshot(spaceId, snapshot);
         serverError = null;
-        rerenderLive(ctx);
+        if (applied || hadError) rerenderLive(ctx);
       } else if (!wasLive) {
         // Nothing in the room changed, but the indicator did.
         rerenderLive(ctx);
@@ -429,9 +491,15 @@ async function loadSpace(ctx: NotesContext, spaceId: string): Promise<void> {
       client.members(spaceId, membership.token),
       client.signals(spaceId, membership.token),
     ]);
-    notesBySpace.set(spaceId, notes.notes);
-    membersBySpace.set(spaceId, members.members);
-    signalsBySpace.set(spaceId, signals.signals);
+    // The other half of the ordering rule. This read can lose the race too:
+    // a poll that woke on a later change can land while these three requests
+    // are still in flight, and without this the older answer would overwrite
+    // the newer room.
+    if (acceptRevision(spaceId, notes.revision)) {
+      notesBySpace.set(spaceId, notes.notes);
+      membersBySpace.set(spaceId, members.members);
+      signalsBySpace.set(spaceId, signals.signals);
+    }
     serverError = null;
   } catch (error) {
     serverError = error instanceof Error ? error.message : String(error);
