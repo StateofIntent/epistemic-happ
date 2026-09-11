@@ -933,8 +933,12 @@ which — so this section does. **Two of these are not checkboxes at all**: they
 are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
 somewhere other than a to-do list is exactly how they stay invisible.
 
-**Everything blocked on nothing but effort is now done, and so is the one item
-that was blocked on a recurrence.** Protocol versioning shipped and its deadline
+**Every piece of CODE blocked on nothing but effort is now done, and so is the
+one item that was blocked on a recurrence** — the qualifier is load-bearing, and
+was missing here while six documentation gaps sat at the end of this section
+blocked on nothing whatsoever. A section whose whole argument is that a gap
+written up outside a to-do list stays invisible should not open by implying
+those six do not exist. Protocol versioning shipped and its deadline
 is spent; the CI binary download retries; four browser intermittencies were
 traced to one defect and fixed — the fourth being the same defect's second half,
 which only became visible because the first fix let `main` fail again in a way
@@ -949,12 +953,18 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**Open right now, and the first thing to look at next: pull requests #127 and
-#129.** #127 is a diagnostic rather than a fix — `real-gossip` reporting how many
-peers each conductor has heard of, so the next missed gossip says whether the two
-nodes had even met; the occurrence that prompted it is recorded further down this
-section. #129 closes the `notes-ui` intermittency described immediately below.
-Both are green on their own branches and in review, neither is merged.
+**Nothing is open. #127, #128 and #129 all landed**, which is the first time
+this section has been able to say that. #127 is a diagnostic rather than a fix —
+`real-gossip` reporting how many peers each conductor has heard of, so the next
+missed gossip says whether the two nodes had even met; the occurrence that
+prompted it is recorded further down this section. #129 closed the `notes-ui`
+intermittency described immediately below, along with a second defect found
+underneath it.
+
+**So the next thing to look at is not code.** Everything left is either waiting
+on a person, waiting on an argument, or one of the documentation items at the
+end of this section — and those last ones are blocked on nothing at all, which
+makes them the only work here anybody can simply pick up.
 
 **The `notes-ui` intermittency is closed. The hypothesis was right, and writing
 it down before it could be proved is what closed it** — the reproduction attempt
