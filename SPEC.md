@@ -652,9 +652,41 @@ Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_has
 
 Two independently-run Holochain networks share no DHT — one cannot query the other's data, so a `FederationRecord` can only ever record what the *local* membrane has declared. Mutual/"federated" status is not a value either network computes or stores; it is derived externally by a bridge process (`federation/federate.mjs`) that connects to both conductors and independently checks both directions — the same correlative-witness shape §2.4/`BridgeRecord` already establishes for the Twitter bridge, applied to a second network instead of a non-Holochain platform. See `federation/README.md` for the verified, live, two-conductor account.
 
+
+### 10.15 Negative-path probers
+
+Two externs exist in order to **fail**, and they are specified here because
+they are callable protocol surface: a client can invoke them, so a document
+that does not admit they exist is incomplete regardless of what they are for.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `attempt_unaccountable_membrane` | `Membrane` | `ActionHash` — MUST be refused by `validate_membrane` whenever `required_promises` is empty or the constitution is not the caller's own |
+| `attempt_false_domain_index` | `FalseDomainIndexPayload` | `ActionHash` — MUST be refused by link validation when the claim does not declare the domain it is being filed under, or when a third party files another agent's claim |
+
+**Why a protocol has functions that must not succeed.** Both bypass a
+coordinator-side courtesy check in order to reach validation directly. The
+distinction they exist to enforce is the one §5 rests on: a coordinator that
+refuses something proves only that *this* coordinator refuses it, while a
+custom client can call the host directly. `attempt_unaccountable_membrane`'s
+own doc comment records the gap that made it necessary — `validate_membrane`
+went without accountability checks while a comment claimed it had them,
+because the tests were exercising the courtesy and reporting it as
+enforcement.
+
+**These are not an attack surface, and that is a claim with a condition
+attached.** Every call a custom client could make through them is rejected by
+validation, which is the whole point. If either ever SUCCEEDS on the inputs
+above, the property has regressed from validation to coordinator-side
+courtesy, and the refusal that the rest of this specification depends on is no
+longer being enforced where it is claimed to be. `scripts/live-verify/`
+exercises both: `domain-index.mjs` drives three separate poisoning attempts
+through `attempt_false_domain_index` and watches each one refused.
 ## 11. Versioning & Change Process
 
-This document tracks a specific commit of `main` (noted at the top) — there is currently **no automated check** keeping it in sync with the DNA source as the implementation evolves; it is a manually maintained snapshot, honestly labeled as such rather than implied to be self-updating. A change to any entry type, link type, validation rule, rate limit, invariant, HRR encoding, N4L vocabulary, or zome function signature in `dna/` or `n4l/arrows-epistemic.sst` **SHOULD** be accompanied by a corresponding update to this document in the same change, the same discipline this codebase already applies to keeping `README.md`'s own code-walkthrough sections current with what actually shipped.
+This document tracks a specific commit of `main` (noted at the top) and is a manually maintained snapshot, honestly labeled as such rather than implied to be self-updating. **One narrow slice of it is now checked automatically, and the boundary is worth stating precisely.** `scripts/check-spec-drift.mjs` compares the `#[hdk_extern]` functions in `dna/coordinator/src/lib.rs` against the functions listed in §10's tables, and fails in both directions: an extern absent from §10 is a callable surface this document does not admit exists, and a §10 row with no extern behind it is worse, because an implementer would write code against a function that is not there. It runs in CI on every pull request.
+
+**That check verifies the function LIST and nothing else.** Most of this document is MUST and SHOULD rules about validation, and nothing compares those to `validate_*`. A green run does not mean this specification is verified, and it must not be cited as if it did. The check also deliberately reads only the tables, never the prose: §10 legitimately names HDK builtins, admin calls, and functions that were specified once and removed — recording a removal is honesty, and a checker that flagged it as drift would push this document toward forgetting its own history. A change to any entry type, link type, validation rule, rate limit, invariant, HRR encoding, N4L vocabulary, or zome function signature in `dna/` or `n4l/arrows-epistemic.sst` **SHOULD** be accompanied by a corresponding update to this document in the same change, the same discipline this codebase already applies to keeping `README.md`'s own code-walkthrough sections current with what actually shipped.
 
 Forward-compatibility within the protocol itself is currently handled locally, not globally: `WorldlineTrace.binding_key`/`NeighborhoodBinding.binding_key` (§8) are the only versioned wire values today, each guarding its own narrow scheme. There is no protocol-wide version number, feature-negotiation mechanism, or migration path defined yet — a genuinely breaking change (e.g. a new required field on an existing entry type) would currently just be a new commit with no compatibility story for DHT data written under the old shape. This is a real, open gap, not a hidden one.
 
