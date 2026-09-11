@@ -421,7 +421,7 @@ This is Invariant #2 (no imposition) expressed as rate limits: an agent may fill
 
 **On bursts**: each row is a count within a rolling window, so an agent MAY spend a window's entire allowance instantaneously and then go quiet — bursting up to the limit is permitted by construction. What is deliberately not permitted is *banking*: allowance unused in one window does not accumulate into a later one. A token-bucket formulation with capacity above its refill rate would add exactly that, and was rejected for it — idling to accumulate and then dumping is the flooding pattern these limits exist to bound.
 
-**What this is not**: none of the above raises the cost of creating a new agent identity — an unlimited number of fresh agents can each independently spend their own full budget. This is documented in this codebase as *spam defense*, explicitly distinct from *sybil resistance*, which remains open (see README.md §2.3 for the full discussion and the local-topology mitigation that is available without it).
+**What this is not**: none of the above raises the cost of creating a new agent identity — an unlimited number of fresh agents can each independently spend their own full budget. This is documented in this codebase as *spam defense*, explicitly distinct from *sybil resistance*, which remains open (see README.md §2.3 for the full discussion and for *containment*, the weaker property that is available without it — it makes a sybil ring unreachable by traversal rather than refusing its creation, and it does not extend to index reads such as `get_claims_by_domain`).
 
 ## 7. Invariants
 
