@@ -150,6 +150,35 @@ property rather than a detail:
   the slot the moment the socket closes rather than when the poll would have
   timed out — an abort the server ignores is not an abort.
 - **A hidden tab parks nothing.** Same ceiling, same reasoning.
+- **The client applies no answer older than the one on screen.** Liveness gave
+  the screen a SECOND writer, and the two did not know about each other: the
+  submit path's read and the parked poll's snapshot each replaced the room
+  wholesale. A poll that woke on somebody else's note is generated before your
+  note exists and can land after your own read, putting the list back without
+  it — your own note vanishing from the screen that wrote it. Both responses
+  already carry a revision, so the client keeps the newest it has applied per
+  space and drops anything older (`notes-ui.ts`, `acceptRevision`). This was
+  the `notes-ui` intermittency; it is forced into a check in `notes-live.mjs`
+  rather than waited for.
+
+**The revision is state, and is persisted with everything else.** It is the
+only ordering a client has, and a client carries it across a restart of this
+service — as the `since` on every poll, and now as the floor below which it
+refuses a snapshot. A counter that restarted at zero under a client holding 57
+would park every poll for its full 25 seconds and answer `changed: false`
+while the room filled up: a room that goes quiet with nothing on screen saying
+so, which is the failure this layer is least able to notice. It lives in the
+state file, optional so a file written before it loads and starts from zero
+exactly as it does today, and monotonic from then on. Checked in
+`notes-layer.mjs` by the thing a client actually does — a poll asked with the
+`since` it was still holding across the restart, which must still wake.
+
+**What is NOT guarded is a state file restored from a backup**, which rewinds
+the counter under clients holding a higher one. It is recorded rather than
+handled: a client holding a stale `since` is broken there with or without the
+persisted field, the repair is the same in both cases (reload), and inventing
+an epoch to detect it would add a number to every reply for a case nobody here
+has met.
 
 ### Two people, one note
 

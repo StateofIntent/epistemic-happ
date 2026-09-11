@@ -106,6 +106,18 @@
 //   Result: exactly one red — "a refused create wrote nothing". Every 429
 //   check stayed green, which is the point: the refusal still looked perfect
 //   from outside while the room had already grown a space. Reverted.
+//
+//   Injection: `revision` taken back out of the persisted state, which is
+//   where it was until the `notes-ui` intermittency was traced. The counter
+//   then restarts at zero under clients still holding a higher one.
+//   Result: two reds, and the SECOND is the one worth having. The first says
+//   only that a number went backwards; the second asks for everything newer
+//   than the `since` a client would still be carrying, and that poll parks for
+//   its full timeout and answers "nothing changed" while a note is written
+//   into the room in front of it. A room that goes quiet with nothing on
+//   screen saying so. "a state file survives a restart" stayed green
+//   throughout, correctly — every note and every token came back; what did not
+//   was the ability to be told about the next one.
 // ---------------------------------------------------------------------------
 // Runtime: ~5 seconds, most of it two deliberate waits against a real clock:
 // 1.2s for a 1-second invite to expire, and a parked poll being interrupted
@@ -618,12 +630,36 @@ async function main() {
 
     // === Persistence is opt-in, and honest when it is on ===
     log('\n--- Restart ---');
-    const beforeRestart = (await call('GET', `/spaces/${space.id}/notes`, { token: ada })).body.notes.length;
+    const beforeNotes = (await call('GET', `/spaces/${space.id}/notes`, { token: ada }));
+    const beforeRestart = beforeNotes.body.notes.length;
+    const revisionBefore = beforeNotes.body.revision;
     await stopServer(server);
     server = await startServer(statePath);
     const afterRestart = await call('GET', `/spaces/${space.id}/notes`, { token: ada });
     check('a state file survives a restart, notes and member tokens together',
       afterRestart.status === 200 && afterRestart.body.notes.length === beforeRestart);
+
+    // THE REVISION IS STATE TOO, and it was not treated as such. A client
+    // carries this number across a restart — it is the `since` every poll is
+    // asked with, and the browser now also refuses state older than the
+    // newest it has applied. A counter that restarted at zero under a client
+    // holding 57 would park every poll for its full timeout and answer
+    // "nothing changed" while the room filled up: a room that goes quiet with
+    // nothing on screen saying so.
+    //
+    // The second check is the one that matters. A number that merely looks
+    // large proves nothing; what a client does with it is ask for everything
+    // newer, so that is what is asked here — with the `since` a client would
+    // still be holding.
+    check('a restart does not rewind the room\'s revision — a client\'s cursor still means something',
+      afterRestart.body.revision >= revisionBefore);
+    const acrossRestart = call('GET', `/spaces/${space.id}/events?since=${revisionBefore}`, { token: ada });
+    await sleep(200);
+    await call('POST', `/spaces/${space.id}/notes`, { token: ada, body: { text: 'Written after the restart.' } });
+    const wokeAfterRestart = await acrossRestart;
+    check('and a poll held over the restart still wakes — the cursor a client kept is still ahead of nothing',
+      wokeAfterRestart.body.changed === true
+      && wokeAfterRestart.body.notes.some((n) => n.text === 'Written after the restart.'));
 
     await stopServer(server);
     server = await startServer(null);
