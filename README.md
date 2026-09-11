@@ -933,8 +933,12 @@ which — so this section does. **Two of these are not checkboxes at all**: they
 are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
 somewhere other than a to-do list is exactly how they stay invisible.
 
-**Everything blocked on nothing but effort is now done, and so is the one item
-that was blocked on a recurrence.** Protocol versioning shipped and its deadline
+**Every piece of CODE blocked on nothing but effort is now done, and so is the
+one item that was blocked on a recurrence** — the qualifier is load-bearing, and
+was missing here while six documentation gaps sat at the end of this section
+blocked on nothing whatsoever. A section whose whole argument is that a gap
+written up outside a to-do list stays invisible should not open by implying
+those six do not exist. Protocol versioning shipped and its deadline
 is spent; the CI binary download retries; four browser intermittencies were
 traced to one defect and fixed — the fourth being the same defect's second half,
 which only became visible because the first fix let `main` fail again in a way
@@ -949,12 +953,18 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**Open right now, and the first thing to look at next: pull requests #127 and
-#129.** #127 is a diagnostic rather than a fix — `real-gossip` reporting how many
-peers each conductor has heard of, so the next missed gossip says whether the two
-nodes had even met; the occurrence that prompted it is recorded further down this
-section. #129 closes the `notes-ui` intermittency described immediately below.
-Both are green on their own branches and in review, neither is merged.
+**Nothing is open. #127, #128 and #129 all landed**, which is the first time
+this section has been able to say that. #127 is a diagnostic rather than a fix —
+`real-gossip` reporting how many peers each conductor has heard of, so the next
+missed gossip says whether the two nodes had even met; the occurrence that
+prompted it is recorded further down this section. #129 closed the `notes-ui`
+intermittency described immediately below, along with a second defect found
+underneath it.
+
+**So the next thing to look at is not code.** Everything left is either waiting
+on a person, waiting on an argument, or one of the documentation items at the
+end of this section — and those last ones are blocked on nothing at all, which
+makes them the only work here anybody can simply pick up.
 
 **The `notes-ui` intermittency is closed. The hypothesis was right, and writing
 it down before it could be proved is what closed it** — the reproduction attempt
@@ -1032,7 +1042,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
-| The `real-gossip` discovery flake | **In review** — pull request #127 makes the next one explain itself | §9 below |
+| ~~The `real-gossip` discovery flake~~ | **Diagnostic shipped** (#127) — and on its first CI failure it ruled ITSELF out, naming a different defect | §9 below |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
@@ -1379,6 +1389,51 @@ for the standing hypothesis: **the suspect is peer DISCOVERY, not gossip.** By
 the time the second leg ran, the two nodes had found each other. `real-gossip`
 connects and publishes immediately, so nothing in it has ever distinguished
 "gossip is slow" from "these two had not met yet".
+
+**The next occurrence came almost immediately, and the diagnostic paid for
+itself by ruling out the thing it was built to catch.** `real-gossip` went red
+again — on a documentation-only pull request, which again cannot have caused it
+— and the peer counts it now prints said `nodeA knows of 2 peer(s), nodeB knows
+of 2` at publish time. The two conductors had met. The claim then arrived at
+nodeB in 6.1 seconds, and every content check on it passed. So discovery was
+not the suspect this time, and neither was gossip; without the counts, this
+failure would have been filed as another instance of the flake above and the
+real defect would have gone on hiding behind that story.
+
+**The defect was in the harness, and it was an assumption stated in the
+harness's own header.** Section 5 exists to show that a SECOND, independent
+index finds the entry — `get_claims_by_agent` as well as `get_claims_by_domain`
+— so that the result is not a quirk of one index. It asked that second index
+exactly once, with no window at all, immediately after section 3's poll
+returned. On this run that gave the by-agent link about thirteen milliseconds
+to arrive.
+
+**The word doing the damage is "independent".** The two are link queries on
+DIFFERENT base hashes, so their links gossip to different neighbourhoods and
+land separately — which is precisely why section 5 is worth having, and
+precisely why it may not assume that the first index arriving means the second
+has. They usually land within milliseconds of each other, which is why a
+development machine always wins and a loaded runner is where you first lose.
+This is the same shape as the `notes-ui` race closed above: a check that is
+correct about what it wants to prove and wrong about when the thing it wants is
+guaranteed to be there.
+
+**The second index now gets its own bounded wait, on the same budget as the
+first**, and prints its arrival time. That is deliberately not "a timeout was
+raised": holding one index to 120 seconds and the other to zero was the defect,
+so the fix is that neither is held to a laxer standard than the other, and the
+number is printed so an index that starts taking sixty seconds shows up as a
+figure that moved rather than as a check that still passes. A by-agent link
+that never arrives inside the window still fails, and a gap of more than five
+seconds between the two raises a warning on the job, because the separation
+being real and widening is the thing worth knowing if this ever goes red again.
+
+**It has not been reproduced on a development machine, and is not expected to
+be** — that is what the failure says about itself. Three conductors on two
+vCPUs is where the two links separate; one machine with the toolchain installed
+is where they do not. The claim being made is therefore narrow: the assumption
+the old check rested on was false, the log shows it being false, and the new
+check no longer rests on it.
 
 **No timeout was raised and no precondition was invented, deliberately.** The
 harness now reports how many peers each conductor has heard of, before the
