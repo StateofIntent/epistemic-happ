@@ -1042,7 +1042,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
-| The `real-gossip` discovery flake | **In review** — pull request #127 makes the next one explain itself | §9 below |
+| ~~The `real-gossip` discovery flake~~ | **Diagnostic shipped** (#127) — and on its first CI failure it ruled ITSELF out, naming a different defect | §9 below |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
@@ -1389,6 +1389,51 @@ for the standing hypothesis: **the suspect is peer DISCOVERY, not gossip.** By
 the time the second leg ran, the two nodes had found each other. `real-gossip`
 connects and publishes immediately, so nothing in it has ever distinguished
 "gossip is slow" from "these two had not met yet".
+
+**The next occurrence came almost immediately, and the diagnostic paid for
+itself by ruling out the thing it was built to catch.** `real-gossip` went red
+again — on a documentation-only pull request, which again cannot have caused it
+— and the peer counts it now prints said `nodeA knows of 2 peer(s), nodeB knows
+of 2` at publish time. The two conductors had met. The claim then arrived at
+nodeB in 6.1 seconds, and every content check on it passed. So discovery was
+not the suspect this time, and neither was gossip; without the counts, this
+failure would have been filed as another instance of the flake above and the
+real defect would have gone on hiding behind that story.
+
+**The defect was in the harness, and it was an assumption stated in the
+harness's own header.** Section 5 exists to show that a SECOND, independent
+index finds the entry — `get_claims_by_agent` as well as `get_claims_by_domain`
+— so that the result is not a quirk of one index. It asked that second index
+exactly once, with no window at all, immediately after section 3's poll
+returned. On this run that gave the by-agent link about thirteen milliseconds
+to arrive.
+
+**The word doing the damage is "independent".** The two are link queries on
+DIFFERENT base hashes, so their links gossip to different neighbourhoods and
+land separately — which is precisely why section 5 is worth having, and
+precisely why it may not assume that the first index arriving means the second
+has. They usually land within milliseconds of each other, which is why a
+development machine always wins and a loaded runner is where you first lose.
+This is the same shape as the `notes-ui` race closed above: a check that is
+correct about what it wants to prove and wrong about when the thing it wants is
+guaranteed to be there.
+
+**The second index now gets its own bounded wait, on the same budget as the
+first**, and prints its arrival time. That is deliberately not "a timeout was
+raised": holding one index to 120 seconds and the other to zero was the defect,
+so the fix is that neither is held to a laxer standard than the other, and the
+number is printed so an index that starts taking sixty seconds shows up as a
+figure that moved rather than as a check that still passes. A by-agent link
+that never arrives inside the window still fails, and a gap of more than five
+seconds between the two raises a warning on the job, because the separation
+being real and widening is the thing worth knowing if this ever goes red again.
+
+**It has not been reproduced on a development machine, and is not expected to
+be** — that is what the failure says about itself. Three conductors on two
+vCPUs is where the two links separate; one machine with the toolchain installed
+is where they do not. The claim being made is therefore narrow: the assumption
+the old check rested on was false, the log shows it being false, and the new
+check no longer rests on it.
 
 **No timeout was raised and no precondition was invented, deliberately.** The
 harness now reports how many peers each conductor has heard of, before the

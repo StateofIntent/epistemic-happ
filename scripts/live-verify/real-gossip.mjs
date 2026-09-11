@@ -43,7 +43,11 @@
 //   4. IT IS THE SAME ENTRY. The claim nodeB holds is compared field by
 //      field with what nodeA wrote, and its author is nodeA's key.
 //   5. TWO INDEPENDENT READ PATHS. `get_claims_by_agent` on nodeB finds
-//      it too, so the result is not a quirk of one index.
+//      it too, so the result is not a quirk of one index — and because they
+//      really are independent, this one gets its own bounded wait rather
+//      than being asked once the moment section 3 returns. Links on
+//      different base hashes gossip separately; assuming otherwise is what
+//      made this section fail on a documentation-only change.
 //   6. THE CONTROL THAT MAKES 3 EVIDENCE. nodeC — same .happ, same code,
 //      same bootstrap and signal servers, same machine, differing only in
 //      network seed — never sees it, and is watched for a margin beyond
@@ -299,6 +303,24 @@ async function awaitGossip(receiver, isolated, domain) {
   return { ms: null, isolatedEverSaw };
 }
 
+/** Wait, bounded, for the SECOND index to carry the claim — the mirror of
+ * `awaitGossip`, and deliberately holding it to the same budget.
+ *
+ * Answers the arrival time rather than a boolean, because "it got there" and
+ * "it got there in six seconds" are different facts and only the second one
+ * notices an index that is quietly degrading. */
+async function awaitSecondIndex(receiver, author, content) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < GOSSIP_WINDOW_MS) {
+    const got = await receiver.call('get_claims_by_agent', author);
+    if (got.some((r) => claimEntry(r).content === content)) return Date.now() - t0;
+    const t = ((Date.now() - t0) / 1000).toFixed(0);
+    log(`    t+${t}s  node${receiver.name} by-agent=${got.length}`);
+    await sleep(POLL_MS);
+  }
+  return null;
+}
+
 async function main() {
   log('Connecting to three conductors ...');
   const A = await connectNode('A', NODES.A);
@@ -404,10 +426,48 @@ async function main() {
   }
 
   // ---- 5. A second, independent read path ------------------------------
+  //
+  // INDEPENDENT IS THE WHOLE POINT, AND IT IS WHY THIS HAS TO WAIT. This
+  // section used to ask once, with no window at all, immediately after
+  // section 3's poll returned — and it went red on CI on a documentation-only
+  // change, having given the by-agent index about thirteen milliseconds to
+  // arrive.
+  //
+  // The check's own justification is the reason it could not assume
+  // simultaneity. `get_claims_by_domain` and `get_claims_by_agent` are link
+  // queries on DIFFERENT base hashes, so their links are gossiped to different
+  // neighbourhoods and land independently. If they arrived together this
+  // section would prove nothing — it exists precisely because they are two
+  // paths — so "the first index has it" says nothing about the second. They
+  // usually land within milliseconds of each other, which is why a
+  // development machine always wins and a loaded runner is where you first
+  // lose.
+  //
+  // The window is NOT a timeout raised to hide a stall, which this repository
+  // has twice decided is the wrong move. Two things keep it honest: it is the
+  // same budget section 3 gets, so neither index is held to a laxer standard
+  // than the other; and the arrival time is PRINTED, so an index that starts
+  // taking sixty seconds shows up as a number that changed rather than as a
+  // check that still passes. A by-agent link that never arrives inside the
+  // window is a real finding and still fails.
   log('\n--- 5. A second index finds it too ---');
-  const byAgent = await B.call('get_claims_by_agent', A.me);
-  check('nodeB\'s get_claims_by_agent(nodeA) finds the claim',
-    byAgent.some((r) => claimEntry(r).content === CONTENT));
+  const byAgentMs = await awaitSecondIndex(B, A.me, CONTENT);
+  check(`nodeB's get_claims_by_agent(nodeA) finds the claim (within ${GOSSIP_WINDOW_MS / 1000}s)`,
+    byAgentMs !== null);
+  if (byAgentMs !== null) {
+    log(`    arrived after ${(byAgentMs / 1000).toFixed(1)}s`);
+    // The two indexes landing far apart is not a failure, but it is the thing
+    // worth knowing if this ever goes red again: it says the separation is
+    // real and widening, rather than the check being unlucky once.
+    if (arrivedMs !== null && byAgentMs > arrivedMs + 5_000) {
+      log(`    ::warning::the by-agent index lagged the by-domain index by `
+        + `${((byAgentMs - arrivedMs) / 1000).toFixed(1)}s — they usually land together`);
+    }
+  } else {
+    log(`    the by-domain index had it after ${arrivedMs === null ? 'never' : (arrivedMs / 1000).toFixed(1) + 's'}, `
+      + 'so the entry crossed and only this index is missing');
+    log(`    ${await peersLine(A, B)}`);
+  }
 
   // ---- 6. The control that makes 3 evidence ----------------------------
   //
