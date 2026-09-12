@@ -116,9 +116,9 @@ explicit `0.1.1` still gets the broken build; nothing resolves it by default.
 Recorded here rather than only in a merged pull request, because this is where a
 person installing the package would look.
 
-**This package also ships no `package-lock.json`**, which is why every
-instruction above says `npm install` and never `npm ci`. The dependency set that
-gets built here is whatever the ranges resolve to on the day.
+**This package ships a `package-lock.json` as of 2026-09-13**, so `npm ci` works
+here as it does in the other seven packages and the dependency set is pinned
+rather than being whatever the ranges resolve to on the day.
 
 The reason recorded for that used to be that generating a lockfile "changes what
 a published install pulls". **It cannot**: npm does not pack `package-lock.json`
@@ -129,18 +129,32 @@ dependency packs to a tarball containing `package.json` and nothing else, on npm
 11.19.0. A dependency's lockfile is not consulted by whoever installs it; only
 the root project's is.
 
-The real reason `npm ci` is unavailable here is narrower and worth saying
-instead: `npm ci` deletes `node_modules` and installs exactly the lockfile,
-which cannot coexist with `npm install --no-save ../agent-sdk` — the step in
-`conductor.yml` that makes the SDK under test this tree's rather than the
-registry's, for the reason the rest of this section is about. A lockfile here
-would have to be generated against the registry copy of the SDK and then
-immediately overwritten by the local one on every CI run.
+**The reason recorded for having no lockfile was itself too strong, and that is
+the more useful correction.** It said `npm ci` "deletes `node_modules` and
+installs exactly the lockfile, which cannot coexist with
+`npm install --no-save ../agent-sdk`". True in one order only. Run `npm ci`
+FIRST and the local install second and they compose exactly as wanted: a
+reproducible tree from the lockfile, then this checkout's SDK swapped into it.
+Tested rather than reasoned — `--no-save` leaves the committed lockfile
+byte-identical, so nothing is overwritten on every CI run and nothing needs
+regenerating.
 
-So what is left of this gap is a question about **reproducibility of builds in
-this repository**, not about what a stranger pulls — the other seven packages in
-the tree all commit a lockfile. It is worth deciding deliberately on those terms,
-and is still open.
+`conductor.yml` therefore runs `npm ci`, then `npm install --no-save
+../agent-sdk`, then the build, and asserts afterwards that what landed is a
+symlink. mcp-server now has the same build reproducibility as the other seven
+packages **and** keeps the local-SDK guarantee that assertion defends; the two
+were never actually in tension.
+
+**One invariant comes with the lockfile.** A lockfile carrying
+`"link": true` with `"resolved": "../agent-sdk"` was found in a working tree on
+2026-09-12 with `package.json` clean, so that state is reachable — and now that
+`npm ci` reads this file, such an entry would make CI resolve the SDK from a
+sibling directory that exists on one machine. `scripts/check-packages.mjs`
+asserts every lockfile entry resolves from the registry. **What produced that
+file was not reproduced**, and the check's own comment says so rather than
+naming a cause: `--no-save` leaves an existing lockfile untouched and creates
+none when absent, while the flagless form rewrites `package.json` too and was
+already caught.
 
 It speaks MCP over stdio and talks to a conductor you are already running —
 your own, since this protocol has no central server and "the backend" is a peer

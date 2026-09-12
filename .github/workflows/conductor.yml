@@ -321,14 +321,20 @@ jobs:
 
       # `--no-save ../agent-sdk`, not a plain install, and the header says why:
       # the registry copy of this dependency now resolves, and is not this tree.
-      # `npm ci` is not available here, and the lockfile's absence is only half
-      # the reason: `npm ci` also deletes node_modules and installs exactly the
-      # lockfile, so it would undo the line below even if one existed. That gap
-      # is recorded in mcp-server/README.md, along with why a lockfile there
-      # would NOT change what a published install resolves.
+      # `npm ci` IS available here now, and the reason it was not is corrected
+      # rather than quietly dropped. This said `npm ci` "would undo the line
+      # below even if a lockfile existed", because it deletes node_modules and
+      # installs exactly the lockfile. True — in the other order. Run BEFORE the
+      # local install rather than after, the two compose exactly as wanted:
+      # `npm ci` gives a reproducible tree from the committed lockfile, then
+      # `--no-save` replaces the SDK in it with this checkout's, and the lockfile
+      # is left byte-identical (tested, not assumed). So mcp-server gets the same
+      # reproducibility as the other seven packages without giving up the
+      # local-SDK guarantee the assertion below defends.
       - name: Build the MCP server, against THIS tree's SDK
         working-directory: mcp-server
         run: |
+          npm ci
           npm install --no-save ../agent-sdk
           npm run build
           # The assertion the paragraph above is worried about. A registry copy

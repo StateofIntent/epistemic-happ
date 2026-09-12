@@ -23,7 +23,7 @@
 // ============================================================================
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,6 +53,38 @@ for (const pkg of PACKAGES) {
   check(`${pkg} has no file:/link: dependency — those cannot resolve on an installing machine`,
     localDeps.length === 0);
   if (localDeps.length) console.log(`      offending: ${JSON.stringify(localDeps)}`);
+
+  // AND THE SAME DEFECT ONE FILE OVER, WHICH THE CHECK ABOVE CANNOT SEE.
+  // `package.json` is not the only place a local path can end up. A lockfile
+  // carrying `"link": true` with `"resolved": "../agent-sdk"` was found in a
+  // working tree on 2026-09-12, with package.json clean at `^0.1.2` — so that
+  // state is reachable, and the check above was green on it.
+  //
+  // WHAT PRODUCED IT WAS NOT REPRODUCED, and this comment says so rather than
+  // naming a cause it cannot demonstrate. Two candidates were tested and both
+  // behave correctly: `npm install --no-save ../agent-sdk` leaves an existing
+  // lockfile byte-identical, and with no lockfile present it creates none.
+  // `npm install ../agent-sdk` without the flag does write the link — but it
+  // also rewrites package.json, which the check above already catches.
+  //
+  // So this is an invariant rather than a defence against a known command, and
+  // it is worth having on that basis: now that mcp-server commits a lockfile,
+  // `npm ci` reads it, and a link entry would make CI resolve the SDK from a
+  // sibling directory that exists on one machine. Asserting it costs one file
+  // read.
+  const lockPath = `${pkg}/package-lock.json`;
+  if (existsSync(lockPath)) {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const offenders = Object.entries(lock.packages ?? {}).filter(([key, v]) =>
+      v?.link === true || String(v?.resolved ?? '').startsWith('..') || key.startsWith('../'));
+    check(`${pkg}'s lockfile resolves every dependency from the registry, not a local path`,
+      offenders.length === 0);
+    if (offenders.length) {
+      console.log(`      offending: ${JSON.stringify(offenders.map(([k]) => k))}`);
+      console.log('      fix: rm package-lock.json && npm install --package-lock-only');
+      console.log('      cause: an `npm install ../agent-sdk` without --no-save');
+    }
+  }
 
   // The real question: what actually goes in the tarball.
   execFileSync('npm', ['run', 'build'], { cwd: pkg, stdio: 'ignore' });
