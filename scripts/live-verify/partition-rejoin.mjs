@@ -133,11 +133,54 @@ const check = (label, cond) => {
   else { log(`  FAIL: ${label}`); failures++; }
 };
 
+// PUTTING THE NETWORK BACK IS EVERY EXIT PATH'S JOB, AND IT WAS NO PATH'S. This
+// harness stops nodeB in phase 1 and nodeA in phase 2, and every other harness
+// in this directory expects to find its three nodes up. `setupFail` exited
+// straight out, and `main().catch` did nothing at all, so a failure anywhere
+// after phase 1 left a conductor down — and the cost is paid by whoever runs a
+// harness NEXT, which is how it stays invisible to the run that caused it.
+//
+// `transitive-gossip.mjs` had the same hole and it was watched twice: a run
+// aborted after its own `stop-node` left the next invocation dying before its
+// first check on `could not connect to Holochain Conductor API at
+// ws://localhost:8897/`, a websocket stack trace for a network the previous run
+// had dismantled.
+//
+// DELIBERATELY NOT VIA `net`. `net` calls `setupFail` when a command fails, and
+// `setupFail` calls this, so routing the restore through it would recurse on the
+// first failure. It execs directly and guards against re-entry.
+//
+// nodeD is not touched: this harness never starts it, so stopping it here would
+// be reaching outside what this run changed.
+let restoring = false;
+function restoreNetwork(why) {
+  if (restoring) return false;
+  restoring = true;
+  log(`\n--- Restoring the network (${why}) ---`);
+  let ok = true;
+  for (const n of ['nodeA', 'nodeB', 'nodeC']) {
+    try {
+      execFileSync('bash', [NETWORK_SH, 'start-node', n], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      ok = false;
+      log(`    COULD NOT restart ${n}: ${String(e.stderr || e.message).split('\n')[0].slice(0, 160)}`);
+    }
+  }
+  log(ok
+    ? '    nodeA, nodeB and nodeC are up — the shape every other harness expects'
+    : '    RESTORE INCOMPLETE. Run: scripts/network.sh clean && scripts/network.sh start');
+  restoring = false;
+  return ok;
+}
+
 function setupFail(lines) {
   log('');
   for (const l of lines) log(`  SETUP FAILED: ${l}`);
+  // Before exiting, not after. The next harness to run is entitled to the
+  // network this one was handed.
+  restoreNetwork('after a setup failure');
   log('');
-  log('  Bring the network up first:');
+  log('  If the network itself is wrong, rebuild it:');
   log('    scripts/network.sh clean && scripts/network.sh start');
   process.exit(1);
 }
@@ -219,6 +262,33 @@ async function publishClaim(node, domain, content) {
 
 const countIn = async (node, domain) => (await node.call('get_claims_by_domain', domain)).length;
 
+// A POLL THAT FAILS IS "NOT YET", NOT THE END OF THE RUN. `awaitConvergence`
+// below is a loop with a 600s budget, and that budget is meant to be the
+// authority on when to give up. Called bare, one throw escapes `main` and ends
+// the harness inside a loop with minutes left that would have polled again.
+//
+// This is not theoretical for this directory: `transitive-gossip.mjs` came out
+// of `network.yml` on exactly that, `Request timed out in 60000 ms: call_zome`
+// from a node that had answered seconds earlier, and the same error was then
+// caught again on a local run of it. The client's default per-call timeout is
+// 60s, so a single hung read also eats a tenth of this window before aborting.
+//
+// A failed poll counts as zero and the loop continues. NOT swallowed: each one
+// prints a ::warning:: naming the node, and the run ends with a count, because
+// a run that passed with reads missing is evidence about a flake rather than a
+// clean pass. The reads that feed a `check` stay bare — there is no budget
+// behind them and a node that cannot answer at all is a real failure.
+const pollFailures = [];
+const pollCount = async (node, domain) => {
+  try { return await countIn(node, domain); }
+  catch (e) {
+    const msg = String(e?.message ?? e).split('\n')[0].slice(0, 200);
+    pollFailures.push({ node: `node${node.name}`, msg });
+    log(`    ::warning::node${node.name} did not answer a poll: ${msg}`);
+    return 0;
+  }
+};
+
 // Is a conductor's admin port actually refusing connections? "Stopped"
 // has to be confirmed, not assumed — a partition that did not happen
 // would make every check after it meaningless while looking identical.
@@ -236,8 +306,8 @@ async function awaitConvergence(node, domain, label, isolated) {
   const t0 = Date.now();
   let isolatedEverSaw = false;
   while (Date.now() - t0 < CONVERGE_WINDOW_MS) {
-    const got = await countIn(node, domain);
-    const iso = await countIn(isolated, domain);
+    const got = await pollCount(node, domain);
+    const iso = await pollCount(isolated, domain);
     if (iso > 0) isolatedEverSaw = true;
     log(`    [${label}] t+${((Date.now() - t0) / 1000).toFixed(0)}s  ${label}=${got}  node${isolated.name}=${iso}`);
     if (got > 0) return { ms: Date.now() - t0, isolatedEverSaw };
@@ -392,7 +462,23 @@ async function main() {
   check('nodeC is alive and answering, not merely silent',
     Array.isArray(await C.call('get_claims_by_domain', 'AnyDomainAtAll')));
 
+  // The same call the failure paths make, rather than relying on the phases
+  // above having happened to leave every node up.
+  restoreNetwork('end of run');
+  check('nodeA is answering at the end — the next harness gets the network this one was handed',
+    !(await portRefuses(NODES.A.admin)));
+  check('nodeB is answering at the end', !(await portRefuses(NODES.B.admin)));
+
   log('');
+  // Said once at the end, where it survives the scrollback of a ten-minute wait.
+  if (pollFailures.length > 0) {
+    const byNode = {};
+    for (const f of pollFailures) byNode[f.node] = (byNode[f.node] ?? 0) + 1;
+    log(`::warning::${pollFailures.length} poll(s) went unanswered during this run `
+      + `(${Object.entries(byNode).map(([n, c]) => `${n}: ${c}`).join(', ')}). `
+      + `Each counted as zero and the wait continued. First: ${pollFailures[0].msg}`);
+    log('');
+  }
   if (failures === 0) {
     log('ALL CHECKS PASSED — two conductors each wrote history the other');
     log('could not see, and on rejoining converged on both, in both');
@@ -408,5 +494,10 @@ async function main() {
 
 main().catch((e) => {
   console.error('\nHARNESS ERROR:', e);
+  // This handler used to do nothing but exit, so an error after phase 1 left a
+  // conductor stopped for the next harness to trip over.
+  try { restoreNetwork('after a harness error'); } catch (e2) {
+    console.error('  and the restore itself failed:', String(e2?.message ?? e2).split('\n')[0]);
+  }
   process.exit(1);
 });
