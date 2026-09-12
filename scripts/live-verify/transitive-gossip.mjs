@@ -161,6 +161,32 @@ const REPO_ROOT = new URL('../..', import.meta.url).pathname;
 // sized from the constant rather than guessed. A window shorter than the
 // mechanism it times does not measure the mechanism; it measures itself.
 const CONVERGE_WINDOW_MS = 600_000;
+
+// THE PARAGRAPH ABOVE APPLIED TO THE WAITS BEFORE THE LAST ONE, WHICH IT WAS
+// NOT. Both of the earlier waits in this file were a hardcoded two minutes, and
+// the nodeD one is the wait this harness died on in CI. Two minutes is not a
+// shorter version of the same window; it is the ONE LENGTH THAT CANNOT WORK,
+// because `initiate_interval_ms` is 120s and `initiate_jitter_ms` adds up to 10s
+// more, so that budget is racing the exact mechanism it is waiting for and loses
+// on the jitter alone. README §9 records that finding for `real-gossip.mjs`'s
+// prompt window in those words — "a single 120s window was racing the exact
+// mechanism that repairs it ... It lost every time" — and this file states the
+// principle three lines above while breaking it twice.
+//
+// 330s, the same figure `real-gossip.mjs` uses and for the same reason: it
+// clears the 300s `GOSSIP_REPAIR_WORST_CASE_MS` chosen ceiling with margin for
+// interval, jitter and a round. Not re-derived here — see that file's constants
+// block, which owns the derivation.
+//
+// OBSERVED, NOT REASONED, AND THE HONEST VERSION IS THAT IT DID NOT FIX THE
+// HARNESS: at two minutes, nodeD failed to acquire nodeA's claim on a freshly
+// generated four-node network on 2026-09-12, with every poll answered and no
+// warning raised. At 330s it failed the same way, because on that machine nodeD
+// was not peered with nodeA at all — see the note in section 2, which is what
+// finally explained it. This constant is right on this file's own stated
+// principle regardless of that, and was wrong before; it is not a fix for
+// anything, and nothing here claims the harness is ready to go back into CI.
+const ACQUIRE_WINDOW_MS = 330_000;
 const POLL_MS = 5_000;
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
@@ -241,6 +267,43 @@ const publish = (n, domain, content) => n.call('create_claim', {
 });
 const countIn = async (n, d) => (await n.call('get_claims_by_domain', d)).length;
 
+// A POLL THAT FAILS IS "NOT YET", AND IT USED TO BE THE END OF THE RUN. Every
+// wait below is a loop with its own budget, and that budget is meant to be the
+// authority on when to give up. It was not: `countIn` was called bare, so one
+// throw propagated out of `main` and killed the harness with whatever the client
+// said, inside a loop that had time left and would have polled again.
+//
+// THAT IS NOT HYPOTHETICAL — it is how this harness came out of `network.yml`.
+// Its first CI run died on `Request timed out in 60000 ms: call_zome` while
+// waiting for nodeD, having crossed nodeA to nodeB in 5.0s earlier in the same
+// run; the second run, identical tree, reported `nodeD had it in 0.0s`. The
+// bimodality is recorded in README §9 and is still unexplained. What is not in
+// doubt is that a 60s client timeout inside a 120s budget both burned half the
+// budget and then aborted anyway, which no poll should be able to do.
+//
+// So a failed poll counts as zero and the loop continues. It is NOT swallowed:
+// each one prints a ::warning:: naming the node and the error, and the run ends
+// with a count, because the next occurrence is evidence about the bimodality and
+// throwing it away is how one failure in two runs stays a mystery. This does not
+// widen the client timeout and does not claim to have fixed the underlying race
+// — README §9 declined to act on an unconfirmed hypothesis, and so does this.
+//
+// ONLY THE POLLS. The one-shot `countIn` calls below — "nodeA sees its own
+// claim", "nodeC never saw the claim", "nodeD still holds the claim it relayed"
+// — are assertions, not waits. There is no budget behind them and nothing to
+// retry into: a node that cannot answer at all is a real failure and must stay
+// one. Do not route those through this helper.
+const pollFailures = [];
+const pollCount = async (n, d) => {
+  try { return await countIn(n, d); }
+  catch (e) {
+    const msg = String(e?.message ?? e).split('\n')[0].slice(0, 200);
+    pollFailures.push({ node: n.name, msg });
+    log(`    ::warning::${n.name} did not answer a poll: ${msg}`);
+    return 0;
+  }
+};
+
 // Waits for `node` to acquire `domain`, and re-checks on EVERY poll that the
 // author is still down. "nodeA was down when we started waiting" is a much
 // weaker statement than "nodeA was down at the moment the entry arrived",
@@ -250,8 +313,8 @@ async function awaitVia(node, domain, label, authorNode, isolated) {
   let authorEverUp = false, isolatedEverSaw = false;
   while (Date.now() - t0 < CONVERGE_WINDOW_MS) {
     if (!nodeIsDown(authorNode)) authorEverUp = true;
-    const got = await countIn(node, domain);
-    const iso = await countIn(isolated, domain);
+    const got = await pollCount(node, domain);
+    const iso = await pollCount(isolated, domain);
     if (iso > 0) isolatedEverSaw = true;
     log(`    [${label}] t+${((Date.now() - t0) / 1000).toFixed(0)}s  ${label}=${got}  nodeC=${iso}  ${authorNode}=${nodeIsDown(authorNode) ? 'down' : 'UP'}`);
     if (got > 0) return { ms: Date.now() - t0, authorEverUp, isolatedEverSaw };
@@ -288,13 +351,60 @@ async function main() {
   await publish(A, D_BASE, 'baseline, all three up');
   const t0 = Date.now();
   let baseMs = null;
-  while (Date.now() - t0 < 120_000) {
-    if ((await countIn(B, D_BASE)) > 0) { baseMs = Date.now() - t0; break; }
+  while (Date.now() - t0 < ACQUIRE_WINDOW_MS) {
+    if ((await pollCount(B, D_BASE)) > 0) { baseMs = Date.now() - t0; break; }
     await sleep(POLL_MS);
   }
   check('a claim crosses nodeA -> nodeB before anything is stopped', baseMs !== null);
   if (baseMs === null) setupFail(['The network is not carrying claims even with everything up.']);
   log(`    baseline crossed in ${(baseMs / 1000).toFixed(1)}s`);
+
+  // THE SAME BASELINE FOR nodeD, BECAUSE SECTION 1 CANNOT SEE WHETHER IT HAS
+  // ONE. "nodeD is on that SAME DHT" is a comparison of DNA hashes, which says
+  // nodeD loaded the same DNA and NOTHING about whether it can reach a peer. A
+  // nodeD that is in the DHT by that test and exchanges nothing with anybody
+  // passes section 1, passes "nodeB is genuinely down", and then fails section 3
+  // as "nodeD acquired nodeA's claim" — a result that reads as the protocol
+  // failing to relay when the truth is that the courier was never on the road.
+  //
+  // WATCHED, 2026-09-12. On a freshly generated four-node network, nodeA and
+  // nodeD exchanged nothing IN EITHER DIRECTION over 90s while each saw its own
+  // writes and nodeA -> nodeB crossed in 0.3s. nodeD's conductor log gave the
+  // reason, and it is not this repository's code:
+  //
+  //   kitsune2_gossip: could not respond to gossip message: K2Error(Other {
+  //     ctx: "Accept message from wrong peer:
+  //           http://127.0.0.1:8892/3963db9f... != http://127.0.0.1:8892/fafa946c..." })
+  //
+  // A peer record whose relay identity no longer matches that peer's current
+  // one — a stale entry served by the bootstrap service — so the connection can
+  // never be established and no wait length whatsoever helps. That is also the
+  // best available account of the bimodality README §9 records for this harness:
+  // "instant or never" is the shape of a coin-flip on whether the record served
+  // was fresh, not of gossip under load, which would give values in between.
+  //
+  // This check does not fix that. It costs one extra wait on a claim already
+  // published and turns a twenty-minute investigation into a named setup
+  // failure, which is the whole difference between a harness that is red and a
+  // harness that is informative.
+  const tDBase = Date.now();
+  let dBaseMs = null;
+  while (Date.now() - tDBase < ACQUIRE_WINDOW_MS) {
+    if ((await pollCount(D, D_BASE)) > 0) { dBaseMs = Date.now() - tDBase; break; }
+    await sleep(POLL_MS);
+  }
+  check('the same claim reaches nodeD — it is a peer, not just a holder of the same DNA', dBaseMs !== null);
+  if (dBaseMs === null) {
+    setupFail([
+      'nodeD loaded the same DNA as nodeA but exchanges nothing with it, so it cannot',
+      'relay anything and section 3 below would blame the protocol for that.',
+      `Look at ${process.env.EPI_NET_ROOT ?? '/tmp/epi-net'}/nodeD.log for`,
+      '"Accept message from wrong peer" — a stale peer record from the bootstrap',
+      'service, whose relay identity no longer matches the peer it names. A full',
+      'scripts/network.sh clean && scripts/network.sh start is the only known reset.',
+    ]);
+  }
+  log(`    nodeD is genuinely peered — the same claim reached it in ${(dBaseMs / 1000).toFixed(1)}s`);
 
   // ---- 3. nodeB away; nodeA writes; nodeD must receive it ---------------
   log('\n--- 3. nodeB STOPPED, then nodeA writes ---');
@@ -309,8 +419,8 @@ async function main() {
   log('    waiting for nodeD to pick it up — the courier must hold the parcel');
   const tD = Date.now();
   let dMs = null;
-  while (Date.now() - tD < 120_000) {
-    if ((await countIn(D, D_A)) > 0) { dMs = Date.now() - tD; break; }
+  while (Date.now() - tD < ACQUIRE_WINDOW_MS) {
+    if ((await pollCount(D, D_A)) > 0) { dMs = Date.now() - tD; break; }
     await sleep(POLL_MS);
   }
   check('nodeD acquired nodeA\'s claim while nodeB was down', dMs !== null);
@@ -392,6 +502,18 @@ async function main() {
   check('nodeA is back up', !nodeIsDown('nodeA'));
 
   log('');
+  // Said once, at the end, where it survives the scrollback of a long wait. A
+  // run that passed with polls missing is the interesting case for the
+  // bimodality in README §9, and is exactly the run whose warnings are easiest
+  // to lose among six minutes of poll lines.
+  if (pollFailures.length > 0) {
+    const byNode = {};
+    for (const f of pollFailures) byNode[f.node] = (byNode[f.node] ?? 0) + 1;
+    log(`::warning::${pollFailures.length} poll(s) went unanswered during this run `
+      + `(${Object.entries(byNode).map(([n, c]) => `${n}: ${c}`).join(', ')}). `
+      + `Each counted as zero and the wait continued. First: ${pollFailures[0].msg}`);
+    log('');
+  }
   if (failures === 0) {
     log('ALL CHECKS PASSED — an entry reached a node from a peer that did not');
     log('author it. nodeB acquired nodeA\'s claim while nodeA was down for the');
