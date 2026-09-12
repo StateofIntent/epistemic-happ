@@ -1173,7 +1173,8 @@ the old shape. With no deployed network that costs nothing. The moment anyone is
 running this it costs everything, and the option to design it calmly is gone.
 `SPEC.md` §11 names it as a real, open gap; the changelog attaches a worked
 example. Related and smaller: nothing automatically keeps `SPEC.md` in sync with
-`dna/`, so it is a manually maintained snapshot of the commit named at its top.
+`dna/` beyond the function-list check in `scripts/check-spec-drift.mjs`, so it
+remains a manually maintained snapshot of the commit named at its top.
 
 `SPEC.md` §11.1 now works out what the substrate actually permits, and the answer
 narrows this decision sharply. **The usual versioning toolkit does not apply
@@ -1688,9 +1689,20 @@ each of these is currently exactly that.
   place rather than deleted: what they said was true when written, and a
   changelog that silently edits its own past is worse than one that is out of
   date.
-- **Nothing keeps `SPEC.md` in sync with `dna/`.** It is a hand-maintained
-  snapshot of the commit named at its own top, and §11 says so. Related to
-  protocol versioning above but separable from it, and much cheaper.
+- ~~**Nothing keeps `SPEC.md` in sync with `dna/`.**~~ **Partly done, and the
+  part that is not done is now stated rather than implied.**
+  `scripts/check-spec-drift.mjs` compares the coordinator zome's
+  `#[hdk_extern]` functions against §10's tables and fails in both directions;
+  it runs first in the no-conductor workflow, because it answers in
+  milliseconds and needs nothing built. It found real drift on its first run —
+  `attempt_unaccountable_membrane` and `attempt_false_domain_index` were
+  callable and absent from §10 — which is now fixed in `SPEC.md` §10.15 rather
+  than allowlisted, so the check went green on a correction instead of on an
+  exception. **What remains unchecked is most of the document**: §5 and §7 are
+  MUST and SHOULD rules about validation, and nothing compares those to
+  `validate_*`. That boundary is written into `SPEC.md` §11 and into the
+  script's own header, because a name-level check cited as "the spec is
+  verified" would be the same overclaim §2.3 was just corrected for.
 - **Whether the remaining chain-local reads should have global indexes at all.**
   `get_membranes` and `get_all_constitutions` would each be one global index over
   an unbounded, ever-growing set. `SPEC.md` §10.0 names the question rather than
