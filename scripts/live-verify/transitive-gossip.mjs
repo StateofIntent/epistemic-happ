@@ -200,14 +200,57 @@ const check = (label, cond) => {
   else { log(`  FAIL: ${label}`); failures++; }
 };
 
+const net = (...args) =>
+  execFileSync('bash', [`${REPO_ROOT}/scripts/network.sh`, ...args], { encoding: 'utf8' });
+
+// PUTTING THE NETWORK BACK IS NOT SECTION 7'S PRIVATE BUSINESS, AND TREATING IT
+// AS THOUGH IT WERE BROKE THE NEXT RUN RATHER THAN THIS ONE. This harness stops
+// nodeB in section 3 and nodeA in section 4, and every other harness in this
+// directory expects to find three nodes up and nodeD down. Section 7 restored
+// that, but only on the path where section 7 is reached: `setupFail` called
+// `process.exit(1)` directly, so a setup failure anywhere after section 3 left
+// nodeB stopped, and `main().catch` restarted nodeA but never nodeB.
+//
+// WATCHED, 2026-09-12, TWICE. A setup failure at the nodeD wait left nodeB down;
+// the next invocation died before its first check with a raw
+// `could not connect to Holochain Conductor API at ws://localhost:8897/ -
+// AggregateError` — a stack trace about websockets, for a network the previous
+// run had dismantled. The cost of a misleading failure is paid by whoever runs
+// the harness next, which is why it outlives the run that caused it.
+//
+// Idempotent on purpose, and it restarts nodeC too even though nothing here
+// stops it: `start-node` on a running node logs "already running" and returns 0,
+// so the cheap version that cannot drift out of step with the sections above is
+// the one that simply asserts the whole expected shape.
+function restoreNetwork(why) {
+  log(`\n--- Restoring the network (${why}) ---`);
+  let ok = true;
+  for (const n of ['nodeA', 'nodeB', 'nodeC']) {
+    try { net('start-node', n); }
+    catch (e) {
+      ok = false;
+      log(`    COULD NOT restart ${n}: ${String(e.stderr ?? e.message).split('\n')[0].slice(0, 160)}`);
+    }
+  }
+  try { net('stop-node', 'nodeD'); }
+  catch (e) {
+    ok = false;
+    log(`    COULD NOT stop nodeD: ${String(e.stderr ?? e.message).split('\n')[0].slice(0, 160)}`);
+  }
+  log(ok
+    ? '    three nodes up, nodeD down — the shape every other harness expects'
+    : '    RESTORE INCOMPLETE. Run: scripts/network.sh clean && scripts/network.sh start');
+  return ok;
+}
+
 function setupFail(lines) {
   log('');
   for (const l of lines) log(`  SETUP FAILED: ${l}`);
+  // Before exiting, not after: the next harness to run is entitled to the
+  // network this one was given.
+  restoreNetwork('after a setup failure');
   process.exit(1);
 }
-
-const net = (...args) =>
-  execFileSync('bash', [`${REPO_ROOT}/scripts/network.sh`, ...args], { encoding: 'utf8' });
 
 // Down means the process is gone, not that a pidfile was deleted. Read from
 // the pidfile the script itself maintains, and confirmed with kill -0.
@@ -288,11 +331,15 @@ const countIn = async (n, d) => (await n.call('get_claims_by_domain', d)).length
 // widen the client timeout and does not claim to have fixed the underlying race
 // — README §9 declined to act on an unconfirmed hypothesis, and so does this.
 //
-// ONLY THE POLLS. The one-shot `countIn` calls below — "nodeA sees its own
-// claim", "nodeC never saw the claim", "nodeD still holds the claim it relayed"
-// — are assertions, not waits. There is no budget behind them and nothing to
-// retry into: a node that cannot answer at all is a real failure and must stay
-// one. Do not route those through this helper.
+// THE LINE IS ASSERTION VERSUS DIAGNOSTIC, NOT LOOP VERSUS ONE-SHOT, and it was
+// first drawn in the wrong place. The `countIn` calls that feed a `check` —
+// "nodeA sees its own claim", "nodeC never saw the claim", "nodeD still holds the
+// claim it relayed" — must stay bare: there is nothing to retry into and a node
+// that cannot answer at all is a real failure. But the read in phase 4 feeds
+// nothing except a log line choosing between two wordings, and it was left bare
+// on the strength of being a one-shot read. It then ended a run in which
+// everything of consequence had already passed. A read whose result cannot fail
+// a check must not be able to fail the run either.
 const pollFailures = [];
 const pollCount = async (n, d) => {
   try { return await countIn(n, d); }
@@ -465,7 +512,17 @@ async function main() {
   // reason. This one read too late and failed for the wrong reason. Both are
   // the same underlying mistake: a check whose label claims a property when
   // its assertion tests a timing.
-  const alreadySynced = (await countIn(B, D_A)) > 0;
+  //
+  // AND BECAUSE IT IS NOT A CHECK, IT MUST NOT BE ABLE TO END THE RUN. It read
+  // bare until 2026-09-12, when it took a full run down with
+  // `Request timed out in 60000 ms: call_zome` — from a nodeB restarted four
+  // lines earlier, which is the least likely moment in this harness for a node
+  // to answer promptly. Everything of consequence had already passed. An
+  // unanswered read here reads as "not yet", which is the honest reading for a
+  // line whose whole job is to say which of two shapes the run took, and
+  // `pollCount` raises a ::warning:: so the unanswered read is still on the
+  // record.
+  const alreadySynced = (await pollCount(B, D_A)) > 0;
   log(alreadySynced
     ? '    nodeB had already synced from nodeD during the handshake — the fast path'
     : '    nodeB does not hold the claim yet — the wait below will measure it arriving');
@@ -494,12 +551,13 @@ async function main() {
   check('nodeD still holds the claim it relayed', (await countIn(D, D_A)) === 1);
 
   // ---- 7. Put the network back the way it was --------------------------
-  log('\n--- 7. Restoring the network ---');
-  net('start-node', 'nodeA');
-  net('stop-node', 'nodeD');
+  // The same call the failure paths make. It was two lines of its own here, and
+  // the copy in `main().catch` had already drifted from them by omitting nodeB.
+  restoreNetwork('phase 7, end of run');
   check('nodeD is stopped again — the default network is three nodes, as every other harness expects',
     nodeIsDown('nodeD'));
   check('nodeA is back up', !nodeIsDown('nodeA'));
+  check('nodeB is back up too — the node section 3 stopped', !nodeIsDown('nodeB'));
 
   log('');
   // Said once, at the end, where it survives the scrollback of a long wait. A
@@ -526,8 +584,10 @@ async function main() {
 
 main().catch((e) => {
   console.error('\nHARNESS ERROR:', e);
-  // Best effort: leave the network as the other harnesses expect to find it.
-  try { execFileSync('bash', [`${REPO_ROOT}/scripts/network.sh`, 'start-node', 'nodeA'], { stdio: 'ignore' }); } catch { /* already up */ }
-  try { execFileSync('bash', [`${REPO_ROOT}/scripts/network.sh`, 'stop-node', 'nodeD'], { stdio: 'ignore' }); } catch { /* already down */ }
+  // The same restore as every other exit path, rather than a second, thinner
+  // copy of it — the copy here omitted nodeB, which is the node section 3 stops.
+  try { restoreNetwork('after a harness error'); } catch (e2) {
+    console.error('  and the restore itself failed:', String(e2?.message ?? e2).split('\n')[0]);
+  }
   process.exit(1);
 });
