@@ -975,11 +975,14 @@ run. What is open is one item, and it is not blocked on effort:
 - **The `real-gossip` forward-leg intermittency is open again, with a narrower
   suspect than it has ever had.** Its third occurrence ruled out peer discovery
   — the standing hypothesis — using counts taken before the publish, and it is
-  recorded in full further down this section. **It is no longer blocked on a
-  recurrence — two were provoked, and they agree with each other.** The suspect
-  is now op delivery and retry, which is readable code rather than a wait. The
-  same batch also turned up a second, unexplained failure shape in which nothing
-  crossed at all; both are below, and they are deliberately not pooled.
+  recorded in full further down this section. **The cause is now known, and what
+  is open is a decision rather than an investigation.** Publishing an op has no
+  retry in `kitsune2` 0.5.0, so a missed first publish can only be repaired by a
+  gossip round — and gossip re-initiates every 120 seconds plus jitter, which is
+  the same figure as this harness's own window. The choice is whether to widen
+  that window or split the check in two; both options and their costs are below.
+  The same batch also turned up a second, unexplained failure shape in which
+  nothing crossed at all, and the two are deliberately not pooled.
 
 **The flake was provoked rather than waited for: 30 dispatched runs, 7 failures
 — and they are TWO different shapes that must not be pooled.** `network.yml` was
@@ -1024,6 +1027,85 @@ harness had never recorded before.
 dispatched runs on a quiet account need not reproduce the contention profile of
 the pull-request queue where this flake has historically appeared, and wave three
 is a concrete reason to distrust any rate pooled out of such a batch.
+
+**And then the cause was found by reading the substrate rather than by waiting
+for another occurrence, and it is two ordinary things colliding.** The sources
+are in the cargo registry for `kitsune2` 0.5.0 — the line Holochain 0.7.0 builds
+against — and they answer the question the probe had narrowed to.
+
+**First: publishing an op has no retry.** In
+`kitsune2_core-0.5.0/src/factories/core_publish.rs`, `outgoing_publish_ops_task`
+drops an op on the floor in two distinct ways. If the receiving peer's URL is
+marked *unresponsive* in the peer meta store it **skips the publish entirely**
+(`continue`), and if `send_module` returns an error it logs
+`could not send publish ops` at warn level and carries on to the next item. There
+is no retry queue and nothing rescheduled. **Once a direct publish misses, the
+only thing that can ever deliver that op is a gossip round.** That is exactly
+the shape the probe measured: the live path working for new ops while one
+specific older op sat undelivered.
+
+**Second: gossip initiates every two minutes.** From
+`kitsune2_gossip-0.5.0/src/config.rs`:
+
+| Parameter | Default |
+|---|---|
+| `initial_initiate_interval_ms` | 1,000 |
+| `initiate_interval_ms` | **120,000** |
+| `initiate_jitter_ms` | 10,000 |
+| `min_initiate_interval_ms` | 300,000 |
+| `round_timeout_ms` | 15,000 |
+
+The fast one-second interval is **not** the steady state. `initiate.rs` uses it
+only in the branch where a local agent's storage arc is still growing; once every
+local agent is at its target arc — which is the case for the full-arc nodes this
+harness runs — the loop sleeps `compute_delay(initiate_interval)`, which is
+120 seconds **plus up to 10 seconds of jitter**, between initiation attempts.
+Holochain 0.7.0 does not override these: nothing in `holochain_p2p`'s spawn
+configuration or the conductor config sets them.
+
+**So `real-gossip`'s window is numerically identical to the recovery interval it
+is implicitly racing, and the jitter is added on top.** `GOSSIP_WINDOW_MS` is
+`120_000`; `initiate_interval_ms` is `120_000`. Whenever the first publish
+misses, **the only mechanism that can repair it is guaranteed to arrive after the
+harness has already given up** — gossip at 120 to 130 seconds, the check
+abandoning at exactly 120. That is not a hypothesis that needs another
+occurrence; it is arithmetic over two published defaults, and both measured
+failures fit it:
+
+- `34671043317` — the claim arrived **~134s** after its publish, which is the
+  120s interval plus jitter plus the round itself. Only the probe's extra 30
+  seconds of watching saw it at all.
+- `34671351347` — nothing by 150s, consistent with the 300s per-peer minimum
+  interval, or with a round hitting the 15s timeout and waiting for the next one.
+
+**This reframes the rule this section has twice applied, and the reframing is the
+part worth arguing about.** "A timeout raised to hide a stall makes it slower to
+notice rather than absent" was right for `notes-ui` and for `transitive-gossip`,
+and it is why nobody widened this window. But 120 seconds here is not a patience
+figure somebody chose generously — it is **below the documented recovery time for
+the exact condition under test**, so the check as written can fail on a network
+that is behaving exactly as its substrate says it will. That is a
+mis-specification rather than a stall being hidden.
+
+**The decision is open, deliberately, and is not being taken in the same change
+that found this.** Two candidates, with what each costs:
+
+- **Widen the window past `initiate_interval + jitter`** (≥140s, realistically
+  150s). One line, and the check then means "it arrives, eventually". The cost is
+  that a genuinely lost op is no longer distinguishable from a slow one, and the
+  failing path gets slower — which is the reflex this section has twice refused.
+- **Split it into two checks with different names and budgets** — one for the
+  direct publish landing promptly, one for eventual convergence via gossip. More
+  work, and it is the honest shape: "the publish landed" and "the DHT converges"
+  are different promises, and conflating them is what produced a red tick nobody
+  could read. The `STRANDED OP` and `STRANDED THEN REPAIRED` verdicts already
+  separate the two cases at diagnosis time; this would separate them at assertion
+  time.
+
+The second is the recommendation. Either way the numbers above belong in the
+harness's own header next to `GOSSIP_WINDOW_MS`, since the constant currently
+explains itself in terms of observed gossip latency (~2s) and says nothing about
+the 120s initiation interval that actually bounds the failing case.
 
 **The first of those two occurrences also corrected the probe, which is the
 second time in two days a diagnostic here has been caught asserting a cause its
@@ -1140,7 +1222,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
-| **The `real-gossip` forward-leg intermittency** | **A recurrence** — discovery and the transport are both eliminated; `strandedProbe` will name which story the next one is | §9 below, `scripts/live-verify/real-gossip.mjs` header |
+| **The `real-gossip` forward-leg intermittency** | **A decision** — cause found: publish has no retry and gossip re-initiates every 120s, the same figure as the harness's window. Whether to widen it or split the check in two | §9 below, `scripts/live-verify/real-gossip.mjs` header |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
