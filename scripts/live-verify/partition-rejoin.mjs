@@ -133,6 +133,22 @@ const NODES = {
 const CONVERGE_WINDOW_MS = 600_000;
 const POLL_MS = 5_000;
 
+// WATCH PAST THE WINDOW BEFORE GIVING UP, for the reason real-gossip.mjs's own
+// copy of this explains at length. Short version: this harness's BASELINE
+// crossing was two of the four `network` job failures on 2026-09-12 — the same
+// nodeA -> nodeB crossing exceeding the same 330s, with the conductors logging a
+// gossip round whose Accept arrived after the initiator's 15s `round_timeout_ms`.
+//
+// Two fixes are possible and the evidence does not yet choose: either the op
+// arrives given more time, so the WINDOW is the constraint, or it never does and
+// `roundTimeoutMs` is too tight for a 2-vCPU runner. Instrumenting only
+// real-gossip.mjs would have covered half the failures, which is why this is
+// here too.
+//
+// Reported as a ::warning:: and then the setup failure proceeds unchanged: the
+// run is already lost, and this only records which fix it wanted.
+const OBSERVE_PAST_WINDOW_MS = 300_000;
+
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const log = (...a) => console.log(...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -364,9 +380,36 @@ async function main() {
   const base = await awaitConvergence(B, DOMAIN_BASE, 'nodeB', C);
   check('a claim crosses nodeA -> nodeB with both up (baseline)', base.ms !== null);
   if (base.ms === null) {
+    // See OBSERVE_PAST_WINDOW_MS. Takes the one measurement that distinguishes
+    // the two candidate fixes, before the run ends.
+    log(`\n    --- still watching for ${OBSERVE_PAST_WINDOW_MS / 1000}s past the window, to `
+      + 'establish whether more time would have helped ---');
+    const tObs = Date.now();
+    let lateMs = null;
+    // Sleeps before re-checking, so at least one poll always happens — a budget
+    // that takes zero observations would report "still absent" without looking.
+    while (Date.now() - tObs < OBSERVE_PAST_WINDOW_MS) {
+      await sleep(POLL_MS);
+      const got = await pollCount(B, DOMAIN_BASE);
+      log(`    t+${((Date.now() - tObs) / 1000).toFixed(0)}s past window: node${B.name}=${got}`);
+      if (got > 0) { lateMs = Date.now() - tObs; break; }
+    }
+    if (lateMs !== null) {
+      log(`    ::warning::IT ARRIVED LATE — ${((CONVERGE_WINDOW_MS + lateMs) / 1000).toFixed(0)}s from `
+        + `the write, i.e. ${(lateMs / 1000).toFixed(0)}s past a ${CONVERGE_WINDOW_MS / 1000}s window. On `
+        + 'THIS run the window was the constraint and the mechanism did eventually work. Record it '
+        + 'against the other occurrences before widening anything — a window raised on one '
+        + 'occurrence was already reverted once, see transitive-gossip.mjs.');
+    } else {
+      log(`    ::warning::STILL ABSENT after a further ${OBSERVE_PAST_WINDOW_MS / 1000}s — `
+        + `${(CONVERGE_WINDOW_MS + OBSERVE_PAST_WINDOW_MS) / 1000}s from the write in total. On THIS run `
+        + 'more time would NOT have helped, so the window is not the thing to change. That points at '
+        + 'the 15s round timeout being too tight for this machine.');
+    }
     setupFail(['The network is not carrying claims even with both nodes up.',
       'Nothing this harness does after breaking it could be interpreted.',
-      'Check scripts/network.sh status, and run real-gossip.mjs first.']);
+      'Check scripts/network.sh status, and run real-gossip.mjs first.',
+      'The ::warning:: above says whether more time would have helped.']);
   }
   log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`);
 
