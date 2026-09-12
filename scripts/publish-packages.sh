@@ -9,9 +9,14 @@
 # for anyone who installs them. They were published by hand, and every check
 # that existed at the time was green — correctly, because those checks proved
 # the tarball was a package, and a broken build is a perfectly good package.
-# README §9 records the republish as blocked on credentials, which is true and
+# README §9 recorded the republish as blocked on credentials, which was true and
 # was never the whole story: it was also blocked on any way to know the next
 # publish would be better than the last.
+#
+# IT HAS NOW DONE THAT JOB ONCE. `0.1.2` of both packages was published with this
+# script on 2026-09-12 and verified afterwards against what the registry actually
+# serves. Both of the faults recorded below were found by that run. The reason to
+# keep this file careful is the NEXT version, not the last one.
 #
 # So this script does not just publish. It refuses to, unless the one check that
 # would have caught 0.1.1 has just passed against a real conductor:
