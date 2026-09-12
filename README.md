@@ -975,14 +975,16 @@ run. What is open is one item, and it is not blocked on effort:
 - **The `real-gossip` forward-leg intermittency is open again, with a narrower
   suspect than it has ever had.** Its third occurrence ruled out peer discovery
   — the standing hypothesis — using counts taken before the publish, and it is
-  recorded in full further down this section. **The cause is now known, and what
-  is open is a decision rather than an investigation.** Publishing an op has no
-  retry in `kitsune2` 0.5.0, so a missed first publish can only be repaired by a
-  gossip round — and gossip re-initiates every 120 seconds plus jitter, which is
-  the same figure as this harness's own window. The choice is whether to widen
-  that window or split the check in two; both options and their costs are below.
-  The same batch also turned up a second, unexplained failure shape in which
-  nothing crossed at all, and the two are deliberately not pooled.
+  recorded in full further down this section. **Closed: cause found in the
+  substrate, and the check is now two checks.** Publishing an op has no retry in
+  `kitsune2` 0.5.0, so a missed first publish can only be repaired by a gossip
+  round — and gossip re-initiates every 120 seconds plus jitter, which was the
+  same figure as this harness's own window, so the repair could never beat the
+  deadline. Convergence now gates at 180s; a slow direct publish is a warning
+  carrying its measured time. **What remains open from that investigation is the
+  second failure shape the batch turned up**, in which nothing crossed in either
+  direction although both conductors reported knowing 2 peers — five runs inside
+  a 12-second window, unexplained, and deliberately not pooled with the first.
 
 **The flake was provoked rather than waited for: 30 dispatched runs, 7 failures
 — and they are TWO different shapes that must not be pooled.** `network.yml` was
@@ -1087,8 +1089,9 @@ the exact condition under test**, so the check as written can fail on a network
 that is behaving exactly as its substrate says it will. That is a
 mis-specification rather than a stall being hidden.
 
-**The decision is open, deliberately, and is not being taken in the same change
-that found this.** Two candidates, with what each costs:
+**The decision was taken: the check is split in two.** It is recorded here with
+the alternative it was chosen over, because the reasoning is the part that has to
+survive:
 
 - **Widen the window past `initiate_interval + jitter`** (≥140s, realistically
   150s). One line, and the check then means "it arrives, eventually". The cost is
@@ -1102,10 +1105,48 @@ that found this.** Two candidates, with what each costs:
   separate the two cases at diagnosis time; this would separate them at assertion
   time.
 
-The second is the recommendation. Either way the numbers above belong in the
-harness's own header next to `GOSSIP_WINDOW_MS`, since the constant currently
-explains itself in terms of observed gossip latency (~2s) and says nothing about
-the 120s initiation interval that actually bounds the failing case.
+**The second was chosen and is built.** `GOSSIP_WINDOW_MS` is gone, replaced by
+two budgets whose values come from the substrate rather than from taste:
+
+| Constant | Value | Why that number |
+|---|---|---|
+| `PROMPT_PUBLISH_MS` | 60s | healthy crossings are 2-4s; the slowest ever recorded here is 10.1s on a loaded runner. Six times that, and still half of gossip's first opportunity, so an arrival inside it means the publish path worked rather than that gossip covered for it |
+| `CONVERGE_WINDOW_MS` | 180s | must clear `GOSSIP_REPAIR_WORST_CASE_MS` with margin |
+| `GOSSIP_REPAIR_WORST_CASE_MS` | 145s | 120s interval + 10s jitter + 15s round timeout |
+
+**Convergence is the only one that gates**, because "an entry written on one
+conductor reaches another" is the invariant this harness exists for. A missed
+prompt publish raises a `::warning::` carrying the measured time and does not
+fail the run — an op that publish dropped and gossip repaired is the substrate
+doing exactly what its defaults say, and a red tick for that is the
+flaky-red-meaning-nothing this section has twice refused. The warning is applied
+to the reverse leg and the paired control too, not only to section 3, so a
+direction that quietly drifts from 2s to 90s shows up as something that happened.
+
+**The inequality is now enforced rather than explained.**
+`CONVERGE_WINDOW_MS < GOSSIP_REPAIR_WORST_CASE_MS` *is* the defect this harness
+shipped with, so the run aborts at setup if a future edit restores it, naming the
+interval it collides with. Putting the window back to `120_000` was injected and
+produces exactly that abort, before anything is published.
+
+**Two consequences are deliberate and both cost something.** The probe now fires
+at the 60s boundary rather than at 120s, which sharpens it — a repair seen inside
+the probe is too early to be a gossip round, so the fetch queue becomes the
+candidate, and the message says so instead of attributing it to gossip. And a run
+where the entry genuinely never arrives now spends 180s here and another 180s in
+section 5, where it used to spend 120s and 120s. Section 5 keeps the **same**
+budget on purpose: holding one index to a laxer standard than the other was the
+#131 defect and is not being reintroduced to save three minutes on a path that
+should be rare.
+
+**The split was watched failing in all four of its shapes**, with the budgets
+scaled to seconds: a 10-second blindness produced a passing run with a warning
+and a full diagnosis where the identical run used to be seven reds; permanent
+blindness still failed the gate; the restored 120s window aborted at setup; and
+nodeC made to claim it had seen the entry *only while the probe ran* turned two
+of section 6's controls red — a 30-second hole in which the control asserting
+"nodeC never sees it" had not been looking, now closed because the probe samples
+the isolated node on every poll.
 
 **The first of those two occurrences also corrected the probe, which is the
 second time in two days a diagnostic here has been caught asserting a cause its
@@ -1222,7 +1263,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
-| **The `real-gossip` forward-leg intermittency** | **A decision** — cause found: publish has no retry and gossip re-initiates every 120s, the same figure as the harness's window. Whether to widen it or split the check in two | §9 below, `scripts/live-verify/real-gossip.mjs` header |
+| ~~The `real-gossip` forward-leg intermittency~~ | **Done** — cause found in the substrate, and the check split into a gating convergence budget and a warned-about prompt-publish budget | §9 below, `scripts/live-verify/real-gossip.mjs` header |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |

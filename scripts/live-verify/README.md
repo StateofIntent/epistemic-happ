@@ -141,14 +141,16 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
-**`real-gossip` spends up to 30 seconds more when it FAILS than the figures above suggest, and deliberately.** On a missed crossing it publishes one further claim and watches whether that one crosses while the missed one still has not. It is not a check, cannot turn the job green, and never runs on a green run. Five verdicts, pointing at different files:
+**`real-gossip` holds a crossing to TWO budgets, because they are two promises.** `CONVERGE_WINDOW_MS` (180s) gates the run — that is the invariant, and it must clear the 145s gossip needs at worst to repair an op that publish dropped (120s initiate interval + 10s jitter + 15s round). `PROMPT_PUBLISH_MS` (60s) asks whether the *direct* publish landed, and a miss is a `::warning::` with the measured time rather than a failure, because publish has no retry in kitsune2 and an op it drops being repaired by gossip is the substrate behaving as documented. The harness aborts at setup if anyone lowers the convergence window back under the gossip figure; that inequality was the defect, and README.md §9 derives it.
+
+**On a missed prompt budget it also spends up to 30 seconds more**, publishing one further claim and watching whether that one crosses while the missed one still has not. It is not a check, cannot turn the job green, and never runs on a run where the publish landed promptly. Five verdicts, pointing at different files:
 
 | Verdict | What the run showed | Where to look |
 |---|---|---|
 | `STRANDED OP` | the fresh claim crossed, the missed one never arrived | op publication and retry |
 | `STRANDED THEN REPAIRED` | the fresh claim crossed and the missed one followed it | op publication and retry |
 | `LATE PATH` | both arrived together | node readiness, `scripts/network.sh` |
-| `WINDOW TOO SHORT` | the missed one was already there at the first poll | node readiness, `scripts/network.sh` |
+| `JUST OVER THE PROMPT BUDGET` | the missed one was already there at the first poll | nothing — too early for gossip; the publish was merely slow |
 | `NO PATH YET` | neither arrived | sections 8 and 9, for whether it recovers |
 
 **Two real occurrences, provoked rather than waited for, both read `2.0s` for the fresh claim while an op two minutes old sat undelivered** — which is what moved the suspect from peer discovery to op delivery. The same batch of 30 dispatched runs also produced five failures of a different shape, in which nothing crossed in either direction although both conductors reported knowing 2 peers; those five published within 12 seconds of each other and are unexplained, so README.md §9 keeps the two shapes separate rather than pooling them into one rate. The harness header records every injection behind these messages, including the two that real failures corrected.
