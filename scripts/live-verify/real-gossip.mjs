@@ -61,6 +61,13 @@
 //      long note above check 9 below — this is the check that could not
 //      previously be run at all.
 //
+// ON A FAILURE ONLY, section 3 also runs a probe that publishes a fresh
+// claim and reports whether THAT crosses while the missed one still has
+// not — see `strandedProbe`. It is not a check and cannot change the
+// verdict; it exists because this harness goes red intermittently and
+// every occurrence so far has been spent working out which of three
+// stories it was.
+//
 // Prereqs: scripts/network.sh clean && scripts/network.sh start, and a
 // packed .happ at the repo root (scripts/pack-webhapp.sh).
 //
@@ -115,8 +122,53 @@
 //   Restored afterwards and re-run: all 25 checks green again, on the
 //   same conductors, without cleaning them.
 //
+// THE FAILURE DIAGNOSTICS WERE WATCHED TOO, which matters more here than
+// usual: a diagnostic only ever runs on a red run, so a green CI history
+// says nothing whatsoever about whether it prints the truth. One of them
+// did not — section 5 reported "the by-domain index had it after never,
+// so the entry crossed and only this index is missing" on a run where the
+// entry had not crossed at all. Five injections, each on the real network
+// of three conductors, one per message the failure paths can print:
+//
+//   GOSSIP_WINDOW_MS lowered to 100ms, so section 3 cannot win.
+//   Result: the probe published a fresh claim, watched it cross in 2.1s
+//   alongside the missed one, and reported LATE PATH. Section 4's five
+//   checks then passed on the entry that had arrived during the probe —
+//   the consequence `strandedProbe` documents, visible rather than
+//   theoretical.
+//
+//   The same, plus `awaitSecondIndex` stubbed to return null.
+//   Result: section 5 said the by-domain index "got it only AFTER section
+//   3's window closed, during the probe above", which is the message that
+//   replaces the false one. Exactly the CI run that prompted all of this.
+//
+//   nodeB's `get_claims_by_domain` and `get_claims_by_agent` stubbed to
+//   return nothing at all, so nothing can appear to cross.
+//   Result: probe reported NO PATH YET, and section 5 reported "the
+//   by-domain index never had it either — this is section 3's failure
+//   reaching down here". The wrong-cause message is gone from the run
+//   whose shape produced it.
+//
+//   nodeB stubbed to see the PROBE's domain but never the missed one.
+//   Result: STRANDED OP — "the fresh claim crossed in 2.0s and the missed
+//   one is STILL absent". This is the shape that would confirm the
+//   standing hypothesis in `peerCount` below, and it is now known to be
+//   reportable rather than hoped to be.
+//
+//   nodeB made to throw `Websocket closed with code 1006` the moment the
+//   probe asks it anything.
+//   Result: "nodeB stopped answering during the probe", and the run
+//   carried on to its remaining sections. Without the catch this would be
+//   a stack trace replacing section 3's diagnostic with one about the
+//   probe — on precisely the runs where section 3's is the thing somebody
+//   needs.
+//
+//   Restored and re-run clean afterwards: all checks green, probe silent
+//   (it runs only when section 3 has already failed).
+//
 // Re-check the same way if you change what this file asserts: inject,
-// watch it go red, restore, watch it go green.
+// watch it go red, restore, watch it go green. And if you change what it
+// PRINTS on a failure, inject a failure and read the words.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -140,6 +192,11 @@ const POLL_MS = 2_000;
 // control's claim is "it never arrives", and a single glance at the
 // instant nodeB happens to succeed is not that claim.
 const CONTROL_MARGIN_MS = 20_000;
+// Only ever spent on a run that has ALREADY failed section 3, to ask whether
+// a fresh op crosses while the missed one still has not. Short on purpose:
+// the answer is "seconds or nothing" in every occurrence recorded so far, and
+// a failing run has by then already spent four minutes waiting.
+const STRANDED_PROBE_MS = 30_000;
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const log = (...a) => console.log(...a);
@@ -265,7 +322,25 @@ async function publishClaim(node, domain, content) {
  * This harness connects and publishes immediately, so nothing in it has ever
  * distinguished "gossip is slow" from "these two had not met yet". The count
  * below is logged before the first publish and again in the failure
- * diagnostic, so the NEXT occurrence says which. It is deliberately NOT a
+ * diagnostic, so the NEXT occurrence says which.
+ *
+ * IT DID, AND IT RULED DISCOVERY OUT. On the occurrence after that one — again
+ * a pull request that could not have caused it, touching a CI script and spec
+ * prose — the counts read `nodeA knows of 2 peer(s), nodeB knows of 2` BEFORE
+ * the publish and the same after the window, and the claim still never crossed
+ * in 120 seconds, nor its by-agent link in another 120. The nodes had met. And
+ * the network was not broken either: a claim nodeA published four and a half
+ * minutes later reached nodeB in 2 seconds. So the suspect is no longer
+ * discovery and not the transport — it is one op going undelivered and not
+ * retried, which is what `strandedProbe` exists to confirm or refute on the
+ * next occurrence.
+ *
+ * What the count does NOT say is worth keeping next to what it does: it is the
+ * number of agent infos the conductor holds, which is knowledge obtained from
+ * the bootstrap server. It is not evidence of a live QUIC session or of a
+ * gossip round having completed with that peer. "They had met" is the strongest
+ * reading it supports, and a first publish issued before the first successful
+ * gossip round would be consistent with every number recorded above. It is deliberately NOT a
  * check and NOT a wait that can fail the run: adding a red to a job that is
  * already intermittently red would obscure exactly the evidence being
  * gathered, and this repository's rule is that a timeout raised — or a
@@ -284,6 +359,99 @@ async function peerCount(node) {
 const peersLine = async (a, b) =>
   `node${a.name} knows of ${await peerCount(a) ?? '?'} peer(s), `
   + `node${b.name} knows of ${await peerCount(b) ?? '?'}`;
+
+/** Asked ONLY after section 3 has already missed: does a FRESH op from the
+ * same author cross to the same receiver right now, while the missed one still
+ * has not arrived?
+ *
+ * WHY THIS IS THE QUESTION. The peer counts above were added to tell "gossip is
+ * slow" from "these two had not met yet", and on their second occurrence they
+ * answered: both conductors knew of 2 peers BEFORE the publish and still did
+ * after the window, so the nodes had met and discovery was not the suspect.
+ * What the run then showed is that the network was not broken either — a claim
+ * nodeA published four and a half minutes later reached nodeB in 2 seconds, on
+ * the same pair, in the same process. So one specific op was stranded while a
+ * later one crossed, and nothing re-delivered it across four minutes.
+ *
+ * Sections 8 and 9 are what revealed that, but only indirectly: they run
+ * minutes later and section 8 changes direction, so neither isolates "this op
+ * was stranded" from "the path came up some time after the publish". This does:
+ * one new claim, same author, same receiver, its own fresh domain so it cannot
+ * contaminate sections 4 to 7, watched alongside the missed one.
+ *
+ * NOT A CHECK, and it cannot turn this run green — the rule this file already
+ * follows for the peer counts. A job that is intermittently red must not gain a
+ * second way to be red while the evidence for the first is still being
+ * gathered, and a probe that could pass would invite reading it as "gossip
+ * works, never mind section 3". It only ever prints, and it runs only on a path
+ * where section 3's check has already failed.
+ *
+ * It is NOT free of consequence further down, though, and pretending otherwise
+ * would be the same overclaim this file was just corrected for. It spends
+ * 30 seconds before sections 4 and 5 read anything, so an entry that crosses
+ * during the probe is one they will now see: five checks in section 4 that used
+ * to be five reds can become five greens. That is the truth improving rather
+ * than a failure being masked — section 3's red stands either way, the run
+ * stays red, and a crossing this harness WATCHED happen should not be reported
+ * as an absence. Section 5 is told about it explicitly for that reason. */
+async function strandedProbe(author, receiver, missedDomain) {
+  const PROBE_DOMAIN = `GossipStranded${Date.now()}`;
+  const PROBE_CONTENT = `Published on node${author.name} AFTER the window closed, at ${new Date().toISOString()}.`;
+  log(`    --- probe: does a fresh op cross now? (${STRANDED_PROBE_MS / 1000}s, domain ${PROBE_DOMAIN}) ---`);
+  try {
+    await publishClaim(author, PROBE_DOMAIN, PROBE_CONTENT);
+  } catch (e) {
+    log(`    probe could not publish at all: ${e.message ?? e}`);
+    log(`    which is itself the finding — node${author.name} stopped accepting writes`);
+    return { probeMs: null, missedArrivedLate: false };
+  }
+  const t0 = Date.now();
+  let probeMs = null;
+  let missedArrivedLate = false;
+  while (Date.now() - t0 < STRANDED_PROBE_MS) {
+    // This runs only when something is already wrong, so the receiver being
+    // unable to answer at all is one of the outcomes rather than a surprise.
+    // Reported and abandoned, never thrown: a stack trace here would replace
+    // the diagnostic for section 3 with a diagnostic about this probe.
+    let probeSeen, missedSeen;
+    try {
+      probeSeen = (await receiver.call('get_claims_by_domain', PROBE_DOMAIN)).length;
+      missedSeen = (await receiver.call('get_claims_by_domain', missedDomain)).length;
+    } catch (e) {
+      log(`    node${receiver.name} stopped answering during the probe: ${e.message ?? e}`);
+      log('    so this run cannot say whether the op was stranded — the receiver is down,');
+      log('    which is a finding of its own and not the one section 3 was about.');
+      return { probeMs, missedArrivedLate };
+    }
+    if (missedSeen > 0) missedArrivedLate = true;
+    if (probeSeen > 0 && probeMs === null) probeMs = Date.now() - t0;
+    log(`    t+${((Date.now() - t0) / 1000).toFixed(0)}s  probe=${probeSeen}  missed=${missedSeen}`);
+    if (probeMs !== null && missedArrivedLate) break;
+    await sleep(POLL_MS);
+  }
+  // The four shapes, named, because the point of a diagnostic is that somebody
+  // handed a red tick does not have to work this out for themselves. The shape
+  // is RETURNED as well as printed, because section 5 reports on the by-domain
+  // index too and must not go on calling it absent once this has watched it
+  // arrive.
+  if (probeMs !== null && !missedArrivedLate) {
+    log(`    STRANDED OP: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s and the missed one is STILL absent.`);
+    log(`    node${author.name} to node${receiver.name} works at this moment, so neither discovery nor`);
+    log('    the transport explains section 3. One op was not delivered and was not retried.');
+  } else if (probeMs !== null && missedArrivedLate) {
+    log(`    LATE PATH: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s and the missed one turned up too.`);
+    log('    So the path came up some time after the publish and then carried both.');
+    log('    Section 3\'s window was not long enough for whatever had to happen first.');
+  } else if (missedArrivedLate) {
+    log('    The missed claim arrived but the fresh one did not, which no hypothesis here predicts.');
+    log('    Worth keeping verbatim: it is the one shape that fits neither story.');
+  } else {
+    log(`    NO PATH YET: neither claim is on node${receiver.name} after this probe.`);
+    log('    Section 3 is not about one stranded op — nothing is crossing right now.');
+    log('    Sections 8 and 9 below say whether it recovers later in this run.');
+  }
+  return { probeMs, missedArrivedLate };
+}
 
 // Polls `receiver` until the claim shows up, while checking on every
 // iteration that `isolated` still has not seen it. Returns how long
@@ -386,6 +554,8 @@ async function main() {
   }
 
   const { ms: arrivedMs, isolatedEverSaw } = await awaitGossip(B, C, DOMAIN);
+  // Null unless section 3 missed; see `strandedProbe`. Section 5 reads it.
+  let probe = null;
   check(`nodeB receives nodeA's claim over the network (within ${GOSSIP_WINDOW_MS / 1000}s)`,
     arrivedMs !== null);
   if (arrivedMs !== null) log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s`);
@@ -399,6 +569,7 @@ async function main() {
     log(`    after the window: ${await peersLine(A, B)}`);
     log('    (both counts >1 means they had found each other and gossip still missed;');
     log('     a count of 1 on either means this node was alone on the DHT when it mattered)');
+    probe = await strandedProbe(A, B, DOMAIN);
   }
 
   // ---- 4. It is the same entry -----------------------------------------
@@ -464,8 +635,34 @@ async function main() {
         + `${((byAgentMs - arrivedMs) / 1000).toFixed(1)}s — they usually land together`);
     }
   } else {
-    log(`    the by-domain index had it after ${arrivedMs === null ? 'never' : (arrivedMs / 1000).toFixed(1) + 's'}, `
-      + 'so the entry crossed and only this index is missing');
+    // WHICH FAILURE THIS IS, and the two are not the same thing. If the
+    // by-domain index got the entry and this one did not, the entry crossed
+    // and exactly one index is missing — the case this section exists for. If
+    // NEITHER got it, section 3 has already failed and this is its shadow, not
+    // an index-specific finding at all.
+    //
+    // The first version of this printed "so the entry crossed and only this
+    // index is missing" unconditionally, and said it on a run where the entry
+    // had not crossed at all. A diagnostic that states the wrong cause is
+    // worse than one that says nothing, because it is read by somebody who has
+    // just been handed a red tick and wants the answer.
+    //
+    // There is a THIRD case, and it is the reason `probe` is threaded down
+    // here: the entry can arrive after section 3's window closed but while the
+    // probe above was watching. `arrivedMs` is null on such a run and saying
+    // "never had it either" would be the same wrong-cause mistake in a new
+    // place — the crossing happened, late, and this harness saw it happen.
+    if (arrivedMs !== null) {
+      log(`    the by-domain index had it after ${(arrivedMs / 1000).toFixed(1)}s, `
+        + 'so the entry crossed and only this index is missing');
+    } else if (probe?.missedArrivedLate) {
+      log('    the by-domain index got it only AFTER section 3\'s window closed, during');
+      log('    the probe above — so the entry did cross, late, and this is not a finding');
+      log('    about one index. Read section 3\'s probe, not this line.');
+    } else {
+      log('    the by-domain index never had it either — this is section 3\'s failure');
+      log('    reaching down here, not an index that lagged behind a successful crossing');
+    }
     log(`    ${await peersLine(A, B)}`);
   }
 

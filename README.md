@@ -935,7 +935,10 @@ are gaps recorded in prose, in §2.3 and in `SPEC.md` §11, and being written up
 somewhere other than a to-do list is exactly how they stay invisible.
 
 **Every piece of CODE blocked on nothing but effort is now done, and so is the
-one item that was blocked on a recurrence** — the qualifier is load-bearing, and
+one item that *was* blocked on a recurrence** — a second item blocked on a
+recurrence has since opened, the `real-gossip` forward leg recorded below, so
+that clause describes what became true of `notes-ui` rather than a property of
+this section. The qualifier is load-bearing, and
 was missing here while six documentation gaps sat at the end of this section
 blocked on nothing whatsoever. A section whose whole argument is that a gap
 written up outside a to-do list stays invisible should not open by implying
@@ -954,17 +957,32 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**Nothing is open. #127, #128 and #129 all landed**, which is the first time
-this section has been able to say that. #127 is a diagnostic rather than a fix —
+**#127 through #133 all landed.** #127 is a diagnostic rather than a fix —
 `real-gossip` reporting how many peers each conductor has heard of, so the next
 missed gossip says whether the two nodes had even met; the occurrence that
 prompted it is recorded further down this section. #129 closed the `notes-ui`
 intermittency described immediately below, along with a second defect found
 underneath it.
 
-**So the next thing to look at is not code.** Everything left is either waiting
-on a person, waiting on an argument, or one of the documentation items at the
-end of this section — and those last ones are blocked on nothing at all, which
+**One thing is open, and this section said "nothing is open" for a day while
+[#134](../../pull/134) was sitting in CI.** That sentence was true when written
+and stopped being true without anybody editing it, which is the failure this
+whole section is an argument against — a status line is only worth reading if
+going stale is treated as a defect in it. #134 has since landed: `SPEC.md`'s
+function list is something CI notices now, and it found real drift on its first
+run. What is open is one item, and it is not blocked on effort:
+
+- **The `real-gossip` forward-leg intermittency is open again, with a narrower
+  suspect than it has ever had.** Its third occurrence ruled out peer discovery
+  — the standing hypothesis — using counts taken before the publish, and it is
+  recorded in full further down this section. It is blocked on **a recurrence**,
+  and the harness now carries the probe that will name the cause when one comes.
+  Nobody can usefully sit down and work on it until CI goes red again.
+
+**So the next thing to look at is still not code that anybody can simply sit
+down and write.** Everything left is waiting on a person, waiting on an
+argument, waiting on a recurrence, or one of the documentation items at the end
+of this section — and those last ones are blocked on nothing at all, which
 makes them the only work here anybody can simply pick up.
 
 **The `notes-ui` intermittency is closed. The hypothesis was right, and writing
@@ -1043,7 +1061,8 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
-| ~~The `real-gossip` discovery flake~~ | **Diagnostic shipped** (#127) — and on its first CI failure it ruled ITSELF out, naming a different defect | §9 below |
+| ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
+| **The `real-gossip` forward-leg intermittency** | **A recurrence** — discovery and the transport are both eliminated; `strandedProbe` will name which story the next one is | §9 below, `scripts/live-verify/real-gossip.mjs` header |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
@@ -1449,6 +1468,90 @@ cause, because a diagnostic cannot be added retroactively to a failure that has
 already happened. When the answer is known the fix belongs in
 `scripts/network.sh`, which starts the nodes, rather than in the harness that
 measures them.
+
+**The next occurrence came, the counts answered, and the answer was no. Peer
+discovery is ruled out for it** — which is the first time this intermittency has
+had a suspect eliminated rather than added. `real-gossip` went red again on a
+pull request that touches a CI script and spec prose and nothing a conductor
+runs ([#134](../../pull/134), run `34623781857`, 2026-09-11), and the numbers it
+now prints say this:
+
+| Moment | What the run recorded |
+|---|---|
+| Before the publish | `nodeA knows of 2 peer(s), nodeB knows of 2` |
+| After the 120s window closed | the same, `2` and `2` |
+| Section 3 | nodeB never saw the claim, for the whole 120s |
+| Section 5 | the by-agent index never saw it either, for another 120s |
+| Section 8, four minutes later | nodeB publishes, nodeA has it in **0.0s** |
+| Section 9's paired control, seconds after that | nodeA publishes, nodeB has it in **2s** |
+| nodeC throughout | saw nothing, and answered when asked — controls green |
+
+**So the two conductors had met before the claim was written, and the path that
+failed to carry it was carrying claims minutes later.** Seven checks failed, and
+a re-run against an identical tree went green. Discovery was the standing
+hypothesis and it does not survive this: the counts were taken *before* the
+publish precisely so they could not be explained away afterwards. Nor is the
+transport broken, because `nodeA → nodeB` worked in 2 seconds later in the same
+process. What is left is one op that went undelivered and was not retried, while
+everything published after it crossed in seconds.
+
+**What the peer count does not say is now the load-bearing caveat.** It is the
+number of agent infos the conductor holds, which is knowledge obtained from the
+bootstrap server — not evidence of a live QUIC session, and not evidence that a
+gossip round with that peer has ever completed. "They had met" is the strongest
+reading it supports. A first publish issued before the first successful gossip
+round is consistent with every number above, and that is the narrower suspect
+this occurrence leaves behind: not *discovery*, but the gap between knowing of a
+peer and having a working session with it.
+
+**The same run exposed a diagnostic that stated the wrong cause, which is worse
+than one that says nothing.** Section 5 printed *"the by-domain index had it
+after never, so the entry crossed and only this index is missing"* — a sentence
+that contradicts itself, on a run where the entry had not crossed at all. It is
+read by somebody who has just been handed a red tick and wants the answer, and
+it was telling them to look at an index when section 3 had already failed. It
+now distinguishes three cases: the entry crossed and one index lagged; the entry
+crossed *late*, after the window, which the harness can now watch happen; and
+nothing crossed, in which case it says so and points back at section 3.
+
+**And the next occurrence will say which of three stories it is, rather than
+leaving it to be worked out by hand a fourth time.** On a section 3 miss the
+harness now publishes one more claim — same author, same receiver, its own fresh
+domain so it cannot contaminate the later sections — and watches both for 30
+seconds:
+
+- **`STRANDED OP`** — the fresh claim crosses, the missed one stays missing. The
+  hypothesis above, confirmed: one op lost, network fine.
+- **`LATE PATH`** — both turn up. Section 3's window was not long enough for
+  whatever had to happen first, and the fix is a readiness signal rather than a
+  lost op.
+- **`NO PATH YET`** — neither. Nothing is crossing at that moment, and sections
+  8 and 9 say whether it recovers.
+
+It is **not a check and cannot turn this job green**, the same rule the peer
+counts follow: a job that is intermittently red must not gain a second way to be
+red while the evidence for the first is still being gathered. It is not free of
+consequence further down, though, and the code says so rather than claiming
+purity — it spends 30 seconds before sections 4 and 5 read anything, so an entry
+that crosses *during* the probe is one they will now see, turning five reds in
+section 4 into five greens. That is the truth improving, not a failure masked:
+section 3's red stands either way, and a crossing this harness watched happen
+should not be reported as an absence. Section 5 is told about it explicitly for
+exactly that reason.
+
+**Five injections, because a diagnostic only ever runs on a red run — a green CI
+history says nothing about whether its words are true.** Each was run against
+the real network of three conductors, and each produced one of the messages
+above: a 100ms gossip window (`LATE PATH`, and section 4 passing on the entry
+that arrived during the probe); the same with the second index stubbed out
+(section 5's new "crossed late" message, which is the CI run reproduced); nodeB
+stubbed blind to both indexes (`NO PATH YET`, and section 5 correctly saying the
+entry never crossed — the wrong-cause message gone from the very shape that
+produced it); nodeB seeing the probe's domain but never the missed one
+(`STRANDED OP`); and nodeB throwing `Websocket closed with code 1006` the moment
+the probe asks, which reports and carries on instead of replacing section 3's
+diagnosis with a stack trace about the probe. Restored and re-run clean
+afterwards: green, with the probe silent. The harness header records all five.
 
 **A fourth intermittency is open, has been seen exactly once, and is recorded
 here before it is understood.** `notes-layer`'s check that *"X-Forwarded-For is
