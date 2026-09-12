@@ -434,6 +434,32 @@ async function main() {
   // published and turns a twenty-minute investigation into a named setup
   // failure, which is the whole difference between a harness that is red and a
   // harness that is informative.
+  //
+  // AND THE CAUSE WAS THEN HUNTED AND NOT FOUND. Four hypotheses were tested
+  // against a fresh four-node network on 2026-09-12, each falsified by
+  // experiment rather than by argument. They are recorded so the next person
+  // does not spend the afternoon re-running them:
+  //
+  //   1. A conductor's relay identity changes when it restarts, so peers hold a
+  //      record naming the old one. NO: nodeB stopped and started, then nodeA's
+  //      claim reached it in <=0s, with no "wrong peer" logged anywhere.
+  //   2. Generating a node INTO an already-running network peers it differently
+  //      from the three generated together at `start`. NO: nodeD generated fresh
+  //      against a running network received nodeA's claim in <=10s.
+  //   3. Something about the failing configuration specifically — nodeB stopped
+  //      when nodeA writes, which is what phase 3 does. NO: reproduced exactly,
+  //      and nodeD had the claim in <=10s.
+  //   4. `database is locked` from `integrate_dht_ops_consumer`, also present in
+  //      the failing logs, leaves received ops unintegrated and so unreadable.
+  //      NO: it appears once each in nodeA's and nodeD's logs in runs where
+  //      every crossing succeeded. Routine contention, not this.
+  //
+  // What survives is one correlation and no mechanism: "Accept message from
+  // wrong peer" appeared in the failing instance and in NONE of the healthy runs
+  // across that whole session. That is not enough to report upstream as a bug —
+  // a maintainer cannot act on a log line from a run nobody can reproduce — and
+  // it is not enough to fix here either. It is enough to recognise next time,
+  // which is what the setup failure above is for.
   const tDBase = Date.now();
   let dBaseMs = null;
   while (Date.now() - tDBase < ACQUIRE_WINDOW_MS) {
