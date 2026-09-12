@@ -97,14 +97,16 @@
 #     with the baseline having crossed nodeA -> nodeB in 5.0s earlier in the
 #     same run. So the network was working and one conductor stopped answering.
 #
-#     THE EVIDENCE IS BIMODAL, and that is the most useful thing known about
-#     it. On the passing run the same wait reported `nodeD had it in 0.0s` —
-#     instant. Gossip that was merely slow on a loaded runner would produce
-#     values in between; instant-or-never instead points at nodeD not being
-#     ready to answer at all when the call arrives, a readiness race between
-#     `network.sh start-node nodeD` and the harness's first zome call that a
-#     fast machine always wins. FOUR conductors plus two services on two vCPUs
-#     is where that would first show.
+#     THE BIMODALITY IS REAL AND IS IN THE WRONG VARIABLE. Instant-or-never was
+#     read off the ACQUIRE and taken as a readiness race. Over 25 runs the
+#     acquire is not bimodal — baseline crossings of 5.0s (x22), 10.1s, 135.4s
+#     and 140.4s, the two slowest both PASSING. What is bimodal is nodeD's JOIN:
+#     it acquires the baseline claim within 5s (22 runs, all passed) or takes
+#     30s+ or never (3 runs, all failed), with nothing in between. That
+#     predicted every failure, 3 for 3. Raising the window was tried on the
+#     tail theory and refuted — a run failed at 661s with a 600s window. README
+#     §9 has the table; the measured rate is 3 in 25, which is why this stays
+#     out.
 #
 #     THAT HYPOTHESIS HAS SINCE BEEN TESTED AND IS NOT SUPPORTED, and this
 #     paragraph is left standing because the reasoning in it was the right

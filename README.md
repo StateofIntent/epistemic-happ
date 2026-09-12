@@ -1759,7 +1759,13 @@ hashes were right; whatever was missing happened *before* gossip.
 
 That is the "instant-or-never" bimodality this section already records for
 `transitive-gossip`, and the reverse leg passing is the sharpest evidence yet
-for the standing hypothesis: **the suspect is peer DISCOVERY, not gossip.** By
+for the standing hypothesis: **the suspect is peer DISCOVERY, not gossip.**
+*(On 25 runs the bimodality is in a different variable than this paragraph
+assumes: the acquire is not bimodal — 10.1s, 135.4s and a passing 140.4s all
+occurred — while nodeD's JOIN is, cleanly, at 5s or under versus 30s or never.
+**The discovery hypothesis here survives and is sharpened by that**: a join that
+either completes promptly or does not complete is what a discovery step failing
+looks like, and it predicted all three failures. See §9's entry on the 25 runs.)* By
 the time the second leg ran, the two nodes had found each other. `real-gossip`
 connects and publishes immediately, so nothing in it has ever distinguished
 "gossip is slow" from "these two had not met yet".
@@ -2605,6 +2611,24 @@ each of these is currently exactly that.
   **So the cost is real, and the answer is to pay it once.** About two and a half minutes to compile on a warm registry locally, which would be a poor thing to repeat on every push for harnesses that run in under a minute. The binary is cached on its own, keyed by exact version so a bump invalidates rather than silently restoring the old one under the new number, and the `cargo install` step is skipped entirely on a hit. **"On a hit" is load-bearing there, and a miss is not a bug** — GitHub scopes caches by branch, so a cache written on a branch is readable only by that branch while one written on the *default* branch is readable by all. The first run on a new branch can therefore rebuild despite a green run having cached the binary an hour earlier. Observed rather than deduced: the second run on this feature branch hit its own cache and took **3m17s**, and the very next run — same commits, on `main`, straight after the merge — missed, rebuilt and took **7m09s**. `main` has now written the cache in the scope every branch reads, so the shorter figure is the steady state. Recorded because a step named "Cache the …" that visibly rebuilds looks exactly like a wrong key and usually is not one. **Measured, not estimated:** `real-gossip` 47s of harness time locally and 67s as a whole step — the difference is `network.sh clean && start`, which brings three conductors and two services up in about 19 seconds and is run before **each** harness, not once before the batch. That rule is observed rather than inherited: `partition-rejoin` run straight after `transitive-gossip` on the same network died in its baseline phase with a 60-second zome-call timeout and passed in full on a freshly started one.
 
   **`transitive-gossip` shipped in this workflow, failed its own first CI run, and was taken back out — which is the part of this entry worth keeping.** It asks the question nothing else can: does an entry reach a node from a peer that did not author it? It is green locally in 29s, and it went green on CI on the *second* attempt. On the first, against an identical tree, it died waiting for nodeD to pick up the claim with a bare `Request timed out in 60000 ms: call_zome` — the `@holochain/client` default — while the baseline had crossed nodeA to nodeB in 5.0s earlier in that same run. So the network was working and one conductor stopped answering. **The evidence is bimodal, which is the most useful thing known about it:** on the passing run the identical wait reported `nodeD had it in 0.0s`. Gossip merely slowed by a loaded runner would give values in between; instant-or-never points instead at nodeD not being ready to answer when the first call arrives — a readiness race between `network.sh start-node nodeD` and that call, which a development machine always wins and which four conductors plus two services on two vCPUs is where you would first lose. **That is a hypothesis and it is not confirmed** — and it has since been tested and found wrong; see the entry below on what four experiments falsified — so nothing was fixed on the strength of it and the client timeout was not widened — the same rule this changelog already applied to the `notes-ui` intermittency two entries above, and the reason a red tick on this workflow stays worth reading. One failure in two runs is not a gate. `real-gossip` passed both runs and is what ships. `scripts/live-verify/README.md` estimates ~3 min for `transitive-gossip`; that was not reproduced, and the measurement is recorded beside the older figure rather than replacing it, since one fast run on one machine does not overturn somebody else's.
+
+  **Twenty-five runs later, the bimodality is real and is in a different variable than anyone measured.** One machine, freshly generated network each time, three figures per run: the baseline nodeA -> nodeB crossing, how long nodeD took to acquire that same baseline claim, and whether section 3's acquire happened at all.
+
+  | nodeD acquires the baseline | runs | outcome |
+  |---|---|---|
+  | 0.0s | 21 | all passed |
+  | 5.0s | 1 | passed |
+  | 30.1s | 1 | **failed section 3** |
+  | 35.1s | 1 | **failed section 3** |
+  | never | 1 | **failed the precondition** |
+
+  **Every passing run had nodeD holding the claim within 5s; every failing one took 30s or never got it; nothing landed in between.** Meanwhile the baseline crossing over the same 25 runs was 5.0s twenty-two times, 10.1s, 135.4s and 140.4s — **and the two slowest baselines both passed.** So the *acquire* is not bimodal at all, which is what "instant or never" claimed, and has a genuine long tail that predicts nothing; **nodeD's join is** bimodal, and it predicted all three failures. The original intuition was pointing at something real, measured on the wrong variable with too few samples.
+
+  **A window change was made on this evidence and then reverted by it, which is the part worth keeping.** Reading the failures as a tail that exceeded 330s, the acquire window was raised to 600s. The next batch failed at **661s** with that window in place, its nodeD having taken 35.1s to join. A nodeD in that state does not arrive late — it does not arrive, and no window helps. 330s is back, and 140.4s is the worst baseline it has to cover. Recorded rather than quietly reverted, because "the window was too short" is the obvious reading of a timeout and here it is wrong.
+
+  **The harness now warns on a slow join and does not gate on it.** Tripping 15s — which sits in the empty gap between 5.0s and 30.1s — says the run is probably already lost and the ten minutes it will spend timing out is waste. It is a `::warning::` and not a failure because three failures are not a sample, and acting on n=3 is precisely what produced the readiness-race hypothesis this entry has just withdrawn.
+
+  **3 in 25 is the answer on CI: still no**, and now with a rate rather than an anecdote about one bad run.
 
   **The other two multi-node harnesses are still out, and now with measured costs rather than a guess.** `partition-rejoin` takes about five and a half minutes and drives `network.sh stop-node`/`start-node` itself to take a conductor offline mid-run; `network-partition` takes about twenty-five minutes on 0.7 — reconciliation after a heal took ~930s in each direction — and installs `iptables` **and** `ip6tables` rules, refusing to run outside the throwaway namespace `scripts/netns.sh` builds for it. Neither is "it might work", which is what the sentence they replace amounted to.
 

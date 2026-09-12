@@ -193,7 +193,47 @@ const CONVERGE_WINDOW_MS = 600_000;
 // finally explained it. This constant is right on this file's own stated
 // principle regardless of that, and was wrong before; it is not a fix for
 // anything, and nothing here claims the harness is ready to go back into CI.
+// 330s STAYS, AND RAISING IT WAS TRIED AND REVERTED. 25 consecutive runs on one
+// machine, freshly generated network each time, measured three things per run:
+// the baseline nodeA -> nodeB crossing, how long nodeD took to acquire that same
+// baseline claim, and whether section 3's acquire happened at all.
+//
+//   nodeD acquires baseline | runs | outcome
+//   -----------------------|------|-------------------
+//   0.0s                   |  21  | all passed
+//   5.0s                   |   1  | passed
+//   30.1s                  |   1  | FAILED section 3
+//   35.1s                  |   1  | FAILED section 3
+//   never                  |   1  | FAILED the precondition
+//
+// Baseline crossing over the same 25: 5.0s x22, 10.1s, 135.4s, 140.4s — AND THE
+// TWO SLOWEST BASELINES BOTH PASSED. So baseline latency has a real long tail
+// and does not predict anything.
+//
+// THE WINDOW WAS RAISED TO 600s ON THE THEORY THAT THE TAIL EXCEEDED 330s, AND
+// THE NEXT BATCH REFUTED IT: a run failed at 661s with the 600s window in
+// place, its nodeD having acquired the baseline in 35.1s. A nodeD in that state
+// does not arrive late, it does not arrive. No window helps, so the window is
+// back to 330s, which already covers the worst baseline observed (140.4s) with
+// margin. Recorded rather than quietly reverted, because "the window is too
+// short" is the obvious reading of a timeout and it is wrong here.
+//
+// WHAT IS BIMODAL IS nodeD'S JOIN, WHICH IS NOT THE VARIABLE ANYONE WAS
+// WATCHING. README §9 and this file described the ACQUIRE as instant-or-never
+// and inferred a readiness race. The acquire is not bimodal — 10.1s, 135.4s and
+// 140.4s all happened and all passed. nodeD's join is: 22 runs at or under 5.0s,
+// 3 runs at 30.1s or worse, nothing in between. The original intuition was
+// pointing at something real, on the wrong measurement and too few samples.
 const ACQUIRE_WINDOW_MS = 330_000;
+
+// A SLOW JOIN PREDICTED EVERY FAILURE, 3 FOR 3, AND THIS IS A WARNING RATHER
+// THAN A GATE BECAUSE 3 IS NOT A SAMPLE. Every passing run had nodeD holding the
+// baseline claim within 5s; every failing one took 30s or never got it. If that
+// holds, a run that trips this warning is already lost and the ~10 minutes it
+// then spends timing out is waste. It is not gated on, because acting on n=3 is
+// what produced the readiness-race hypothesis this file has just finished
+// withdrawing. The threshold sits in the observed gap.
+const SLOW_JOIN_WARN_MS = 15_000;
 const POLL_MS = 5_000;
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
@@ -478,13 +518,23 @@ async function main() {
     setupFail([
       'nodeD loaded the same DNA as nodeA but exchanges nothing with it, so it cannot',
       'relay anything and section 3 below would blame the protocol for that.',
-      `Look at ${process.env.EPI_NET_ROOT ?? '/tmp/epi-net'}/nodeD.log for`,
-      '"Accept message from wrong peer" — a stale peer record from the bootstrap',
-      'service, whose relay identity no longer matches the peer it names. A full',
-      'scripts/network.sh clean && scripts/network.sh start is the only known reset.',
+      `Conductor logs are in ${process.env.EPI_NET_ROOT ?? '/tmp/epi-net'}/ — but do not`,
+      'expect a distinctive error. Two failures in 15 runs produced none: this',
+      'used to point at "Accept message from wrong peer", which appeared in the',
+      'original sighting and in NEITHER measured failure. Expect a long tail',
+      'rather than a broken state, and see the constants block above.',
+      'A full scripts/network.sh clean && scripts/network.sh start is the only',
+      'known reset, and roughly one run in eight needs it.',
     ]);
   }
   log(`    nodeD is genuinely peered — the same claim reached it in ${(dBaseMs / 1000).toFixed(1)}s`);
+  if (dBaseMs >= SLOW_JOIN_WARN_MS) {
+    log(`    ::warning::nodeD took ${(dBaseMs / 1000).toFixed(1)}s to acquire the baseline claim, `
+      + `over the ${SLOW_JOIN_WARN_MS / 1000}s that separated every passing run from every failing `
+      + `one across 25 runs. If the correlation holds this run will fail in section 3 and the `
+      + `waiting is wasted; if it passes, that is worth more than the pass, because it breaks the `
+      + `correlation. Either way record it — see the constants block.`);
+  }
 
   // ---- 3. nodeB away; nodeA writes; nodeD must receive it ---------------
   log('\n--- 3. nodeB STOPPED, then nodeA writes ---');
