@@ -2082,16 +2082,14 @@ each of these is currently exactly that.
   question stayed open because three unlike reads were argued as one class.
   `get_all_constitutions` stays chain-local on its own reasoning, which is now
   stated rather than deferred.
-- **`mcp-server` ships no lockfile.** Still open, but for a much smaller reason
-  than the one recorded until now. It was "adding one changes what a published
-  install resolves", which is false — npm never packs `package-lock.json`, so it
-  never reaches an installer. What actually blocks `npm ci` there is that it
-  deletes `node_modules` and installs exactly the lockfile, which cannot coexist
-  with the `npm install --no-save ../agent-sdk` that makes the SDK under test
-  this tree's. So this is a build-reproducibility question about this repository,
-  where the other seven packages all commit a lockfile — not a question about
-  strangers' installs. `mcp-server/README.md` has the full account, including
-  the check that settles it.
+- ~~**`mcp-server` ships no lockfile.**~~ **Done, and the blocker recorded for it
+  was wrong in the same way the first reason was.** The first reason — "adding one
+  changes what a published install resolves" — is false, since npm never packs a
+  lockfile. The replacement said `npm ci` cannot coexist with the
+  `npm install --no-save ../agent-sdk` that keeps the SDK local, which is true in
+  one order only: run `npm ci` first and the two compose exactly as wanted, with
+  the lockfile left byte-identical. Tested rather than argued. See the entry at
+  the end of this section.
 - **Why a node sometimes joins the DHT and exchanges nothing is unknown, and
   four hypotheses have been falsified.** `transitive-gossip.mjs` now fails with a
   named setup error when it happens — nodeD holding the same DNA hash while
@@ -2801,6 +2799,16 @@ each of these is currently exactly that.
   **Two of six were not live, and a seventh finding fell out of checking the numbers.** The surfacing item's headline and its own verified-recount paragraph had drifted apart — see the correction above, where 58/37/21 becomes 60/38/22 and `get_protocol_version` turns out never to have been accounted for.
 
   **The pattern is worth stating because it is not carelessness.** This repository records what it has not decided more carefully than most, and that has a specific cost: **a recorded question acquires standing.** It stops being re-read against what shipped after it was written, and the more precisely it was argued the more settled it looks. Both questions closed this session were answerable from existing precedent with no new information — one needed three unlike things separated, the other needed one sentence connecting it to `FederationRecord`. Neither needed research. The defence is not to record less; it is to re-read the open list against the code periodically, which is what this entry is.
+
+- [x] **`mcp-server` commits a lockfile, and the reason it did not was wrong twice over.** `mcp-server/package-lock.json`, `npm ci` in `conductor.yml`, and one new invariant in `scripts/check-packages.mjs`.
+
+  **Two reasons were recorded for the gap, and both were too strong.** The first — "adding one changes what a published install resolves" — is simply false, since npm never packs a lockfile into a tarball; that was corrected earlier in this session. The replacement was better and still wrong: it said `npm ci` "deletes `node_modules` and installs exactly the lockfile, which cannot coexist with `npm install --no-save ../agent-sdk`". **That is true in one order only.** Run `npm ci` first and the local install second and they compose exactly as intended — a reproducible tree from the lockfile, then this checkout's SDK swapped into it — and `--no-save` leaves the committed lockfile byte-identical, so nothing is overwritten per run and nothing needs regenerating. Tested, not argued.
+
+  **So the two things held to be in tension never were**, and `mcp-server` now has the same build reproducibility as the other seven packages while keeping the local-SDK guarantee that `conductor.yml`'s symlink assertion defends.
+
+  **One invariant comes with the lockfile, and its justification is deliberately narrower than the tempting one.** A lockfile carrying `"link": true` with `"resolved": "../agent-sdk"` was found in a working tree on 2026-09-12 with `package.json` clean — so that state is reachable, and it now matters more, because `npm ci` reads this file and such an entry would make CI resolve the SDK from a sibling directory that exists on one machine. `check-packages.mjs` now asserts every lockfile entry resolves from the registry, and was watched failing on a deliberately polluted lockfile before being trusted.
+
+  **What produced that file was not reproduced, and the check says so rather than naming a cause.** Two candidates were tested and both behave correctly: `npm install --no-save ../agent-sdk` leaves an existing lockfile byte-identical and creates none when absent; the flagless form does write the link but also rewrites `package.json`, which the existing check already caught. The invariant is therefore justified as cheap rather than as a defence against a known command — which is the same rule this session applied to the gossip flake, where a mechanism that could not be demonstrated was not asserted.
 
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
