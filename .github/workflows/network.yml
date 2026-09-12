@@ -93,11 +93,13 @@
 #     failure in two runs is not a gate. It goes back in when something makes
 #     it deterministic, or when the race is demonstrated and closed.
 #
-#   - `partition-rejoin` — about five and a half minutes, and it drives
-#   - `partition-rejoin` — about five and a half minutes, and it drives
-#     `network.sh stop-node`/`start-node` itself to take a conductor offline
-#     mid-run. Left out for cost, and now also because it starts and stops
-#     conductors the way the harness above appears to trip over.
+#   - `partition-rejoin` — about 1m45s on Holochain 0.7, and NOT the five and a
+#     half minutes this bullet claimed until now, which was measured on 0.4.4
+#     and is corrected in README §9. It drives `network.sh
+#     stop-node`/`start-node` itself to take a conductor offline mid-run. Left
+#     out for cost, and now also because it starts and stops conductors the way
+#     the harness above appears to trip over. At the corrected figure the cost
+#     argument is much weaker than it reads here.
 #   - `network-partition` — about twenty-five minutes on 0.7, because
 #     reconciling entries written during a partition took ~930s in each
 #     direction once the link healed. It also installs `iptables` AND

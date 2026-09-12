@@ -183,9 +183,15 @@ const RELAY_PORT = 8892;
 const BOOTSTRAP_PORT = 8893;   // the control: must stay reachable throughout
 const NET_ROOT = process.env.EPI_NET_ROOT || '/tmp/epi-ns';
 
-// Healing is dominated by the same gossip backoff partition-rejoin.mjs
-// measured (gossip_peer_on_error_next_gossip_delay_ms: 300000), so the
-// window is sized from that constant rather than guessed.
+// This used to say healing is dominated by the gossip backoff
+// partition-rejoin.mjs named, gossip_peer_on_error_next_gossip_delay_ms:
+// 300000. That constant is kitsune1's (`kitsune_p2p_types` 0.4.4) and does not
+// exist in the kitsune2 0.5 that Holochain 0.7 runs, so the window is not
+// derived from it. It does not need to be: the figures below are measured on
+// 0.7 directly, and they are far larger than that constant ever was — which is
+// also why the correction to partition-rejoin.mjs's much FASTER catch-up on 0.7
+// does not travel to this harness. A stopped peer refuses a connection and
+// errors quickly; a peer whose packets are dropped has to time out.
 // THIRTY MINUTES, AND THE NUMBER IS MEASURED RATHER THAN PADDED.
 //
 // Reconciling history written during a drop-partition took 930.0s and
