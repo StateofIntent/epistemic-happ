@@ -102,23 +102,34 @@ const NODES = {
   C: { node: 'nodeC', admin: 8895, app: 8894, appId: 'epistemic-net-c' },
 };
 
-// THE WINDOW IS SIZED FROM THE CONDUCTOR'S OWN BACKOFF CONSTANTS, not
-// guessed. Catch-up after a rejoin is a different mechanism from
-// steady-state gossip, and much slower for a specific, findable reason:
-// the generated conductor config carries
+// THE WINDOW WAS SIZED FROM A CONSTANT THAT NO LONGER EXISTS, AND IS NOW JUST
+// GENEROUS. This paragraph used to say the window was derived from the
+// conductor's own backoff config:
 //
 //     gossip_peer_on_success_next_gossip_delay_ms: 60000    (1 min)
 //     gossip_peer_on_error_next_gossip_delay_ms:  300000    (5 min)
 //
-// A node that tried to gossip with a peer while that peer was down took
-// the ERROR path, so it will not retry that peer for five minutes.
-// Steady-state propagation is ~2s (see real-gossip.mjs); post-partition
-// catch-up is dominated by this constant instead, and a window shorter
-// than 300s measures the constant rather than the protocol. An earlier
-// version of this harness used 180s and was on course to report a
-// convergence failure that would really have been impatience — recorded
-// because a too-short timeout produces a confident, wrong, negative
-// result, which is worse than no result.
+// Those are real, and they are `kitsune_p2p_types` 0.4.4 — kitsune1, the
+// substrate this project ran when the 326.6s catch-up below was measured.
+// `gossip_peer_on_error_next_gossip_delay_ms` appears nowhere in kitsune2 0.5,
+// which is what Holochain 0.7 uses and what this harness now runs against.
+// kitsune2's gossip config has no per-peer error backoff at all; its defaults
+// are `initiate_interval_ms: 120_000`, `initiate_jitter_ms: 10_000`,
+// `min_initiate_interval_ms: 300_000` (a floor on re-initiating with the SAME
+// peer, not a penalty for a failed attempt — it merely shares the number) and
+// `round_timeout_ms: 15_000`.
+//
+// MEASURED ON 0.7, TWICE, WITH nodeD DOWN — the two-member arrangement the old
+// figure is attributed to: catch-up of 50.4s/40.3s and then 55.4s/55.3s from a
+// freshly cleaned network, against the 326.6s and 326.7s recorded on 0.4.4.
+// README §9 carries the full account.
+//
+// 600s therefore stays, but as headroom rather than as a figure derived from
+// anything: it is ten times the largest catch-up now observed here, and the
+// cost of it being generous is nil, since the loop exits as soon as the claim
+// arrives. What a window must NOT be is short: an earlier version used 180s and
+// was on course to report a convergence failure that would really have been
+// impatience, which is why a too-short timeout is worse than no result.
 const CONVERGE_WINDOW_MS = 600_000;
 const POLL_MS = 5_000;
 

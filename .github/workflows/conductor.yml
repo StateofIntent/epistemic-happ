@@ -119,7 +119,8 @@
 #     rather than moving there, because it is the promotion gate itself and
 #     moving it would quietly shrink what a green tick on THIS job covers.
 #   - Three of the four multi-node harnesses. `real-gossip` runs in
-#     `.github/workflows/network.yml`; `partition-rejoin` (~5.5 min, and it
+#     `.github/workflows/network.yml`; `partition-rejoin` (~1m45s on 0.7, not
+#     the ~5.5 min measured on 0.4.4, and it
 #     stops and restarts a conductor mid-run) and `network-partition` (~25 min,
 #     and it needs iptables in the throwaway namespace `scripts/netns.sh`
 #     builds) do not.

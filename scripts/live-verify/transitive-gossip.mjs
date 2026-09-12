@@ -114,14 +114,17 @@
 //   records under a different heading — reporting a timeout, or a lucky
 //   sample, as a property of the system.
 //
-//   WHAT THAT RANGE MEANS NEXT TO partition-rejoin.mjs's 326.6s, which is
-//   the most useful thing this harness found. That harness measured a
-//   returning node taking ~5.5 minutes to catch up, dominated by
-//   gossip_peer_on_error_next_gossip_delay_ms: 300000 — the backoff a node
-//   incurs against a peer it tried and failed to reach. Here the same
-//   catch-up happens in seconds. The difference is not a faster protocol;
-//   it is a third node. A node coming back has no failure history against
-//   a peer that was up the whole time, so it has no backoff to wait out
+//   WHAT THAT RANGE MEANT NEXT TO partition-rejoin.mjs's 326.6s, which was
+//   the most useful thing this harness found — AND THE COMPARISON NO LONGER
+//   HOLDS, because one side of it moved. That harness measured a returning
+//   node taking ~5.5 minutes to catch up, attributed to
+//   gossip_peer_on_error_next_gossip_delay_ms: 300000, the backoff a node
+//   incurs against a peer it tried and failed to reach. That constant is
+//   kitsune1's (`kitsune_p2p_types` 0.4.4) and does not exist in kitsune2
+//   0.5, which Holochain 0.7 uses; re-measured on 0.7 with nodeD down, the
+//   same catch-up is ~55s, not 326s. So "seconds here versus 5.5 minutes
+//   there" is now "seconds here versus ~55s there", and a third node is no
+//   longer the whole explanation for the gap. README §9 has the account
 //   and pulls immediately. The five-and-a-half-minute figure is therefore
 //   an artefact of a TWO-MEMBER DHT, where the only peer available to a
 //   returning node is the one it just failed to reach. That reading is an
@@ -156,10 +159,14 @@ const NODES = {
 const NET_ROOT = process.env.EPI_NET_ROOT || '/tmp/epi-net';
 const REPO_ROOT = new URL('../..', import.meta.url).pathname;
 
-// Same backoff partition-rejoin.mjs measured and named
-// (gossip_peer_on_error_next_gossip_delay_ms: 300000), so the window is
-// sized from the constant rather than guessed. A window shorter than the
-// mechanism it times does not measure the mechanism; it measures itself.
+// 600s is headroom, and it used to be presented as a derivation. It cited
+// gossip_peer_on_error_next_gossip_delay_ms: 300000, which is kitsune1's
+// (`kitsune_p2p_types` 0.4.4) and absent from the kitsune2 0.5 that Holochain
+// 0.7 runs — so nothing here is sized from that constant any more. The rule it
+// was invoked for still stands and is the reason to keep the window long: a
+// window shorter than the mechanism it times does not measure the mechanism, it
+// measures itself. Being generous costs nothing, since every loop below exits
+// the moment the claim arrives.
 const CONVERGE_WINDOW_MS = 600_000;
 
 // THE PARAGRAPH ABOVE APPLIED TO THE WAITS BEFORE THE LAST ONE, WHICH IT WAS
