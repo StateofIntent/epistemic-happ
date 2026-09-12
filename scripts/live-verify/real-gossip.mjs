@@ -65,8 +65,10 @@
 // claim and reports whether THAT crosses while the missed one still has
 // not — see `strandedProbe`. It is not a check and cannot change the
 // verdict; it exists because this harness goes red intermittently and
-// every occurrence so far has been spent working out which of three
-// stories it was.
+// every occurrence before it was spent working out which story it was.
+// Its verdicts are STRANDED OP, STRANDED THEN REPAIRED, LATE PATH,
+// WINDOW TOO SHORT and NO PATH YET, and they point at different defects
+// in different files — read that line first, not section 5's.
 //
 // Prereqs: scripts/network.sh clean && scripts/network.sh start, and a
 // packed .happ at the repo root (scripts/pack-webhapp.sh).
@@ -165,6 +167,38 @@
 //
 //   Restored and re-run clean afterwards: all checks green, probe silent
 //   (it runs only when section 3 has already failed).
+//
+// AND THEN THE PROBE MET REAL OCCURRENCES, which corrected it twice.
+// Thirty dispatched CI runs produced seven failures of TWO shapes. Two of
+// them printed the signature this probe was built for: the fresh claim
+// crossing in 2.0s while the original was still missing — one then saw
+// the original turn up 12 seconds AFTER the fresh one, the other never
+// saw it at all. The other five were a shape never recorded here before,
+// all in one wave and all publishing inside a 12-second window: NO PATH
+// YET, nothing crossing in either direction, and `2` peers known on both
+// sides throughout. README.md §9 keeps the two apart and explains why
+// five clustered runs are not a rate.
+//
+//   What the first one broke: it printed LATE PATH — "the path came up
+//   some time after the publish and then carried both" — over its own
+//   timestamps showing a 12-second gap in the wrong direction. A path
+//   that came up delivers both in the same poll. So "both arrived" is
+//   three shapes, not one, and which one it is depends on the ORDER:
+//   WINDOW TOO SHORT (already there at the probe's first poll), LATE PATH
+//   (no later than the fresh claim), STRANDED THEN REPAIRED (after it).
+//   Injected all three on the real network by withholding the missed
+//   domain from nodeB for 0, 6 and 12 seconds into the probe; each
+//   printed its own verdict, and the 12-second one reproduced the CI run.
+//
+//   What the second one broke: section 5's poll line printed
+//   `by-agent=1` for two solid minutes next to a FAILING check. That
+//   index is keyed on the author and the probe publishes as the same
+//   author, so the count included the probe's own claim — the fresh
+//   domain keeps the probe out of the by-DOMAIN sections, not out of this
+//   one. Injected by filtering this run's claim out of nodeB's by-agent
+//   results while leaving the probe's in place: the line now reads
+//   `by-agent=10, none of them this run's claim`. The check was never
+//   wrong, since it matches on content; the number beside it was.
 //
 // Re-check the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green. And if you change what it
@@ -376,8 +410,18 @@ const peersLine = async (a, b) =>
  * Sections 8 and 9 are what revealed that, but only indirectly: they run
  * minutes later and section 8 changes direction, so neither isolates "this op
  * was stranded" from "the path came up some time after the publish". This does:
- * one new claim, same author, same receiver, its own fresh domain so it cannot
- * contaminate sections 4 to 7, watched alongside the missed one.
+ * one new claim, same author, same receiver, its own fresh domain, watched
+ * alongside the missed one.
+ *
+ * WHAT THE FRESH DOMAIN DOES AND DOES NOT ISOLATE — stated precisely, because
+ * the first version of this comment claimed it "cannot contaminate sections 4
+ * to 7" and that was too strong. Sections 4, 6 and 7 read BY DOMAIN and are
+ * genuinely untouched. Section 5 reads `get_claims_by_agent`, which is keyed on
+ * the AUTHOR, and the probe publishes as that same author — so the probe's
+ * claim does appear there, and did, printing `by-agent=1` beside a failing
+ * check on a real CI run until that log line was fixed to say none of them
+ * matched. The check itself compares content and so cannot be satisfied by the
+ * probe's claim; it is the printed count that needed the qualifier.
  *
  * NOT A CHECK, and it cannot turn this run green — the rule this file already
  * follows for the peer counts. A job that is intermittently red must not gain a
@@ -403,12 +447,15 @@ async function strandedProbe(author, receiver, missedDomain) {
   } catch (e) {
     log(`    probe could not publish at all: ${e.message ?? e}`);
     log(`    which is itself the finding — node${author.name} stopped accepting writes`);
-    return { probeMs: null, missedArrivedLate: false };
+    return { probeMs: null, missedMs: null, missedArrivedLate: false };
   }
   const t0 = Date.now();
   let probeMs = null;
-  let missedArrivedLate = false;
+  let missedMs = null;
+  let missedOnFirstPoll = false;
+  let polls = 0;
   while (Date.now() - t0 < STRANDED_PROBE_MS) {
+    polls += 1;
     // This runs only when something is already wrong, so the receiver being
     // unable to answer at all is one of the outcomes rather than a surprise.
     // Reported and abandoned, never thrown: a stack trace here would replace
@@ -421,28 +468,62 @@ async function strandedProbe(author, receiver, missedDomain) {
       log(`    node${receiver.name} stopped answering during the probe: ${e.message ?? e}`);
       log('    so this run cannot say whether the op was stranded — the receiver is down,');
       log('    which is a finding of its own and not the one section 3 was about.');
-      return { probeMs, missedArrivedLate };
+      return { probeMs, missedMs, missedArrivedLate: missedMs !== null };
     }
-    if (missedSeen > 0) missedArrivedLate = true;
+    // WHEN each one arrived, not merely whether — the ORDER is the finding.
+    if (missedSeen > 0 && missedMs === null) {
+      missedMs = Date.now() - t0;
+      if (polls === 1) missedOnFirstPoll = true;
+    }
     if (probeSeen > 0 && probeMs === null) probeMs = Date.now() - t0;
     log(`    t+${((Date.now() - t0) / 1000).toFixed(0)}s  probe=${probeSeen}  missed=${missedSeen}`);
-    if (probeMs !== null && missedArrivedLate) break;
+    if (probeMs !== null && missedMs !== null) break;
     await sleep(POLL_MS);
   }
-  // The four shapes, named, because the point of a diagnostic is that somebody
-  // handed a red tick does not have to work this out for themselves. The shape
-  // is RETURNED as well as printed, because section 5 reports on the by-domain
+  // The shapes, named, because the point of a diagnostic is that somebody handed
+  // a red tick does not have to work this out for themselves. The shape is
+  // RETURNED as well as printed, because section 5 reports on the by-domain
   // index too and must not go on calling it absent once this has watched it
   // arrive.
-  if (probeMs !== null && !missedArrivedLate) {
+  //
+  // "BOTH ARRIVED" WAS ONE SHAPE AND IS NOW THREE, and the split came from the
+  // first real occurrence rather than from reasoning. That run printed LATE
+  // PATH — "the path came up some time after the publish and then carried
+  // both" — over its own timestamps showing the fresh claim crossing at t+2s
+  // and the 130-second-old one only at t+14s. A path that came up would have
+  // delivered both in the same poll; a fresh op overtaking an old one by twelve
+  // seconds says the path was working the whole time. So the message asserted a
+  // cause its own numbers contradicted, which is precisely the defect this
+  // probe was shipped alongside a fix for. The ORDER of the two arrivals is
+  // what separates them, and it was already being measured and thrown away.
+  if (probeMs !== null && missedMs === null) {
     log(`    STRANDED OP: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s and the missed one is STILL absent.`);
     log(`    node${author.name} to node${receiver.name} works at this moment, so neither discovery nor`);
     log('    the transport explains section 3. One op was not delivered and was not retried.');
-  } else if (probeMs !== null && missedArrivedLate) {
-    log(`    LATE PATH: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s and the missed one turned up too.`);
-    log('    So the path came up some time after the publish and then carried both.');
-    log('    Section 3\'s window was not long enough for whatever had to happen first.');
-  } else if (missedArrivedLate) {
+  } else if (probeMs !== null && missedOnFirstPoll) {
+    log(`    WINDOW TOO SHORT: the missed claim was already on node${receiver.name} at this probe's`);
+    log(`    first poll, so it crossed within a second or so of the ${GOSSIP_WINDOW_MS / 1000}s window closing.`);
+    log('    Nothing here is stranded and nothing needed repairing — section 3 gave up a');
+    log('    moment too early. Raising the window is still the wrong reflex: what this says');
+    log(`    is that a crossing took just over ${GOSSIP_WINDOW_MS / 1000}s, and THAT is the finding.`);
+  } else if (probeMs !== null && missedMs <= probeMs) {
+    log(`    LATE PATH: the missed claim turned up after ${(missedMs / 1000).toFixed(1)}s of this probe,`);
+    log(`    no later than the fresh one (${(probeMs / 1000).toFixed(1)}s) — they arrived together.`);
+    log('    Consistent with a path that was down and came up, then carried both at once.');
+    log('    The fix would belong in scripts/network.sh, which starts the nodes.');
+  } else if (probeMs !== null) {
+    // THE SHAPE THAT BROKE THE FIRST VERSION OF THIS MESSAGE. A fresh op
+    // crossing BEFORE an older one means the live path was already working
+    // while a stale op sat undelivered — so "the path came up and carried
+    // both" is contradicted by the harness's own timestamps.
+    log(`    STRANDED THEN REPAIRED: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s, and the missed`);
+    log(`    one followed ${((missedMs - probeMs) / 1000).toFixed(1)}s LATER — ${(missedMs / 1000).toFixed(1)}s into this probe.`);
+    log('    The order is the finding: new publishes were crossing in seconds while an op');
+    log(`    already ${GOSSIP_WINDOW_MS / 1000}s old was still undelivered, so the path was NOT down and`);
+    log('    did not "come up". A second mechanism delivered the old one afterwards.');
+    log('    So the op was stranded and then repaired, and the suspect is whatever retries');
+    log('    an op that missed its first delivery — not discovery, and not the transport.');
+  } else if (missedMs !== null) {
     log('    The missed claim arrived but the fresh one did not, which no hypothesis here predicts.');
     log('    Worth keeping verbatim: it is the one shape that fits neither story.');
   } else {
@@ -450,7 +531,7 @@ async function strandedProbe(author, receiver, missedDomain) {
     log('    Section 3 is not about one stranded op — nothing is crossing right now.');
     log('    Sections 8 and 9 below say whether it recovers later in this run.');
   }
-  return { probeMs, missedArrivedLate };
+  return { probeMs, missedMs, missedArrivedLate: missedMs !== null };
 }
 
 // Polls `receiver` until the claim shows up, while checking on every
@@ -483,7 +564,16 @@ async function awaitSecondIndex(receiver, author, content) {
     const got = await receiver.call('get_claims_by_agent', author);
     if (got.some((r) => claimEntry(r).content === content)) return Date.now() - t0;
     const t = ((Date.now() - t0) / 1000).toFixed(0);
-    log(`    t+${t}s  node${receiver.name} by-agent=${got.length}`);
+    // THE COUNT ALONE BECAME MISLEADING THE MOMENT `strandedProbe` EXISTED, and
+    // a real CI failure is how that was noticed. This index is keyed on the
+    // AUTHOR, and the probe publishes as the same author — so on a run where
+    // section 3 missed and the probe's claim crossed, this printed
+    // `by-agent=1` for two solid minutes next to a check that was failing.
+    // Anything reaching this line has already failed the content match, by
+    // construction, so the line now says that rather than leaving a bare 1 to
+    // be read as "it arrived". The CHECK was never wrong: it matches on
+    // content, so the probe's claim cannot satisfy it.
+    log(`    t+${t}s  node${receiver.name} by-agent=${got.length}, none of them this run's claim`);
     await sleep(POLL_MS);
   }
   return null;

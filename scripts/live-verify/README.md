@@ -141,7 +141,17 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 
 A **2-agent** harness installs its second agent on the same conductor itself (`generateAgentPubKey` + `installApp` + `enableApp`), so no second sandbox is needed — but it does install a second app, which is another reason the conductor should be clean when it starts.
 
-**`real-gossip` spends up to 30 seconds more when it FAILS than the figures above suggest, and deliberately.** On a missed crossing it publishes one further claim and watches whether that one crosses while the missed one still has not — `STRANDED OP`, `LATE PATH` or `NO PATH YET`, the three stories its recurrences have had to be sorted into by hand. It is not a check, cannot turn the job green, and never runs on a green run. The harness header records the five injections that produced each of its messages; README.md §9 records the occurrence that made it necessary, including the diagnostic it replaced, which stated a cause the run contradicted.
+**`real-gossip` spends up to 30 seconds more when it FAILS than the figures above suggest, and deliberately.** On a missed crossing it publishes one further claim and watches whether that one crosses while the missed one still has not. It is not a check, cannot turn the job green, and never runs on a green run. Five verdicts, pointing at different files:
+
+| Verdict | What the run showed | Where to look |
+|---|---|---|
+| `STRANDED OP` | the fresh claim crossed, the missed one never arrived | op publication and retry |
+| `STRANDED THEN REPAIRED` | the fresh claim crossed and the missed one followed it | op publication and retry |
+| `LATE PATH` | both arrived together | node readiness, `scripts/network.sh` |
+| `WINDOW TOO SHORT` | the missed one was already there at the first poll | node readiness, `scripts/network.sh` |
+| `NO PATH YET` | neither arrived | sections 8 and 9, for whether it recovers |
+
+**Two real occurrences, provoked rather than waited for, both read `2.0s` for the fresh claim while an op two minutes old sat undelivered** — which is what moved the suspect from peer discovery to op delivery. The same batch of 30 dispatched runs also produced five failures of a different shape, in which nothing crossed in either direction although both conductors reported knowing 2 peers; those five published within 12 seconds of each other and are unexplained, so README.md §9 keeps the two shapes separate rather than pooling them into one rate. The harness header records every injection behind these messages, including the two that real failures corrected.
 
 **Two agents on one conductor is not a network, and that distinction is worth holding on to.** Those agents share a single local DHT store: an entry written by one is visible to the other the instant it is written, because it never travelled. That is exactly the right arrangement for the questions those harnesses ask — read scope, per-agent friction budgets, what one agent can and cannot find of another's work — and it is silent on whether anything propagates between machines. `hc sandbox` produces no networking by default (`transport_pool: []`, `bootstrap_service: null` in the conductor config), so until `real-gossip.mjs` nothing here had ever run two conductors that could reach each other. Reach for `sandbox.sh` and a second agent when the question is about visibility; reach for `network.sh` and `real-gossip.mjs` when it is about propagation.
 
