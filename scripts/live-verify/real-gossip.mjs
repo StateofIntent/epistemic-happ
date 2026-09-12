@@ -332,6 +332,33 @@ const CONVERGE_WINDOW_MS = 330_000;
 // README.md §9 records the residue so it is a known gap rather than a surprise.
 const GOSSIP_REPAIR_WORST_CASE_MS = 300_000;
 const POLL_MS = 2_000;
+
+// HOW LONG TO KEEP WATCHING AFTER THE GATE HAS ALREADY FAILED, and this exists
+// to settle an argument rather than to change a verdict.
+//
+// This job went red on 3 of 13 runs on 2026-09-12, always the same way: a
+// crossing that did not happen inside CONVERGE_WINDOW_MS, with the conductors
+// logging "Unsolicited Accept message" — a gossip round whose Accept arrived
+// after the initiator's 15s `round_timeout_ms`, so the reply was discarded and
+// the next initiation is `initiate_interval_ms` (120s) plus jitter away. Two
+// abandoned rounds exceeds the window.
+//
+// THAT LEAVES TWO CANDIDATE FIXES AND NO WAY TO CHOOSE BETWEEN THEM. Either the
+// op eventually arrives and the WINDOW is the constraint, or it never arrives
+// and no window helps, which points at `roundTimeoutMs` being too tight for a
+// 2-vCPU runner instead. The distinguishing observation is cheap and nobody was
+// taking it: keep polling after the gate has failed and report which happened.
+//
+// NOT A CHECK, AND THE GATE IS UNCHANGED. The run is already red by the time
+// this runs; this only records what would have happened next. It costs nothing
+// on a passing run, and on a failing one it spends this much more inside a job
+// ceiling raised to 45 minutes for exactly this kind of headroom.
+//
+// Local reproduction was attempted first and FAILED: five runs with all three
+// conductors and the harness pinned to two CPUs (`taskset -c 0,1`) passed 5/5,
+// the slowest crossing 16.2s. Two pinned cores here are not two vCPUs there, so
+// the measurement has to be taken where the failure happens.
+const OBSERVE_PAST_WINDOW_MS = 300_000;
 // How much longer the isolated node is watched AFTER nodeB succeeds. The
 // control's claim is "it never arrives", and a single glance at the
 // instant nodeB happens to succeed is not that claim.
@@ -961,6 +988,47 @@ async function main() {
       + 'GOSSIP_REPAIR_WORST_CASE_MS for what that is made of, and for the case it does '
       + 'NOT cover');
     log(`    at the end: ${await peersLine(A, B)}`);
+
+    // See OBSERVE_PAST_WINDOW_MS. The verdict is already decided; this decides
+    // which of two fixes the next person should reach for.
+    log(`\n    --- still watching for ${OBSERVE_PAST_WINDOW_MS / 1000}s past the window, to `
+      + 'establish whether more time would have helped ---');
+    const tObs = Date.now();
+    let lateMs = null;
+    // Sleeps before re-checking the clock, so at least one poll always happens
+    // even if the budget is shorter than POLL_MS. That is intended rather than
+    // incidental: an observation budget that can take zero observations reports
+    // "still absent" without having looked, which is the wrong answer stated
+    // confidently. The cost is overshooting the budget by at most one POLL_MS.
+    while (Date.now() - tObs < OBSERVE_PAST_WINDOW_MS) {
+      await sleep(POLL_MS);
+      let got = 0;
+      try { got = (await B.call('get_claims_by_domain', DOMAIN)).length; }
+      catch (e) {
+        // A read that fails here is not a verdict either way, and must not
+        // replace the observation with an error about reading.
+        log(`    t+${((Date.now() - tObs) / 1000).toFixed(0)}s past window: node${B.name} did not answer `
+          + `(${String(e?.message ?? e).split('\n')[0].slice(0, 80)})`);
+        continue;
+      }
+      log(`    t+${((Date.now() - tObs) / 1000).toFixed(0)}s past window: node${B.name}=${got}`);
+      if (got > 0) { lateMs = Date.now() - tObs; break; }
+    }
+    if (lateMs !== null) {
+      log(`    ::warning::IT ARRIVED LATE — ${((CONVERGE_WINDOW_MS + lateMs) / 1000).toFixed(0)}s from the `
+        + `write, i.e. ${(lateMs / 1000).toFixed(0)}s past a ${CONVERGE_WINDOW_MS / 1000}s window. So on `
+        + 'THIS run the window was the constraint and the mechanism did eventually work. Record it '
+        + 'against the other occurrences before widening anything — one late arrival is not a '
+        + 'distribution, and a window raised on one was already reverted once (see '
+        + 'transitive-gossip.mjs).');
+    } else {
+      log(`    ::warning::STILL ABSENT after a further ${OBSERVE_PAST_WINDOW_MS / 1000}s — `
+        + `${(CONVERGE_WINDOW_MS + OBSERVE_PAST_WINDOW_MS) / 1000}s from the write in total. So on THIS `
+        + 'run more time would NOT have helped, and the window is not the thing to change. That '
+        + 'points at the 15s round timeout being too tight for this machine rather than at '
+        + 'CONVERGE_WINDOW_MS.');
+    }
+    logTransportErrors(await transportErrors());
   }
 
   // ---- 4. It is the same entry -----------------------------------------
