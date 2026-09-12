@@ -1403,19 +1403,30 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
 | ~~Retrying the binary download in CI~~ | **Done** — `scripts/ci/install-holochain.sh` | §9, this section |
 
-**The one with real outside impact is the npm republish.**
-`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` are on the
-registry and **broken for anyone installing them today**: the published SDK
-predates the `@holochain/client` 0.21 upgrade, matches no cell, authorizes no
-signing credentials, and fails every zome call. `scripts/check-packages.mjs` is
-green on both, correctly — it proves they publish, install and import, which the
-broken build does perfectly, because listing tools touches no conductor. The
-defect lives past the point where a package stops being a package and starts
-making zome calls.
+**The one with real outside impact was the npm republish, and it happened on
+2026-09-12.** `@stateofintent/agent-sdk@0.1.2` and
+`@stateofintent/mcp-server@0.1.2` are on the registry and are `latest` on both.
+**Verified from the registry rather than from a tarball:** installed by version
+into an empty project outside this checkout — `npm ls` confirming
+`resolved: https://registry.npmjs.org/@stateofintent/agent-sdk/-/agent-sdk-0.1.2.tgz`
+— the SDK connects, authorizes signing, writes a claim a real conductor accepts,
+and reads it back; the MCP server advertises its nine tools and answers a
+`claims_in_domain` call that reaches that conductor and finds the claim. That is
+the install a stranger gets, and it works.
 
-**That gap is now closed, and the republish is prepared down to the one step
-nobody here can take.** Three things were missing and only one of them was
-credentials:
+**What was wrong with `0.1.1`, kept because the shape of it is the lesson.** The
+published SDK predated the `@holochain/client` 0.21 upgrade, matched no cell,
+authorized no signing credentials, and failed every zome call.
+`scripts/check-packages.mjs` was green on it throughout, correctly — it proves a
+package publishes, installs and imports, all of which a broken build does
+perfectly, because listing tools touches no conductor. The defect lived past the
+point where a package stops being a package and starts making zome calls.
+**`0.1.1` is still on the registry** and still broken; what changed is that
+nobody resolves it any more, since `latest` moved and `mcp-server` requires
+`^0.1.2`.
+
+**Three things were missing before that publish could be trusted, and only one
+of them was credentials:**
 
 - **A check that would have caught it.**
   `scripts/live-verify/published-packages.mjs` packs both packages, installs them
@@ -1440,8 +1451,19 @@ credentials:
   before publishing `mcp-server` — because otherwise the first person to install
   `mcp-server` resolves the broken SDK. It is a dry run unless given `--publish`.
 
-**What remains is one command, by somebody with publish rights on the
-`@stateofintent` scope:** `scripts/publish-packages.sh --publish`.
+**That command has now been run**, by somebody with publish rights on the
+`@stateofintent` scope, and it found two things about itself in the process —
+both fixed, both recorded in the script's own header. It could not answer the
+one-time password npm demands of a 2FA account, and it discovered that only
+after every check had passed rather than in preflight; and it treated an
+already-published version as a hard failure, which made the one state its own
+ordering exists to pass through safely — the SDK published and `mcp-server` not
+— impossible to resume from without the hand-typed `npm publish` that shipped
+`0.1.1` in the first place.
+
+**What remains is the tags.** `agent-sdk-v0.1.2` and `mcp-server-v0.1.2` on the
+commit the tarballs were built from, so a published package maps to something
+checkoutable.
 
 **A room can now ask somebody to leave, and that was the item most worth
 closing** — not because it was the largest, but because three documents in this
@@ -2580,7 +2602,9 @@ each of these is currently exactly that.
 
   **`scripts/check-packages.mjs` is green on both packages throughout, and that is not a failure of it.** It installs each tarball into an empty project, imports it, and runs `mcp-server` as a binary until it advertises its nine tools — all of which the broken build does perfectly, because listing tools touches no conductor. The defect lives strictly past the point where a package stops being a package and starts making zome calls, which is exactly the boundary a live harness exists to cross and a packaging check by construction does not. Two checks, two different questions, and the answer to "does it publish, install and import" was never evidence for "does it work".
 
-  **`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` on npm are therefore both unusable against Holochain 0.7, and only a republish fixes it** — a version bump and a publish by someone holding the credentials, which no workflow here can do. Recorded in `agent-sdk/README.md` and `mcp-server/README.md`, where a person installing the package would actually look, rather than only here. `mcp-server` also ships no lockfile, which is why every instruction for it says `npm install` and never `npm ci`; that is still open, though not for the reason recorded until now — a lockfile cannot change what a published install resolves, since npm never packs one, and what actually blocks `npm ci` there is that it cannot coexist with the local-SDK install. §9's open-questions list and `mcp-server/README.md` carry that correction.
+  **`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` on npm were therefore both unusable against Holochain 0.7, and only a republish fixed it** — a version bump and a publish by someone holding the credentials, which no workflow here can do. **That republish happened on 2026-09-12: `0.1.2` is on the registry and `latest` for both, and an install by version into an empty project outside this checkout writes a claim to a real conductor and reads it back.** `0.1.1` is still there and still broken; nothing resolves it now that `latest` has moved and `mcp-server` requires `^0.1.2`. Recorded in `agent-sdk/README.md` and `mcp-server/README.md`, where a person installing the package would actually look, rather than only here.
+
+  **One consequence outlives the fix, and it is the one that matters for CI.** `conductor.yml` installs `../agent-sdk` with `--no-save` rather than letting `npm install` resolve the range, and until now that had two reasons: the registry copy was not this tree, *and* it was broken. The second is gone — a plain install there now resolves a working `0.1.2`. The first has not moved and never will: a pull request changing `agent-sdk/src` must be verified against the checkout, not against whatever the registry serves, or it passes against code it never touched. The guard asserting a symlink landed is therefore still load-bearing, and now carries the whole weight. `mcp-server` also ships no lockfile, which is why every instruction for it says `npm install` and never `npm ci`; that is still open, though not for the reason recorded until now — a lockfile cannot change what a published install resolves, since npm never packs one, and what actually blocks `npm ci` there is that it cannot coexist with the local-SDK install. §9's open-questions list and `mcp-server/README.md` carry that correction.
 
   **A ten-minute non-failure is also now documented in `scripts/sandbox.sh`.** `sandbox.sh start | tail -3` never returns, and it is not a holochain quirk: `start` deliberately leaves a `holochain` process running, that process inherits the script's stdout, and `tail` cannot print until the write end closes — which is held open by a conductor meant to outlive the command. It looks exactly like a conductor that failed to come up, which is the wrong thing to spend the time debugging. The header now says to redirect instead.
 
