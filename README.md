@@ -957,7 +957,7 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**#127 through #133 all landed.** #127 is a diagnostic rather than a fix —
+**#127 through #135 all landed.** #127 is a diagnostic rather than a fix —
 `real-gossip` reporting how many peers each conductor has heard of, so the next
 missed gossip says whether the two nodes had even met; the occurrence that
 prompted it is recorded further down this section. #129 closed the `notes-ui`
@@ -978,6 +978,19 @@ run. What is open is one item, and it is not blocked on effort:
   recorded in full further down this section. It is blocked on **a recurrence**,
   and the harness now carries the probe that will name the cause when one comes.
   Nobody can usefully sit down and work on it until CI goes red again.
+
+**So the next action on it is a reading rather than a change, and it is worth
+saying exactly what to read.** When `network` next goes red, the answer is in
+section 3's output, not section 5's: the probe prints `STRANDED OP`, `LATE PATH`
+or `NO PATH YET`, and those are three different defects in three different
+places. `STRANDED OP` confirms the standing hypothesis and points at op
+publication and retry; `LATE PATH` makes it a readiness problem and sends the
+fix to `scripts/network.sh`, which starts the nodes; `NO PATH YET` says the
+whole path was down at that moment and that sections 8 and 9 are the next thing
+to read. Section 5's lines are about the by-agent index only and have already
+misled once. #135 shipped that probe, and its own `network` run was green, which
+says nothing either way — a job that fails about once a day passes most times it
+runs, and that is the whole difficulty.
 
 **So the next thing to look at is still not code that anybody can simply sit
 down and write.** Everything left is waiting on a person, waiting on an
