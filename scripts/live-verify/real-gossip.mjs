@@ -240,6 +240,7 @@
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { decode } from '@msgpack/msgpack';
+import { readFile } from 'node:fs/promises';
 
 // Ports and app ids are scripts/network.sh's, and must stay in step with it.
 const NODES = {
@@ -286,6 +287,22 @@ const CONVERGE_WINDOW_MS = 180_000;
 // the window was 120s against an interval of 120s — and a future edit that
 // lowers the window back under it must fail loudly on the spot instead of
 // quietly restoring a check that cannot pass. See README.md §9.
+//
+// THIS NUMBER ASSUMES THE FIRST GOSSIP ROUND SUCCEEDS, and a real failure
+// showed that assumption failing. Conductor logs from the measured occurrences
+// carry `PeerBehaviorError { ctx: "initiate too soon" }` and
+// `Unsolicited Accept message`: when a round times out and the node tries
+// again, the peer can REFUSE re-initiation, and the gate on that is
+// `min_initiate_interval_ms`, whose default is 300_000 — not 120_000. So the
+// true worst case for a repair that needs a SECOND round is nearer 300s than
+// 145s, and this constant does not cover it.
+//
+// It is deliberately NOT raised to 300s here. Doing so would force
+// CONVERGE_WINDOW_MS past it by the invariant below, and a failing run would
+// then spend over five minutes in this section and as long again in section 5.
+// That is a real trade against a rare path, it is a decision rather than a
+// correction, and README.md §9 records it as open with both costs. What is
+// fixed here is the claim: this figure covers one clean round, and says so.
 const GOSSIP_REPAIR_WORST_CASE_MS = 145_000;
 const POLL_MS = 2_000;
 // How much longer the isolated node is watched AFTER nodeB succeeds. The
@@ -297,6 +314,101 @@ const CONTROL_MARGIN_MS = 20_000;
 // the answer is "seconds or nothing" in every occurrence recorded so far, and
 // a failing run has by then already spent four minutes waiting.
 const STRANDED_PROBE_MS = 30_000;
+
+// Where scripts/network.sh puts each conductor's log. The workflow already
+// tails these after a failure; this file reads them itself, for the reason in
+// `transportErrors`.
+const NET_ROOT = process.env.EPI_NET_ROOT ?? '/tmp/epi-net';
+
+// THE SIGNATURES THAT ACTUALLY SEPARATED FAILURES FROM PASSES, measured rather
+// than guessed: across the 30-run batch recorded in README.md §9, all 7 failing
+// runs logged `iroh incoming connection failed` between 2 and 7 times, and all
+// 13 passing runs sampled logged it zero times. That is a perfect discriminator,
+// and it was sitting in a log the workflow dumped but nothing read — which is
+// why this harness now reads it and says so in the failure itself.
+const TRANSPORT_SIGNATURES = [
+  {
+    match: 'iroh incoming connection failed',
+    says: 'a QUIC session could not be ACCEPTED — the peer was known but unreachable',
+  },
+  {
+    match: 'initiate too soon',
+    says: 'a gossip round was REFUSED as too soon, so repair waits for the minimum '
+      + 'initiate interval (300s by default) rather than the usual 120s',
+  },
+  {
+    match: 'Unsolicited Accept message',
+    says: 'a gossip round\'s Accept arrived after the initiator had timed out (15s), '
+      + 'so the reply was discarded as unsolicited',
+  },
+  {
+    match: 'database is locked',
+    says: 'SQLite contention inside a conductor, which on a 2-vCPU runner means it '
+      + 'was starved rather than broken',
+  },
+];
+
+/** Reads the conductors' own logs and reports the known failure signatures.
+ *
+ * WHY THE HARNESS READS THEM RATHER THAN LEAVING IT TO THE WORKFLOW. The
+ * workflow tails these logs after a failure, and for ten occurrences nobody
+ * read them — the red tick said "nodeB never received it" and the answer was
+ * forty lines further down in a dump that looks like noise. Every one of those
+ * occurrences had the transport failing to accept a connection, in the log, the
+ * whole time. A diagnostic belongs where the failure is printed.
+ *
+ * Best effort on purpose: a missing or unreadable log is reported and skipped,
+ * never thrown, because this runs on a path that has already failed and must not
+ * replace the diagnosis with an error about reading a file. */
+async function transportErrors(names = ['nodeA', 'nodeB', 'nodeC']) {
+  const findings = [];
+  for (const name of names) {
+    let text;
+    try {
+      text = await readFile(`${NET_ROOT}/${name}.log`, 'utf8');
+    } catch (e) {
+      findings.push({ name, unreadable: e.code ?? String(e) });
+      continue;
+    }
+    const counts = {};
+    for (const sig of TRANSPORT_SIGNATURES) {
+      // split().length - 1 counts overlapping-free occurrences without a regex,
+      // so a signature containing regex metacharacters stays safe to add.
+      const n = text.split(sig.match).length - 1;
+      if (n > 0) counts[sig.match] = n;
+    }
+    findings.push({ name, counts });
+  }
+  return findings;
+}
+
+/** Prints what `transportErrors` found, or says plainly that it found nothing. */
+function logTransportErrors(findings) {
+  log('    --- what the conductors themselves logged ---');
+  let anything = false;
+  for (const f of findings) {
+    if (f.unreadable) {
+      log(`    ${f.name}.log could not be read (${f.unreadable}) — no evidence either way`);
+      continue;
+    }
+    const entries = Object.entries(f.counts);
+    if (entries.length === 0) continue;
+    anything = true;
+    for (const [match, n] of entries) {
+      const says = TRANSPORT_SIGNATURES.find((s) => s.match === match)?.says ?? '';
+      log(`    ${f.name}: ${n} x "${match}"`);
+      log(`      ${says}`);
+    }
+  }
+  if (!anything) {
+    // A real finding, not an absence of one. Every failure in the 30-run batch
+    // had at least one of these, so a failure WITHOUT them is a shape this
+    // repository has not seen and should not be filed alongside the ones it has.
+    log('    none of the known signatures appear, which is itself new — every');
+    log('    failure measured so far logged at least one. Read the dumped logs');
+    log('    directly rather than assuming this is the usual transport problem.');
+  }
+}
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const log = (...a) => console.log(...a);
@@ -787,6 +899,10 @@ async function main() {
       // this node was alone on the DHT when it mattered.
       log(`    ${PROMPT_PUBLISH_MS / 1000}s gone without the claim: ${await peersLine(A, B)}`);
       probe = await strandedProbe(A, B, DOMAIN, C);
+      // Last, because it is the line that most often holds the answer and
+      // should sit closest to the verdict: every failure measured so far had
+      // the transport logging a refusal while the peer counts said "2 and 2".
+      logTransportErrors(await transportErrors());
       return probe;
     },
   });
@@ -812,8 +928,9 @@ async function main() {
     }
   } else {
     log(`    not after ${CONVERGE_WINDOW_MS / 1000}s, and gossip's own worst case for repairing a `
-      + `dropped publish is ${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s `
-      + '(120s interval + 10s jitter + 15s round), so this is not the substrate being slow');
+      + `dropped publish is ${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s — see `
+      + 'GOSSIP_REPAIR_WORST_CASE_MS for what that is made of, and for the case it does '
+      + 'NOT cover');
     log(`    at the end: ${await peersLine(A, B)}`);
   }
 
