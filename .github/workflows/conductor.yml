@@ -78,16 +78,23 @@
 # `mcp-server/README.md` documents for development: the dependency is satisfied
 # without rewriting the published declaration.
 #
-# THAT IS NOT A HYPOTHETICAL, AND THE DIFFERENCE IS CURRENTLY FATAL — watched,
-# not reasoned. Built against the registry's 0.1.1, `mcp-server.mjs` goes RED on
-# eight checks. The published SDK predates the `@holochain/client` 0.21 upgrade
-# and still tests `CellType.Provisioned in cell` against what became a
-# discriminated union: it matches nothing, collects no cell ids, authorizes no
-# signing credentials, and every zome call afterwards fails. Rebuilt against the
-# local path, the same harness is green. That is a real defect for anyone
-# installing this package from npm today rather than a CI detail, so it is
-# recorded in `mcp-server/README.md` and the root README — republishing is not
-# something a workflow can do.
+# THAT IS NOT A HYPOTHETICAL — watched, not reasoned. Built against the
+# registry's 0.1.1, `mcp-server.mjs` went RED on eight checks. That SDK predates
+# the `@holochain/client` 0.21 upgrade and still tests
+# `CellType.Provisioned in cell` against what became a discriminated union: it
+# matches nothing, collects no cell ids, authorizes no signing credentials, and
+# every zome call afterwards fails. Rebuilt against the local path, the same
+# harness was green.
+#
+# THE BROKEN RELEASE IS GONE AS OF 2026-09-12, AND THAT RAISES THE STAKES ON THE
+# LINE BELOW RATHER THAN LOWERING THEM. `0.1.2` of both packages is published and
+# `latest`, verified against a real conductor from a registry install, so the two
+# reasons for `--no-save` are now one. What made the mistake survivable was that
+# resolving the registry copy FAILED LOUDLY — eight reds, impossible to miss. A
+# plain `npm install` here now resolves an SDK that works, so the same mistake
+# would pass silently against code the pull request never touched. The symlink
+# assertion below is the only thing left that catches it, and it is no longer a
+# belt-and-braces check.
 #
 # ONE HARNESS HAD TO CHANGE, AND ONLY ONE — AND THAT IS NO LONGER TRUE, WHICH
 # IS THE POINT OF LEAVING IT WRITTEN DOWN. `notes-ui.mjs` hardcoded

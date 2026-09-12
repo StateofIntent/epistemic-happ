@@ -5,9 +5,10 @@
 //
 // WHY THIS EXISTS, AND WHY THE TWO CHECKS EITHER SIDE OF IT DID NOT CATCH THE
 // BUG THAT SHIPPED. `@stateofintent/agent-sdk@0.1.1` and
-// `@stateofintent/mcp-server@0.1.1` are on the registry right now and fail every
-// zome call for anyone who installs them. Two checks were already in place and
-// both were green on that release, correctly:
+// `@stateofintent/mcp-server@0.1.1` went to the registry failing every zome call
+// for anyone who installed them. They are still there, and were replaced on
+// 2026-09-12 by `0.1.2`, which this harness gated. Two checks were already in
+// place when 0.1.1 shipped and both were green on it, correctly:
 //
 //   - `scripts/check-packages.mjs` packs each package, installs the tarball into
 //     an empty project the way a stranger would, and imports it. It proves the

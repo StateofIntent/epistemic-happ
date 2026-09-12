@@ -46,16 +46,27 @@ correct while what you actually run is the tree in front of you.
 `node scripts/check-packages.mjs` from the repo root fails if the `file:` form
 ever comes back.
 
-**Two things follow from that, and the second is a defect, not a preference.**
+**Two things followed from that. The first still holds; the second was a defect
+and is now fixed.**
 
 The first is about what a test is testing. `npm install` on its own resolves
-`^0.1.1` from the registry and installs a copy of the SDK that is not this
+`^0.1.2` from the registry and installs a copy of the SDK that is not this
 checkout, so a change to `agent-sdk/src` would be verified against code it did
 not touch — and pass. `.github/workflows/conductor.yml` installs the local path
-for exactly this reason and then asserts that what landed is a symlink.
+for exactly this reason and then asserts that what landed is a symlink. **This
+reason is now the only one**, and it is unaffected by anything being republished:
+the registry's copy working correctly makes a plain install more misleading here,
+not less, because it removes the loud failure that used to reveal the mistake.
 
-The second is about the registry. **The published `@stateofintent/agent-sdk@0.1.1`
-does not work against Holochain 0.7, and neither does the published
+The second was about the registry, and is **fixed as of 2026-09-12: `0.1.2` of
+both packages is published and `latest`, and an install by version into an empty
+project outside this checkout writes a claim to a real conductor and reads it
+back through a tool call.** What follows is the account of what was wrong, kept
+because a package that passes every packaging check and still fails its first
+zome call is the thing this directory's checks are now shaped around.
+
+**The published `@stateofintent/agent-sdk@0.1.1`
+did not work against Holochain 0.7, and neither did the published
 `@stateofintent/mcp-server@0.1.1` that pulls it in.** It predates the
 `@holochain/client` 0.21 upgrade, in which `CellInfo` became a discriminated
 union; the published build still tests `CellType.Provisioned in cell`, which now
@@ -67,8 +78,8 @@ released. Observed rather than inferred: `scripts/live-verify/mcp-server.mjs`
 built against the registry copy goes red on eight checks, and green on the same
 conductor once the local path is installed instead.
 
-**`node scripts/check-packages.mjs` stays green on both packages while this is
-true**, and that is the right behaviour rather than a hole in it: it installs
+**`node scripts/check-packages.mjs` stayed green on both packages throughout
+that**, and that was the right behaviour rather than a hole in it: it installs
 each tarball into an empty project, imports it, and runs this server until it
 advertises its nine tools — none of which touches a conductor. The defect begins
 exactly where a packaging check ends. "Publishes, installs and imports" was never
@@ -84,17 +95,26 @@ tree's `dist/` through this tree's `node_modules` and this tree's lockfile: what
 a stranger installs resolves its own dependency tree, and that difference is
 precisely what neither existing check could see. It runs in `conductor.yml`.
 
-**Only a republish fixes that**, which no workflow here can do — it needs
-someone with credentials to publish. Everything else is now done: both packages
-are at `0.1.2` in this tree, this package's dependency range was tightened to
-`^0.1.2` so an installer cannot resolve the SDK version being replaced, and
-`scripts/publish-packages.sh` runs the packaging checks and the live check,
-refuses on a dirty tree or an already-published version, and publishes
-`agent-sdk` first and this package only once the registry can actually serve it.
-It is a dry run unless given `--publish`. Anyone installing
-either from npm today gets something that connects and then fails on its first
-real call. Recorded here rather than in a merged pull request, because this is
-where a person installing the package would look.
+**Only a republish could fix that, and it happened on 2026-09-12.** Both
+packages are `0.1.2` on the registry and `latest`; this package's dependency
+range was tightened to `^0.1.2` so an installer cannot resolve the SDK version
+being replaced. It was published by `scripts/publish-packages.sh --publish`,
+which runs the packaging checks and the live check, refuses on a dirty tree, and
+publishes `agent-sdk` first and this package only once the registry can actually
+serve it — a dry run unless given `--publish`.
+
+**Verified afterwards against what the registry actually serves**, which is not
+the same evidence as the harness that gated the publish: installed by version
+into an empty project outside this checkout, `agent-sdk` resolving to
+`https://registry.npmjs.org/@stateofintent/agent-sdk/-/agent-sdk-0.1.2.tgz`, the
+SDK writes a claim a real conductor accepts, and this server — started as a
+binary from that install — advertises nine tools and answers a `claims_in_domain`
+call that reaches the conductor and returns that claim.
+
+`0.1.1` is still on the registry and still fails on its first real call, so an
+explicit `0.1.1` still gets the broken build; nothing resolves it by default.
+Recorded here rather than only in a merged pull request, because this is where a
+person installing the package would look.
 
 **This package also ships no `package-lock.json`**, which is why every
 instruction above says `npm install` and never `npm ci`. The dependency set that
