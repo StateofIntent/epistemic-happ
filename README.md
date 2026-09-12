@@ -1224,9 +1224,22 @@ two budgets whose values come from the substrate rather than from taste:
 
 | Constant | Value | Why that number |
 |---|---|---|
-| `PROMPT_PUBLISH_MS` | 60s | healthy crossings are 2-4s; the slowest ever recorded here is 10.1s on a loaded runner. Six times that, and still half of gossip's first opportunity, so an arrival inside it means the publish path worked rather than that gossip covered for it |
+| `PROMPT_PUBLISH_MS` | 60s | healthy crossings are 2-4s; the slowest recorded are 10.1s, 14.1s and 16.1s on loaded runners. Nearly four times the worst of those, and still well under gossip's first opportunity, so an arrival inside it means the publish path worked rather than that gossip covered for it |
 | `CONVERGE_WINDOW_MS` | 330s | must clear `GOSSIP_REPAIR_WORST_CASE_MS` with margin |
 | `GOSSIP_REPAIR_WORST_CASE_MS` | 300s | a **chosen ceiling**: covers a refused retry with room for interval, jitter and a round. Does not cover an exhausted burst allowance, which reaches toward 600s |
+
+**The figure behind `PROMPT_PUBLISH_MS` is a sequence, and it is drifting
+upward.** It was sized against a slowest-ever direct publish of 10.1s. The run
+that shipped the split then recorded **14.1s**, and the next day's
+documentation-only run recorded **16.1s** — each a new record, neither raising a
+warning, because each is a direct publish that needed no repair. The budget is
+still comfortable: 60s is nearly four times 16.1s. But it was originally
+described as "six times the worst observed", and that multiplier is now under
+four, which is the kind of quietly stale justification this section treats as a
+defect. **What would change the decision is a fourth record materially above
+these** — 60s is comfortable against 16.1s and would not be against 40s. The
+warning itself is the instrument: it prints the measured time whenever it fires,
+so the drift is visible rather than needing to be remembered.
 
 **Convergence is the only one that gates**, because "an entry written on one
 conductor reaches another" is the invariant this harness exists for. A missed

@@ -260,10 +260,18 @@ const NODES = {
 // every time. README.md §9 has the full derivation.
 //
 // PROMPT_PUBLISH_MS asks whether the DIRECT publish landed. Healthy crossings
-// are 2-4s locally and on CI; the slowest arrival ever recorded here is 10.1s,
-// on a loaded runner. 60s is six times that and still half of gossip's first
-// opportunity, so an arrival inside it means the publish path worked rather
-// than that gossip quietly covered for it. A miss is a ::warning::, NOT a
+// are 2-4s locally and on CI, and the slowest arrivals recorded here are 10.1s,
+// then 14.1s, then 16.1s — all on loaded runners, and all direct publishes that
+// needed no repair. 60s is nearly four times the worst of those and still well
+// under gossip's first opportunity, so an arrival inside it means the publish
+// path worked rather than that gossip quietly covered for it.
+//
+// THE FIGURE IS A SEQUENCE RATHER THAN A NUMBER, deliberately. Each of the last
+// two was a new record set within a day of the previous one, which is the only
+// reason to distrust this budget: 60s is comfortable against 16.1s and would not
+// be against 40s. If a fourth record lands materially above these, this constant
+// needs revisiting rather than the warning being ignored — and the warning is
+// what will say so, because it prints the measured time every time it fires. A miss is a ::warning::, NOT a
 // failure: an op that publish dropped and gossip repaired is the substrate
 // doing exactly what its own defaults say, and a red tick for that is the
 // flaky-red-meaning-nothing this repository has twice refused.
@@ -752,8 +760,9 @@ async function strandedProbe(author, receiver, missedDomain, isolated = null) {
  * Every crossing in this file is subject to the same two promises, so the
  * warning belongs at each of them rather than only at section 3. Without this,
  * a reverse leg that quietly drifted from 2s to 90s would read as a pass with a
- * number nobody compared to anything — and 10.1s on a loaded runner is already
- * the slowest arrival this harness has recorded. */
+ * number nobody compared to anything — and the slowest arrivals this harness has
+ * recorded are 10.1s, 14.1s and 16.1s, each a new record within about a day of
+ * the last. */
 function reportArrival(ms, what) {
   if (ms === null) return;
   log(`    arrived after ${(ms / 1000).toFixed(1)}s`);
