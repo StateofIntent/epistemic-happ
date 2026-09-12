@@ -312,8 +312,11 @@ jobs:
 
       # `--no-save ../agent-sdk`, not a plain install, and the header says why:
       # the registry copy of this dependency now resolves, and is not this tree.
-      # `npm ci` is not available here — mcp-server ships no lockfile, which is
-      # its own small gap and is recorded in mcp-server/README.md.
+      # `npm ci` is not available here, and the lockfile's absence is only half
+      # the reason: `npm ci` also deletes node_modules and installs exactly the
+      # lockfile, so it would undo the line below even if one existed. That gap
+      # is recorded in mcp-server/README.md, along with why a lockfile there
+      # would NOT change what a published install resolves.
       - name: Build the MCP server, against THIS tree's SDK
         working-directory: mcp-server
         run: |

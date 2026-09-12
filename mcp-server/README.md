@@ -97,11 +97,30 @@ real call. Recorded here rather than in a merged pull request, because this is
 where a person installing the package would look.
 
 **This package also ships no `package-lock.json`**, which is why every
-instruction above says `npm install` and never `npm ci`. That is a smaller gap
-in the same area — the dependency set that gets built here is whatever the
-ranges resolve to on the day — and it is left open rather than closed quietly,
-since generating a lockfile changes what a published install pulls and is worth
-deciding deliberately.
+instruction above says `npm install` and never `npm ci`. The dependency set that
+gets built here is whatever the ranges resolve to on the day.
+
+The reason recorded for that used to be that generating a lockfile "changes what
+a published install pulls". **It cannot**: npm does not pack `package-lock.json`
+into a published tarball at all, so the file never reaches an installer, and
+this package's `files` list would exclude it a second time over. Observed rather
+than inferred — a throwaway package with a lockfile, no `files` list and one
+dependency packs to a tarball containing `package.json` and nothing else, on npm
+11.19.0. A dependency's lockfile is not consulted by whoever installs it; only
+the root project's is.
+
+The real reason `npm ci` is unavailable here is narrower and worth saying
+instead: `npm ci` deletes `node_modules` and installs exactly the lockfile,
+which cannot coexist with `npm install --no-save ../agent-sdk` — the step in
+`conductor.yml` that makes the SDK under test this tree's rather than the
+registry's, for the reason the rest of this section is about. A lockfile here
+would have to be generated against the registry copy of the SDK and then
+immediately overwritten by the local one on every CI run.
+
+So what is left of this gap is a question about **reproducibility of builds in
+this repository**, not about what a stranger pulls — the other seven packages in
+the tree all commit a lockfile. It is worth deciding deliberately on those terms,
+and is still open.
 
 It speaks MCP over stdio and talks to a conductor you are already running —
 your own, since this protocol has no central server and "the backend" is a peer
