@@ -271,10 +271,12 @@ const NODES = {
 // reason to distrust this budget: 60s is comfortable against 16.1s and would not
 // be against 40s. If a fourth record lands materially above these, this constant
 // needs revisiting rather than the warning being ignored — and the warning is
-// what will say so, because it prints the measured time every time it fires. A miss is a ::warning::, NOT a
-// failure: an op that publish dropped and gossip repaired is the substrate
-// doing exactly what its own defaults say, and a red tick for that is the
-// flaky-red-meaning-nothing this repository has twice refused.
+// what will say so, because it prints the measured time every time it fires.
+//
+// A miss is a ::warning::, NOT a failure: an op that publish dropped and gossip
+// repaired is the substrate doing exactly what its own defaults say, and a red
+// tick for that is the flaky-red-meaning-nothing this repository has twice
+// refused.
 //
 // CONVERGE_WINDOW_MS is the one that GATES, because "an entry written on one
 // conductor reaches another" is the invariant this harness exists for. It must
