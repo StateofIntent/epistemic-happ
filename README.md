@@ -7,7 +7,7 @@
 **Version:** 0.1.0  
 **Date:** 2026-08-25  
 **Status:** Design Complete — HRR Compressor Deferred  
-**License:** TBD (recommend: AGPL-3.0 for protocol layer)  
+**Licence:** MIT OR Apache-2.0, at your option — see [Licence](#licence)  
 **Runs on:** Holochain 0.7.0
 
 ---
@@ -2665,6 +2665,19 @@ projects from using this at all.
 
 Unless you state otherwise, any contribution you intentionally submit for
 inclusion is dual-licensed as above, with no additional terms.
+
+**This document's own header said something different until it was corrected,
+and the correction is recorded rather than swapped in silently.** It read
+`License: TBD (recommend: AGPL-3.0 for protocol layer)` — a recommendation from
+before the decision was taken, left in place after it. Everything that actually
+governs the licence had already moved: `LICENSE`, `LICENSE-MIT`,
+`LICENSE-APACHE`, `dna/integrity/Cargo.toml`, `dna/coordinator/Cargo.toml`,
+`agent-sdk/package.json` and `mcp-server/package.json` all say
+`MIT OR Apache-2.0`, as does this section. So the header was the single outlier,
+and it was the first line a visitor read — which is the worst place for a stale
+claim and the reason AGPL, a licence this project does not use, could have been
+quoted back at it in good faith. Recorded here because a licence is exactly the
+kind of fact somebody acts on without asking.
 
 ## Appendix A: The 10 Invariants
 
