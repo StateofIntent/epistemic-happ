@@ -964,18 +964,20 @@ prompted it is recorded further down this section. #129 closed the `notes-ui`
 intermittency described immediately below, along with a second defect found
 underneath it.
 
-**Two things are open, and this section said "nothing is open" for a day while
-the first of them was sitting in CI.** That sentence was true when written and
-stopped being true without anybody editing it, which is the failure this whole
-section is an argument against:
+**One thing is open, and this section said "nothing is open" for a day while
+[#134](../../pull/134) was sitting in CI.** That sentence was true when written
+and stopped being true without anybody editing it, which is the failure this
+whole section is an argument against — a status line is only worth reading if
+going stale is treated as a defect in it. #134 has since landed: `SPEC.md`'s
+function list is something CI notices now, and it found real drift on its first
+run. What is open is one item, and it is not blocked on effort:
 
-- **[#134](../../pull/134)** makes `SPEC.md`'s function list something CI
-  notices, and is green on every job. Blocked on review, not on work.
 - **The `real-gossip` forward-leg intermittency is open again, with a narrower
   suspect than it has ever had.** Its third occurrence ruled out peer discovery
   — the standing hypothesis — using counts taken before the publish, and it is
-  recorded in full further down this section. It is blocked on a recurrence, and
-  the harness now has the probe that will name the cause when one comes.
+  recorded in full further down this section. It is blocked on **a recurrence**,
+  and the harness now carries the probe that will name the cause when one comes.
+  Nobody can usefully sit down and work on it until CI goes red again.
 
 **So the next thing to look at is still not code that anybody can simply sit
 down and write.** Everything left is waiting on a person, waiting on an
