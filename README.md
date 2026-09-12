@@ -1037,19 +1037,31 @@ drops the op with no retry.
 logs carry `PeerBehaviorError { ctx: "initiate too soon" }` and
 `Unsolicited Accept message`. So a gossip round can time out at 15s, its late
 Accept be discarded as unsolicited, and the **retry be refused** — and the gate
-on that refusal is `min_initiate_interval_ms`, whose default is **300,000**, not
-120,000. `GOSSIP_REPAIR_WORST_CASE_MS` (145s) therefore covers one *clean* round
-and not the case where a round fails, which means `CONVERGE_WINDOW_MS` at 180s
-may still be short for exactly the runs that need it most. Evidence for that
-reading: run `34671351347` had not converged at 150s, and the shape B runs had
-not at ~210s.
+on that refusal is the **burst limiter**, and an earlier version of this section
+said it was `min_initiate_interval_ms` — which was wrong, and wrong in the
+direction that matters. That field is declared, defaulted to 300,000 and set by
+test harnesses, and **nothing in kitsune2 or holochain reads it**; its own doc
+comment says a burst mechanism replaces it, and it does.
+`respond/initiate.rs` refuses on `burst.check_accept`, and `burst.rs` allows
+`initiate_burst_factor * initiate_burst_window_count` = 3 x 5 = **15** accepted
+initiations per peer inside a sliding window of
+`initiate_interval_ms * initiate_burst_window_count` = **600 seconds**. Fifteen
+per ten minutes, per peer — a rate limit, not a floor. A node whose rounds keep
+failing burns its fifteen and is then refused until timestamps age out, so the
+true ceiling is nearer **600s** than 300s. Evidence consistent with that: run
+`34671351347` had not converged at 150s, and the shape B runs had not at ~210s.
 
-**That is left as an open decision rather than another budget change**, because
-raising the worst case to 300s forces the convergence window past it by the
-harness's own enforced invariant, and a failing run would then spend over five
-minutes in section 3 and as long again in section 5. The cost is real and the
-path is rare; the constant's comment now states what it covers and what it does
-not, which is the part that was wrong rather than the number.
+**The decision was taken: `GOSSIP_REPAIR_WORST_CASE_MS` is now 300s and
+`CONVERGE_WINDOW_MS` is 330s.** That covers the ordinary refused-retry case with
+room for the interval, the jitter and a round, and it is **a chosen ceiling
+rather than a derived maximum** — the constant's name overstates it slightly and
+its comment says so. What it deliberately does not cover is an **exhausted burst
+allowance**, because that would need a window past 600s, which at the equal
+budgets this harness keeps is over twenty minutes in a failing run before
+sections 6 to 9 start. That residue is a known gap, recorded here rather than
+implied by a constant: a run that fails with `initiate too soon` in its logs and
+no convergence may simply have run out of allowance, and the harness now prints
+that signature so the reader can tell.
 
 **The diagnostic was the actual defect here.** For ten occurrences the workflow
 dumped these logs and nothing read them — the red tick said "nodeB never
@@ -1111,7 +1123,8 @@ specific older op sat undelivered.
 | `initial_initiate_interval_ms` | 1,000 |
 | `initiate_interval_ms` | **120,000** |
 | `initiate_jitter_ms` | 10,000 |
-| `min_initiate_interval_ms` | 300,000 |
+| `min_initiate_interval_ms` | 300,000 — **declared and never read**; the burst limiter replaced it |
+| `initiate_burst_factor` x `initiate_burst_window_count` | 3 x 5 = 15 initiations per peer per 600s |
 | `round_timeout_ms` | 15,000 |
 
 The fast one-second interval is **not** the steady state. `initiate.rs` uses it
@@ -1134,8 +1147,8 @@ failures fit it:
 - `34671043317` — the claim arrived **~134s** after its publish, which is the
   120s interval plus jitter plus the round itself. Only the probe's extra 30
   seconds of watching saw it at all.
-- `34671351347` — nothing by 150s, consistent with the 300s per-peer minimum
-  interval, or with a round hitting the 15s timeout and waiting for the next one.
+- `34671351347` — nothing by 150s, consistent with a round hitting the 15s
+  timeout and its retry being refused by the peer's burst limiter.
 
 **This reframes the rule this section has twice applied, and the reframing is the
 part worth arguing about.** "A timeout raised to hide a stall makes it slower to
@@ -1168,8 +1181,8 @@ two budgets whose values come from the substrate rather than from taste:
 | Constant | Value | Why that number |
 |---|---|---|
 | `PROMPT_PUBLISH_MS` | 60s | healthy crossings are 2-4s; the slowest ever recorded here is 10.1s on a loaded runner. Six times that, and still half of gossip's first opportunity, so an arrival inside it means the publish path worked rather than that gossip covered for it |
-| `CONVERGE_WINDOW_MS` | 180s | must clear `GOSSIP_REPAIR_WORST_CASE_MS` with margin |
-| `GOSSIP_REPAIR_WORST_CASE_MS` | 145s | 120s interval + 10s jitter + 15s round timeout |
+| `CONVERGE_WINDOW_MS` | 330s | must clear `GOSSIP_REPAIR_WORST_CASE_MS` with margin |
+| `GOSSIP_REPAIR_WORST_CASE_MS` | 300s | a **chosen ceiling**: covers a refused retry with room for interval, jitter and a round. Does not cover an exhausted burst allowance, which reaches toward 600s |
 
 **Convergence is the only one that gates**, because "an entry written on one
 conductor reaches another" is the invariant this harness exists for. A missed

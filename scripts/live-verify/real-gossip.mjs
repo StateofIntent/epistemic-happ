@@ -270,16 +270,18 @@ const NODES = {
 //
 // CONVERGE_WINDOW_MS is the one that GATES, because "an entry written on one
 // conductor reaches another" is the invariant this harness exists for. It must
-// clear gossip's whole worst case — 120s interval + 10s jitter + 15s
-// `round_timeout_ms` = 145s — with margin, so 180s.
+// clear GOSSIP_REPAIR_WORST_CASE_MS with margin; see that constant for what
+// that figure covers, what it does not, and why it is a chosen ceiling rather
+// than a derived maximum.
 //
-// THE COST IS REAL AND IS ACCEPTED: a run where the entry never arrives now
-// spends 180s here and another 180s in section 5, where it used to spend 120s
-// and 120s. Section 5 keeps the SAME budget deliberately — holding one index
+// THE COST IS REAL AND IS ACCEPTED: a run where the entry never arrives spends
+// CONVERGE_WINDOW_MS here and as long again in section 5 — 330s each, so about
+// eleven minutes before sections 6 to 9 start, against 120s and 120s before any
+// of this. Section 5 keeps the SAME budget deliberately — holding one index
 // to a laxer standard than the other was the #131 defect and is not being
 // reintroduced to save three minutes on a path that should be rare.
 const PROMPT_PUBLISH_MS = 60_000;
-const CONVERGE_WINDOW_MS = 180_000;
+const CONVERGE_WINDOW_MS = 330_000;
 // What gossip needs, at worst, before it can repair an op that publish dropped:
 // the 120s initiate interval, up to 10s of jitter, and a 15s round timeout.
 // NAMED AND ENFORCED rather than left in a comment, because
@@ -288,22 +290,37 @@ const CONVERGE_WINDOW_MS = 180_000;
 // lowers the window back under it must fail loudly on the spot instead of
 // quietly restoring a check that cannot pass. See README.md §9.
 //
-// THIS NUMBER ASSUMES THE FIRST GOSSIP ROUND SUCCEEDS, and a real failure
-// showed that assumption failing. Conductor logs from the measured occurrences
-// carry `PeerBehaviorError { ctx: "initiate too soon" }` and
-// `Unsolicited Accept message`: when a round times out and the node tries
-// again, the peer can REFUSE re-initiation, and the gate on that is
-// `min_initiate_interval_ms`, whose default is 300_000 — not 120_000. So the
-// true worst case for a repair that needs a SECOND round is nearer 300s than
-// 145s, and this constant does not cover it.
+// 145s WAS THE FIGURE, AND IT ASSUMED THE FIRST GOSSIP ROUND SUCCEEDS. Real
+// failures carry `PeerBehaviorError { ctx: "initiate too soon" }` and
+// `Unsolicited Accept message`: a round times out at 15s, its late Accept is
+// discarded, the node tries again, and the peer REFUSES the re-initiation. So a
+// repair needing a second round is not bounded by 145s.
 //
-// It is deliberately NOT raised to 300s here. Doing so would force
-// CONVERGE_WINDOW_MS past it by the invariant below, and a failing run would
-// then spend over five minutes in this section and as long again in section 5.
-// That is a real trade against a rare path, it is a decision rather than a
-// correction, and README.md §9 records it as open with both costs. What is
-// fixed here is the claim: this figure covers one clean round, and says so.
-const GOSSIP_REPAIR_WORST_CASE_MS = 145_000;
+// WHAT ACTUALLY REFUSES IT IS THE BURST LIMITER, not the interval, and an
+// earlier version of this comment got that wrong — it blamed
+// `min_initiate_interval_ms` (default 300_000). That field is declared,
+// defaulted, and set by test harnesses, and **no logic in kitsune2 or holochain
+// reads it**; its own doc comment says it is being replaced by a burst
+// mechanism, and it has been. `respond/initiate.rs` refuses on
+// `burst.check_accept`, and `burst.rs` allows
+// `initiate_burst_factor * initiate_burst_window_count` = 3 x 5 = **15**
+// accepted initiations per peer inside a sliding window of
+// `initiate_interval_ms * initiate_burst_window_count` = 120_000 x 5 =
+// **600_000ms**. Fifteen per ten minutes, per peer.
+//
+// SO THE TRUE CEILING IS NEARER 600s THAN 300s. A node whose rounds keep
+// failing burns its fifteen, and further initiations are refused until
+// timestamps age out of a ten-minute window.
+//
+// 300s IS THEREFORE A CHOSEN CEILING, NOT A DERIVED MAXIMUM, and the name of
+// this constant overstates it slightly — kept because README.md §9 and the
+// failure messages refer to it. It covers the ordinary refused-retry case with
+// room for the interval, the jitter and a round; it does NOT cover an exhausted
+// burst allowance. Covering that would mean a window past 600s, which at the
+// equal budgets below is over twenty minutes in a failing run before sections 6
+// to 9 even start — a cost judged not worth paying for a path this rare.
+// README.md §9 records the residue so it is a known gap rather than a surprise.
+const GOSSIP_REPAIR_WORST_CASE_MS = 300_000;
 const POLL_MS = 2_000;
 // How much longer the isolated node is watched AFTER nodeB succeeds. The
 // control's claim is "it never arrives", and a single glance at the
@@ -333,8 +350,9 @@ const TRANSPORT_SIGNATURES = [
   },
   {
     match: 'initiate too soon',
-    says: 'a gossip round was REFUSED as too soon, so repair waits for the minimum '
-      + 'initiate interval (300s by default) rather than the usual 120s',
+    says: 'a gossip round was REFUSED by the peer\'s burst limiter, which allows 15 '
+      + 'initiations per peer per 10 minutes — so repair waits for that window to '
+      + 'slide, not for the usual 120s interval',
   },
   {
     match: 'Unsolicited Accept message',
