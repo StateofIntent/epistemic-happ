@@ -1009,6 +1009,63 @@ twelve seconds. **The suspect is the delivery and retry of an op that missed its
 first attempt**, which is readable code rather than a wait. That is two
 occurrences agreeing, not a proof: n is 2.
 
+**Shape B is no longer unexplained, and the evidence had been in the dumped logs
+the whole time.** Reading the conductors' own logs from all seven failures and
+thirteen of the passes produced a clean discriminator:
+
+| | `iroh incoming connection failed` |
+|---|---|
+| All 7 failing runs | **2 to 7 occurrences each** |
+| 13 passing runs sampled | **zero** |
+
+The message is `Accepting incoming connection failed … src: Some(timed out)`. A
+QUIC session could not be **accepted** — the peers knew of each other from the
+bootstrap server and could not reach each other. That is the direct evidence for
+the caveat this section had only reasoned its way to: a peer count is bootstrap
+knowledge, not a working session.
+
+**And it does not separate shape A from shape B — it separates failures from
+passes.** Both stranded-op runs carry it too, five times each. So the two shapes
+are degrees of one thing rather than two defects: the transport fails to
+establish sessions, and whether that strands a single op or stops everything is a
+matter of how much of the window it covers. It also completes shape A's chain,
+which until now ended at a hypothesis: an accept timeout is exactly what marks a
+peer unresponsive or fails a `send_module`, and `core_publish.rs` then skips or
+drops the op with no retry.
+
+**Two more signatures change what the repair interval actually is.** The same
+logs carry `PeerBehaviorError { ctx: "initiate too soon" }` and
+`Unsolicited Accept message`. So a gossip round can time out at 15s, its late
+Accept be discarded as unsolicited, and the **retry be refused** — and the gate
+on that refusal is `min_initiate_interval_ms`, whose default is **300,000**, not
+120,000. `GOSSIP_REPAIR_WORST_CASE_MS` (145s) therefore covers one *clean* round
+and not the case where a round fails, which means `CONVERGE_WINDOW_MS` at 180s
+may still be short for exactly the runs that need it most. Evidence for that
+reading: run `34671351347` had not converged at 150s, and the shape B runs had
+not at ~210s.
+
+**That is left as an open decision rather than another budget change**, because
+raising the worst case to 300s forces the convergence window past it by the
+harness's own enforced invariant, and a failing run would then spend over five
+minutes in section 3 and as long again in section 5. The cost is real and the
+path is rare; the constant's comment now states what it covers and what it does
+not, which is the part that was wrong rather than the number.
+
+**The diagnostic was the actual defect here.** For ten occurrences the workflow
+dumped these logs and nothing read them — the red tick said "nodeB never
+received it" while the answer sat forty lines down in output that looks like
+noise. `real-gossip` now reads the conductors' logs itself on a failure and
+reports which signatures appear, with what each one means. A failure with **none**
+of them is reported as new rather than filed alongside the known ones, since
+every measured failure so far had at least one.
+
+**What remains genuinely open about shape B is only its trigger**, not its
+mechanism: accept timeouts on a 2-vCPU runner under ten concurrent dispatched
+jobs look like resource starvation, and the clustering fits that, but nothing
+here distinguishes starvation from an iroh-level defect. The five passes
+interleaved with the five failures in the same wave argue against a simple
+"everything was slow at 04:00" story.
+
 **Shape B — five runs in which NOTHING crossed, and it is not a rate.** Every
 failure in the third wave, 5 of 10, each red on 10 checks rather than 1 or 7:
 nothing reached nodeB, the reverse direction failed too, and section 9's paired
