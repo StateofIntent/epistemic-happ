@@ -118,20 +118,21 @@
 #     tell the truth about the protocol underneath it". `notes-ui` stays here
 #     rather than moving there, because it is the promotion gate itself and
 #     moving it would quietly shrink what a green tick on THIS job covers.
-#   - Three of the four multi-node harnesses. `real-gossip` runs in
-#     `.github/workflows/network.yml`; `partition-rejoin` (~1m45s on 0.7, not
-#     the ~5.5 min measured on 0.4.4, and it
-#     stops and restarts a conductor mid-run) and `network-partition` (~25 min,
-#     and it needs iptables in the throwaway namespace `scripts/netns.sh`
-#     builds) do not.
+#   - Two of the four multi-node harnesses. `.github/workflows/network.yml` runs
+#     `real-gossip` and now `partition-rejoin` too (~1m45s on 0.7, and it stops
+#     and restarts a conductor mid-run). Still out: `network-partition` (~25
+#     min, and it needs iptables in the throwaway namespace `scripts/netns.sh`
+#     builds) and `transitive-gossip`.
 #
-#     THIS SAID "TWO OF THE FOUR" AND NAMED `transitive-gossip` AS RUNNING, and
-#     that was true for exactly one commit. It shipped in `network.yml`, failed
-#     its own first CI run against an identical tree, and was taken back out —
-#     see that workflow's header for the bimodal evidence and for what would
-#     settle it. Corrected rather than quietly swapped, because the count moving
-#     is the readable part: a harness leaving CI is the same kind of event as
-#     one arriving, and this file is the only place that recorded neither.
+#     THE COUNT HAS NOW MOVED IN BOTH DIRECTIONS, AND THAT IS THE READABLE PART.
+#     It said "two of the four" and named `transitive-gossip` as running, which
+#     was true for exactly one commit: it shipped in `network.yml`, failed its
+#     own first CI run against an identical tree, and came back out. It then said
+#     three, for as long as `partition-rejoin` was excluded on a runtime measured
+#     under Holochain 0.4.4 and never rechecked — see README §9. Two again now,
+#     for a different reason than the first time. Each move is corrected here
+#     rather than quietly swapped, because a harness leaving CI is the same kind
+#     of event as one arriving, and this file used to record neither.
 #
 #     THE SENTENCE THAT USED TO BE HERE WAS FALSE, and it is worth leaving the
 #     correction in place of it rather than quietly swapping the text. It said
