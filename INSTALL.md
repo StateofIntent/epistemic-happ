@@ -31,6 +31,38 @@ parse the bundle and reports an error about the manifest rather than about
 versions. The desktop builds above replace it — each Holochain app now ships
 its own conductor rather than sharing one installer.
 
+## Phones: not yet, and the reason is upstream
+
+There is no Android or iOS build, and the desktop builds above cannot become
+one — they are [Kangaroo](https://github.com/holochain/kangaroo-electron)
+builds, which is Electron, and Electron does not target mobile at all. A phone
+build would be a **separate** packaging project on Tauri 2 plus
+[`tauri-plugin-holochain`](https://github.com/darksoil-studio/tauri-plugin-holochain),
+which is the Holochain ecosystem's mobile path.
+
+The UI is not what is missing: `mobile-ui/` is already responsive and
+PWA-installable, and already adapts to being hosted rather than configured, so a
+mobile shell would load it unchanged.
+
+What blocks it is a version gap one step upstream of this repository, recorded
+with its date because it is somebody else's release schedule:
+
+- **Holochain 0.7 itself is ready.** It added wasmer's wasmi interpreted
+  backend, which satisfies Apple's rule against hot-loading binaries — the thing
+  that kept Holochain off iOS for years.
+- **The mobile shell is not.** As of **2026-09-12**, `tauri-plugin-holochain`
+  pins `holochain_types = "0.6"`, its branches stop at `main-0.6.1`, and `main`
+  was last updated on 2026-05-15 by merging `main-0.6`. These zomes pin
+  `hdk = "=0.7.0"`, so a 0.6 conductor cannot run them.
+- **iOS specifically is unclear even for 0.6.** Android is supported; every iOS
+  reference is "in development", and that project's own iOS how-to page returns
+  404.
+- **It is source-available rather than open source**, so a licence question sits
+  in front of the technical one.
+
+README.md §9 tracks this, including the two questions worth asking the plugin's
+authors before anybody spends time on it.
+
 ## Four things to know before you install
 
 None of these are reasons not to try it. They are things you would otherwise
