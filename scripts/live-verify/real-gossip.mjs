@@ -38,8 +38,15 @@
 //      nodeB is read for it BEFORE nodeA publishes. This is what rules
 //      out "it was already there" without depending on how fast gossip
 //      happens to be.
-//   3. THE FINDING. nodeA publishes a Claim; nodeB's `get_claims_by_domain`
-//      returns it, having received it over the iroh QUIC transport.
+//   3. THE FINDING, AS TWO PROMISES. nodeA publishes a Claim; nodeB's
+//      `get_claims_by_domain` returns it, having received it over the iroh
+//      QUIC transport. The GATE is that it converges within
+//      CONVERGE_WINDOW_MS. Whether the DIRECT publish landed inside
+//      PROMPT_PUBLISH_MS is reported and warned about but does not fail the
+//      run, because publish has no retry in kitsune2 and an op it drops is
+//      repaired by a gossip round about two minutes later — the substrate
+//      behaving as documented. Conflating the two is what made this harness
+//      red about 7% of the time for a reason nobody could read.
 //   4. IT IS THE SAME ENTRY. The claim nodeB holds is compared field by
 //      field with what nodeA wrote, and its author is nodeA's key.
 //   5. TWO INDEPENDENT READ PATHS. `get_claims_by_agent` on nodeB finds
@@ -132,7 +139,7 @@
 // entry had not crossed at all. Five injections, each on the real network
 // of three conductors, one per message the failure paths can print:
 //
-//   GOSSIP_WINDOW_MS lowered to 100ms, so section 3 cannot win.
+//   The prompt/convergence budgets lowered to 100ms, so section 3 cannot win.
 //   Result: the probe published a fresh claim, watched it cross in 2.1s
 //   alongside the missed one, and reported LATE PATH. Section 4's five
 //   checks then passed on the entry that had arrived during the probe —
@@ -167,6 +174,32 @@
 //
 //   Restored and re-run clean afterwards: all checks green, probe silent
 //   (it runs only when section 3 has already failed).
+//
+// AND THE SPLIT ITSELF WAS WATCHED, all four shapes, on the real network
+// with the budgets scaled down to seconds so each could be produced:
+//
+//   nodeB made blind to the claim for its first 10s, prompt budget 6s.
+//   Result: the prompt budget missed, the probe ran and diagnosed it, the
+//   claim arrived at 10.4s, the CONVERGENCE check PASSED and the run
+//   exited 0 with a ::warning:: on the arrival time. That is the whole
+//   point of the split — the identical run used to be seven reds.
+//
+//   nodeB made blind to the claim permanently.
+//   Result: the convergence check failed, printing that the window is
+//   past what gossip needs at worst, so the substrate being slow is ruled
+//   out by arithmetic rather than by assertion. Exit 1.
+//
+//   CONVERGE_WINDOW_MS put back to 120_000 — the original defect.
+//   Result: SETUP FAILED before anything was published, naming the
+//   inequality and the interval it collides with. The bug this file
+//   shipped with can no longer be reintroduced silently.
+//
+//   nodeC made to claim it had seen the entry, but ONLY while the probe
+//   was running.
+//   Result: two of section 6's control checks went red. Before the probe
+//   sampled the isolated node, that window was 30 seconds in which the
+//   control asserting "nodeC NEVER sees it" was not looking — a hole in
+//   precisely the check that can pass forever while testing nothing.
 //
 // AND THEN THE PROBE MET REAL OCCURRENCES, which corrected it twice.
 // Thirty dispatched CI runs produced seven failures of TWO shapes. Two of
@@ -215,12 +248,45 @@ const NODES = {
   C: { admin: 8895, app: 8894, appId: 'epistemic-net-c' },
 };
 
-// Gossip between two nodes on a local signal server has been observed
-// landing in ~2s. The window is generous because a timeout here should
-// mean "it never arrived", not "the machine was busy" — a flaky red on a
-// harness whose whole job is to distinguish arrival from non-arrival
-// would be worse than useless.
-const GOSSIP_WINDOW_MS = 120_000;
+// TWO PROMISES, TWO BUDGETS, and the numbers come from the substrate rather
+// than from taste. This used to be ONE window of 120s, which was the defect:
+// kitsune2's gossip re-initiates every `initiate_interval_ms` = 120_000 plus
+// up to `initiate_jitter_ms` = 10_000 of jitter, and publishing an op has NO
+// retry — `core_publish.rs` skips a peer marked unresponsive and drops an op
+// whose `send_module` call errors. So a missed first publish can only be
+// repaired by a gossip round, and a single 120s window was racing the exact
+// mechanism that repairs it, with the jitter added on the other side. It lost
+// every time. README.md §9 has the full derivation.
+//
+// PROMPT_PUBLISH_MS asks whether the DIRECT publish landed. Healthy crossings
+// are 2-4s locally and on CI; the slowest arrival ever recorded here is 10.1s,
+// on a loaded runner. 60s is six times that and still half of gossip's first
+// opportunity, so an arrival inside it means the publish path worked rather
+// than that gossip quietly covered for it. A miss is a ::warning::, NOT a
+// failure: an op that publish dropped and gossip repaired is the substrate
+// doing exactly what its own defaults say, and a red tick for that is the
+// flaky-red-meaning-nothing this repository has twice refused.
+//
+// CONVERGE_WINDOW_MS is the one that GATES, because "an entry written on one
+// conductor reaches another" is the invariant this harness exists for. It must
+// clear gossip's whole worst case — 120s interval + 10s jitter + 15s
+// `round_timeout_ms` = 145s — with margin, so 180s.
+//
+// THE COST IS REAL AND IS ACCEPTED: a run where the entry never arrives now
+// spends 180s here and another 180s in section 5, where it used to spend 120s
+// and 120s. Section 5 keeps the SAME budget deliberately — holding one index
+// to a laxer standard than the other was the #131 defect and is not being
+// reintroduced to save three minutes on a path that should be rare.
+const PROMPT_PUBLISH_MS = 60_000;
+const CONVERGE_WINDOW_MS = 180_000;
+// What gossip needs, at worst, before it can repair an op that publish dropped:
+// the 120s initiate interval, up to 10s of jitter, and a 15s round timeout.
+// NAMED AND ENFORCED rather than left in a comment, because
+// `CONVERGE_WINDOW_MS < this` IS the defect this file shipped with for months —
+// the window was 120s against an interval of 120s — and a future edit that
+// lowers the window back under it must fail loudly on the spot instead of
+// quietly restoring a check that cannot pass. See README.md §9.
+const GOSSIP_REPAIR_WORST_CASE_MS = 145_000;
 const POLL_MS = 2_000;
 // How much longer the isolated node is watched AFTER nodeB succeeds. The
 // control's claim is "it never arrives", and a single glance at the
@@ -438,7 +504,7 @@ const peersLine = async (a, b) =>
  * than a failure being masked — section 3's red stands either way, the run
  * stays red, and a crossing this harness WATCHED happen should not be reported
  * as an absence. Section 5 is told about it explicitly for that reason. */
-async function strandedProbe(author, receiver, missedDomain) {
+async function strandedProbe(author, receiver, missedDomain, isolated = null) {
   const PROBE_DOMAIN = `GossipStranded${Date.now()}`;
   const PROBE_CONTENT = `Published on node${author.name} AFTER the window closed, at ${new Date().toISOString()}.`;
   log(`    --- probe: does a fresh op cross now? (${STRANDED_PROBE_MS / 1000}s, domain ${PROBE_DOMAIN}) ---`);
@@ -447,12 +513,13 @@ async function strandedProbe(author, receiver, missedDomain) {
   } catch (e) {
     log(`    probe could not publish at all: ${e.message ?? e}`);
     log(`    which is itself the finding — node${author.name} stopped accepting writes`);
-    return { probeMs: null, missedMs: null, missedArrivedLate: false };
+    return { probeMs: null, missedMs: null, missedArrivedLate: false, isolatedEverSaw };
   }
   const t0 = Date.now();
   let probeMs = null;
   let missedMs = null;
   let missedOnFirstPoll = false;
+  let isolatedEverSaw = false;
   let polls = 0;
   while (Date.now() - t0 < STRANDED_PROBE_MS) {
     polls += 1;
@@ -464,11 +531,21 @@ async function strandedProbe(author, receiver, missedDomain) {
     try {
       probeSeen = (await receiver.call('get_claims_by_domain', PROBE_DOMAIN)).length;
       missedSeen = (await receiver.call('get_claims_by_domain', missedDomain)).length;
+      // The control keeps being watched while this runs. Section 6's claim is
+      // "the isolated node NEVER sees it", and a 30-second hole in the watching
+      // would be a hole in exactly the check that can pass while testing
+      // nothing. The probe's own domain is watched too: nodeC must not see that
+      // either, and it is published during this window rather than before it.
+      if (isolated) {
+        const isoMissed = (await isolated.call('get_claims_by_domain', missedDomain)).length;
+        const isoProbe = (await isolated.call('get_claims_by_domain', PROBE_DOMAIN)).length;
+        if (isoMissed > 0 || isoProbe > 0) isolatedEverSaw = true;
+      }
     } catch (e) {
       log(`    node${receiver.name} stopped answering during the probe: ${e.message ?? e}`);
       log('    so this run cannot say whether the op was stranded — the receiver is down,');
       log('    which is a finding of its own and not the one section 3 was about.');
-      return { probeMs, missedMs, missedArrivedLate: missedMs !== null };
+      return { probeMs, missedMs, missedArrivedLate: missedMs !== null, isolatedEverSaw };
     }
     // WHEN each one arrived, not merely whether — the ORDER is the finding.
     if (missedSeen > 0 && missedMs === null) {
@@ -501,11 +578,12 @@ async function strandedProbe(author, receiver, missedDomain) {
     log(`    node${author.name} to node${receiver.name} works at this moment, so neither discovery nor`);
     log('    the transport explains section 3. One op was not delivered and was not retried.');
   } else if (probeMs !== null && missedOnFirstPoll) {
-    log(`    WINDOW TOO SHORT: the missed claim was already on node${receiver.name} at this probe's`);
-    log(`    first poll, so it crossed within a second or so of the ${GOSSIP_WINDOW_MS / 1000}s window closing.`);
-    log('    Nothing here is stranded and nothing needed repairing — section 3 gave up a');
-    log('    moment too early. Raising the window is still the wrong reflex: what this says');
-    log(`    is that a crossing took just over ${GOSSIP_WINDOW_MS / 1000}s, and THAT is the finding.`);
+    log(`    JUST OVER THE PROMPT BUDGET: the missed claim was already on node${receiver.name} at`);
+    log(`    this probe's first poll, so it crossed within about a second of ${PROMPT_PUBLISH_MS / 1000}s.`);
+    log('    Nothing was stranded and nothing needed repairing — the direct publish was');
+    log('    merely slow, and far too early for a gossip round to be the explanation.');
+    log('    The convergence check below will pass; the warning on the arrival time is');
+    log('    the whole finding.');
   } else if (probeMs !== null && missedMs <= probeMs) {
     log(`    LATE PATH: the missed claim turned up after ${(missedMs / 1000).toFixed(1)}s of this probe,`);
     log(`    no later than the fresh one (${(probeMs / 1000).toFixed(1)}s) — they arrived together.`);
@@ -519,10 +597,12 @@ async function strandedProbe(author, receiver, missedDomain) {
     log(`    STRANDED THEN REPAIRED: the fresh claim crossed in ${(probeMs / 1000).toFixed(1)}s, and the missed`);
     log(`    one followed ${((missedMs - probeMs) / 1000).toFixed(1)}s LATER — ${(missedMs / 1000).toFixed(1)}s into this probe.`);
     log('    The order is the finding: new publishes were crossing in seconds while an op');
-    log(`    already ${GOSSIP_WINDOW_MS / 1000}s old was still undelivered, so the path was NOT down and`);
-    log('    did not "come up". A second mechanism delivered the old one afterwards.');
-    log('    So the op was stranded and then repaired, and the suspect is whatever retries');
-    log('    an op that missed its first delivery — not discovery, and not the transport.');
+    log(`    already ${PROMPT_PUBLISH_MS / 1000}s old was still undelivered, so the path was NOT down`);
+    log('    and did not "come up". A second mechanism delivered the old one afterwards.');
+    log(`    WHICH mechanism is readable from the clock. Gossip's first opportunity is about`);
+    log('    120s after the publish, so a repair seen inside this probe is too early to be');
+    log('    a gossip round — the fetch queue is the candidate, and that is a different');
+    log('    finding from one that lands at 120s or later. README.md §9 has the intervals.');
   } else if (missedMs !== null) {
     log('    The missed claim arrived but the fresh one did not, which no hypothesis here predicts.');
     log('    Worth keeping verbatim: it is the one shape that fits neither story.');
@@ -531,22 +611,63 @@ async function strandedProbe(author, receiver, missedDomain) {
     log('    Section 3 is not about one stranded op — nothing is crossing right now.');
     log('    Sections 8 and 9 below say whether it recovers later in this run.');
   }
-  return { probeMs, missedMs, missedArrivedLate: missedMs !== null };
+  return { probeMs, missedMs, missedArrivedLate: missedMs !== null, isolatedEverSaw };
 }
 
 // Polls `receiver` until the claim shows up, while checking on every
 // iteration that `isolated` still has not seen it. Returns how long
 // arrival took, or null if the window closed first.
-async function awaitGossip(receiver, isolated, domain) {
+/** Reports an arrival time against the prompt budget.
+ *
+ * Every crossing in this file is subject to the same two promises, so the
+ * warning belongs at each of them rather than only at section 3. Without this,
+ * a reverse leg that quietly drifted from 2s to 90s would read as a pass with a
+ * number nobody compared to anything — and 10.1s on a loaded runner is already
+ * the slowest arrival this harness has recorded. */
+function reportArrival(ms, what) {
+  if (ms === null) return;
+  log(`    arrived after ${(ms / 1000).toFixed(1)}s`);
+  if (ms > PROMPT_PUBLISH_MS) {
+    log(`    ::warning::${what} took ${(ms / 1000).toFixed(1)}s, past the `
+      + `${PROMPT_PUBLISH_MS / 1000}s prompt budget — the direct publish did not land and `
+      + 'something else repaired it. See README.md §9.');
+  }
+}
+
+async function awaitGossip(receiver, isolated, domain, opts = {}) {
+  const {
+    windowMs = CONVERGE_WINDOW_MS,
+    promptMs = PROMPT_PUBLISH_MS,
+    onPromptMiss = null,
+  } = opts;
   const t0 = Date.now();
   let isolatedEverSaw = false;
-  while (Date.now() - t0 < GOSSIP_WINDOW_MS) {
+  let promptMissHandled = false;
+  while (Date.now() - t0 < windowMs) {
     const got = (await receiver.call('get_claims_by_domain', domain)).length;
     const iso = (await isolated.call('get_claims_by_domain', domain)).length;
     if (iso > 0) isolatedEverSaw = true;
     const t = ((Date.now() - t0) / 1000).toFixed(0);
     log(`    t+${t}s  node${receiver.name}=${got}  node${isolated.name}=${iso}`);
     if (got > 0) return { ms: Date.now() - t0, isolatedEverSaw };
+
+    // The prompt budget has gone by without an arrival. This is the moment the
+    // diagnosis is worth taking, not the end of the long window: a fresh op
+    // published NOW is being compared against a path that has just been shown
+    // to be slow, and waiting another two minutes first would only make the
+    // comparison less sharp. Whatever the hook observes about the isolated node
+    // is folded in, so the control is not blind while it runs.
+    if (!promptMissHandled && onPromptMiss && Date.now() - t0 >= promptMs) {
+      promptMissHandled = true;
+      const observed = await onPromptMiss();
+      if (observed?.isolatedEverSaw) isolatedEverSaw = true;
+      if (observed?.missedArrivedLate) {
+        // The probe watched it arrive. Trust that rather than waiting for the
+        // next poll to rediscover it.
+        return { ms: Date.now() - t0, isolatedEverSaw, seenByProbe: true };
+      }
+      continue;
+    }
     await sleep(POLL_MS);
   }
   return { ms: null, isolatedEverSaw };
@@ -560,7 +681,7 @@ async function awaitGossip(receiver, isolated, domain) {
  * notices an index that is quietly degrading. */
 async function awaitSecondIndex(receiver, author, content) {
   const t0 = Date.now();
-  while (Date.now() - t0 < GOSSIP_WINDOW_MS) {
+  while (Date.now() - t0 < CONVERGE_WINDOW_MS) {
     const got = await receiver.call('get_claims_by_agent', author);
     if (got.some((r) => claimEntry(r).content === content)) return Date.now() - t0;
     const t = ((Date.now() - t0) / 1000).toFixed(0);
@@ -595,6 +716,18 @@ async function main() {
   // A and B were not on the same DHT the gossip check could never pass; if
   // C WERE on it, the control could never fail; and if any two "nodes"
   // shared an agent key we would be watching one identity talk to itself.
+  if (CONVERGE_WINDOW_MS < GOSSIP_REPAIR_WORST_CASE_MS) {
+    setupFail([
+      `CONVERGE_WINDOW_MS is ${CONVERGE_WINDOW_MS / 1000}s, which is under the `
+        + `${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s gossip needs at worst to repair a dropped publish.`,
+      'A gating check cannot be given less time than the only mechanism that can',
+      'satisfy it. That exact inequality is the defect this harness shipped with:',
+      'a 120s window against kitsune2\'s 120s initiate interval, plus jitter.',
+      'Raise CONVERGE_WINDOW_MS, or change GOSSIP_REPAIR_WORST_CASE_MS only if the',
+      'substrate\'s own defaults have changed — README.md §9 cites them.',
+    ]);
+  }
+
   log('\n--- 1. Preconditions: three real, distinct nodes ---');
   const sameDht = b64(A.dna) === b64(B.dna);
   const isolated = b64(A.dna) !== b64(C.dna);
@@ -643,23 +776,45 @@ async function main() {
     ]);
   }
 
-  const { ms: arrivedMs, isolatedEverSaw } = await awaitGossip(B, C, DOMAIN);
-  // Null unless section 3 missed; see `strandedProbe`. Section 5 reads it.
+  // Null unless the prompt budget was missed; see `strandedProbe`. Section 5
+  // reads it, so it is declared before the wait that may populate it.
   let probe = null;
-  check(`nodeB receives nodeA's claim over the network (within ${GOSSIP_WINDOW_MS / 1000}s)`,
+  const { ms: arrivedMs, isolatedEverSaw } = await awaitGossip(B, C, DOMAIN, {
+    onPromptMiss: async () => {
+      // The peer counts, asked at the moment the prompt budget expired rather
+      // than at the end of the long window. Both above one means they had found
+      // each other and the publish still did not land; a one on either means
+      // this node was alone on the DHT when it mattered.
+      log(`    ${PROMPT_PUBLISH_MS / 1000}s gone without the claim: ${await peersLine(A, B)}`);
+      probe = await strandedProbe(A, B, DOMAIN, C);
+      return probe;
+    },
+  });
+
+  // TWO CHECKS, BECAUSE THEY ARE TWO PROMISES — see PROMPT_PUBLISH_MS above and
+  // README.md §9. The gate is convergence: "an entry written on one conductor
+  // reaches another" is the invariant, and it is the one allowed to turn this
+  // job red. Whether the DIRECT publish landed promptly is reported and
+  // warned about, because publish has no retry in kitsune2 and an op it drops
+  // is repaired by a gossip round roughly two minutes later — the substrate
+  // behaving as documented, which must not read as a broken invariant.
+  check(`nodeB receives nodeA's claim over the network (within ${CONVERGE_WINDOW_MS / 1000}s)`,
     arrivedMs !== null);
-  if (arrivedMs !== null) log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s`);
-  if (arrivedMs === null) {
-    // The whole point of the peer counts. A miss with both nodes knowing about
-    // each other is a gossip problem; a miss with either of them alone on the
-    // DHT is a discovery problem, and the fix for the second lives in
-    // scripts/network.sh rather than in this file. Section 6 below publishes
-    // in the OTHER direction on the same pair of conductors — if that arrives
-    // in seconds after this waited two minutes, discovery is the answer.
-    log(`    after the window: ${await peersLine(A, B)}`);
-    log('    (both counts >1 means they had found each other and gossip still missed;');
-    log('     a count of 1 on either means this node was alone on the DHT when it mattered)');
-    probe = await strandedProbe(A, B, DOMAIN);
+  if (arrivedMs !== null) {
+    log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s`);
+    if (arrivedMs <= PROMPT_PUBLISH_MS) {
+      log(`    the direct publish landed inside ${PROMPT_PUBLISH_MS / 1000}s, so nothing had to repair it`);
+    } else {
+      log(`    ::warning::the direct publish did NOT land inside ${PROMPT_PUBLISH_MS / 1000}s — it took `
+        + `${(arrivedMs / 1000).toFixed(1)}s. Publish has no retry; read section 3's probe above `
+        + 'for whether a gossip round repaired it, and README.md §9 for why this is a warning '
+        + 'rather than a failure.');
+    }
+  } else {
+    log(`    not after ${CONVERGE_WINDOW_MS / 1000}s, and gossip's own worst case for repairing a `
+      + `dropped publish is ${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s `
+      + '(120s interval + 10s jitter + 15s round), so this is not the substrate being slow');
+    log(`    at the end: ${await peersLine(A, B)}`);
   }
 
   // ---- 4. It is the same entry -----------------------------------------
@@ -713,7 +868,7 @@ async function main() {
   // window is a real finding and still fails.
   log('\n--- 5. A second index finds it too ---');
   const byAgentMs = await awaitSecondIndex(B, A.me, CONTENT);
-  check(`nodeB's get_claims_by_agent(nodeA) finds the claim (within ${GOSSIP_WINDOW_MS / 1000}s)`,
+  check(`nodeB's get_claims_by_agent(nodeA) finds the claim (within ${CONVERGE_WINDOW_MS / 1000}s)`,
     byAgentMs !== null);
   if (byAgentMs !== null) {
     log(`    arrived after ${(byAgentMs / 1000).toFixed(1)}s`);
@@ -794,7 +949,7 @@ async function main() {
   await publishClaim(B, REVERSE_DOMAIN, REVERSE_CONTENT);
   const { ms: reverseMs } = await awaitGossip(A, C, REVERSE_DOMAIN);
   check('nodeA receives nodeB\'s claim over the network', reverseMs !== null);
-  if (reverseMs !== null) log(`    arrived after ${(reverseMs / 1000).toFixed(1)}s`);
+  reportArrival(reverseMs, 'the reverse direction');
   const reverseOnA = await A.call('get_claims_by_domain', REVERSE_DOMAIN);
   check('nodeA records the reverse claim\'s author as nodeB',
     reverseOnA.length === 1 && b64(claimEntry(reverseOnA[0]).author) === b64(B.me));
@@ -864,6 +1019,7 @@ async function main() {
   const { ms: pairMs } = await awaitGossip(B, C, PAIR_DOMAIN);
   check('PAIRED CONTROL: a claim published at the same moment DOES reach nodeB',
     pairMs !== null);
+  reportArrival(pairMs, 'the paired control');
 
   // ---- Result -----------------------------------------------------------
   log('');
