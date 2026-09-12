@@ -1260,6 +1260,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Item | Blocked on | Where it is written up |
 |---|---|---|
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
+| Android and iOS builds | **Upstream, not us** — the mobile shell is pinned to Holochain 0.6 and these zomes need 0.7; iOS unclear even there | §9 below, `INSTALL.md` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
@@ -1923,6 +1924,37 @@ each of these is currently exactly that.
 - **`mcp-server` ships no lockfile.** Left open deliberately, since adding one
   changes what a published install resolves; recorded so the omission is not
   read as an oversight by the next person to run `npm install` there.
+- **There is no Android or iOS build, and the blocker is one version upstream.**
+  Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
+  wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
+  binaries, the thing that had kept Holochain off iOS for years. So the substrate
+  is ready and the UI is ready: `mobile-ui/` is responsive, PWA-installable, and
+  already adapts to being hosted rather than configured, so a mobile shell would
+  load it unchanged.
+
+  **What cannot get there is the packaging.** The desktop installers are
+  Kangaroo builds — Electron — and Electron does not target mobile, so this is a
+  separate project on Tauri 2 plus `tauri-plugin-holochain` rather than an extra
+  entry in a build matrix. And as of **2026-09-12** that plugin pins
+  `holochain_types = "0.6"`, its branches stop at `main-0.6.1`, and `main` was
+  last updated 2026-05-15 by merging `main-0.6`. These zomes pin
+  `hdk = "=0.7.0"`; a 0.6 conductor cannot run them. iOS is unclear even at 0.6
+  — Android is supported, every iOS reference says "in development", and that
+  project's own iOS how-to page 404s. It is also source-available rather than
+  open source, so a licence question precedes the technical one.
+
+  **The two questions worth asking its authors before anybody spends time here**
+  are when a 0.7 branch is expected, and whether iOS is shipped or still in
+  development. Both are somebody else's schedule, which is why this is recorded
+  with a date rather than estimated — and why the dated claims above should be
+  re-checked rather than trusted when this is next picked up.
+
+  **Two consequences to weigh even once it is unblocked**, neither of them a
+  packaging problem: mobile nodes run **zero-arc**, so they hold and serve no DHT
+  data and depend on reliable full-arc peers — and cross-internet peer discovery
+  is the one thing this project has never been able to test. And the desktop
+  builds are unsigned today, which is survivable for sideloading and impossible
+  for the App Store.
 
 ### Phase 1: Foundation (Current)
 - [x] Integrity zome with all entry types
