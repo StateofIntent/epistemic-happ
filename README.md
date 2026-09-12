@@ -2049,9 +2049,16 @@ each of these is currently exactly that.
   `get_membranes` and `get_all_constitutions` would each be one global index over
   an unbounded, ever-growing set. `SPEC.md` §10.0 names the question rather than
   answering it, which is correct — but it is a question nobody is tracking.
-- **`mcp-server` ships no lockfile.** Left open deliberately, since adding one
-  changes what a published install resolves; recorded so the omission is not
-  read as an oversight by the next person to run `npm install` there.
+- **`mcp-server` ships no lockfile.** Still open, but for a much smaller reason
+  than the one recorded until now. It was "adding one changes what a published
+  install resolves", which is false — npm never packs `package-lock.json`, so it
+  never reaches an installer. What actually blocks `npm ci` there is that it
+  deletes `node_modules` and installs exactly the lockfile, which cannot coexist
+  with the `npm install --no-save ../agent-sdk` that makes the SDK under test
+  this tree's. So this is a build-reproducibility question about this repository,
+  where the other seven packages all commit a lockfile — not a question about
+  strangers' installs. `mcp-server/README.md` has the full account, including
+  the check that settles it.
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
@@ -2573,7 +2580,7 @@ each of these is currently exactly that.
 
   **`scripts/check-packages.mjs` is green on both packages throughout, and that is not a failure of it.** It installs each tarball into an empty project, imports it, and runs `mcp-server` as a binary until it advertises its nine tools — all of which the broken build does perfectly, because listing tools touches no conductor. The defect lives strictly past the point where a package stops being a package and starts making zome calls, which is exactly the boundary a live harness exists to cross and a packaging check by construction does not. Two checks, two different questions, and the answer to "does it publish, install and import" was never evidence for "does it work".
 
-  **`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` on npm are therefore both unusable against Holochain 0.7, and only a republish fixes it** — a version bump and a publish by someone holding the credentials, which no workflow here can do. Recorded in `agent-sdk/README.md` and `mcp-server/README.md`, where a person installing the package would actually look, rather than only here. `mcp-server` also ships no lockfile, which is why every instruction for it says `npm install` and never `npm ci`; that is left open deliberately rather than closed quietly, since adding one changes what a published install resolves.
+  **`@stateofintent/agent-sdk@0.1.1` and `@stateofintent/mcp-server@0.1.1` on npm are therefore both unusable against Holochain 0.7, and only a republish fixes it** — a version bump and a publish by someone holding the credentials, which no workflow here can do. Recorded in `agent-sdk/README.md` and `mcp-server/README.md`, where a person installing the package would actually look, rather than only here. `mcp-server` also ships no lockfile, which is why every instruction for it says `npm install` and never `npm ci`; that is still open, though not for the reason recorded until now — a lockfile cannot change what a published install resolves, since npm never packs one, and what actually blocks `npm ci` there is that it cannot coexist with the local-SDK install. §9's open-questions list and `mcp-server/README.md` carry that correction.
 
   **A ten-minute non-failure is also now documented in `scripts/sandbox.sh`.** `sandbox.sh start | tail -3` never returns, and it is not a holochain quirk: `start` deliberately leaves a `holochain` process running, that process inherits the script's stdout, and `tail` cannot print until the write end closes — which is held open by a conductor meant to outlive the command. It looks exactly like a conductor that failed to come up, which is the wrong thing to spend the time debugging. The header now says to redirect instead.
 
