@@ -24,12 +24,16 @@
 // below assert the CORRECTED behaviour — they are the regression guard
 // for those indexes, and go red if an index write or read ever breaks.
 //
-// THREE REMAIN chain-local, and the checks below still assert that,
-// because an accurate map of a partly-fixed system is worth more than
-// one that implies the whole class is done: get_critiques_by_mode,
-// get_membranes, get_all_constitutions. Each raises its own design
-// question about whether a global firehose index should exist at all —
-// see SPEC §10.0.
+// TWO REMAIN chain-local, and the checks below still assert that, because
+// an accurate map of a partly-fixed system is worth more than one that
+// implies the whole class is done: get_critiques_by_mode and
+// get_all_constitutions. SPEC §10.0 now answers the design question those
+// three raised, and answers it PER FUNCTION rather than for the class:
+// `get_membranes` is indexed as of this revision and is asserted DHT-wide
+// below, while the other two stay chain-local on their own reasoning —
+// every critique of a mode, and every agent's constitution, are firehoses
+// with no identified reader, and the questions people actually ask are
+// already served DHT-wide elsewhere.
 //
 // THE CONTROL IS THE WHOLE DESIGN. A read returning zero for agent 2
 // proves nothing on its own — the entry might simply not have gossiped
@@ -241,13 +245,18 @@ async function main() {
   log(`  get_critiques_by_mode (query)           -> ${byMode.length}`);
   check('get_critiques_by_mode does NOT see another agent\'s critique', byMode.length === 0);
 
-  // Membranes and constitutions complete the list SPEC §10.0 names, so
-  // that every function called chain-local there is one this harness has
-  // actually observed being chain-local, rather than four observed and
-  // one reasoned about.
+  // MEMBRANES ARE NOW INDEXED, so this assertion is inverted from what it
+  // was: the whole point of the registry is that agent 2 sees a membrane it
+  // did not found. Before the index this returned 0 here and the Domains
+  // tab showed every agent only the domains they had founded themselves.
   const membranes = await agent2.call('get_membranes', null);
-  log(`  get_membranes (query)                   -> ${membranes.length}`);
-  check('get_membranes does NOT see another agent\'s membrane', membranes.length === 0);
+  log(`  get_membranes (get_links, DHT)          -> ${membranes.length}`);
+  check('get_membranes DOES see another agent\'s membrane — the registry index',
+    membranes.length >= 1);
+
+  // Constitutions complete the list SPEC §10.0 names, so that every
+  // function called chain-local there is one this harness has actually
+  // observed being chain-local rather than reasoned about.
 
   const constitutions = await agent2.call('get_all_constitutions', null);
   log(`  get_all_constitutions (query)           -> ${constitutions.length}`);

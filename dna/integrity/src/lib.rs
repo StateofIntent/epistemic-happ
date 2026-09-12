@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -611,6 +611,31 @@ pub enum LinkTypes {
                             // local jargon. Scoping the index per domain
                             // would quietly re-fragment exactly what the
                             // type exists to keep common.
+
+    MembraneRegistry,       // the single membrane anchor -> Membrane.
+                            // SPEC §10.0 left `get_membranes` chain-local
+                            // and asked whether a global index over an
+                            // unbounded set should exist at all. Answered
+                            // there, per function rather than for the
+                            // class of three: yes for this one.
+                            //
+                            // WHAT DISTINGUISHES IT FROM THE TWO THAT
+                            // STAY CHAIN-LOCAL is growth against reader
+                            // need. A Membrane is founded once per
+                            // domain, so this index grows with FOUNDINGS
+                            // and not with activity — strictly slower
+                            // than DomainToClaim, which grows with every
+                            // claim and was accepted without argument.
+                            // And a directory is what discovery IS: you
+                            // cannot join a membrane you cannot find, and
+                            // the Domains tab was showing each agent only
+                            // the membranes they founded themselves.
+                            //
+                            // APPENDED AT THE END DELIBERATELY. Link
+                            // types are position-indexed, so inserting
+                            // one anywhere above would renumber every
+                            // link type after it and silently reinterpret
+                            // every existing link of those types.
 }
 
 // ============================================================================
@@ -1513,6 +1538,14 @@ fn taxonomy_anchor_hash() -> ExternResult<EntryHash> {
     Path::from("critique_species".to_string()).path_entry_hash()
 }
 
+/// The single membrane-registry anchor. Same duplication contract as the
+/// two above: the coordinator carries an identical copy and the two must
+/// not diverge, since a mismatch makes every write land on a base no read
+/// looks at — an index that exists and is empty.
+fn membrane_registry_anchor_hash() -> ExternResult<EntryHash> {
+    Path::from("membranes".to_string()).path_entry_hash()
+}
+
 fn validate_create_link(
     link_type: LinkTypes,
     action: TypedAction<CreateLinkData>,
@@ -1825,6 +1858,41 @@ fn validate_create_link(
         if &species.proposer != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A TaxonomyToSpecies link may only be created by the species' own proposer.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::MembraneRegistry {
+        // The membrane registry. Same three properties as
+        // TaxonomyToSpecies, reading Membrane.creator where that reads
+        // CritiqueSpecies.proposer — the near-miss this file's audit note
+        // warns about, since neither is called `author`.
+        let target_action_hash = ActionHash::try_from(target_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("MembraneRegistry target must be an ActionHash.".into()))
+        })?;
+        let target_record = must_get_valid_record(target_action_hash).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("MembraneRegistry target record not found.".into()))
+        })?;
+        let membrane = match target_record.entry().to_app_option::<Membrane>() {
+            Ok(Some(m)) => m,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MembraneRegistry target is not a Membrane.".into()
+                ))
+            }
+        };
+
+        let expected_anchor = membrane_registry_anchor_hash()?;
+        let declared_anchor = EntryHash::try_from(base_address).map_err(|_| {
+            wasm_error!(WasmErrorInner::Guest("MembraneRegistry base must be an EntryHash anchor.".into()))
+        })?;
+        if declared_anchor != expected_anchor {
+            return Ok(ValidateCallbackResult::Invalid(
+                "MembraneRegistry base is not the membrane registry anchor.".into()
+            ));
+        }
+
+        if &membrane.creator != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A MembraneRegistry link may only be created by the membrane's own creator.".into()
             ));
         }
     }

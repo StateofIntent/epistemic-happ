@@ -1313,7 +1313,22 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
         )));
     }
 
-    create_entry(EntryTypes::Membrane(membrane))
+    let action_hash = create_entry(EntryTypes::Membrane(membrane))?;
+
+    // Index it, so every agent's list of membranes is one list. Without
+    // this, get_membranes reads only the caller's own chain and a domain
+    // founded by anyone else is invisible — which is what the Domains tab
+    // was showing, and the same defect the by-domain index was added to
+    // fix one scale down. See LinkTypes::MembraneRegistry.
+    let registry_anchor = membrane_registry_anchor_hash()?;
+    create_link(
+        registry_anchor,
+        action_hash.clone(),
+        LinkTypes::MembraneRegistry,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+
+    Ok(action_hash)
 }
 
 /// Creates a Membrane WITHOUT create_membrane's pre-checks, so the
@@ -1333,6 +1348,14 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
 /// If this ever SUCCEEDS with empty required_promises or a constitution
 /// that is not the caller's own, the accountability has regressed to
 /// coordinator-side courtesy again.
+///
+/// DELIBERATELY DOES NOT WRITE THE MembraneRegistry LINK, and that is not
+/// the `assert_expertise` omission SPEC §10.0 warns about. That warning is
+/// for functions creating entries meant to be findable; this one creates
+/// entries meant to be REFUSED, and a link whose target validation
+/// rejected could not validate either — `must_get_valid_record` on it
+/// fails. Indexing here would test the link rule instead of the entry rule
+/// it exists to test.
 #[hdk_extern]
 pub fn attempt_unaccountable_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
     create_entry(EntryTypes::Membrane(membrane))
@@ -1369,12 +1392,64 @@ pub fn attempt_false_domain_index(payload: FalseDomainIndexPayload) -> ExternRes
     )
 }
 
+/// Attempts a MembraneRegistry link directly, bypassing create_membrane,
+/// so the integrity zome's three index rules can be watched refusing real
+/// attempts rather than asserted from reading the code.
+///
+/// Same terms as `attempt_false_domain_index` above: the by-domain index's
+/// rules were only believable once each had been seen refusing a real call,
+/// and an index whose validation is untested is a list anyone can write to.
+/// Not an attack surface — every call that would gain anything is refused
+/// by validate_create_link, which is the point. If any of these ever
+/// SUCCEEDS, the registry has become a list rather than an index.
+///
+/// `anchor_override` exists for the wrong-base case: the honest anchor is
+/// computed here, so proving the base is checked needs a way to pass a
+/// different one.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FalseMembraneRegistryPayload {
+    pub membrane_action: ActionHash,
+    pub anchor_override: Option<String>,
+}
+
+#[hdk_extern]
+pub fn attempt_false_membrane_registry(
+    payload: FalseMembraneRegistryPayload,
+) -> ExternResult<ActionHash> {
+    let anchor = match payload.anchor_override {
+        Some(ref other) => Path::from(other.clone()).path_entry_hash()?,
+        None => membrane_registry_anchor_hash()?,
+    };
+    create_link(
+        anchor,
+        payload.membrane_action,
+        LinkTypes::MembraneRegistry,
+        LinkTag::new(Vec::<u8>::new()),
+    )
+}
+
 #[hdk_extern]
 pub fn get_membranes() -> ExternResult<Vec<Record>> {
-    let filter = ChainQueryFilter::new()
-        .include_entries(true)
-        .entry_type(EntryType::App(UnitEntryTypes::Membrane.try_into()?));
-    query(filter)
+    // LINK-ONLY, WITH NO CHAIN-QUERY FALLBACK, and that is normative
+    // rather than incidental — SPEC §10.0 says so for the two indexes that
+    // came before this one and the reason applies unchanged. A union with
+    // the old query would return the caller's own membranes whether or not
+    // the index worked, so on a single-agent conductor — the only kind
+    // this protocol was tested on for most of its life — a broken index
+    // would go on passing every test. That fallback is exactly what hid
+    // this defect.
+    let anchor = membrane_registry_anchor_hash()?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::MembraneRegistry)?, GetStrategy::Network)?;
+
+    let mut membranes = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                membranes.push(record);
+            }
+        }
+    }
+    Ok(membranes)
 }
 
 /// Resolves either hash type (see get_claim's comment on AnyDhtHash) down
@@ -3343,6 +3418,15 @@ fn domain_anchor_hash(domain: &str) -> ExternResult<EntryHash> {
 fn taxonomy_anchor_hash() -> ExternResult<EntryHash> {
     let path = Path::from("critique_species".to_string());
     Ok(path.path_entry_hash()?)
+}
+
+/// The coordinator's copy of the membrane-registry anchor. Must stay
+/// identical to the integrity zome's — see that file's note. A divergence
+/// here writes links to a base nothing reads and leaves `get_membranes`
+/// returning an empty list that looks exactly like a network with no
+/// membranes.
+fn membrane_registry_anchor_hash() -> ExternResult<EntryHash> {
+    Path::from("membranes".to_string()).path_entry_hash()
 }
 
 fn extract_domain_tag(record: &Record) -> ExternResult<String> {
