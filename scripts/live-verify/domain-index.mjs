@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 // ============================================================================
 // scripts/live-verify/domain-index.mjs — the by-domain index works, and
-// cannot be poisoned.
+// cannot be poisoned. Since grown to cover all three global indexes: the
+// by-domain one it is named for, the critique taxonomy (2b) and the
+// membrane registry (2c). The name is now narrower than the file; kept
+// because the workflows, README and SPEC all reference it by this path,
+// and a rename buys nothing a comment does not.
 //
 // This is the fix for what read-scope.mjs proved: get_claims_by_domain
 // was a source-chain query, so browsing a domain returned only your own
@@ -265,12 +269,66 @@ async function main() {
     check('a species was visible to adopt', false);
   }
 
+  // ---- 2c. The membrane registry, the third index and the newest -----
+  // SPEC §10.0 left get_membranes chain-local and asked whether a global
+  // index over an unbounded set should exist. Answered per function there:
+  // yes for this one, because a membrane is founded once per domain — so
+  // the index grows with foundings, not with activity — and because a
+  // directory IS discovery. Same three rules as the two above, and worth
+  // the same three refusals: agent 2 seeing agent 1's membrane is only an
+  // improvement if agent 2 cannot also invent one.
+  log('\n=== 2c. The membrane registry is one registry, and refuses false entries ===');
+
+  const membraneDomain = `Registry${Date.now()}`;
+  const membraneAction = await agent1.call('create_membrane', {
+    domain: membraneDomain,
+    description: 'A membrane founded to test the registry index.',
+    required_promises: ['distinguish_observation_from_inference'],
+    validation_rules_hash: null,
+    creator: agent1.me,
+    created_at: nowMicros(),
+    constitution: constitutionAction,
+  });
+
+  const seenByAgent2 = await agent2.call('get_membranes', null);
+  check('agent 2 sees a membrane agent 1 founded — the registry works across agents',
+    seenByAgent2.length >= 1);
+
+  await expectRefusal(
+    'one agent cannot index another agent\'s membrane',
+    () => agent2.call('attempt_false_membrane_registry', {
+      membrane_action: membraneAction, anchor_override: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a non-Membrane entry cannot be indexed as a membrane',
+    () => agent1.call('attempt_false_membrane_registry', {
+      membrane_action: constitutionAction, anchor_override: null,
+    }),
+  );
+
+  // The base check, which the single-anchor indexes need and the
+  // by-domain index gets for free from deriving its anchor: without it the
+  // link type could be hung off any base at all and the registry would be
+  // one of several competing lists.
+  await expectRefusal(
+    'a membrane cannot be indexed under a base that is not the registry anchor',
+    () => agent1.call('attempt_false_membrane_registry', {
+      membrane_action: membraneAction, anchor_override: 'not_the_membranes_anchor',
+    }),
+  );
+
   // ---- 3. Nothing got poisoned in the attempt -------------------------
   log('\n=== 3. The index is unchanged after all three attempts ===');
   const after = await agent2.call('get_claims_by_domain', DOMAIN);
   check('still exactly the two real claims', after.length === 2);
   const other = await agent2.call('get_claims_by_domain', OTHER_DOMAIN);
   check('the domain the poisoning targeted is still empty', other.length === 0);
+
+  const registryAfter = await agent2.call('get_membranes', null);
+  check('the membrane registry still holds exactly the one real membrane',
+    registryAfter.length === 1);
 
   log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);
