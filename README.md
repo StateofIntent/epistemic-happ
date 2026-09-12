@@ -975,22 +975,87 @@ run. What is open is one item, and it is not blocked on effort:
 - **The `real-gossip` forward-leg intermittency is open again, with a narrower
   suspect than it has ever had.** Its third occurrence ruled out peer discovery
   — the standing hypothesis — using counts taken before the publish, and it is
-  recorded in full further down this section. It is blocked on **a recurrence**,
-  and the harness now carries the probe that will name the cause when one comes.
-  Nobody can usefully sit down and work on it until CI goes red again.
+  recorded in full further down this section. **It is no longer blocked on a
+  recurrence — two were provoked, and they agree with each other.** The suspect
+  is now op delivery and retry, which is readable code rather than a wait. The
+  same batch also turned up a second, unexplained failure shape in which nothing
+  crossed at all; both are below, and they are deliberately not pooled.
 
-**So the next action on it is a reading rather than a change, and it is worth
-saying exactly what to read.** When `network` next goes red, the answer is in
-section 3's output, not section 5's: the probe prints `STRANDED OP`, `LATE PATH`
-or `NO PATH YET`, and those are three different defects in three different
-places. `STRANDED OP` confirms the standing hypothesis and points at op
-publication and retry; `LATE PATH` makes it a readiness problem and sends the
-fix to `scripts/network.sh`, which starts the nodes; `NO PATH YET` says the
-whole path was down at that moment and that sections 8 and 9 are the next thing
-to read. Section 5's lines are about the by-agent index only and have already
-misled once. #135 shipped that probe, and its own `network` run was green, which
-says nothing either way — a job that fails about once a day passes most times it
-runs, and that is the whole difficulty.
+**The flake was provoked rather than waited for: 30 dispatched runs, 7 failures
+— and they are TWO different shapes that must not be pooled.** `network.yml` was
+dispatched 30 times in three waves of ten, one throwaway ref per run because its
+concurrency group is per-ref and same-ref dispatches cancel each other. Pooling
+those 7 into "23%" would be the most misleading number this section could print.
+
+**Shape A — the historical flake, and the probe's signature for it held twice.**
+One failure in each of the first two waves, 2 of 30:
+
+| Run | Fresh claim | The missed claim |
+|---|---|---|
+| `34671043317` | crossed in **2.0s** | turned up **12s after the fresh one**, ~134s after its own publish |
+| `34671351347` | crossed in **2.0s** | never arrived, through 30 more seconds of probing |
+
+In both, new publishes were crossing in two seconds while an op already two
+minutes old sat undelivered, with peer counts at `2` and `2` before the publish.
+For these two occurrences discovery is out, the transport is out, and "the path
+was down and came back" is out — a path coming up would have delivered both
+claims in the same poll, and in the first run the fresh claim beat the old one by
+twelve seconds. **The suspect is the delivery and retry of an op that missed its
+first attempt**, which is readable code rather than a wait. That is two
+occurrences agreeing, not a proof: n is 2.
+
+**Shape B — five runs in which NOTHING crossed, and it is not a rate.** Every
+failure in the third wave, 5 of 10, each red on 10 checks rather than 1 or 7:
+nothing reached nodeB, the reverse direction failed too, and section 9's paired
+control failed. They published **within 12 seconds of each other** (04:00:12 to
+04:00:24), and the five runs that PASSED in that same wave are interleaved with
+them by start order — so this is neither a clean time window nor five
+independent samples, and it is excluded from the rate above rather than added to
+it. It is unexplained. Candidates, none confirmed: an artifact of dispatching 30
+runs from one account inside 20 minutes, or a hosted-runner window. **What makes
+it worth recording anyway is that all five reported `nodeA knows of 2 peer(s),
+nodeB knows of 2` while carrying nothing in either direction for over two
+minutes.** That is the sharpest evidence yet for the caveat stated above — the
+count is bootstrap knowledge, not a working session — and it is a shape this
+harness had never recorded before.
+
+**So the rate is about 7% for the shape that has been failing all along** (2 in
+30), consistent with "about once a day". And the method carries its own warning:
+dispatched runs on a quiet account need not reproduce the contention profile of
+the pull-request queue where this flake has historically appeared, and wave three
+is a concrete reason to distrust any rate pooled out of such a batch.
+
+**The first of those two occurrences also corrected the probe, which is the
+second time in two days a diagnostic here has been caught asserting a cause its
+own numbers contradicted.** It printed `LATE PATH` — "the path came up some time
+after the publish and then carried both" — beside timestamps showing the twelve
+second gap in the wrong direction. So "both arrived" is three shapes, separated
+by the ORDER of the two arrivals, which was already being measured and thrown
+away:
+
+- **`WINDOW TOO SHORT`** — the missed claim was already there at the probe's
+  first poll, so it crossed within about a second of the window closing.
+- **`LATE PATH`** — it arrived no later than the fresh claim. Consistent with a
+  path that was down and came up, carrying both; the fix would be in
+  `scripts/network.sh`.
+- **`STRANDED THEN REPAIRED`** — it arrived *after* the fresh claim. The live
+  path was working the whole time and a second mechanism delivered the old op
+  later. This is what the real occurrence was.
+
+**The second occurrence corrected a different line, and this one was mine to
+own.** Section 5's poll printed `by-agent=1` for two solid minutes next to a
+failing check. That index is keyed on the **author**, and the probe publishes as
+the same author, so the count included the probe's own claim — the probe's fresh
+*domain* keeps it out of the by-domain sections, and the comment claiming it
+"cannot contaminate sections 4 to 7" was too strong. The check was never wrong,
+because it matches on content; the number printed beside it was. It now reads
+`by-agent=N, none of them this run's claim`.
+
+**So the next action is a reading of section 3's output, not section 5's.** The
+probe prints one of five verdicts and they point at different files:
+`STRANDED OP` and `STRANDED THEN REPAIRED` at op publication and retry;
+`LATE PATH` and `WINDOW TOO SHORT` at node readiness and `scripts/network.sh`;
+`NO PATH YET` at sections 8 and 9 for whether it recovers at all.
 
 **So the next thing to look at is still not code that anybody can simply sit
 down and write.** Everything left is waiting on a person, waiting on an
@@ -1534,10 +1599,20 @@ domain so it cannot contaminate the later sections — and watches both for 30
 seconds:
 
 - **`STRANDED OP`** — the fresh claim crosses, the missed one stays missing. The
-  hypothesis above, confirmed: one op lost, network fine.
-- **`LATE PATH`** — both turn up. Section 3's window was not long enough for
-  whatever had to happen first, and the fix is a readiness signal rather than a
-  lost op.
+  hypothesis above, confirmed: one op lost, network fine. **Seen for real** in
+  run `34671351347`.
+- **`STRANDED THEN REPAIRED`** — the fresh claim crosses and the missed one
+  follows it some seconds later. The live path was working throughout, so a
+  second mechanism delivered the old op afterwards. **Seen for real** in run
+  `34671043317`, where the gap was twelve seconds; this shape is the reason the
+  next two entries exist, because the first version of this list called it
+  `LATE PATH` and said the path had "come up".
+- **`WINDOW TOO SHORT`** — the missed claim was already there at the probe's
+  first poll. Nothing stranded, nothing repaired; section 3 gave up about a
+  second early, and the finding is that a crossing took just over the window.
+- **`LATE PATH`** — the missed claim turns up no later than the fresh one, so
+  they arrived together. Consistent with a path that was down and came up, and
+  the fix would be a readiness signal rather than anything about lost ops.
 - **`NO PATH YET`** — neither. Nothing is crossing at that moment, and sections
   8 and 9 say whether it recovers.
 
