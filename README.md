@@ -1399,7 +1399,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | ~~The `notes-live` `joinAs` intermittency~~ | **Done** — the diagnostic named it on its third occurrence; cause fixed | §9 below, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `hud-layer` typing intermittency~~ | **Done** — the draft fix was half of it; the caret was the other half | §9 below, `mobile-ui/README.md` |
 | ~~Protocol versioning~~ | **Done** — declared, enforced, and live-verified | `SPEC.md` §11.1–§11.2, §9 below |
-| Migration across a fork | **A decision** — whether provenance is an entry type or stays outside | `SPEC.md` §11.3 |
+| Migration across a fork | **Decided, not built** — provenance is in-protocol, on the correlative-witness pattern `FederationRecord` already establishes; the entry type waits for the migration tooling so one fork carries both | `SPEC.md` §11.3 |
 | **Sybil resistance** | **Nothing — it is an accepted ceiling**, not unfinished work | §2.3, `SPEC.md` §7 |
 | ~~Retrying the binary download in CI~~ | **Done** — `scripts/ci/install-holochain.sh` | §9, this section |
 
@@ -2767,6 +2767,18 @@ each of these is currently exactly that.
   **This forks the network, and the version says so.** A new link type is an integrity-zome change, so the DNA hash changes (§11.1) — old and new peers never gossip and no in-place migration exists. `PROTOCOL_VERSION` and `dna/dna.yaml` both go to **2**, per §11.2's rule that any integrity change altering what is accepted MUST bump it. `protocol-version.mjs` confirms the pair is coherent, including that a DNA misdeclaring itself is refused every write while still answering the question that explains why.
 
   **Evidence.** `read-scope.mjs` asserted `get_membranes` does NOT see another agent's membrane; that assertion is inverted and passes — two real agents, agent 2 seeing a membrane agent 1 founded, where it saw zero before. `domain-index.mjs`, `trust-lenses.mjs` and `membranes-ui.mjs` all green against the repacked hApp, each on its own clean conductor.
+
+- [x] **SPEC §11.3's open question was answered twice before it was asked, by this protocol's own shipped entry types.** The decision is recorded; the entry type is deliberately not built yet.
+
+  **The question.** Whether provenance across a fork belongs *in* the protocol — an entry saying "this is a re-publication of something I authored on network X" — or entirely outside it. §11.3 recorded three objections to the in-protocol option: it talks about a network the reader cannot query, §5.3 cannot check its reference, and its only purpose is that talk.
+
+  **Every one of those objections describes something §2.11 and §2.12 already do.** `BridgeRecord.twitter_id` references a platform this DHT cannot query at all, and §2.11 documents the asymmetric-witness limitation instead of treating it as disqualifying. `FederationRecord` is the exact shape needed: it references **a different Holochain network**, by fields its own definition calls "an opaque, out-of-band reference — never a real Holochain hash on THIS DHT", one-sided by construction, with reciprocity pushed to an external witness that has queried both sides. Fork provenance is that situation with the remote network being this network's own predecessor. **So the answer is in-protocol, on the correlative-witness pattern, and the question was open because nobody had connected it to the pattern rather than because the merits were close.**
+
+  **This is the second time today that a question recorded as open turned out to be answerable from precedent the document did not cite** — §10.0's index question was the first, where treating three unlike reads as one class kept it open. Worth naming as a pattern: this repository is unusually good at recording what it has not decided, and that creates a specific failure mode where a recorded question acquires standing and stops being re-examined against what shipped since.
+
+  **What it inherits.** The record's `author` MUST be the migrating agent (§5.2), so provenance can only ever be self-asserted — the same rule that makes migration voluntary and partial. And it MUST NOT be presented as evidence the referenced entry existed or was valid; it is one agent's statement about a network the reader cannot query.
+
+  **Deliberately not built, and for fork economics rather than doubt about the decision.** A new entry type is an integrity change, so it forks the network again — and forking to ship a type no agent yet writes spends the network's identity on nothing. It rides along with the migration tooling that would use it, so one fork carries both. §11.1 says a coordinator-only change should not be batched into an integrity change; this is that rule's converse.
 
 - [ ] **Pre-registration (commit-reveal) — the real question the privacy investigation surfaced, recorded rather than built.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
