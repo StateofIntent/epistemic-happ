@@ -1063,6 +1063,50 @@ implied by a constant: a run that fails with `initiate too soon` in its logs and
 no convergence may simply have run out of allowance, and the harness now prints
 that signature so the reader can tell.
 
+**The widened window was vindicated and its residue reached, by the same run,
+within minutes of shipping it.** The very first CI run carrying the 330s window
+([#143](../../pull/143), `34676896521`) failed, and it is worth more than a green
+one would have been:
+
+| Section | What happened |
+|---|---|
+| 3, the gate | **never converged**, through the full 330s |
+| 3, the probe at 60s | `NO PATH YET` — neither the fresh claim nor the missed one |
+| 3, the log scan | nodeA 1 x accept timeout, 1 x `database is locked`; **nodeB 4 x accept timeout and 5 x `initiate too soon`** |
+| 8, the reverse leg | **passed, after 215.2s** |
+| 9, paired control | passed — the network recovered later in the run |
+
+**215.2 seconds is the measurement that justifies the ceiling**, and it is an
+accident of timing that it exists at all: a reverse leg taking 215s would have
+FAILED under the old 120s window and been inexplicable under the old 145s figure.
+Raised to 300s the same afternoon, it passed and was reported as a warning. So
+the decision to widen is no longer an argument from the substrate's defaults —
+there is a crossing in the record that needed more than both of the previous
+numbers and less than the new one.
+
+**And the gap the ceiling deliberately leaves is not theoretical. It is what
+failed this run.** Five `initiate too soon` refusals on nodeB is an exhausted
+burst allowance — 15 initiations per peer per 600s — and with the retries refused
+the op had no mechanism left inside 330s. Until this run, "an exhausted burst
+allowance reaches toward 600s" was a reading of `burst.rs`; it is now a thing
+that has happened, in the first failure after the change, which is a different
+kind of fact and should not be left filed as a cautious aside.
+
+**The next run, on an identical tree, crossed in 6.1 seconds** with the direct
+publish landing and the probe silent. That pair — 330s of nothing, then 6.1s —
+is this intermittency's whole character in two consecutive runs, and it is now
+legible from the output alone rather than from a bare red tick.
+
+**What this leaves open is a question rather than a defect, and it is the same
+question one level deeper.** A convergence failure carrying `initiate too soon`
+is the substrate's own rate limiter behaving exactly as designed — which is the
+argument that already moved a slow direct publish from a failure to a warning. So
+the honest options are to report burst exhaustion as an outcome rather than gate
+on it, or to widen past 600s and accept failing runs over twenty minutes long.
+**The second is not recommended**, and neither is being taken here: the evidence
+for the first is one occurrence, and one occurrence is what this section has
+twice been wrong to act on.
+
 **The diagnostic was the actual defect here.** For ten occurrences the workflow
 dumped these logs and nothing read them — the red tick said "nodeB never
 received it" while the answer sat forty lines down in output that looks like
@@ -1335,6 +1379,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
 | ~~The `real-gossip` forward-leg intermittency~~ | **Done** — cause found in the substrate, and the check split into a gating convergence budget and a warned-about prompt-publish budget | §9 below, `scripts/live-verify/real-gossip.mjs` header |
+| Whether an exhausted gossip burst allowance should gate | **One occurrence** — it is the substrate rate-limiting as designed, but the evidence is a single run and that is what this section has twice been wrong to act on | §9 below |
 | Pre-registration (commit–reveal) | **A stated need** — nobody has asked | §9 item below |
 | Surfacing the last coordinator functions | **A new argument** — not a queue position | §9 item below |
 | ~~The `notes-layer` X-Forwarded-For intermittency~~ | **Done** — the recurrence came, and named a real defect underneath | §9 below, `notes/README.md` |
