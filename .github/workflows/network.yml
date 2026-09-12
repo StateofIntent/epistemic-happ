@@ -50,7 +50,7 @@
 # is wrong and changing it: a step named "Cache the ..." that visibly rebuilds
 # looks exactly like a broken cache and usually is not one.
 #
-# WHAT RUNS — one harness, asking a question with no other home here:
+# WHAT RUNS — two harnesses, each asking a question with no other home here:
 #
 #   - `real-gossip` — an entry written on nodeA reaches nodeB over a real iroh
 #     QUIC network. nodeC is the CONTROL and is the reason this is evidence
@@ -64,6 +64,26 @@
 #     "it simply had not gossiped yet". Here there is gossip, and it still
 #     does not carry them. 47s of harness time locally, 67s as a whole step
 #     with the network bring-up in front of it.
+#
+#   - `partition-rejoin` — two conductors each write history the other cannot
+#     see, and on rejoining converge on both, in both directions, while an
+#     isolated conductor sees none of it. This is the only automated check that
+#     a node which was OFFLINE while the network moved on catches up at all.
+#     It drives `network.sh stop-node`/`start-node` itself mid-run.
+#
+#     IT IS HERE BECAUSE THE COST WAS WRONG, NOT BECAUSE THE BUDGET GREW. This
+#     file excluded it "for cost" at about five and a half minutes, a figure
+#     measured under Holochain 0.4.4 and carried forward unchecked; the same
+#     harness measures ~1m45s on 0.7, twice, and README §9 has why — the five
+#     minutes was a `kitsune_p2p_types` 0.4.4 per-peer error backoff that
+#     kitsune2 0.5 does not have. At the real figure the cost argument does not
+#     survive, and nothing else here asks its question.
+#
+#     Hardened first rather than simply switched on: its wait loops used to be
+#     killed by a single unanswered read, and no exit path put the network back
+#     after it had stopped a conductor, so a failure left the NEXT harness
+#     broken. Both are fixed and each was watched failing before and passing
+#     after.
 #
 # WHAT DELIBERATELY DOES NOT RUN, with its real cost rather than a guess:
 #   - `transitive-gossip` — IT WAS IN THIS JOB AND CAME BACK OUT, which is the
@@ -86,20 +106,23 @@
 #     fast machine always wins. FOUR conductors plus two services on two vCPUs
 #     is where that would first show.
 #
-#     That is a hypothesis and it has not been confirmed, so nothing is being
-#     fixed on the strength of it and the client timeout is NOT being widened —
-#     the same rule this repository already applied to the notes-ui
-#     intermittency, and the reason a red tick here stays worth reading. One
-#     failure in two runs is not a gate. It goes back in when something makes
-#     it deterministic, or when the race is demonstrated and closed.
+#     THAT HYPOTHESIS HAS SINCE BEEN TESTED AND IS NOT SUPPORTED, and this
+#     paragraph is left standing because the reasoning in it was the right
+#     shape and only the conclusion was wrong. A node generated fresh into a
+#     running network and called immediately answered inside 10s, which is the
+#     readiness race not happening. Four hypotheses in total were falsified by
+#     experiment; README §9 lists them so nobody repeats them, and the cause is
+#     still unknown. What IS known is that a node can hold the right DNA hash
+#     and exchange nothing with anybody, and that the harness now says so as a
+#     named setup failure instead of blaming the protocol.
 #
-#   - `partition-rejoin` — about 1m45s on Holochain 0.7, and NOT the five and a
-#     half minutes this bullet claimed until now, which was measured on 0.4.4
-#     and is corrected in README §9. It drives `network.sh
-#     stop-node`/`start-node` itself to take a conductor offline mid-run. Left
-#     out for cost, and now also because it starts and stops conductors the way
-#     the harness above appears to trip over. At the corrected figure the cost
-#     argument is much weaker than it reads here.
+#     Its two run-killers are also fixed since — an unanswered read no longer
+#     aborts a wait that has budget left, which is the exact `call_zome`
+#     timeout that removed it from this job. So the reason it is still out is
+#     narrower than it was: not that a known failure is fatal, but that nobody
+#     has watched it pass here repeatedly since. One failure in two runs was
+#     never a gate, and the client timeout is still NOT widened.
+#
 #   - `network-partition` — about twenty-five minutes on 0.7, because
 #     reconciling entries written during a partition took ~930s in each
 #     direction once the link healed. It also installs `iptables` AND
@@ -142,7 +165,17 @@ concurrency:
 jobs:
   network:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # RAISED FOR THE WORST CASE, NOT THE TYPICAL ONE. This job took 3m35s with
+    # real-gossip alone, and partition-rejoin measures 1m45s locally — so the
+    # expected total is well under ten minutes even allowing for two vCPUs being
+    # slower than a development machine. The timeout is not sized from that.
+    # partition-rejoin calls `awaitConvergence` TWICE with a 600s window each,
+    # so a run that is slow but legitimately passing can want twenty minutes of
+    # its own, and a job timeout it could reach would kill a passing run and
+    # report it as a failure — the flaky-red-meaning-nothing this repository has
+    # repeatedly refused. 45 leaves room for both windows, real-gossip, and two
+    # network bring-ups.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -237,6 +270,16 @@ jobs:
         run: |
           scripts/network.sh clean && scripts/network.sh start
           node scripts/live-verify/real-gossip.mjs
+
+      # partition-rejoin drives `network.sh stop-node`/`start-node` ITSELF, mid
+      # harness, which is why it gets its own clean network rather than sharing
+      # real-gossip's: it ends by restarting what it stopped, and a harness that
+      # inherits a network another harness was halfway through repairing is the
+      # one-conductor-per-harness rule being broken in a subtler way than usual.
+      - name: partition-rejoin — a node offline while history was written catches up on rejoining
+        run: |
+          scripts/network.sh clean && scripts/network.sh start
+          node scripts/live-verify/partition-rejoin.mjs
 
       # Three conductors and two services failing to come up looks identical to
       # a harness failing, from the step's exit code alone.
