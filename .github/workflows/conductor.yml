@@ -378,6 +378,14 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
 
+      # The denominator is the gate here, not the commit-reveal. A
+      # commit-reveal that merely works is the dangerous version -- see
+      # README.md §9 on why this primitive was withheld for so long.
+      - name: pre-registration — commit-reveal refuses what would launder a record
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/pre-registration.mjs
+
       - name: mew-lifecycle — the bridge's zome surface, Mew through to Claim
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
