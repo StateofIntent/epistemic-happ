@@ -130,6 +130,34 @@
 //   catch-up 55.3s in both directions. (The 23 recorded above is from an
 //   earlier commit and is left as written; 25 is what this run measured.)
 //
+//   --- the dwell cap, and the defect the FIX itself shipped ---
+//
+//   Injection: base.ms forced to 396_000, the real figure from CI run
+//   37266214567 on main.
+//   Result, FIRST VERSION OF THE FIX: the new baseline check went red and
+//   the dwell capped at 300s as intended — AND THE DIVERGENCE CHECK PRINTED
+//   A CLEAN PASS, labelled "after long enough that it would have arrived",
+//   on a run where the dwell was 300s and the crossing takes 396s. That
+//   label was false and the line read as a sound result. It is the failure
+//   mode recorded at the top of this block, committed a second time by the
+//   change written to guard against it: capping a derived value is not
+//   enough on its own, because every claim derived from it has to be
+//   re-examined too. Found by running the injection, not by reading it.
+//   Result, AFTER THE FIX: the divergence line reports INCONCLUSIVE and is
+//   counted as neither pass nor failure. Passing it would be a lie; failing
+//   it would double-count one cause, since the run is already red on the
+//   baseline check, which is the thing actually wrong.
+//
+//   Restored and re-run on the healthy path: 26 checks green, dwell 25s from
+//   a 5.1s baseline, catch-up 50.3s / 40.2s. 26 rather than 25 because the
+//   baseline check is new; the dwell on a healthy run is unchanged.
+//
+//   Why the baseline check is the one that fails, rather than this being
+//   handled by a longer budget: a dwell long enough to be sound after a
+//   396s baseline is 1980s, and that does not fit the job. A runner that
+//   cannot measure the property should say so in seconds, not sleep for 33
+//   minutes and then report a pass.
+//
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -173,6 +201,38 @@ const NODES = {
 // was on course to report a convergence failure that would really have been
 // impatience, which is why a too-short timeout is worse than no result.
 const CONVERGE_WINDOW_MS = 600_000;
+
+// AN UNBOUNDED MULTIPLIER ON A MEASURED VALUE ALMOST ATE A WHOLE JOB.
+//
+// The dwell below was `base.ms * 5` with no ceiling, on the reasoning that a
+// dwell derived from a real crossing beats a guessed one. That reasoning is
+// right and is kept. What it did not account for is a PATHOLOGICAL baseline.
+//
+// On 2026-10-05, run 37266214567 on main, Phase 0 took 396.0s to cross
+// nodeA -> nodeB with both nodes up and nothing partitioned. Five times that
+// is 1980s, so the harness then slept 33 MINUTES, and the job finished in
+// 44.1 of its 45 allotted minutes — 53 SECONDS OF MARGIN. (Phases 3 and 4
+// share one clock, so the waits after the dwell are one window and not two;
+// the cap does not make the worst case comfortable, only bounded.) A baseline ten per
+// cent slower would have hit the ceiling, and a job killed at the ceiling
+// reports a bare timeout: no harness summary, no restore step, and none of
+// the instrumentation this file carries for exactly that moment.
+//
+// So the dwell is capped. But capping it alone would quietly reintroduce the
+// defect this file's own negative-evidence block records: the divergence
+// check is only meaningful if the dwell OUTLASTS gossip, and a dwell shorter
+// than the measured crossing makes "after long enough that it would have
+// arrived" false. Passing it then would be a label claiming more than its
+// assertion tests, which is this directory's named failure mode.
+//
+// Hence the pair. The dwell is bounded, AND a baseline too slow for a sound
+// 5x dwell inside the budget is itself a failed check rather than 33 minutes
+// of silence. That is the honest report: this runner could not measure the
+// property today, and the reason is named. It also makes the 396s visible —
+// the real news in that run, which scrolled past as one unremarkable line
+// while the 33-minute sleep looked like the anomaly.
+const DWELL_CAP_MS = 300_000;
+const MAX_SOUND_BASELINE_MS = DWELL_CAP_MS / 5;
 const POLL_MS = 5_000;
 
 // WATCH PAST THE WINDOW BEFORE GIVING UP, for the reason real-gossip.mjs's own
@@ -556,12 +616,50 @@ async function main() {
   // network, and we wait several times that before asserting absence. If
   // the nodes were in fact connected, the claim would have arrived well
   // inside the window.
-  const dwellMs = Math.max(15_000, base.ms * 5);
-  log(`    waiting ${(dwellMs / 1000).toFixed(0)}s before asserting absence — ${(base.ms / 1000).toFixed(1)}s was enough to cross in Phase 0 ...`);
+  //
+  // See DWELL_CAP_MS. The 5x ideal is kept, bounded, and the baseline that
+  // would have made it unaffordable is reported rather than slept through.
+  const soundBaseline = base.ms <= MAX_SOUND_BASELINE_MS;
+  check(`the baseline is fast enough to measure divergence inside the job budget (<= ${MAX_SOUND_BASELINE_MS / 1000}s)`, soundBaseline);
+  if (!soundBaseline) {
+    log(`    ::warning::THE BASELINE CROSSED IN ${(base.ms / 1000).toFixed(1)}s, with both nodes up and`);
+    log(`    nothing partitioned. A sound dwell is 5x that = ${(base.ms * 5 / 1000).toFixed(0)}s, which does not fit`);
+    log(`    this job alongside the ${CONVERGE_WINDOW_MS / 1000}s convergence waits that follow it. The dwell is capped at`);
+    log(`    ${DWELL_CAP_MS / 1000}s and the divergence assertion below is WEAKER THAN DESIGNED — nodeB showing`);
+    log(`    zero may mean the claim has not arrived yet rather than that the partition held.`);
+    log(`    ::warning::THE ${(base.ms / 1000).toFixed(1)}s IS THE FINDING, not this cap. real-gossip's own window is`);
+    log(`    ${330}s, so a crossing this slow is a FAILURE over there and was only recorded here`);
+    log(`    because this harness budgets ${CONVERGE_WINDOW_MS / 1000}s. It is evidence that the op arrives late`);
+    log(`    rather than never — the question README §9 left open — and one occurrence is not`);
+    log(`    a distribution, so record it beside the others before changing any window.`);
+  }
+  const dwellMs = Math.min(Math.max(15_000, base.ms * 5), DWELL_CAP_MS);
+  log(`    waiting ${(dwellMs / 1000).toFixed(0)}s before asserting absence — ${(base.ms / 1000).toFixed(1)}s was enough to cross in Phase 0${dwellMs === DWELL_CAP_MS && base.ms * 5 > DWELL_CAP_MS ? ' (CAPPED)' : ''} ...`);
   await sleep(dwellMs);
   const bSawA = await readOrExplain(B, DOMAIN_A, 'the divergence read: does nodeB have claimA on return');
   log(`    nodeB's view of claimA's domain on return: ${bSawA}`);
-  check('DIVERGENCE: nodeB does NOT have claimA, after long enough that it would have arrived', bSawA === 0);
+  // THE LABEL IS ONLY TRUE IF THE DWELL ACTUALLY OUTLASTED GOSSIP.
+  //
+  // When the cap binds, it did not: a 300s dwell against a 396s crossing
+  // means absence does not distinguish "the partition held" from "it has not
+  // arrived yet". Reporting PASS there would be a label claiming more than
+  // its assertion tested — this directory's named failure mode, and one the
+  // first version of THIS fix committed, by capping the dwell and leaving the
+  // check untouched so it printed a clean PASS on a false premise.
+  //
+  // So on a capped run the result is reported as inconclusive and counted as
+  // neither. The run is already red on the baseline check above, which is the
+  // finding; inventing a second failure here would double-count one cause,
+  // and passing it would be a lie.
+  if (soundBaseline) {
+    check('DIVERGENCE: nodeB does NOT have claimA, after long enough that it would have arrived', bSawA === 0);
+  } else {
+    log(`  INCONCLUSIVE: nodeB shows ${bSawA} in claimA's domain, but the dwell was capped at`);
+    log(`    ${DWELL_CAP_MS / 1000}s, below the ${(base.ms / 1000).toFixed(1)}s this network actually took to cross in Phase 0.`);
+    log(`    Absence therefore does not distinguish "the partition held" from "it has not`);
+    log(`    arrived yet", so this is counted as neither a pass nor a failure. See the`);
+    log(`    baseline check above for the thing that is actually wrong.`);
+  }
 
   await publishClaim(B, DOMAIN_B, CONTENT_B);
   check('nodeB wrote claimB while nodeA was offline', (await readOrExplain(B, DOMAIN_B, "nodeB's own claimB, written during the partition")) === 1);
