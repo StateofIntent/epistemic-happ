@@ -2916,6 +2916,28 @@ each of these is currently exactly that.
 
   **The first version of this fix shipped the exact defect it was written to prevent.** It capped the dwell, added the failing baseline check — and left the divergence check printing `PASS: ... after long enough that it would have arrived` on a run where the dwell was 300s and the crossing was 396s. The label was false and the line read as a sound result: the "label claims more than the assertion tests" failure this file's own header already records, committed a second time by the change guarding against it. **Capping a derived value is not enough on its own, because every claim derived from it has to be re-examined too.** The divergence line now reports `INCONCLUSIVE` and counts as neither — passing it would be a lie, and failing it would double-count one cause when the run is already red on the baseline check. Found by running the injection rather than reading it, which is the second time in two changes to this file that reading was not enough.
 
+- [x] **The stall is a wasm crash in a 20-second window after a conductor restart, the "timeout" was never a timeout, and the dwell floor was selecting for it.** `scripts/live-verify/stall-bisect.mjs`, `scripts/live-verify/stall-threshold.mjs`.
+
+  **It was never a timeout, which is the finding that reframes everything before it.** Every record of this failure said `Request timed out in 60000 ms: call_zome` — three CI occurrences, this repository's own instrument, and `transitive-gossip`'s removal from `network.yml` long before. That message is the **client's** default, not the conductor's answer. Re-measured with the per-call ceiling at 180s, the conductor says `Wasm runtime error while working with Ribosome: RuntimeError` — at 65.6s, 65.7s, 85.4s, 87.6s, 94.7s, 104.7s, all past 60s, so the default fired first and hid a crash behind a timeout for as long as this has been tracked. The locally-authored case was already showing the real error at 43.7s, below the default and therefore never truncated; two numbers in one table, one of them an artefact, and the artefact was the one being reasoned about.
+
+  **The trigger is the first zome call after a conductor's first restart, 8 of 8, and provenance is irrelevant.** Gossiped in from a peer, authored locally, or absent entirely — all three crash identically, and `absent` is `partition-rejoin` Phase 2 exactly, with nodeB legitimately holding nothing. The second call always answers in 0.00s. So three accounts were refuted on the way here: **DHT isolation** (an isolated full-arc node answers a link query in 10ms, since it is authority for the whole space), **"first read after an isolated restart"** (repeated five times, 0 of 5), and **provenance** (the sharpest and most reportable of the three).
+
+  **Then the window was measured, and it is about 20 seconds wide.**
+
+  | delay after `start-node` | crashed |
+  |---|---|
+  | t+0 … t+15s | 1/1 at each |
+  | **t+20s** | **3/4 — straddles** |
+  | t+25s / 30s / 35s | 0/3, 0/4, 0/3 |
+
+  20s produced both crashes and passes, so it is a race at the boundary rather than a cutoff. No crash was observed above 20s in 10 trials — a bound, not a guarantee.
+
+  **And that closes the CI-versus-local puzzle with numbers rather than a story.** `dwellMs = max(floor, base.ms * 5)`. All three CI failures crossed their baseline in **0.0s**, so the multiple was zero and the dwell fell to its **15s floor** — inside the window. Local runs measured a 5.1s baseline, got **25s**, and passed by five seconds over a race. **The faster the network, the shorter the dwell, the likelier the crash** — an inversion that explains why this read as random for months: it preferentially hit the healthiest runs, and the one run that took 396s to cross sailed through on a 300s dwell.
+
+  **The floor is now 45s, and it is a workaround for somebody else's defect rather than a fix.** More than twice the last delay at which a crash was seen, and above a straddled boundary rather than merely past it. The bug is a wasm crash inside the conductor; the dwell exists to make the divergence assertion sound; the two are unrelated, and that floor is now load-bearing for a reason its name does not suggest. Written into the file for the same reason the entry above exists — a constant quietly holding up something it was not written for is how the next reader gets surprised.
+
+  **Both probes assert nothing and neither is in CI.** They are reproducers, indexed as experiments in `scripts/live-verify/README.md`. The harness's diagnostic reads now outlast the client default so a CI failure reports the conductor's error instead of the ceiling's, and #165's branch text — which said "did not serve one zome call", pointing at readiness — now points at the crash. It was true and it was aimed at the wrong cause.
+
 - [x] **The Phase 2 stall reproduces locally, which retires every load-based theory about it — and both of my own accounts of it are refuted too.** `scripts/live-verify/dht-isolation-probe.mjs`.
 
   **Three CI failures on 2026-10-05 died on one bare read**, and the instrument added above narrowed it: nodeB's admin port still answered, so the conductor was up and simply did not serve one `get_claims_by_domain` inside the client's 60s default. Phase 2 changes **two** things at once — nodeA is stopped so nodeB is alone on its DHT, and nodeB is restarted immediately before the read — so a hypothesis naming only one of them was not yet a tested thing. The probe runs the 2×2.

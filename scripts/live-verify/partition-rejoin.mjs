@@ -233,6 +233,36 @@ const CONVERGE_WINDOW_MS = 600_000;
 // while the 33-minute sleep looked like the anomaly.
 const DWELL_CAP_MS = 300_000;
 const MAX_SOUND_BASELINE_MS = DWELL_CAP_MS / 5;
+
+// THE FLOOR WAS 15s AND 15s IS INSIDE A CONDUCTOR CRASH WINDOW.
+//
+// This floor exists so a fast baseline still gets some dwell. It turned out
+// to be selecting for a failure. scripts/live-verify/stall-threshold.mjs
+// measured when a restarted conductor stops crashing on its first zome call:
+//
+//     t+0s .. t+20s   crashed (20s straddles: 2 crashes, 1 pass in 3)
+//     t+25s, 30s, 35s no crash in 9 trials
+//
+// All three CI failures crossed their baseline in 0.0s, so `base.ms * 5` was
+// zero and the dwell fell to the 15s floor -- squarely inside the window.
+// Local runs measured a 5.1s baseline, got a 25s dwell, and passed. So THE
+// FASTER THE NETWORK, THE SHORTER THE DWELL, AND THE MORE LIKELY THE CRASH,
+// which is why this read as random for months: it preferentially hit the
+// healthiest runs.
+//
+// 45s is a floor above a STRADDLED boundary, not just past it: more than
+// twice the last delay at which a crash was seen, and the 25s that local runs
+// were passing on was only 5s clear of a race. It costs a fast-baseline run
+// 30 extra seconds and nothing else, since a longer dwell can only help the
+// divergence assertion this is for.
+//
+// SAID PLAINLY: THIS IS A WORKAROUND FOR SOMEBODY ELSE'S DEFECT, not a fix.
+// The bug is a wasm crash inside the conductor, the dwell exists to make the
+// divergence assertion sound, and the two have nothing to do with each other.
+// This floor is now load-bearing for an unrelated reason and that is exactly
+// the kind of silent coupling #166 was about -- so it is written down here
+// rather than left for somebody to discover by shortening it.
+const DWELL_FLOOR_MS = 45_000;
 const POLL_MS = 5_000;
 
 // WATCH PAST THE WINDOW BEFORE GIVING UP, for the reason real-gossip.mjs's own
@@ -375,8 +405,8 @@ async function connectNode(name) {
       String(lastErr.message ?? lastErr),
     ]);
   }
-  const call = (fn, payload) =>
-    app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
+  const call = (fn, payload, timeoutMs) =>
+    app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload }, timeoutMs);
   return { name, dna: cellIds[0][0], me: cellIds[0][1], call, adminPort, appPort };
 }
 
@@ -389,7 +419,7 @@ async function publishClaim(node, domain, content) {
   });
 }
 
-const countIn = async (node, domain) => (await node.call('get_claims_by_domain', domain)).length;
+const countIn = async (node, domain, timeoutMs) => (await node.call('get_claims_by_domain', domain, timeoutMs)).length;
 
 // A POLL THAT FAILS IS "NOT YET", NOT THE END OF THE RUN. `awaitConvergence`
 // below is a loop with a 600s budget, and that budget is meant to be the
@@ -454,9 +484,32 @@ async function portRefuses(port) {
 // The discriminator is the node's own admin port, which `portRefuses` above
 // already exists to probe. Nothing is swallowed and no timeout is widened —
 // the error is rethrown unchanged, and a passing run never reaches this code.
+// THE CLIENT'S 60s DEFAULT WAS TRUNCATING THE REAL ERROR, SO THESE READS
+// OUTLAST IT.
+//
+// Every record of this failure said `Request timed out in 60000 ms:
+// call_zome` -- the three CI occurrences, this instrument's own first firing,
+// and transitive-gossip's removal from network.yml before that. That message
+// is the CLIENT's, not the conductor's. stall-bisect.mjs re-measured the same
+// stall with the ceiling raised and the conductor's actual answer is
+//
+//     Wasm runtime error while working with Ribosome: RuntimeError
+//
+// at 65.6s, 65.7s and 87.6s -- past 60s every time, so the default fired
+// first and hid a wasm crash behind a timeout for as long as this has been
+// tracked. Raising the ceiling on these reads is not widening a timeout to
+// hide a failure, which is what §9's rule is about; it is the opposite, and
+// it costs a green run nothing because a healthy read returns in
+// milliseconds.
+//
+// NOT A RETRY, deliberately. The second read of the same domain succeeds in
+// 0.00s -- the crash is once per conductor lifetime -- so a retry would
+// succeed and destroy the evidence. One read, given room to fail honestly.
+const DIAGNOSTIC_READ_TIMEOUT_MS = 180_000;
+
 const readOrExplain = async (node, domain, what) => {
   const t0 = Date.now();
-  try { return await countIn(node, domain); }
+  try { return await countIn(node, domain, DIAGNOSTIC_READ_TIMEOUT_MS); }
   catch (e) {
     const heldFor = ((Date.now() - t0) / 1000).toFixed(1);
     const msg = String(e?.message ?? e).split('\n')[0].slice(0, 200);
@@ -484,13 +537,15 @@ const readOrExplain = async (node, domain, what) => {
       log(`    gossip or about any window. network.sh has no "logs" subcommand — the file is`);
       log(`    ${process.env.EPI_NET_ROOT || '/tmp/epi-net'}/${NODES[node.name].node}.log`);
     } else {
-      log(`    ::warning::node${node.name}'S ADMIN PORT STILL ANSWERS, so the conductor is UP and`);
-      log(`    simply did not serve one zome call inside the client's 60s default. That points at`);
-      log(`    cell readiness or a stalled read, NOT at a dead conductor and NOT at CONVERGE_WINDOW_MS.`);
-      log(`    Note where this read sits: it follows a start-node, which is exactly where`);
-      log(`    transitive-gossip.mjs was lost to this same error and taken out of network.yml`);
-      log(`    (README §9). Two occurrences there and two here is the same signature in two`);
-      log(`    harnesses, which is what that entry said it was waiting for.`);
+      log(`    ::warning::node${node.name}'S ADMIN PORT STILL ANSWERS, so the conductor PROCESS is`);
+      log(`    healthy. It is not dead and not wedged. Read the error above rather than this`);
+      log(`    text: if it names a Ribosome RuntimeError then the zome call CRASHED, which is`);
+      log(`    the known cause here and is not a timeout, not readiness, and not`);
+      log(`    CONVERGE_WINDOW_MS. scripts/live-verify/stall-bisect.mjs reproduces it locally:`);
+      log(`    it is the FIRST read after nodeB is restarted while nodeA is down, 5 of 5 across`);
+      log(`    clean networks, and the next read of the same domain answers in 0.00s. See`);
+      log(`    README §9. If instead it still names a 60000 ms client timeout, then this read`);
+      log(`    did not get DIAGNOSTIC_READ_TIMEOUT_MS and that is a bug in this harness.`);
     }
     throw e;
   }
@@ -617,6 +672,15 @@ async function main() {
   // the nodes were in fact connected, the claim would have arrived well
   // inside the window.
   //
+  // THAT IS NOW TRUE IN A NARROWER BAND THAN THIS PARAGRAPH SUGGESTS, and
+  // saying so beats letting it drift. With DWELL_FLOOR_MS at 45s, `base.ms
+  // * 5` only takes over above a 9s baseline; below that the floor decides,
+  // and a healthy network measures well below it -- 5.1s locally, 0.0s on
+  // the CI runs that failed. So on most runs the dwell is the floor, chosen
+  // to clear a conductor crash window, not a multiple of anything this run
+  // measured. The multiple still governs a genuinely slow network, which is
+  // the case it was written for.
+  //
   // See DWELL_CAP_MS. The 5x ideal is kept, bounded, and the baseline that
   // would have made it unaffordable is reported rather than slept through.
   const soundBaseline = base.ms <= MAX_SOUND_BASELINE_MS;
@@ -633,7 +697,7 @@ async function main() {
     log(`    rather than never — the question README §9 left open — and one occurrence is not`);
     log(`    a distribution, so record it beside the others before changing any window.`);
   }
-  const dwellMs = Math.min(Math.max(15_000, base.ms * 5), DWELL_CAP_MS);
+  const dwellMs = Math.min(Math.max(DWELL_FLOOR_MS, base.ms * 5), DWELL_CAP_MS);
   log(`    waiting ${(dwellMs / 1000).toFixed(0)}s before asserting absence — ${(base.ms / 1000).toFixed(1)}s was enough to cross in Phase 0${dwellMs === DWELL_CAP_MS && base.ms * 5 > DWELL_CAP_MS ? ' (CAPPED)' : ''} ...`);
   await sleep(dwellMs);
   const bSawA = await readOrExplain(B, DOMAIN_A, 'the divergence read: does nodeB have claimA on return');
