@@ -1387,7 +1387,7 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | Item | Blocked on | Where it is written up |
 |---|---|---|
 | Republish the npm packages | **Credentials only** — everything else is done; one command | `agent-sdk/README.md`, `mcp-server/README.md`, `scripts/publish-packages.sh` |
-| Android and iOS builds | **Upstream, not us** — the mobile shell is pinned to Holochain 0.6 and these zomes need 0.7; iOS unclear even there | §9 below, `INSTALL.md` |
+| Android and iOS builds | **Upstream, not us** — a 0.7-capable plugin exists, but it is cleanroom work awaiting darksoil's permission to use the name, not a licence to their code; iOS has no official support though two people have it working | §9 below, `INSTALL.md` |
 | ~~Who may remove a member from a notes room~~ | **Decided and built** — a removal is a note in the room | `notes/README.md` |
 | ~~The `notes-ui` intermittency~~ | **Done** — the written hypothesis was right; cause fixed and forced into a check | §9 above, `scripts/live-verify/notes-live.mjs` header |
 | ~~The `real-gossip` discovery flake~~ | **Ruled out as discovery** — the counts answered on the third occurrence; see the row below | §9 below |
@@ -2123,13 +2123,51 @@ each of these is currently exactly that.
   `hdk = "=0.7.0"`; a 0.6 conductor cannot run them. iOS is unclear even at 0.6
   — Android is supported, every iOS reference says "in development", and that
   project's own iOS how-to page 404s. It is also source-available rather than
-  open source, so a licence question precedes the technical one.
+  open source, which is why a licence question was recorded here as preceding
+  the technical one — see below for why that is no longer the question.
 
-  **The two questions worth asking its authors before anybody spends time here**
-  are when a 0.7 branch is expected, and whether iOS is shipped or still in
-  development. Both are somebody else's schedule, which is why this is recorded
-  with a date rather than estimated — and why the dated claims above should be
-  re-checked rather than trusted when this is next picked up.
+  **Both questions were asked, and both came back answered** — by Paul d'Aoust in
+  the Holochain chat on **2026-09-14**, which is also the standing answer to this
+  section's own instruction to re-check the dated claims above rather than trust
+  them. *When is a 0.7 branch expected* has no answer from darksoil, because
+  darksoil have shifted from building tools for Holochain developers to building a
+  couple of p2p applications full-time, and nobody could confirm who is
+  maintaining the shipyard tool. `tauri-plugin-holochain` is believed to be the
+  core of p2p shipyard and would be the core of iOS support too — offered
+  explicitly as not certain, and recorded that way. **Waiting for an upstream 0.7
+  branch was therefore never a plan**; Android is a priority on the Holochain side
+  and has been discussed there with some urgency. *Is iOS shipped* is no: there is
+  no official support, but it is not undemonstrated either — two people have it
+  working independently, one of them with an LLM's help. So the honest status is
+  unpaved rather than impossible.
+
+  **And the first account of what unblocks it was wrong — corrected eight days
+  later by the same person who gave it.** The first report, on 2026-09-15, was
+  that Holochain had *forked* darksoil's Tauri plugin, updated it to 0.7, and was
+  waiting on darksoil to consent to distributing it. The correction, on
+  2026-09-23: not a fork. It is a **cleanroom implementation** of their own, and
+  the only thing being asked of darksoil is **permission to use the name** of the
+  now-outdated library.
+
+  **That distinction is load-bearing rather than pedantic, and it retires the
+  blocker this section recorded.** A fork awaiting consent to distribute is
+  blocked on a copyright licence to somebody else's source — which is exactly the
+  "licence question precedes the technical one" recorded above. A cleanroom
+  implementation awaiting permission to reuse a name is blocked on something
+  trademark-shaped: a different question, with a different answer, and no bearing
+  on whether the code may ship at all. The source-available licence still governs
+  *darksoil's* code; it governs nothing about the replacement. **Note the word
+  that carried the error both times — "apparently".** Both reports were secondhand
+  and said so, and on the first one that label was the only accurate part. A
+  dependency's status arriving through a third party is worth recording with its
+  date and its source precisely because this is how it goes wrong.
+
+  **The one concrete opening here was offered rather than found, and nobody has
+  taken it.** The same conversation suggested asking the two people who already
+  have iOS working whether they would share their source, while the official path
+  is still being built. That is the only step in this entire item that does not
+  wait on somebody else's schedule or somebody else's permission — which is reason
+  enough to record it as an action rather than as background.
 
   **Two consequences to weigh even once it is unblocked**, neither of them a
   packaging problem: mobile nodes run **zero-arc**, so they hold and serve no DHT

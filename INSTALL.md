@@ -44,24 +44,37 @@ The UI is not what is missing: `mobile-ui/` is already responsive and
 PWA-installable, and already adapts to being hosted rather than configured, so a
 mobile shell would load it unchanged.
 
-What blocks it is a version gap one step upstream of this repository, recorded
-with its date because it is somebody else's release schedule:
+What blocks it sits one step upstream of this repository, so everything below is
+recorded with its date and its source — it is somebody else's work, and the first
+account of it reached here wrong:
 
 - **Holochain 0.7 itself is ready.** It added wasmer's wasmi interpreted
   backend, which satisfies Apple's rule against hot-loading binaries — the thing
   that kept Holochain off iOS for years.
-- **The mobile shell is not.** As of **2026-09-12**, `tauri-plugin-holochain`
-  pins `holochain_types = "0.6"`, its branches stop at `main-0.6.1`, and `main`
-  was last updated on 2026-05-15 by merging `main-0.6`. These zomes pin
-  `hdk = "=0.7.0"`, so a 0.6 conductor cannot run them.
-- **iOS specifically is unclear even for 0.6.** Android is supported; every iOS
-  reference is "in development", and that project's own iOS how-to page returns
-  404.
-- **It is source-available rather than open source**, so a licence question sits
-  in front of the technical one.
+- **darksoil's published plugin is still on 0.6.** As of **2026-09-12**,
+  `tauri-plugin-holochain` pins `holochain_types = "0.6"`, its branches stop at
+  `main-0.6.1`, and `main` was last updated on 2026-05-15 by merging `main-0.6`.
+  These zomes pin `hdk = "=0.7.0"`, so a 0.6 conductor cannot run them.
+- **And no 0.7 branch should be expected from them.** Per Paul d'Aoust on
+  **2026-09-14**, darksoil have moved from building Holochain developer tools to
+  building p2p applications full-time, and who maintains the shipyard tool is
+  unconfirmed. `tauri-plugin-holochain` is thought — not confirmed — to be the
+  core of p2p shipyard, and of iOS support too.
+- **A 0.7-capable replacement exists, and the holdup is a name rather than a
+  licence.** Holochain have **cleanroom-implemented** their own, and the one thing
+  being asked of darksoil is permission to use the now-outdated library's name.
+  **The earlier version of this page said otherwise** — that the plugin had been
+  *forked* and distribution consent was pending — which came from a secondhand
+  report its own author corrected on 2026-09-23. A fork needs a copyright licence
+  to someone else's source; cleanroom work needs no such licence, and a name is a
+  separate question that does not gate shipping code.
+- **iOS has no official support, but it is not untried.** Android is supported;
+  every official iOS reference says "in development" and that project's own iOS
+  how-to page returns 404 — yet two people have it working independently, one
+  with an LLM's help. Unpaved, not impossible.
 
-README.md §9 tracks this, including the two questions worth asking the plugin's
-authors before anybody spends time on it.
+README.md §9 tracks this, including how the first account of it turned out to be
+wrong and what the distinction between a fork and a cleanroom build changes.
 
 ## Four things to know before you install
 
