@@ -2916,6 +2916,36 @@ each of these is currently exactly that.
 
   **The first version of this fix shipped the exact defect it was written to prevent.** It capped the dwell, added the failing baseline check — and left the divergence check printing `PASS: ... after long enough that it would have arrived` on a run where the dwell was 300s and the crossing was 396s. The label was false and the line read as a sound result: the "label claims more than the assertion tests" failure this file's own header already records, committed a second time by the change guarding against it. **Capping a derived value is not enough on its own, because every claim derived from it has to be re-examined too.** The divergence line now reports `INCONCLUSIVE` and counts as neither — passing it would be a lie, and failing it would double-count one cause when the run is already red on the baseline check. Found by running the injection rather than reading it, which is the second time in two changes to this file that reading was not enough.
 
+- [x] **Root-caused and reported upstream as holochain/holochain#6012 — and it is not a wasm bug, which is the third framing this failure has had here.** `scripts/live-verify/strategy-compare.mjs`.
+
+  **The full error names the cause, and every earlier record of it was truncated.** The entry below calls this a wasm crash on the strength of `Ribosome: RuntimeError`. That string is a wrapper. Captured untruncated, the conductor says:
+
+  ```
+  Ribosome: RuntimeError: holochain::core::ribosome::host_fn::get_links:72:
+    Host("iroh connect timed out (src: deadline has elapsed)")
+  ```
+
+  So `get_links` dials a peer, the iroh connect deadline elapses, and the host-call failure propagates out of wasm as a `RuntimeError`. **Three layers of message, each hiding the one beneath**: the client's 60s ceiling hid the ribosome error, and the ribosome error hid the transport timeout. Every prior account in this file — including the entry below — was reasoning about a layer rather than the cause.
+
+  **The trigger needs a REMEMBERED peer, not an absent one**, which is the condition the entry below misses. Two things are required together: the conductor has restarted, **and** it already knew a peer that is now unreachable. A conductor that never discovered a peer has nothing to dial and answers from local storage in 0.01s. That was found the hard way — the first standalone reproducer stopped the second node before it had ever met the first, and **did not reproduce the bug at all** while appearing to run correctly. The reproducer now proves discovery with a warmup write the second node must observe, and reports the crossing time, so a silent non-reproduction is impossible.
+
+  **The strategy is the discriminator**, measured on a minimal two-zome hApp with the identical query exposed twice:
+
+  | | result |
+  |---|---|
+  | `GetStrategy::Local` | 3/3 ok, 0.01s each |
+  | `GetStrategy::Network` | 3/3 failed, 86.1s each |
+
+  `Local` is not a drop-in substitute — it returns what is in local storage, which is a different question — so this says which call completes, nothing more. **No cause is claimed upstream.** `GetStrategy`'s own doc says a call will not go to the network "if the current agent is an authority for this hash", and these are full-arc conductors, so one reading is that authority state is not yet established after a restart. That is inference from outside the conductor and the issue says so.
+
+  **Four accounts of this were refuted before the right one**, and the pattern is more useful than the answer: DHT isolation (an isolated node that has not restarted answers in 10ms), "first read after an isolated restart" (0 of 5 when repeated), entry provenance (gossiped, locally authored and absent all fail identically), and "no reachable peers" (which does not reproduce — there must be a peer to dial). Each was formed after seeing data and each died to the next experiment. **The one that held was the only one pre-registered before its run.**
+
+  **Also corrected here: a claim this section made twice.** The failure duration was called "not a signal" on a 43.7–104.7s spread. It is stable within a fixed setup — 86.1s three times to the tenth — and varies across setups, so the spread was the harnesses differing rather than noise in the bug.
+
+  **Three prerequisites that cost a maintainer nothing to know and everything to miss** are in the upstream issue: the `getrandom_backend="custom"` and `--import-undefined` rustflags without which a 0.7 zome does not build; `holochain_serialized_bytes` as an explicit dependency no source file names; and `wsClientOptions.origin`, without which the conductor answers HTTP 400 and a reproducer dies before reaching the bug. The first version of the reproducer hit all three.
+
+  **A second, independent observation is recorded upstream separately rather than folded in:** after this error the app websocket is unusable — a later `callZome` never reaches the conductor and the client's per-call timeout does not fire. One such call sat for 47 minutes. That is possibly a `@holochain/client` 0.21.0 issue, and it is why the strategy comparison runs as independent processes instead of two calls on one connection.
+
 - [x] **The stall is a wasm crash in a 20-second window after a conductor restart, the "timeout" was never a timeout, and the dwell floor was selecting for it.** `scripts/live-verify/stall-bisect.mjs`, `scripts/live-verify/stall-threshold.mjs`.
 
   **It was never a timeout, which is the finding that reframes everything before it.** Every record of this failure said `Request timed out in 60000 ms: call_zome` — three CI occurrences, this repository's own instrument, and `transitive-gossip`'s removal from `network.yml` long before. That message is the **client's** default, not the conductor's answer. Re-measured with the per-call ceiling at 180s, the conductor says `Wasm runtime error while working with Ribosome: RuntimeError` — at 65.6s, 65.7s, 85.4s, 87.6s, 94.7s, 104.7s, all past 60s, so the default fired first and hid a crash behind a timeout for as long as this has been tracked. The locally-authored case was already showing the real error at 43.7s, below the default and therefore never truncated; two numbers in one table, one of them an artefact, and the artefact was the one being reasoned about.
