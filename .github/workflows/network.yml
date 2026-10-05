@@ -271,7 +271,17 @@ jobs:
       - name: real-gossip — an entry crosses to a different conductor, and an isolated one never sees it
         run: |
           scripts/network.sh clean && scripts/network.sh start
-          node scripts/live-verify/real-gossip.mjs
+          # Census BEFORE the next step cleans these logs away, and on the
+          # harness's own exit code so a failure is still counted. See
+          # scripts/log-census.sh for why this is per-harness.
+          # `|| rc=$?` and not `; rc=$?`: these run blocks are `bash -eo
+          # pipefail`, so a failing harness aborts the step BEFORE the
+          # assignment and the census would be skipped on exactly the runs it
+          # exists for. Verified both ways.
+          rc=0
+          node scripts/live-verify/real-gossip.mjs || rc=$?
+          scripts/log-census.sh real-gossip
+          exit $rc
 
       # partition-rejoin drives `network.sh stop-node`/`start-node` ITSELF, mid
       # harness, which is why it gets its own clean network rather than sharing
@@ -281,67 +291,47 @@ jobs:
       - name: partition-rejoin — a node offline while history was written catches up on rejoining
         run: |
           scripts/network.sh clean && scripts/network.sh start
-          node scripts/live-verify/partition-rejoin.mjs
+          # `|| rc=$?` and not `; rc=$?`: these run blocks are `bash -eo
+          # pipefail`, so a failing harness aborts the step BEFORE the
+          # assignment and the census would be skipped on exactly the runs it
+          # exists for. Verified both ways.
+          rc=0
+          node scripts/live-verify/partition-rejoin.mjs || rc=$?
+          scripts/log-census.sh partition-rejoin
+          exit $rc
 
       # Three conductors and two services failing to come up looks identical to
       # a harness failing, from the step's exit code alone.
       #
-      # RUNS ON SUCCESS TOO, AND THAT IS THE POINT OF THIS STEP NOW.
+      # THE SIGNATURE CENSUS MOVED OUT OF THIS STEP, and the reason is worth
+      # keeping. It began as `if: failure()`, which made conductor logs exist
+      # only on runs that had already gone wrong and so destroyed the control:
+      # a convergence failure on 2026-10-05 logged `PeerBehaviorError { ctx:
+      # "initiate too soon" }` 45 times across its 900s window, and asking
+      # whether healthy runs do the same was impossible — three passing runs
+      # showed zero occurrences AND zero conductor log. Zero was the absence
+      # of the file, not of the error.
       #
-      # It used to be `if: failure()`, which made the conductor logs available
-      # only on the runs that had already gone wrong -- and that quietly
-      # destroyed the control. A convergence failure on 2026-10-05 logged
-      # `PeerBehaviorError { ctx: "initiate too soon" }` 45 times across its
-      # 900s window, a plausible reason no gossip round completes. Asking
-      # whether healthy runs do the same thing was impossible: three passing
-      # runs showed zero occurrences, but they also showed ZERO CONDUCTOR LOG,
-      # because nothing collected it on success. Zero was the absence of the
-      # file, not the absence of the error, and reading it as a control would
-      # have been the same defect README.md §9 records elsewhere -- a check
-      # that did not reach the path reporting success for the wrong reason.
+      # Making it `if: always()` fixed that and left a second collection gap:
+      # every harness step above begins with `network.sh clean`, which deletes
+      # /tmp/epi-net, so a census taken HERE describes only the last harness
+      # and an earlier one's failure leaves no trace. The census is therefore
+      # per-harness now, in each harness's own step, on its own exit code.
+      # See scripts/log-census.sh.
       #
-      # So the census below is unconditional and cheap: counts only, no log
-      # bodies, on every run. Two green runs and one red one are then
-      # comparable, which is what distinguishes a real signature from routine
-      # noise -- `database is locked` is the standing example of the latter,
-      # and §9 already records that it appears in healthy runs too.
-      #
-      # The full 100-line dump stays conditional on failure, because that part
-      # is for reading after something broke rather than for comparison.
-      - name: What the network was doing (census always, full dump on failure)
-        if: always()
+      # What remains here is the part that is for reading after a break rather
+      # than for comparing across runs, so it stays conditional on failure.
+      - name: Full conductor-log tails, if anything failed
+        if: failure()
         run: |
           scripts/network.sh status || true
-
-          echo "=== conductor-log signature census ==="
-          echo "(counts on EVERY run, so success and failure are comparable)"
+          # The signature CENSUS is per-harness now (see scripts/log-census.sh):
+          # each harness step cleans /tmp/epi-net before it starts, so a census
+          # taken here would describe only the last one. What is left here is
+          # the part that is for READING after a break rather than for
+          # comparing across runs.
           for f in /tmp/epi-net/*.log; do
             [ -f "$f" ] || continue
-            printf '%s: lines=%s ' "$(basename "$f")" "$(wc -l < "$f")"
-            for sig in \
-              'initiate too soon' \
-              'Unsolicited Accept message' \
-              'iroh connect timed out' \
-              'Peer behavior error' \
-              'database is locked' \
-              'Accept message from wrong peer' \
-              'already accepted'
-            do
-              # grep -c exits 1 on no match, so the count is read from its
-              # output rather than its status; `|| true` alone would print
-              # nothing and shift the field order.
-              n="$(grep -c "$sig" "$f" 2>/dev/null || true)"
-              printf '[%s=%s] ' "$sig" "${n:-0}"
-            done
-            printf 'ERROR=%s\n' "$(grep -c 'ERROR' "$f" 2>/dev/null || true)"
+            echo "--- $f (last 100 lines) ---"
+            tail -100 "$f" || true
           done
-
-          if [ "${{ job.status }}" != "success" ]; then
-            echo ""
-            echo "=== full tails, because this run failed ==="
-            for f in /tmp/epi-net/*.log; do
-              [ -f "$f" ] || continue
-              echo "--- $f (last 100 lines) ---"
-              tail -100 "$f" || true
-            done
-          fi
