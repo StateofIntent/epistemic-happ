@@ -3023,3 +3023,5 @@ kind of fact somebody acts on without asking.
 ---
 
 *End of document*
+
+<!-- branch-protection verification probe; this branch is deleted immediately -->
