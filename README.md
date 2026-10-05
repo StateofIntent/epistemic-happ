@@ -2073,6 +2073,34 @@ each of these is currently exactly that.
   `validate_*`. That boundary is written into `SPEC.md` §11 and into the
   script's own header, because a name-level check cited as "the spec is
   verified" would be the same overclaim §2.3 was just corrected for.
+
+  **It now also measures the surface count, and gates on it** — the fix for a
+  defect this document has paid for three times. The ratio of coordinator
+  functions the UI actually calls was hand-derived every time, and went stale
+  every time: reported as "12 of 56" for several increments because the metric
+  only matched calls whose name sat on the same line as `callZome` and several
+  wrap; then left at "37 of 58" in one paragraph while the heading above it had
+  drifted back into being correct at "38 of 60"; and most recently a stale
+  sentence calling a capability unsurfaced a month after it shipped, which sent a
+  session off to build a screen that already existed before anybody caught it.
+  Since the check already holds the extern set, counting `callZome` call sites
+  under `mobile-ui/src` against it costs nothing and closes the loop: **the
+  number in this item's heading is compared against the measured one on every
+  push, and a mismatch fails the build.**
+
+  **Two further checks fell out of having both sets, and the second is the one
+  worth having.** A `callZome` literal naming something that is not an extern is
+  a call to a function that does not exist — a runtime failure on that path, and
+  a claim this document used to make by hand ("no call site names a function
+  that does not exist"). And if the gated sentence is reworded away, the check
+  fails with `SETUP FAILED` rather than passing quietly, because a check that
+  goes silent when its subject disappears is precisely how this metric went
+  unmeasured for so long. All three failures were watched happening before the
+  check was trusted; the injections and what each one proved are recorded in the
+  script's own header. **What it still does not do is tell a screen from a token
+  call** — `callZome` reach is not evidence a function is well surfaced, and this
+  item records a function that had a call site and was still half-surfaced,
+  read-only where the write was what mattered. The metric is a floor.
 - ~~**Whether the remaining chain-local reads should have global indexes at all.**~~
   **Answered, per function, and `get_membranes` is now indexed** — see the entry
   on `MembraneRegistry` later in this section. This bullet said §10.0 "names the
@@ -2841,7 +2869,7 @@ each of these is currently exactly that.
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
-  **The ordered list this item carried is now empty, and the one thing the audit found behind it has been built.** Every read the list named has a surface, and the residue below was re-checked function by function against the code rather than carried forward — which is how `get_claims_by_agent` turned out to be filed under a justification that does not describe it. **It now has a screen of its own**, the By Author tab, verified by `scripts/live-verify/author-scope-ui.mjs`; the rest of the residue has reasons that hold. The count is 37 of 58.
+  **The ordered list this item carried is now empty, and the one thing the audit found behind it has been built.** Every read the list named has a surface, and the residue below was re-checked function by function against the code rather than carried forward — which is how `get_claims_by_agent` turned out to be filed under a justification that does not describe it. **It now has a screen of its own**, the By Author tab, verified by `scripts/live-verify/author-scope-ui.mjs`; the rest of the residue has reasons that hold. (The count was 37 of 58 when this paragraph was written; the live figure is in this item's own heading and is now machine-checked, so it is stated in one place rather than restated here.)
 
   **The screen had to be built so that a plausible fake would fail it, because the fake here is very plausible indeed.** A By Author tab that filters the claims the Browse tab already loaded — client-side, by author — looks correct, is correctly scoped, and leaves `get_claims_by_agent` exactly as unsurfaced as it was. So the harness makes the agent publish into two domains, has the browser load only the first, and requires the second to appear: a filter over the browser's own memory cannot produce a claim the browser has never held. A watcher on `WebSocket.send` confirms the function name actually goes onto the wire, wrapped before the app loads rather than added as a reporting hook to the app, since a check that depends on production code cooperating is one the production code can satisfy while doing nothing else. **Injecting exactly that fake turns three checks red — and leaves both per-agent scoping checks green**, honestly, because a client-side filter by author really is scoped by author. The assertions that look like they carry the meaning are not the ones that do.
 
@@ -2853,7 +2881,7 @@ Three of the four remaining are genuinely **hash-addressed getters** which a scr
 
   **Verified rather than carried forward**, and then re-verified because it drifted anyway: the denominator is **60** real externs — `scripts/check-spec-drift.mjs` prints that number on every run and is the authority for it — the numerator is **38** counted across `mobile-ui/src`, and no call site names a function that does not exist. **The 22 divide as** nine belonging to `bridge/`, two to HRR's neighborhood half (`build_neighborhood_binding`, `recall_neighborhood`), two to `federation/`, **three** probers that exist to fail, one export path whose caller is `sstorytime/ingest.sh` rather than a screen, one read that is chain-local by specification (`get_all_constitutions`), three hash-addressed getters, and **one protocol read, `get_protocol_version`, which the previous breakdown did not account for at all.**
 
-  **What that drift shows is the shape of the problem rather than a slip in arithmetic.** The paragraph above read "the denominator is 58 … the numerator is now 37 … the 21 divide as … two probers", every figure of which was right when it was written. Since then two externs were added (`attempt_false_membrane_registry` among them) and `query_worldline_resonance` gained a surface — so the headline's own "38 … 22" had quietly become correct again on a denominator of 60 while the verified paragraph beneath it stayed at 58, and the two halves of one item disagreed with each other. A ratio that has to be recounted by hand to stay true will keep going stale between recounts; `check-spec-drift.mjs` already computes the denominator on every push, and the numerator is the half nothing measures.
+  **What that drift shows is the shape of the problem rather than a slip in arithmetic.** The paragraph above read "the denominator is 58 … the numerator is now 37 … the 21 divide as … two probers", every figure of which was right when it was written. Since then two externs were added (`attempt_false_membrane_registry` among them) and `query_worldline_resonance` gained a surface — so the headline's own "38 … 22" had quietly become correct again on a denominator of 60 while the verified paragraph beneath it stayed at 58, and the two halves of one item disagreed with each other. A ratio that has to be recounted by hand to stay true will keep going stale between recounts; `check-spec-drift.mjs` already computes the denominator on every push, and the numerator was the half nothing measured. **It measures both now, and gates on them** — see the entry above. The diagnosis in this paragraph is what the change was built from, so it stays as written rather than being edited into hindsight.
 
   **The worldline half of the HRR group now has a surface, and the paragraph that once called the whole group deferred was wrong about it.** The claim was "Phase 3 defers with payloads empty, so there is nothing to show yet", which is the opposite of what Phase 3 did: it is Phase *2*'s line — "WorldlineTrace with HRR hooks (payloads empty)" — describing the state before the work, mistakenly carried forward past it. `generate_worldline_trace` populates `trace_payload` and `binding_key` from a real superposition over every period the chain scan computes, and leaves them `None` only for an empty chain with nothing to compress. Neighborhood binding and peer query support shipped too. Those eight were the one part of the residue with real data and no screen, and five of them — the worldline half — were surfaced on exactly that argument: a worldline should be legible to its own author. The three that remain are neighborhood binding, which §2.5 treats as an independent use case rather than the rest of this one. Recorded at this length because the error survived being copied forward and then repeated aloud, and a count that quietly justifies itself is worse than no count.
 

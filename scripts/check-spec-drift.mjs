@@ -39,14 +39,71 @@
 // every backtick would flag that honesty as drift and push the document toward
 // forgetting its own history, so the parser reads rows and leaves prose alone.
 //
+// ----------------------------------------------------------------------------
+// AND SINCE THIS FILE ALREADY HAS THE EXTERN SET, IT ALSO COUNTS THE SURFACE.
+//
+// README.md §9 tracks how many coordinator functions the UI actually calls.
+// That ratio has been wrong at least three times: reported as "12 of 56" for
+// several increments because the metric regex only matched calls whose name
+// sat on the same line as `callZome` and several wrap; then left at "37 of 58"
+// in one paragraph while the headline above it had become correct again at
+// "38 of 60"; and most recently a stale sentence naming a capability as
+// unsurfaced a month after it shipped, which cost a session's work before
+// anybody noticed. §9's own diagnosis is the right one: `check-spec-drift.mjs`
+// computes the denominator on every push and "the numerator is the half
+// nothing measures."
+//
+// So it measures the numerator too, and GATES on it. A hand recount that CI
+// then enforces is not the mistake; a hand recount with nothing preventing
+// recurrence is, and that is what this repository keeps paying for. Two
+// further checks fall out of having both sets:
+//
+//   A `callZome` literal that is not an extern is a call to a function that
+//   does not exist. §9 asserts "no call site names a function that does not
+//   exist" — asserted by hand, until now.
+//
+//   A README ratio that disagrees with the real one fails the build, so the
+//   number cannot quietly go stale between recounts.
+//
+// WHAT COUNTS AS SURFACED is deliberately crude: at least one `callZome` call
+// site naming the function as a string literal, anywhere under `mobile-ui/src`.
+// It does NOT mean the function is well surfaced — §9 records a case where a
+// function had a call site and was still half-surfaced, read-only where the
+// write mattered. This is a reach metric, and the README says so; a check
+// cannot tell a screen from a token call and must not imply it can.
+//
+// ----------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — all three new failures have been watched happening,
+// because a gate nobody has seen go red is an assumption, not a check.
+//
+//   Injection: README's ratio edited to "41 of 60".
+//   Result: red, naming both figures — says "41 of 60 coordinator functions",
+//   measured 38 of 60.
+//
+//   Injection: a call site misspelled, `get_claims_by_dmoain`.
+//   Result: red, and it names the file. Worth noting what this one proves:
+//   the misspelling ALSO drops `get_claims_by_domain` into the unsurfaced
+//   list, so the count check alone would have reported a plausible 37 of 60
+//   and a one-function regression. The ghost check is what turns that into a
+//   named typo instead of a number to be explained.
+//
+//   Injection: the gated sentence reworded so it states no ratio.
+//   Result: red via SETUP FAILED rather than silently passing — the mode that
+//   matters most, since a check that goes quiet when its subject disappears is
+//   how the metric went unmeasured in the first place.
+//
+//   Restored and re-run: green on all four checks.
+//
 // Run: node scripts/check-spec-drift.mjs
 // Exits non-zero on drift, and names every difference in both directions.
 // ============================================================================
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 const ZOME = new URL('../dna/coordinator/src/lib.rs', import.meta.url).pathname;
 const SPEC = new URL('../SPEC.md', import.meta.url).pathname;
+const UI = new URL('../mobile-ui/src', import.meta.url).pathname;
+const README = new URL('../README.md', import.meta.url).pathname;
 
 const log = (...a) => console.log(...a);
 
@@ -88,6 +145,59 @@ function documented(spec) {
   return found;
 }
 
+/** Every `.ts`/`.js` file under `mobile-ui/src`, recursively. */
+function uiSources(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const full = `${dir}/${entry}`;
+    if (statSync(full).isDirectory()) uiSources(full, out);
+    else if (/\.(ts|tsx|js|mjs)$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+/** Map of function name -> the UI files whose `callZome` calls name it.
+ *
+ * MATCHED ACROSS NEWLINES ON PURPOSE. The previous version of this metric
+ * lived in a shell pipeline that required the name on the same line as
+ * `callZome`, and under-reported for several increments because calls like
+ *
+ *     await connection.callZome<NeighborRecall[]>(
+ *       'query_neighborhood_resonance', { ... },
+ *
+ * wrap. `[^(]*` skips the generic parameter without crossing into the argument
+ * list, and `\s*` then crosses whatever newlines follow the paren.
+ *
+ * Only string literals count. `holochain.ts`'s own wrapper passes a variable
+ * (`callZome(fnName, payload)`), which is the right thing to miss: it is the
+ * transport, not a surface. */
+function callSites(files) {
+  const found = new Map();
+  for (const file of files) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/callZome[^(]*\(\s*['"`]([a-z_0-9]+)['"`]/gs)) {
+      if (!found.has(m[1])) found.set(m[1], new Set());
+      found.get(m[1]).add(file.replace(/^.*\/mobile-ui\//, 'mobile-ui/'));
+    }
+  }
+  return found;
+}
+
+/** Every live "N of M coordinator functions" claim in README.md.
+ *
+ * READS ONE EXACT PHRASING, so the document can still carry its own history.
+ * §9 deliberately keeps superseded figures ("38 of 58, residue 20") as a
+ * record of what was recounted when, and a check that flagged those would
+ * push the document toward forgetting how its own count went wrong. Only the
+ * phrase used for a CURRENT claim is gated, which means a new copy of the
+ * number is gated the moment it is written in that form. */
+function statedRatios(readme) {
+  return [...readme.matchAll(/(\d+) of (\d+) coordinator functions/g)].map((m) => ({
+    text: m[0],
+    surfaced: Number(m[1]),
+    total: Number(m[2]),
+  }));
+}
+
 const inCode = externs(readFileSync(ZOME, 'utf8'));
 const inSpec = documented(readFileSync(SPEC, 'utf8'));
 
@@ -122,9 +232,60 @@ if (phantom.length > 0) {
   log('');
 }
 
-if (undocumented.length === 0 && phantom.length === 0) {
-  log('NO DRIFT: every extern is listed, and every listed function exists.');
-  log('(Names only. Nothing here checks that §5 and §7 match validation.)');
+// ---------------------------------------------------------------------------
+// The surface count. Computed here rather than by hand, for the reason the
+// header gives: every previous figure was hand-derived and every one of them
+// went stale between recounts.
+// ---------------------------------------------------------------------------
+const sites = callSites(uiSources(UI));
+const surfaced = [...inCode].filter((f) => sites.has(f)).sort();
+const residue = [...inCode].filter((f) => !sites.has(f)).sort();
+const ghosts = [...sites.keys()].filter((f) => !inCode.has(f)).sort();
+const stated = statedRatios(readFileSync(README, 'utf8'));
+
+log(`${surfaced.length} of ${inCode.size} externs have a callZome call site in mobile-ui/src`);
+log('');
+
+// A call to a function that does not exist. Gated, because it is a real
+// defect rather than a metric: the UI would throw at runtime on that path.
+if (ghosts.length > 0) {
+  log('DRIFT — called by the UI, but not an extern:');
+  for (const f of ghosts) log(`  ${f}  (${[...sites.get(f)].sort().join(', ')})`);
+  log('  These calls name a function the coordinator does not export. Either the');
+  log('  extern was renamed or removed, or the call site has a typo — and the UI');
+  log('  path that makes the call fails at runtime either way.');
+  log('');
+}
+
+// The README's own claim about the ratio, verified rather than trusted.
+const wrongRatios = stated.filter((r) => r.surfaced !== surfaced.length || r.total !== inCode.size);
+if (stated.length === 0) {
+  log('SETUP FAILED: README.md states no "N of M coordinator functions" ratio.');
+  log('  This check gates that sentence, so its absence means the sentence moved');
+  log('  or was reworded, and the count has gone unmeasured again.');
+  log('');
+} else if (wrongRatios.length > 0) {
+  log('DRIFT — README.md states a surface count that is not the real one:');
+  for (const r of wrongRatios) log(`  says "${r.text}", measured ${surfaced.length} of ${inCode.size}`);
+  log('  Update the sentence to the measured figure. Do not hand-count — this');
+  log('  check prints the number, and hand-counting is how it went wrong before.');
+  log('');
+}
+
+// Printed on every run, green or red: the residue is what somebody has to
+// have a reason for, and §9 itemises it. A list that appears only on failure
+// is a list nobody reads while it is still correct.
+log(`Unsurfaced (${residue.length}) — §9 carries a reason for each:`);
+for (const f of residue) log(`  ${f}`);
+log('');
+
+const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0;
+
+if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
+  log('NO DRIFT: every extern is listed, every listed function exists, every UI');
+  log('call names a real extern, and README.md states the measured ratio.');
+  log('(Names only. Nothing here checks that §5 and §7 match validation, and a');
+  log('call site is reach, not proof a function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
