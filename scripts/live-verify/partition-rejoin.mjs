@@ -88,6 +88,48 @@
 //   Restored and re-run: 23 checks green, catch-up measured at 326.6s in
 //   both directions.
 //
+//   --- `readOrExplain`'s three branches, each watched printing ---
+//
+//   All three were injected against three real local conductors, because
+//   this diagnosis only ever runs on a failing run and an untested
+//   diagnostic is a guess with formatting. The injected throw fires
+//   immediately rather than after a real 60s hang, so the "after 0.0s"
+//   in these outputs is an artefact of the injection; the elapsed figure
+//   is real only in a real hang.
+//
+//   Injection: the divergence read throws, nodeB left running.
+//   Result: "nodeB'S ADMIN PORT STILL ANSWERS, so the conductor is UP".
+//   This is the branch the two 2026-10-05 CI failures actually hit.
+//
+//   Injection: nodeB stopped, then the read throws.
+//   Result: "ADMIN PORT IS ALSO REFUSING, so the conductor is GONE".
+//
+//   Injection: the probe aimed at a socket that accepts TCP and never
+//   speaks, which is what a wedged admin port looks like at the transport
+//   layer.
+//   Result: "DID NOT ANSWER OR REFUSE within 10s either". This branch
+//   exists BECAUSE of what the first version of this code would have done
+//   here: `portRefuses` reports "refusing" for any unsuccessful connect, a
+//   hung one included, so a wedged conductor would have been diagnosed as
+//   GONE — sending somebody to investigate an exited process that was in
+//   fact still running. A diagnostic that confidently names the wrong
+//   cause is worse than one that says nothing, so the probe is bounded and
+//   answers three ways instead of two.
+//
+//   TWO DEFECTS IN THIS DIAGNOSTIC WERE FOUND BY RUNNING IT, not by
+//   reading it, which is the whole argument for injecting an error path.
+//   It first advised `scripts/network.sh logs nodeB` — there is no `logs`
+//   subcommand, so following the advice would have failed; it now names
+//   the file, $NET_ROOT/nodeB.log. The fix for that then rendered as
+//   literal source text, because `$\{` in a template literal is an escaped
+//   brace and not an interpolation. `node --check` accepts both happily:
+//   valid syntax, wrong output, in the one code path that only runs when
+//   something else has already gone wrong.
+//
+//   Restored and re-run with all three branches in place: 25 checks green,
+//   catch-up 55.3s in both directions. (The 23 recorded above is from an
+//   earlier commit and is left as written; 25 is what this run measured.)
+//
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -329,6 +371,71 @@ async function portRefuses(port) {
   } catch { return true; }
 }
 
+// A BARE READ THAT HANGS SHOULD NAME THE NODE, NOT JUST THE TIMEOUT.
+//
+// `pollCount` above covers the budgeted polls. The reads that feed a `check`
+// stay bare on purpose — there is no budget behind them and a node that cannot
+// answer at all is a real failure — and that judgment is unchanged here. What
+// was wrong is what such a failure LOOKS like.
+//
+// Twice on 2026-10-05, on two different refs within a minute of each other,
+// this harness died in Phase 2 with nothing but
+//
+//     HARNESS ERROR: Error: Request timed out in 60000 ms: call_zome
+//
+// the `@holochain/client` default, thrown by a read of nodeB taken 15s after
+// `start-node nodeB`. That message names no node, no read and no elapsed time,
+// and it cannot tell a conductor that has DIED from one that is UP and merely
+// not serving zome calls yet. Those two want opposite fixes. It is the same
+// bind #160 was built to break for the convergence window, and the same
+// answer applies: the run is already lost, so spend a moment establishing
+// WHICH failure this was instead of leaving it to be argued later.
+//
+// The discriminator is the node's own admin port, which `portRefuses` above
+// already exists to probe. Nothing is swallowed and no timeout is widened —
+// the error is rethrown unchanged, and a passing run never reaches this code.
+const readOrExplain = async (node, domain, what) => {
+  const t0 = Date.now();
+  try { return await countIn(node, domain); }
+  catch (e) {
+    const heldFor = ((Date.now() - t0) / 1000).toFixed(1);
+    const msg = String(e?.message ?? e).split('\n')[0].slice(0, 200);
+    log(`\n    ::warning::node${node.name} did not answer "${what}" after ${heldFor}s — ${msg}`);
+    // THE PROBE ITSELF HAS TO BE BOUNDED, OR IT MISDIAGNOSES THE WORST CASE.
+    //
+    // `portRefuses` reports "refusing" for anything that is not a successful
+    // connect, a hung connect included. A conductor wedged badly enough to
+    // stall its admin port would therefore be reported as GONE — pointing at
+    // an exited process that is in fact still running, which is a worse
+    // outcome than saying nothing. So the probe gets its own short deadline
+    // and three answers, not two: refused, answered, or neither.
+    const probe = await Promise.race([
+      portRefuses(node.adminPort).then((refused) => (refused ? 'refused' : 'answered')),
+      sleep(10_000).then(() => 'wedged'),
+    ]);
+    if (probe === 'wedged') {
+      log(`    ::warning::node${node.name}'S ADMIN PORT DID NOT ANSWER OR REFUSE within 10s either, so`);
+      log(`    the conductor is running but wedged — not serving app calls AND not serving admin.`);
+      log(`    That is the strongest of the three signals and the one worth reporting upstream,`);
+      log(`    because it is not a readiness race: a starting conductor refuses, it does not hang.`);
+    } else if (probe === 'refused') {
+      log(`    ::warning::node${node.name}'S ADMIN PORT IS ALSO REFUSING, so the conductor is GONE,`);
+      log(`    not busy. This is a conductor that exited; read its log rather than reasoning about`);
+      log(`    gossip or about any window. network.sh has no "logs" subcommand — the file is`);
+      log(`    ${process.env.EPI_NET_ROOT || '/tmp/epi-net'}/${NODES[node.name].node}.log`);
+    } else {
+      log(`    ::warning::node${node.name}'S ADMIN PORT STILL ANSWERS, so the conductor is UP and`);
+      log(`    simply did not serve one zome call inside the client's 60s default. That points at`);
+      log(`    cell readiness or a stalled read, NOT at a dead conductor and NOT at CONVERGE_WINDOW_MS.`);
+      log(`    Note where this read sits: it follows a start-node, which is exactly where`);
+      log(`    transitive-gossip.mjs was lost to this same error and taken out of network.yml`);
+      log(`    (README §9). Two occurrences there and two here is the same signature in two`);
+      log(`    harnesses, which is what that entry said it was waiting for.`);
+    }
+    throw e;
+  }
+};
+
 async function awaitConvergence(node, domain, label, isolated) {
   const t0 = Date.now();
   let isolatedEverSaw = false;
@@ -418,7 +525,7 @@ async function main() {
   net('stop-node', 'nodeB');
   check('nodeB is genuinely down (its admin port refuses connections)', await portRefuses(NODES.B.admin));
   await publishClaim(A, DOMAIN_A, CONTENT_A);
-  check('nodeA wrote claimA while nodeB was offline', (await countIn(A, DOMAIN_A)) === 1);
+  check('nodeA wrote claimA while nodeB was offline', (await readOrExplain(A, DOMAIN_A, "nodeA's own claimA, written during the partition")) === 1);
 
   // ---- Phase 2: swap which node is offline ------------------------------
   //
@@ -452,20 +559,20 @@ async function main() {
   const dwellMs = Math.max(15_000, base.ms * 5);
   log(`    waiting ${(dwellMs / 1000).toFixed(0)}s before asserting absence — ${(base.ms / 1000).toFixed(1)}s was enough to cross in Phase 0 ...`);
   await sleep(dwellMs);
-  const bSawA = await countIn(B, DOMAIN_A);
+  const bSawA = await readOrExplain(B, DOMAIN_A, 'the divergence read: does nodeB have claimA on return');
   log(`    nodeB's view of claimA's domain on return: ${bSawA}`);
   check('DIVERGENCE: nodeB does NOT have claimA, after long enough that it would have arrived', bSawA === 0);
 
   await publishClaim(B, DOMAIN_B, CONTENT_B);
-  check('nodeB wrote claimB while nodeA was offline', (await countIn(B, DOMAIN_B)) === 1);
-  check('nodeC has neither claim', (await countIn(C, DOMAIN_A)) === 0 && (await countIn(C, DOMAIN_B)) === 0);
+  check('nodeB wrote claimB while nodeA was offline', (await readOrExplain(B, DOMAIN_B, "nodeB's own claimB, written during the partition")) === 1);
+  check('nodeC has neither claim', (await readOrExplain(C, DOMAIN_A, "the isolated node's view of claimA's domain")) === 0 && (await readOrExplain(C, DOMAIN_B, "the isolated node's view of claimB's domain")) === 0);
 
   // ---- Phase 3 & 4: heal, and converge in both directions ---------------
   log('\n--- Phase 3: nodeA returns. Both up for the first time since Phase 0 ---');
   net('start-node', 'nodeA');
   A = await connectNode('A');
-  check('nodeA still has its own claimA after restarting', (await countIn(A, DOMAIN_A)) === 1);
-  check('nodeB still has its own claimB after nodeA restarted', (await countIn(B, DOMAIN_B)) === 1);
+  check('nodeA still has its own claimA after restarting', (await readOrExplain(A, DOMAIN_A, 'claimA still on nodeA after its restart')) === 1);
+  check('nodeB still has its own claimB after nodeA restarted', (await readOrExplain(B, DOMAIN_B, 'claimB still on nodeB after nodeA restarted')) === 1);
 
   //
   // BOTH DIRECTIONS ARE MEASURED CONCURRENTLY, FROM ONE SHARED CLOCK, and
@@ -500,7 +607,7 @@ async function main() {
 
   // ---- Phase 5: the link is healed, not merely backfilled ---------------
   log('\n--- Phase 5: a claim written AFTER healing propagates normally ---');
-  check('nodeB sees 0 in the post-heal domain before nodeA publishes', (await countIn(B, DOMAIN_POST)) === 0);
+  check('nodeB sees 0 in the post-heal domain before nodeA publishes', (await readOrExplain(B, DOMAIN_POST, 'the post-heal domain on nodeB, before anything is written to it')) === 0);
   await publishClaim(A, DOMAIN_POST, 'Written after the partition healed.');
   const post = await awaitConvergence(B, DOMAIN_POST, 'nodeB', C);
   check('a NEW claim crosses nodeA -> nodeB after healing', post.ms !== null);
@@ -508,9 +615,9 @@ async function main() {
 
   // ---- The isolated control, over the whole run -------------------------
   log('\n--- CONTROL: the isolated node saw none of it, throughout ---');
-  check('nodeC never saw claimA', (await countIn(C, DOMAIN_A)) === 0);
-  check('nodeC never saw claimB', (await countIn(C, DOMAIN_B)) === 0);
-  check('nodeC never saw the post-heal claim', (await countIn(C, DOMAIN_POST)) === 0);
+  check('nodeC never saw claimA', (await readOrExplain(C, DOMAIN_A, "the isolated node's final view of claimA's domain")) === 0);
+  check('nodeC never saw claimB', (await readOrExplain(C, DOMAIN_B, "the isolated node's final view of claimB's domain")) === 0);
+  check('nodeC never saw the post-heal claim', (await readOrExplain(C, DOMAIN_POST, "the isolated node's final view of the post-heal domain")) === 0);
   check('nodeC never saw anything during any convergence wait',
     !base.isolatedEverSaw && !convA.isolatedEverSaw && !convB.isolatedEverSaw && !post.isolatedEverSaw);
   check('nodeC is alive and answering, not merely silent',
