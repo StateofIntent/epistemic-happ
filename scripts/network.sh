@@ -153,7 +153,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
 
-HAPP_PATH="$REPO_ROOT/epistemic-resonance-happ.happ"
+# Overridable so a MINIMAL hApp can be driven through the same two-conductor
+# choreography without editing this script. That is not a convenience: the
+# Ribosome RuntimeError recorded in README.md §9 needed a reproducer with no
+# dependency on this project's own zomes before it could be reported upstream,
+# and `EPI_NET_ROOT` was already overridable while this was not.
+HAPP_PATH="${EPI_HAPP_PATH:-$REPO_ROOT/epistemic-resonance-happ.happ}"
 
 # Short by necessity, not by taste — see the SUN_LEN note in the header.
 NET_ROOT="${EPI_NET_ROOT:-/tmp/epi-net}"
