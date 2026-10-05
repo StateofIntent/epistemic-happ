@@ -285,11 +285,63 @@ jobs:
 
       # Three conductors and two services failing to come up looks identical to
       # a harness failing, from the step's exit code alone.
-      - name: What the network was doing, if anything failed
-        if: failure()
+      #
+      # RUNS ON SUCCESS TOO, AND THAT IS THE POINT OF THIS STEP NOW.
+      #
+      # It used to be `if: failure()`, which made the conductor logs available
+      # only on the runs that had already gone wrong -- and that quietly
+      # destroyed the control. A convergence failure on 2026-10-05 logged
+      # `PeerBehaviorError { ctx: "initiate too soon" }` 45 times across its
+      # 900s window, a plausible reason no gossip round completes. Asking
+      # whether healthy runs do the same thing was impossible: three passing
+      # runs showed zero occurrences, but they also showed ZERO CONDUCTOR LOG,
+      # because nothing collected it on success. Zero was the absence of the
+      # file, not the absence of the error, and reading it as a control would
+      # have been the same defect README.md §9 records elsewhere -- a check
+      # that did not reach the path reporting success for the wrong reason.
+      #
+      # So the census below is unconditional and cheap: counts only, no log
+      # bodies, on every run. Two green runs and one red one are then
+      # comparable, which is what distinguishes a real signature from routine
+      # noise -- `database is locked` is the standing example of the latter,
+      # and §9 already records that it appears in healthy runs too.
+      #
+      # The full 100-line dump stays conditional on failure, because that part
+      # is for reading after something broke rather than for comparison.
+      - name: What the network was doing (census always, full dump on failure)
+        if: always()
         run: |
           scripts/network.sh status || true
+
+          echo "=== conductor-log signature census ==="
+          echo "(counts on EVERY run, so success and failure are comparable)"
           for f in /tmp/epi-net/*.log; do
-            echo "--- $f (last 100 lines) ---"
-            tail -100 "$f" || true
+            [ -f "$f" ] || continue
+            printf '%s: lines=%s ' "$(basename "$f")" "$(wc -l < "$f")"
+            for sig in \
+              'initiate too soon' \
+              'Unsolicited Accept message' \
+              'iroh connect timed out' \
+              'Peer behavior error' \
+              'database is locked' \
+              'Accept message from wrong peer' \
+              'already accepted'
+            do
+              # grep -c exits 1 on no match, so the count is read from its
+              # output rather than its status; `|| true` alone would print
+              # nothing and shift the field order.
+              n="$(grep -c "$sig" "$f" 2>/dev/null || true)"
+              printf '[%s=%s] ' "$sig" "${n:-0}"
+            done
+            printf 'ERROR=%s\n' "$(grep -c 'ERROR' "$f" 2>/dev/null || true)"
           done
+
+          if [ "${{ job.status }}" != "success" ]; then
+            echo ""
+            echo "=== full tails, because this run failed ==="
+            for f in /tmp/epi-net/*.log; do
+              [ -f "$f" ] || continue
+              echo "--- $f (last 100 lines) ---"
+              tail -100 "$f" || true
+            done
+          fi
