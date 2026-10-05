@@ -4967,3 +4967,204 @@ mod tests {
         assert_eq!(others, vec!["Nutrition".to_string()]);
     }
 }
+
+// ============================================================================
+// PRE-REGISTRATION (COMMIT-REVEAL)
+// ============================================================================
+//
+// The integrity zome's own section header carries the design and the reason
+// the naive version is worse than nothing. What matters here is that the
+// DENOMINATOR is a read this protocol offers, not a courtesy a client might
+// implement: `get_foresight_record` returns expired commitments alongside
+// revealed ones, because a revelation read without them is the selective
+// revelation the whole shape exists to prevent.
+
+fn question_anchor_hash(question: &ActionHash) -> ExternResult<EntryHash> {
+    let path = Path::from(format!("question_{}", question));
+    Ok(path.path_entry_hash()?)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PreRegisterInput {
+    pub question: ActionHash,
+    pub prediction: String,
+    pub salt: String,
+    pub reveal_deadline: u64,
+}
+
+/// Commits to a prediction without disclosing it.
+///
+/// Writes the content as a PRIVATE entry, then a PUBLIC `PreRegistration`
+/// carrying its hash, the question and the deadline. The split is the point:
+/// the content is hidden, and everything needed to hold the author to account
+/// — what question, by when — is public from this moment.
+///
+/// The caller supplies the salt rather than having one generated here, so the
+/// salt is in the caller's hands at reveal time. A salt this function
+/// invented would have to be stored somewhere to be recoverable, and the only
+/// place it could live is the private entry it is meant to protect.
+#[hdk_extern]
+pub fn pre_register(input: PreRegisterInput) -> ExternResult<ActionHash> {
+    if input.prediction.trim().is_empty() {
+        return Err(wasm_error!(WasmErrorInner::Guest("prediction must not be empty".into())));
+    }
+    if input.salt.trim().is_empty() {
+        return Err(wasm_error!(WasmErrorInner::Guest("salt must not be empty; without it a guessable prediction is recoverable from its hash".into())));
+    }
+
+    let sealed_entry = SealedPrediction {
+        prediction: input.prediction,
+        salt: input.salt,
+    };
+    let sealed = hash_entry(sealed_entry.clone())?;
+    create_entry(EntryTypes::SealedPrediction(sealed_entry))?;
+
+    let me = agent_info()?.agent_initial_pubkey;
+    let pr = PreRegistration {
+        question: input.question.clone(),
+        sealed,
+        reveal_deadline: input.reveal_deadline,
+        author: me.clone(),
+        timestamp: sys_time()?.as_micros() as u64,
+    };
+    let hash = create_entry(EntryTypes::PreRegistration(pr))?;
+
+    // Indexed from the QUESTION and from the AGENT. The agent index is what
+    // makes expiry countable by anyone: an author who simply stays quiet
+    // about a commitment still has it reachable here.
+    create_link(question_anchor_hash(&input.question)?, hash.clone(), LinkTypes::QuestionToPreRegistration, ())?;
+    create_link(agent_anchor_hash(&me)?, hash.clone(), LinkTypes::AgentToPreRegistration, ())?;
+
+    Ok(hash)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RevealInput {
+    pub pre_registration: ActionHash,
+    pub prediction: String,
+    pub salt: String,
+}
+
+/// Discloses a prediction, which validation checks against the commitment.
+///
+/// Refuses nothing here that validation already refuses — the hash match, the
+/// deadline and the author are all enforced in the integrity zome, so a
+/// client cannot route around them by calling this differently.
+#[hdk_extern]
+pub fn reveal_pre_registration(input: RevealInput) -> ExternResult<ActionHash> {
+    let me = agent_info()?.agent_initial_pubkey;
+    let rev = Revelation {
+        pre_registration: input.pre_registration.clone(),
+        prediction: input.prediction,
+        salt: input.salt,
+        author: me,
+        timestamp: sys_time()?.as_micros() as u64,
+    };
+    let hash = create_entry(EntryTypes::Revelation(rev))?;
+    create_link(input.pre_registration, hash.clone(), LinkTypes::PreRegistrationToRevelation, ())?;
+    Ok(hash)
+}
+
+/// Every commitment made about one question, revealed or not.
+#[hdk_extern]
+pub fn get_pre_registrations_for_question(question: ActionHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(
+        LinkQuery::try_new(question_anchor_hash(&question)?, LinkTypes::QuestionToPreRegistration)?,
+        GetStrategy::Network,
+    )?;
+    let mut out = Vec::new();
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
+                out.push(record);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// One commitment and what became of it.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ForesightEntry {
+    pub pre_registration: ActionHash,
+    pub question: ActionHash,
+    pub reveal_deadline: u64,
+    /// `Some` only if a reveal exists. A client cannot infer the prediction
+    /// from an unrevealed commitment, which is the whole point of the seal.
+    pub revealed_prediction: Option<String>,
+}
+
+/// THE DENOMINATOR. Revealed, expired and pending, as raw lists.
+///
+/// WHY THIS RETURNS LISTS AND NOT A SCORE. Invariant #1 refuses a canonical
+/// comparative score while requiring that raw history stay open and
+/// queryable. The expired list exists to DEFLATE a claim of foresight, not to
+/// rank agents — and a revelation read without it is precisely the laundering
+/// §9 refused to build. So the protocol surfaces the three sets and declines
+/// to divide them: a hit rate is a client's choice to defend, with its own
+/// decisions about what counts, not something this zome blesses by returning
+/// a number.
+///
+/// `expired` is computed against the caller's own clock rather than stored,
+/// because expiry is a fact about time passing and nothing writes an entry
+/// when a deadline goes by. That means two agents reading this a second apart
+/// either side of a deadline see different answers, which is correct and is
+/// why the deadline is returned alongside.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ForesightRecord {
+    pub revealed: Vec<ForesightEntry>,
+    pub expired: Vec<ForesightEntry>,
+    pub pending: Vec<ForesightEntry>,
+}
+
+#[hdk_extern]
+pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord> {
+    let now = sys_time()?.as_micros() as u64;
+    let links = get_links(
+        LinkQuery::try_new(agent_anchor_hash(&agent)?, LinkTypes::AgentToPreRegistration)?,
+        GetStrategy::Network,
+    )?;
+
+    let mut revealed = Vec::new();
+    let mut expired = Vec::new();
+    let mut pending = Vec::new();
+
+    for link in links {
+        let Ok(pr_hash) = ActionHash::try_from(link.target) else { continue };
+        let Some(record) = get(pr_hash.clone(), GetOptions::default())? else { continue };
+        let Ok(Some(pr)) = record.entry().to_app_option::<PreRegistration>() else { continue };
+
+        let reveals = get_links(
+            LinkQuery::try_new(pr_hash.clone(), LinkTypes::PreRegistrationToRevelation)?,
+            GetStrategy::Network,
+        )?;
+        let mut revealed_prediction = None;
+        for r in reveals {
+            if let Ok(rh) = ActionHash::try_from(r.target) {
+                if let Some(rec) = get(rh, GetOptions::default())? {
+                    if let Ok(Some(rv)) = rec.entry().to_app_option::<Revelation>() {
+                        revealed_prediction = Some(rv.prediction);
+                        break;
+                    }
+                }
+            }
+        }
+
+        let entry = ForesightEntry {
+            pre_registration: pr_hash,
+            question: pr.question,
+            reveal_deadline: pr.reveal_deadline,
+            revealed_prediction: revealed_prediction.clone(),
+        };
+
+        if revealed_prediction.is_some() {
+            revealed.push(entry);
+        } else if pr.reveal_deadline < now {
+            expired.push(entry);
+        } else {
+            pending.push(entry);
+        }
+    }
+
+    Ok(ForesightRecord { revealed, expired, pending })
+}

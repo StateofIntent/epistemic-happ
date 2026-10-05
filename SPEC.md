@@ -692,6 +692,44 @@ courtesy, and the refusal that the rest of this specification depends on is no
 longer being enforced where it is claimed to be. `scripts/live-verify/`
 exercises both: `domain-index.mjs` drives three separate poisoning attempts
 through `attempt_false_domain_index` and watches each one refused.
+### 10.16 Pre-registration (commit-reveal)
+
+A commitment to a prediction, disclosed later and checkable against what was
+committed. The entry types are specified in the integrity zome's own section;
+what matters normatively here is that **the denominator is protocol surface,
+not a client convention.**
+
+The naive form of this primitive is gameable by selective revelation: commit
+many predictions, reveal the ones that came true, stay silent on the rest.
+Every reveal verifies and the record is a fabrication. Three properties
+therefore MUST hold, and all three are enforced rather than documented:
+
+1. `reveal_deadline` MUST be public at commit time and MUST be later than the
+   commitment's own action timestamp, so an unrevealed commitment expires
+   **visibly** and a commitment cannot be born already expired.
+2. `question` MUST be public at commit time and its action MUST **predate**
+   the commitment, so a prediction cannot be re-pointed at a question chosen
+   after the outcome is known.
+3. A reveal MUST hash to the sealed commitment, MUST be authored by the
+   committer, and MUST NOT be accepted after the deadline — a late reveal
+   would let an author decide, having seen the outcome, whether a commitment
+   counts as revealed or quietly expired.
+
+`get_foresight_record` returns `revealed`, `expired` and `pending` as raw
+lists and MUST NOT return a score, a ratio or an ordering. Invariant #1 bars a
+canonical comparative score while requiring that raw history stay open and
+queryable; the expired list exists to **deflate** a claim of foresight rather
+than to rank agents, and a revelation read without it is the laundering above.
+Deriving a hit rate is a client's decision to defend, not this protocol's to
+bless.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `pre_register` | `PreRegisterInput` | `ActionHash` — writes the sealed content as a private entry and a public `PreRegistration` carrying its hash, the question and the deadline. The caller supplies `salt`, because a salt generated here would have to be stored in the entry it protects |
+| `reveal_pre_registration` | `RevealInput` | `ActionHash` — MUST be refused unless the content hashes to the commitment, the caller is the committer, and the deadline has not passed |
+| `get_pre_registrations_for_question` | `ActionHash` | `Vec<Record>` — every commitment made about one question, revealed or not |
+| `get_foresight_record` | `AgentPubKey` | `ForesightRecord` — `revealed` / `expired` / `pending`, as lists. Expiry is computed against the reader's clock, since nothing is written when a deadline passes |
+
 ## 11. Versioning & Change Process
 
 This document tracks a specific commit of `main` (noted at the top) and is a manually maintained snapshot, honestly labeled as such rather than implied to be self-updating. **One narrow slice of it is now checked automatically, and the boundary is worth stating precisely.** `scripts/check-spec-drift.mjs` compares the `#[hdk_extern]` functions in `dna/coordinator/src/lib.rs` against the functions listed in §10's tables, and fails in both directions: an extern absent from §10 is a callable surface this document does not admit exists, and a §10 row with no extern behind it is worse, because an implementer would write code against a function that is not there. It runs in CI on every pull request.

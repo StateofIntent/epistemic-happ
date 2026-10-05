@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -636,6 +636,119 @@ pub enum LinkTypes {
                             // one anywhere above would renumber every
                             // link type after it and silently reinterpret
                             // every existing link of those types.
+
+    // Pre-registration, appended for the same position-indexing reason.
+    QuestionToPreRegistration,  // a question -> every commitment made about it
+    AgentToPreRegistration,     // an agent's own commitments, which is what
+                                // makes the DENOMINATOR countable: expired
+                                // ones are reachable without the author
+                                // having to surface them.
+    PreRegistrationToRevelation, // a commitment -> its reveal, if it came
+}
+
+// ============================================================================
+// PRE-REGISTRATION (COMMIT-REVEAL), AND THE DENOMINATOR THAT MAKES IT HONEST
+// ============================================================================
+//
+// WHAT THIS IS FOR. The protocol can express a claim, a critique, evidence
+// and a declared confidence, and it cannot express FORESIGHT: that an agent
+// held a prediction before the evidence existed. That is the standard defence
+// against HARKing — hypothesising after results are known.
+//
+// WHY THE NAIVE VERSION IS WORSE THAN NOTHING, which is why this shape and
+// not a bare commit-reveal. Commit ten predictions, reveal the two that came
+// true, stay silent on the eight that did not: every reveal verifies, and the
+// track record is a fabrication wearing a cryptographic proof. A commitment
+// establishes that the author held THAT content at that time; it never
+// establishes that it was all they held. For a protocol whose entire value is
+// that its signals are honest, a false positive is worse than a missing
+// signal — the feature would launder the HARKing it targets rather than
+// reduce it. README.md §9 recorded exactly this and refused to build it.
+//
+// SO THE DENOMINATOR IS PART OF THE PRIMITIVE, not a reporting layer bolted
+// on afterwards. Three things are structural here:
+//
+//   1. THE DEADLINE IS PUBLIC AT COMMIT TIME, so an unrevealed commitment
+//      expires VISIBLY rather than silently. This is why the deadline cannot
+//      live inside the sealed entry.
+//   2. THE QUESTION IS PUBLIC AT COMMIT TIME and must PREDATE the
+//      commitment, so a prediction cannot be reinterpreted at reveal time to
+//      fit whatever happened. Validation checks the ordering rather than
+//      trusting the field.
+//   3. EXPIRED COMMITMENTS ARE COUNTABLE because they are public entries
+//      pointing at a public question — see the coordinator's foresight read,
+//      which returns revealed, expired and pending as RAW LISTS.
+//
+// ON INVARIANT #1, because a per-agent record looks like the thing it bars.
+// Invariant #1 refuses a canonical comparative score while REQUIRING that raw
+// history stay open and queryable. The expired count exists to DEFLATE a
+// signal, not to rank agents: a revelation read without its author's expired
+// commitments is the laundering described above. Refusing to surface the
+// denominator is what would be dishonest here. The read therefore returns
+// lists and no score, no ordering, and no ratio — deriving one is a client's
+// decision to defend, not this protocol's to bless.
+//
+// WHY THE CONTENT IS A PRIVATE ENTRY rather than a bare hash in a public one.
+// A private entry is still written to the author's source chain and its hash
+// is still published in the Action, so the commitment is on-chain and
+// immutable — the author cannot quietly change what they committed to, or
+// lose it. A bare hash would commit equally well but leaves the content
+// nowhere, so a lost prediction becomes an unprovable claim about what was
+// meant. `salt` is required because a guessable prediction is brute-forceable
+// from its hash alone.
+//
+// VALIDATION CANNOT SEE A PRIVATE ENTRY'S CONTENT — hdi delivers `None` for
+// the entry body of a private type, and `Some(_)` there is an outright error.
+// So nothing about the sealed content is checked at commit time. Everything
+// that has to be verifiable is in the public entries, and the hash is
+// recomputed at REVEAL time, which is the only moment the content exists
+// publicly to check.
+
+/// The hidden half: the prediction itself, sealed until revealed.
+///
+/// Private, so only its hash reaches the DHT at commit time. Nothing here is
+/// validated on creation — see this section's header — and nothing here is
+/// load-bearing for expiry or question-binding, both of which live in the
+/// public `PreRegistration` precisely so they can be checked.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct SealedPrediction {
+    pub prediction: String,
+    /// Without this, a short or guessable prediction is recoverable from the
+    /// commitment hash by brute force, and the commitment stops being a
+    /// commitment.
+    pub salt: String,
+}
+
+/// The public half: what was committed to, about which question, and by when
+/// it must be revealed.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct PreRegistration {
+    /// The question this predicts an answer to, posed in advance. Validation
+    /// requires that this action PREDATES the pre-registration, which is
+    /// requirement 3: a prediction that can be re-pointed at reveal time is
+    /// not a prediction.
+    pub question: ActionHash,
+    /// `hash_entry(SealedPrediction { .. })`. The commitment.
+    pub sealed: EntryHash,
+    /// Microseconds since the epoch. Public so expiry is visible to everyone,
+    /// not only to the author.
+    pub reveal_deadline: u64,
+    pub author: AgentPubKey,
+    pub timestamp: u64,
+}
+
+/// The reveal. Carries the content and salt so anyone can recompute the
+/// commitment hash and check it against the `PreRegistration`.
+#[hdk_entry_helper]
+#[derive(Clone)]
+pub struct Revelation {
+    pub pre_registration: ActionHash,
+    pub prediction: String,
+    pub salt: String,
+    pub author: AgentPubKey,
+    pub timestamp: u64,
 }
 
 // ============================================================================
@@ -662,6 +775,13 @@ pub enum EntryTypes {
     ExternalCritique(ExternalCritique),
     AntibodyPattern(AntibodyPattern),
     FederationRecord(FederationRecord),
+    // The only private entry type in this zome. See the pre-registration
+    // section's header for why the content is sealed and everything
+    // verifiable is public.
+    #[entry_type(visibility = "private")]
+    SealedPrediction(SealedPrediction),
+    PreRegistration(PreRegistration),
+    Revelation(Revelation),
 }
 
 // ============================================================================
@@ -724,6 +844,16 @@ fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCal
                 EntryTypes::Mew(mew) => validate_mew(&mew, &action),
                 EntryTypes::Claim(claim) => validate_claim(&claim, &action),
                 EntryTypes::Retraction(retraction) => validate_retraction(&retraction, &action),
+                EntryTypes::PreRegistration(pr) => validate_pre_registration(&pr, &action),
+                EntryTypes::Revelation(rev) => validate_revelation(&rev, &action),
+                // A PRIVATE ENTRY'S CONTENT IS NOT AVAILABLE HERE, so there
+                // is nothing to check and saying so beats a silent catch-all.
+                // hdi delivers `None` for a private entry body and treats
+                // `Some(_)` as an error, so this arm is reached with the
+                // content already gone. Everything verifiable about a sealed
+                // prediction is checked at REVEAL time, against the public
+                // commitment — see validate_revelation.
+                EntryTypes::SealedPrediction(_) => Ok(ValidateCallbackResult::Valid),
                 EntryTypes::Critique(critique) => validate_critique(&critique, &action),
                 EntryTypes::Evidence(evidence) => validate_evidence(&evidence, &action),
                 EntryTypes::Membrane(membrane) => validate_membrane(&membrane, &action),
@@ -842,6 +972,93 @@ fn validate_claim(claim: &Claim, action: &TypedAction<CreateData>) -> ExternResu
 }
 
 // --- Retraction Validation ---
+/// The commitment. Two checks carry the design, and both are about ORDER.
+///
+/// The deadline must be in the future at commit time, or "expires visibly" is
+/// meaningless — a commitment born expired could never have been revealed and
+/// would sit in the denominator as if it had been a real prediction.
+///
+/// The question must PREDATE the commitment. This is requirement 3 from §9:
+/// without it, an agent can commit a vague prediction, wait, then point it at
+/// whichever question the outcome happens to fit. The ordering is checked
+/// against the question's own ACTION timestamp rather than any self-reported
+/// field, because a self-reported timestamp is exactly what an author
+/// gaming this would set freely.
+fn validate_pre_registration(pr: &PreRegistration, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &pr.author != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("PreRegistration author must match action author.".into()));
+    }
+
+    let committed_at = action.timestamp().as_micros();
+    if (pr.reveal_deadline as i64) <= committed_at {
+        return Ok(ValidateCallbackResult::Invalid(
+            "PreRegistration reveal_deadline must be after the commitment itself; a commitment that is already expired can never be revealed and would pad the denominator.".into()
+        ));
+    }
+
+    let Ok(question) = must_get_action(pr.question.clone()) else {
+        return Ok(ValidateCallbackResult::Invalid("PreRegistration question does not resolve.".into()));
+    };
+    if question.action().timestamp().as_micros() >= committed_at {
+        return Ok(ValidateCallbackResult::Invalid(
+            "PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.".into()
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// The reveal, where the commitment is actually checked.
+///
+/// `hash_entry` is recomputed from the revealed content and compared against
+/// the hash recorded publicly at commit time. This is the only moment the
+/// content exists publicly, and therefore the only moment this check is
+/// possible at all — see this section's header on private-entry validation.
+///
+/// The deadline is enforced here rather than left to readers. A reveal after
+/// the deadline is refused outright, because accepting it would let an author
+/// decide AFTER seeing the outcome whether a commitment counts as revealed or
+/// quietly expired — which is the selective revelation this whole shape
+/// exists to prevent.
+fn validate_revelation(rev: &Revelation, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &rev.author != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("Revelation author must match action author.".into()));
+    }
+
+    let Ok(record) = must_get_valid_record(rev.pre_registration.clone()) else {
+        return Ok(ValidateCallbackResult::Invalid("Revelation pre_registration does not resolve.".into()));
+    };
+    let Ok(Some(pr)) = record.entry().to_app_option::<PreRegistration>() else {
+        return Ok(ValidateCallbackResult::Invalid("Revelation pre_registration is not a PreRegistration.".into()));
+    };
+
+    // ONLY THE COMMITTER MAY REVEAL. A third party who learned the content
+    // could otherwise reveal on someone's behalf, which decides for them
+    // whether their commitment counts — the same misrepresentation
+    // Invariant #2 bars, applied to foresight instead of to a claim.
+    if pr.author != rev.author {
+        return Ok(ValidateCallbackResult::Invalid("Only the author of a PreRegistration may reveal it.".into()));
+    }
+
+    let recomputed = hash_entry(SealedPrediction {
+        prediction: rev.prediction.clone(),
+        salt: rev.salt.clone(),
+    })?;
+    if recomputed != pr.sealed {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Revelation content does not hash to the sealed commitment; this is not what was committed to.".into()
+        ));
+    }
+
+    if action.timestamp().as_micros() > (pr.reveal_deadline as i64) {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.".into()
+        ));
+    }
+
+    Ok(ValidateCallbackResult::Valid)
+}
+
 fn validate_retraction(retraction: &Retraction, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
     if &retraction.author != action.author() {
         return Ok(ValidateCallbackResult::Invalid("Retraction author must match action author.".into()));
