@@ -60,7 +60,7 @@ jobs:
       # First, because it needs nothing installed and nothing built. A
       # specification that has drifted from the code is worth knowing about
       # before eight minutes of browsers, and this answers in milliseconds.
-      - name: spec-drift — SPEC.md §10 still lists the functions that exist
+      - name: spec-drift — §10 lists the functions that exist, and §9 states the real surface count
         run: node scripts/check-spec-drift.mjs
 
       # `npm ci` rather than `npm install`, so a run verifies the dependency
