@@ -935,7 +935,7 @@ function renderNextStep(): HTMLElement | null {
 
 // --- Tabs -----------------------------------------------------------------
 
-type Tab = 'browse' | 'by-author' | 'membranes' | 'taxonomy' | 'worldline' | 'new-claim' | 'notes';
+type Tab = 'browse' | 'by-author' | 'membranes' | 'taxonomy' | 'worldline' | 'foresight' | 'new-claim' | 'notes';
 let activeTab: Tab = 'browse';
 
 function renderTabs(): HTMLElement {
@@ -947,6 +947,7 @@ function renderTabs(): HTMLElement {
     ['browse', 'Browse'], ['by-author', 'By Author'],
     ['membranes', 'Domains'],
     ['taxonomy', 'Critique Types'], ['worldline', 'Worldline'],
+    ['foresight', 'Foresight'],
     ['new-claim', 'New Claim'], ['notes', 'Notes'],
   ];
   for (const [tab, label] of tabs) {
@@ -979,6 +980,7 @@ function renderTabs(): HTMLElement {
         : activeTab === 'membranes' ? renderMembranesTab()
           : activeTab === 'taxonomy' ? renderTaxonomyTab()
             : activeTab === 'worldline' ? renderWorldlineTab()
+              : activeTab === 'foresight' ? renderForesightTab()
               : activeTab === 'notes' ? renderNotesTab(notesContext())
                 : renderNewClaimTab(),
   );
@@ -3977,4 +3979,346 @@ if ('serviceWorker' in navigator) {
   // live (it is a public/ file, copied verbatim). A plain './sw.js'
   // resolves at runtime against the document, which is what is meant.
   navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+// --- Foresight (pre-registration) ----------------------------------------
+//
+// THE DENOMINATOR IS THE SCREEN'S WHOLE OBLIGATION, and this is the one tab
+// where a beautiful rendering of the happy path would be a defect.
+//
+// The protocol refuses everything that would launder a track record: a reveal
+// must hash to its commitment, come from the committer, and arrive before the
+// deadline. But a SCREEN can undo all of that by presentation alone — show the
+// revealed predictions, omit the expired ones, and the agent appears to have
+// foreseen everything they chose to disclose. That is exactly the selective
+// revelation README.md §9 refused to ship, reintroduced at the view layer
+// where no validation rule reaches.
+//
+// So three things here are structural rather than stylistic:
+//
+//   EXPIRED SITS BESIDE REVEALED, in the same view, unconditionally. Not
+//   behind a tab, a toggle, an accordion or a "show more" — one is the
+//   denominator of the other and a reader who sees one must see both.
+//   NO RATIO IS COMPUTED. SPEC §10.16 makes that a MUST NOT, and the reason
+//   is Invariant #1: the expired set exists to deflate a claim of foresight,
+//   not to score its author. Counting is the reader's business.
+//   A PENDING COMMITMENT SHOWS ITS QUESTION AND DEADLINE AND NOT ITS CONTENT,
+//   because the content is sealed and the other two are what make the
+//   commitment answerable.
+let foresightLoaded = false;
+let myForesight: ForesightRecord | null = null;
+let foresightFormOpen = false;
+
+interface ForesightEntry {
+  pre_registration: Uint8Array;
+  question: Uint8Array;
+  reveal_deadline: number;
+  revealed_prediction: string | null;
+}
+interface ForesightRecord {
+  revealed: ForesightEntry[];
+  expired: ForesightEntry[];
+  pending: ForesightEntry[];
+}
+
+async function loadForesight(): Promise<void> {
+  foresightLoaded = true;
+  try {
+    const conn = connection;
+    if (!conn) return;
+    myForesight = await conn.callZome<ForesightRecord>('get_foresight_record', conn.myAgentPubKey);
+  } catch {
+    myForesight = null;
+  }
+  render();
+}
+
+function renderForesightList(
+  testid: string,
+  heading: string,
+  note: string,
+  entries: ForesightEntry[],
+  emptyText: string,
+): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'foresight-group';
+  box.dataset.testid = testid;
+
+  const h = document.createElement('h3');
+  // The count is the SIZE OF A SET, which is a fact, and not a ratio against
+  // another set, which would be a score. §10.16 bars the second.
+  h.textContent = `${heading} (${entries.length})`;
+  box.appendChild(h);
+
+  const why = document.createElement('p');
+  why.className = 'hint';
+  why.dataset.testid = `${testid}-note`;
+  why.textContent = note;
+  box.appendChild(why);
+
+  if (entries.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.dataset.testid = `${testid}-empty`;
+    empty.textContent = emptyText;
+    box.appendChild(empty);
+    return box;
+  }
+
+  const ul = document.createElement('ul');
+  ul.className = 'foresight-items';
+  for (const e of entries) {
+    const li = document.createElement('li');
+    li.dataset.testid = `${testid}-item`;
+
+    const q = document.createElement('span');
+    q.className = 'foresight-question';
+    q.textContent = `on question ${short(e.question)}`;
+    li.appendChild(q);
+
+    const when = document.createElement('span');
+    when.className = 'foresight-deadline';
+    when.textContent = ` · reveal by ${new Date(e.reveal_deadline / 1000).toLocaleString()}`;
+    li.appendChild(when);
+
+    if (e.revealed_prediction !== null) {
+      const p = document.createElement('p');
+      p.className = 'foresight-prediction';
+      p.textContent = e.revealed_prediction;
+      li.appendChild(p);
+    } else {
+      const sealed = document.createElement('p');
+      sealed.className = 'hint';
+      sealed.dataset.testid = `${testid}-sealed`;
+      sealed.textContent = 'Sealed — the content is not on the DHT in readable form until it is revealed.';
+      li.appendChild(sealed);
+
+      // ONLY OFFERED WHERE A REVEAL CAN STILL SUCCEED. An expired commitment
+      // gets no reveal control, because the protocol refuses a late reveal and
+      // a button that always fails teaches a reader the deadline is advisory.
+      if (testid === 'foresight-pending') {
+        const rp = document.createElement('input');
+        rp.placeholder = 'the prediction, exactly as committed';
+        rp.dataset.testid = 'foresight-reveal-prediction';
+        const rs = document.createElement('input');
+        rs.placeholder = 'the salt';
+        rs.dataset.testid = 'foresight-reveal-salt';
+        const rb = document.createElement('button');
+        rb.className = 'link-button';
+        rb.dataset.testid = 'foresight-reveal-submit';
+        rb.textContent = 'Reveal';
+        const rerr = document.createElement('p');
+        rerr.className = 'error-box';
+        rerr.dataset.testid = 'foresight-reveal-error';
+        rerr.hidden = true;
+        rb.onclick = () => {
+          rerr.hidden = true;
+          void revealPrediction(e.pre_registration, rp.value, rs.value, (m) => {
+            rerr.hidden = false; rerr.textContent = m;
+          });
+        };
+        for (const el of [rp, rs, rb, rerr]) li.appendChild(el);
+      }
+    }
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  return box;
+}
+
+async function commitPrediction(
+  question: string,
+  prediction: string,
+  salt: string,
+  hoursAhead: number,
+  onError: (m: string) => void,
+): Promise<void> {
+  try {
+    const conn = connection;
+    if (!conn) return;
+    await conn.callZome('pre_register', {
+      question: bytesFromB64(question),
+      prediction,
+      salt,
+      reveal_deadline: (Date.now() + hoursAhead * 3600_000) * 1000,
+    });
+    foresightFormOpen = false;
+    foresightLoaded = false;
+    render();
+  } catch (e) {
+    onError(String((e as Error)?.message ?? e));
+  }
+}
+
+/// THE REVEAL FORM ASKS FOR THE CONTENT AND THE SALT, and cannot do otherwise.
+/// Neither is recoverable from the DHT — the content is sealed and the salt
+/// lives inside the seal — so the committer has to supply both from their own
+/// records. That is a real usability cost and it is inherent: a salt this app
+/// stored for convenience would have to live somewhere, and anywhere it lived
+/// would be a place the commitment could be read early.
+async function revealPrediction(
+  preRegistration: Uint8Array,
+  prediction: string,
+  salt: string,
+  onError: (m: string) => void,
+): Promise<void> {
+  try {
+    const conn = connection;
+    if (!conn) return;
+    await conn.callZome('reveal_pre_registration', {
+      pre_registration: preRegistration,
+      prediction,
+      salt,
+    });
+    foresightLoaded = false;
+    render();
+  } catch (e) {
+    onError(String((e as Error)?.message ?? e));
+  }
+}
+
+function renderForesightTab(): HTMLElement {
+  const wrap = document.createElement('section');
+  wrap.className = 'foresight-tab';
+
+  const intro = document.createElement('p');
+  intro.className = 'tab-intro';
+  intro.dataset.testid = 'foresight-intro';
+  intro.textContent =
+    'Predictions you committed to before the evidence existed, and what became '
+    + 'of each one. A revealed prediction means only that you held that content '
+    + 'at that time — it never means it was all you held, which is why the '
+    + 'commitments that expired unrevealed are shown here too, and why there is '
+    + 'no score on this page.';
+  wrap.appendChild(intro);
+
+  if (!foresightLoaded) {
+    void loadForesight();
+    const loading = document.createElement('p');
+    loading.className = 'hint';
+    loading.textContent = 'Reading your commitments…';
+    wrap.appendChild(loading);
+    return wrap;
+  }
+
+  if (!myForesight) {
+    const err = document.createElement('p');
+    err.className = 'hint';
+    err.dataset.testid = 'foresight-unavailable';
+    err.textContent = 'Could not read your commitments.';
+    wrap.appendChild(err);
+    return wrap;
+  }
+
+  const errBox = document.createElement('div');
+  errBox.className = 'error-box';
+  errBox.dataset.testid = 'foresight-error';
+  errBox.hidden = true;
+  wrap.appendChild(errBox);
+  const fail = (m: string) => { errBox.hidden = false; errBox.textContent = m; };
+
+  const openBtn = document.createElement('button');
+  openBtn.className = 'secondary';
+  openBtn.dataset.testid = 'foresight-commit-toggle';
+  openBtn.textContent = foresightFormOpen ? 'Cancel' : 'Commit a prediction';
+  openBtn.onclick = () => { foresightFormOpen = !foresightFormOpen; errBox.hidden = true; render(); };
+  wrap.appendChild(openBtn);
+
+  if (foresightFormOpen) {
+    const form = document.createElement('div');
+    form.className = 'foresight-form';
+    form.dataset.testid = 'foresight-form';
+
+    const warn = document.createElement('p');
+    warn.className = 'hint';
+    warn.dataset.testid = 'foresight-form-warning';
+    // SAID BEFORE THE FIELDS, NOT AFTER. The salt is unrecoverable and the
+    // deadline is enforced, so a committer who learns this at reveal time
+    // learns it too late — the commitment is already unrevealable.
+    warn.textContent =
+      'Keep the prediction text and the salt. Neither can be recovered from this '
+      + 'app or from the DHT, and both are required to reveal. A commitment you '
+      + 'cannot reveal before its deadline becomes an expired one, publicly.';
+    form.appendChild(warn);
+
+    const qIn = document.createElement('input');
+    qIn.placeholder = 'Question: the action hash of a claim posed in advance';
+    qIn.dataset.testid = 'foresight-question-input';
+    const pIn = document.createElement('textarea');
+    pIn.placeholder = 'Your prediction — sealed until you reveal it';
+    pIn.dataset.testid = 'foresight-prediction-input';
+    const sIn = document.createElement('input');
+    sIn.placeholder = 'Salt — any phrase; without it the hash is guessable';
+    sIn.dataset.testid = 'foresight-salt-input';
+    const hIn = document.createElement('input');
+    hIn.type = 'number';
+    hIn.value = '24';
+    hIn.dataset.testid = 'foresight-hours-input';
+    const hLabel = document.createElement('label');
+    hLabel.textContent = 'Hours until the reveal deadline ';
+    hLabel.appendChild(hIn);
+
+    const go = document.createElement('button');
+    go.dataset.testid = 'foresight-commit-submit';
+    go.textContent = 'Commit';
+    go.onclick = () => {
+      errBox.hidden = true;
+      if (!qIn.value.trim() || !pIn.value.trim() || !sIn.value.trim()) {
+        fail('A question, a prediction and a salt are all required.');
+        return;
+      }
+      void commitPrediction(qIn.value.trim(), pIn.value.trim(), sIn.value.trim(), Number(hIn.value) || 24, fail);
+    };
+
+    for (const el of [qIn, pIn, sIn, hLabel, go]) form.appendChild(el);
+    wrap.appendChild(form);
+  }
+
+  // ORDER IS DELIBERATE AND EXPIRED IS NOT LAST. Putting the expired group
+  // after the revealed one invites a reader to stop at the good news, and a
+  // group below the fold is a group that can be missed. Revealed and expired
+  // are adjacent and the expired note says what it is for.
+  wrap.appendChild(renderForesightList(
+    'foresight-revealed',
+    'Revealed',
+    'Each of these hashed to its commitment and arrived before its deadline, '
+    + 'so the content was held at the time it was committed.',
+    myForesight.revealed,
+    'Nothing revealed yet.',
+  ));
+
+  wrap.appendChild(renderForesightList(
+    'foresight-expired',
+    'Expired unrevealed',
+    'These were committed to and never revealed before their deadline. They are '
+    + 'the denominator: a record of revealed predictions read without them '
+    + 'overstates what was foreseen, which is why this list is not optional and '
+    + 'not collapsed.',
+    myForesight.expired,
+    'Nothing has expired unrevealed.',
+  ));
+
+  wrap.appendChild(renderForesightList(
+    'foresight-pending',
+    'Still open',
+    'Committed to, deadline not yet reached. The question and the deadline are '
+    + 'public; the content is not.',
+    myForesight.pending,
+    'No open commitments.',
+  ));
+
+  // SAID IN WORDS AS WELL AS IN STRUCTURE. The structural guarantee is that
+  // expired is always rendered; this sentence is what a reader takes away if
+  // they read nothing else, and the ui harness asserts on it.
+  const noScore = document.createElement('p');
+  noScore.className = 'hint';
+  noScore.dataset.testid = 'foresight-no-score';
+  noScore.textContent =
+    'There is no hit rate on this page, and the protocol does not compute one. '
+    + 'Dividing these lists would turn a record into a score, which Invariant 1 '
+    + 'refuses — the lists are open so anyone can read them, not so anyone can '
+    + 'be ranked by them.';
+  wrap.appendChild(noScore);
+
+  return wrap;
 }

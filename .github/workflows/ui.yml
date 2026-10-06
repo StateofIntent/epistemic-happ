@@ -1,7 +1,8 @@
 # =============================================================================
-# Seventeen browser harnesses, against a real conductor and a real DHT, on
+# Eighteen browser harnesses, against a real conductor and a real DHT, on
 # every push and pull request. This is the layer that had no automatic check
-# at all.
+# at all. The counts further down this header are historical — they record
+# what was measured when this workflow was written, at seventeen.
 #
 # WHAT WAS ACTUALLY IN THE WAY, since three files said these were excluded and
 # none of them said this. `conductor.yml`, `scripts/live-verify/README.md` and
@@ -288,6 +289,15 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/neighborhood-ui.mjs
+
+      # The fake here is not a broken screen but a beautiful one: the revealed
+      # predictions rendered accurately and the expired ones left out, which is
+      # README.md §9's selective revelation rebuilt where no validation rule
+      # reaches. The central check is that the expired group is there.
+      - name: foresight-ui — the expired commitments render beside the revealed ones, and nothing is divided
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/foresight-ui.mjs
 
       # The fake this one has to defeat is a By Author tab that filters claims
       # the browser already holds — correct-looking, correctly scoped, and

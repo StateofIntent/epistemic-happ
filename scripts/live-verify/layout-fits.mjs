@@ -44,21 +44,26 @@
 //      reports zero offenders while the document scrolls to 1326px. Text
 //      runs have to be measured directly, with a Range.
 //
-// FOUR OF THE SIX TABS ARE GIVEN CONTENT THAT CAN BREAK THEM, and the other
+// FIVE OF THE SEVEN TABS ARE GIVEN CONTENT THAT CAN BREAK THEM, and the other
 // two are named rather than glossed. Browse and By Author render a claim
-// carrying the token, Domains a membrane whose description carries it, and
-// Critique Types a species whose required evidence carries it. Each asserts
-// its content is on screen BEFORE being measured — a green from an empty
-// screen is exactly the vacuity this file exists to refuse, and both the
-// Domains and By Author controls have gone red for precisely that reason on
-// their first run, since neither tab loads anything until asked.
+// carrying the token, Domains a membrane whose description carries it,
+// Critique Types a species whose required evidence carries it, and Foresight a
+// REVEALED prediction carrying it — which takes the whole commit-reveal round
+// trip to seed, because an unrevealed commitment renders as "Sealed" and would
+// put no long token on screen at all. Each asserts its content is on screen
+// BEFORE being measured — a green from an empty screen is exactly the vacuity
+// this file exists to refuse, and both the Domains and By Author controls have
+// gone red for precisely that reason on their first run, since neither tab
+// loads anything until asked.
 //
-// Those four are guarded, and it is the injection that says so rather than
-// this comment: removing the wrap rule turns twelve checks red, four tabs at
-// three widths. Before they were seeded it turned six.
+// Those five are guarded, and it is the injection that says so rather than
+// this comment: removing the wrap rule turns FIFTEEN checks red, five tabs at
+// three widths. At four seeded tabs it turned twelve, and before any were
+// seeded it turned six.
 //
 // THE OTHER TWO CANNOT FAIL ON CONTENT, and pretending otherwise would be
-// the same overstatement this file was written to catch:
+// the same overstatement this file was written to catch — Foresight used to
+// belong in this group and was moved out by seeding it rather than by argument:
 //   - New Claim is a form. The token is typed into it, which is worth doing
 //     because it exercises the field, but a textarea scrolls its own content
 //     internally and cannot push the page sideways however long the input.
@@ -124,7 +129,19 @@
 //   exactly as By Author loads nothing until asked for an agent. Two tabs,
 //   the same trap, caught twice by the same kind of check.
 //
-//   Restored and re-run: 33 checks green.
+//   Injection, after Foresight was added as a seventh tab and seeded: the wrap
+//   rule removed again. Result: FIFTEEN red where the same injection had
+//   produced twelve — the four tabs above plus Foresight, at all three widths.
+//   Measured on the commit that added the tab, rather than carried over.
+//
+//   THE TAB BAR'S OWN CHECKS ARE WHY A SEVENTH TAB NEEDED A RUN AT ALL, and
+//   they stayed green: `barClipped` and `shreddedLabels` are measured on every
+//   tab visit at every width, so they cover the bar as a whole rather than the
+//   tab being visited. Seven labels still fit 320px without a tab leaving the
+//   bar or a label breaking mid-word. That was the risk in adding one, and it
+//   is a measurement here, not an assumption.
+//
+//   Restored and re-run: 39 checks green.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -146,7 +163,7 @@ const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
 const PREVIEW_PORT = 4195;
 const WIDTHS = [390, 360, 320];
-const TABS = ['Browse', 'By Author', 'Domains', 'Critique Types', 'Worldline', 'New Claim'];
+const TABS = ['Browse', 'By Author', 'Domains', 'Critique Types', 'Worldline', 'Foresight', 'New Claim'];
 
 const STAMP = Date.now();
 const DOMAIN = `Layout${STAMP}`;
@@ -157,6 +174,7 @@ const CONTENT_LONG = `See ${LONG_TOKEN} for the protocol.`;
 const MEMBRANE_DESC = `Seeded for layout verification. Charter: ${LONG_TOKEN}`;
 const SPECIES_NAME = `LayoutSpecies${STAMP}`;
 const SPECIES_EVIDENCE = `The source, published at ${LONG_TOKEN}`;
+const FORESIGHT_PREDICTION = `By the end of the period, the source at ${LONG_TOKEN} will have been retracted.`;
 const nowSecs = () => Math.floor(Date.now() / 1000);
 
 const log = (...a) => console.log(...a);
@@ -289,6 +307,25 @@ async function main() {
     period_granularity_secs: 3600, expertise_tags: [], expires_at: null,
   });
 
+  // Foresight renders a revealed prediction as user-authored text, so it can
+  // break exactly like a claim can. Seeding it needs the whole commit-reveal
+  // round trip — a question that predates the commitment, a commit, and a
+  // reveal inside the deadline — because an unrevealed commitment renders as
+  // "Sealed" and would put no long token on screen at all.
+  const fQuestion = await call('create_claim', {
+    content: 'A question posed in advance, so the Foresight tab has something to render.',
+    domain: DOMAIN, confidence: 'Moderate', semantic_tags: [],
+    author: me, timestamp: nowMicros(), evidence_hashes: [], attestation_policy: null,
+  });
+  await new Promise((r) => setTimeout(r, 1100));   // the question must predate the commitment
+  const fPre = await call('pre_register', {
+    question: fQuestion, prediction: FORESIGHT_PREDICTION, salt: 'salt-layout',
+    reveal_deadline: nowMicros() + 3_600_000_000,
+  });
+  await call('reveal_pre_registration', {
+    pre_registration: fPre, prediction: FORESIGHT_PREDICTION, salt: 'salt-layout',
+  });
+
   log('Starting vite preview (production bundle) ...');
   const preview = spawn('npx', ['vite', 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
     cwd: new URL('../../mobile-ui/', import.meta.url).pathname, stdio: 'ignore',
@@ -343,6 +380,14 @@ async function main() {
         if (tab === 'Critique Types') {
           await page.waitForTimeout(1200);
           check(`${width}px CONTROL: Critique Types renders the species' evidence text`,
+            (await page.locator('.tab-content').innerText()).includes(LONG_TOKEN));
+        }
+        if (tab === 'Foresight') {
+          // Loads on first render rather than on a click, so the only trap
+          // here is measuring before the read returns.
+          await page.waitForSelector('[data-testid="foresight-revealed"]', { timeout: 20000 });
+          await page.waitForTimeout(600);
+          check(`${width}px CONTROL: Foresight renders the revealed prediction's long token`,
             (await page.locator('.tab-content').innerText()).includes(LONG_TOKEN));
         }
         if (tab === 'New Claim') {
