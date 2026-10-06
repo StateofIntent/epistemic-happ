@@ -3323,6 +3323,13 @@ Three of the four remaining are genuinely **hash-addressed getters** which a scr
   something exists. It fails silently and for longer, which is why the untested
   half was the one worth testing.
 
+
+  **And one SPEC rule is checked now rather than merely written down, which is the first time that has been true.** `check-spec-drift.mjs` and SPEC §11 have both said for a long time that most of the document is MUST and SHOULD rules about validation, and that nothing compares those to `validate_*`. **§5.2's author binding is compared now** — for every entry type carrying an `author`, `agent`, `creator` or `proposer` field, the validator must compare that field against the authoring action's real author. A missing bind is forgery: an agent authoring an entry attributed to somebody else.
+
+  **The compiler cannot cover this, and that is the whole justification.** `validate_create_entry`'s match over `EntryTypes` has no wildcard, so rustc refuses to build when a new entry type has no arm — that half is genuinely gated and this does not duplicate it. What rustc cannot see is what the arm *does*. **Proven rather than argued:** `validate_claim`'s bind was replaced with `if false` and the zome built clean, exit 0, with one warning — and the warning appeared only because `action` became unused in that function, so a validator still using the action for anything else would compile silently. An entry type with a forgeable author ships green.
+
+  **All thirteen bind today**, measured, so this finds no current defect and does not pretend to. It exists for the fourteenth entry type, added by somebody who has not read §5.2. The comparison has to name the *field*: an earlier draft matched any `.author()` call in the validator and would have passed one calling it for an unrelated purpose — the same "matched something adjacent to the thing" error as the `chromium.mjs` count. The script's "NOTHING here verifies those rules" caveat is narrowed rather than left standing, because it is now false in exactly one place.
+
   | Unsurfaced extern | Why it has no screen |
   |---|---|
   | `create_mew` | bridge-only — `bridge/` owns the Twitter surface, and the UI is not a Twitter client |
