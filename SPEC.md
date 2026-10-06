@@ -276,6 +276,24 @@ This cannot catch a peer running a different version — the DNA hash makes that
 ### 5.1 Global rule: no deletion
 Any `RegisterDelete` operation is **rejected outright** — `ValidateCallbackResult::Invalid("Deletion is not permitted. Entries are immutable.")`. This applies to every entry type without exception. See Invariant #6 (§7).
 
+**The rule is about deletion, and that refusal message claims more than the validator enforces.** `FlatOp::Update(_)` returns `Valid` — every update op is accepted, for every entry type — so "Entries are immutable" is true of deletion and not of mutation. The stated invariant is the narrower one (#6, "nothing is deleted"), and validation implements exactly that; it is the *adjective in the message* that overreaches, which is worth saying plainly in a document whose §11 already warns that a name-level check cited as "the spec is verified" would be an overclaim.
+
+**What actually keeps entries unmutated today is the absence of an update path, which is a weaker guarantee than it looks.** No coordinator extern calls `update_entry`, so no client can author an update through the shipped API. But §11.1's own table records that a coordinator-zome edit leaves the DNA hash **unchanged** and is hot-swappable via `update_coordinators` — so a peer running a modified coordinator stays on this network and can author update ops that every node's validation will accept. The integrity zome is the only part the hash covers, and therefore the only place a guarantee can live.
+
+**Measured impact today is nil, and that is why nothing has been changed in the zome.** Nothing reads update chains: zero `get_details`, zero `Details::` and zero `.updates` in `dna/coordinator/src/lib.rs`, and none in `mobile-ui/src`. An accepted update would be stored and surfaced by no reader. So this is a latent gap, not a live defect.
+
+**And the message is deliberately NOT being reworded, because the fix costs more than the flaw.** Any edit to the integrity zome changes the DNA hash (§11.1) — a different network, no migration — while §11 also says the protocol version **MUST NOT** be bumped by a change that alters neither what is accepted nor what an entry means. Rewording a string satisfies neither condition for a bump and forks the network anyway, producing two hashes both claiming `protocol_version: 3`: precisely the "mystery hash" `dna/dna.yaml` says the version field exists to prevent. **The wording should be narrowed in the next commit that forks the network for a real reason.**
+
+**This note was going to live as a comment beside that arm, and it cannot: a COMMENT in the integrity zome changes the DNA hash too.** `wasm_error!` expands to a struct carrying `::core::line!()`, and this zome uses it 23 times — so every line-shifting edit rewrites baked-in line constants, changes the wasm, and forks the network. Comments included. Measured rather than reasoned about, after the opposite was assumed:
+
+| step | DNA hash |
+|---|---|
+| baseline, rebuilt and repacked unchanged | `uhC0keFcP2UoOwpAWpSNZp4gHfxalbVrV_aBQ8Fmi8U8b72kSp68Y` |
+| a ~30-line explanatory comment added | `uhC0k7eeaHx0BviHHpQDAHhxFViDcsvSayKVS52U8VTP-PMQHHeIR` |
+| comment reverted, rebuilt, repacked | `uhC0keFcP2UoOwpAWpSNZp4gHfxalbVrV_aBQ8Fmi8U8b72kSp68Y` |
+
+The first row is the control that makes the comparison mean anything — the build is deterministic, and the repacked bundle is byte-identical to the committed one. **So the integrity zome cannot be annotated for free, and this document is where its caveats have to live.** That is a sharper constraint than §11.1's table states, and it applies to anyone who was about to add a clarifying comment there.
+
 ### 5.2 Author binding
 For every entry type carrying an `author`/`agent`/`creator`/`proposer` field, that field MUST equal the actual authoring action's real author. This is checked independently by every validator (listed per-type in §2) — never trusted from the entry's own claimed value alone.
 
