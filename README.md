@@ -3190,6 +3190,39 @@ each of these is currently exactly that.
   look. The harness said as much before any of this: *"expect a long tail rather
   than a broken state"*, and *"do not expect a distinctive error."*
 
+  **A third failure arrived while this was being written, and it is the same
+  number again: 125.3s, 120.3s, 120.3s.** Three independent CI observations, all
+  on `initiate_interval_ms` plus jitter, with every census mute — 8–9 lines per
+  node, every tracked signature zero. The signature is now the best-established
+  fact about this failure, and the mechanism behind it is still the only one that
+  fits a silent wait ending on that constant.
+
+  **And the pass rate has fallen with every re-measurement, which is a lesson
+  about quoting it at all.** 93.3% at n=15, 85.7% at n=21, **80.0% (20/25)** now
+  — against 83.1% before the dwell fix, so that fix's apparent gain has gone,
+  within noise. Three revisions in one direction say the figure was quoted while
+  it was still accumulating; treat any current value here as provisional, and
+  prefer the signature over the rate.
+
+  **So the node logs now carry the gossip timeline, which is the only thing that
+  can settle it.** `scripts/network.sh` raises the conductor's log filter —
+  `CUSTOM_FILTER`, which is all `tracing_override` sets — so that
+  `kitsune2_gossip`'s own lines reach the log: "Starting initiate task" once per
+  node at startup, "Selected target for gossip: <url>" and "Initiated gossip
+  with <url>" per attempt, and `select_next_target`'s reason when there is
+  nobody to gossip with, which the `Ok(None)` arm defers to it for by name.
+  `scripts/log-census.sh` counts the first three — the first non-error entries
+  in that list, because counting errors harder was never going to reach a path
+  that logs none.
+
+  **A slow baseline whose first "Initiated gossip with" is two minutes after
+  start is this mechanism caught in the act; one at t+1s refutes it.** Either way
+  the next occurrence answers the question instead of restating it. The filter is
+  checked after startup rather than trusted, and watched failing: with
+  `EPI_GOSSIP_LOG_FILTER=error` the guard fires on all three nodes and the census
+  goes mute again, which is exactly the state the last five failures were
+  diagnosed in.
+
 - [x] **Pre-registration (commit-reveal) — built, and the flaw this entry identified is what the implementation is shaped around.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.
