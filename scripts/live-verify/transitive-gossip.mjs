@@ -501,12 +501,35 @@ async function main() {
   //      NO: it appears once each in nodeA's and nodeD's logs in runs where
   //      every crossing succeeded. Routine contention, not this.
   //
-  // What survives is one correlation and no mechanism: "Accept message from
-  // wrong peer" appeared in the failing instance and in NONE of the healthy runs
-  // across that whole session. That is not enough to report upstream as a bug —
-  // a maintainer cannot act on a log line from a run nobody can reproduce — and
-  // it is not enough to fix here either. It is enough to recognise next time,
-  // which is what the setup failure above is for.
+  // What survived that session was one correlation and no mechanism: "Accept
+  // message from wrong peer" appeared in the failing instance and in NONE of the
+  // healthy runs. That is not enough to report upstream as a bug — a maintainer
+  // cannot act on a log line from a run nobody can reproduce — and it is not
+  // enough to fix here either. It is enough to recognise next time, which is
+  // what the setup failure above is for.
+  //
+  // AND IT HAS SINCE BEEN DEMOTED TWICE OVER, so do not start from it.
+  //
+  // First by measurement: the setup text below already records that two LATER
+  // failures produced no distinctive error at all, this line included. One
+  // sighting in three observed failures is a coincidence until shown otherwise.
+  //
+  // Second by explanation, which is the part that reads like progress and is
+  // not. The line now HAS a mechanism, from kitsune2_gossip-0.5.0: gossip keeps
+  // exactly one outgoing round (`initiated_round_state:
+  // Arc<Mutex<Option<GossipRoundState>>>` — "we only initiate one round at a
+  // time, so this is a single value"), where ACCEPTED rounds get a per-peer
+  // `HashMap`. `validate_accept` emits this exact string when
+  // `session_with_peer != from_peer`. So: initiate with X, lose the round to
+  // `round_timeout_ms`, the reaper clears the slot, initiate with Y, and X's
+  // late Accept is rejected as being from the wrong peer. Needs two or more
+  // gossip peers, which is why four nodes see it and two never do.
+  //
+  // That explains the SYMPTOM and not this harness's failure, because the
+  // symptom is missing from most of the failures. A mechanism for a clue that
+  // mostly is not there is not a cause for the thing that is. `network.sh` now
+  // sets `roundTimeoutMs` to 60s, which predicts this line gets rarer; if nodeD
+  // still exchanges nothing without it, the mechanism above is a side-story.
   const tDBase = Date.now();
   let dBaseMs = null;
   while (Date.now() - tDBase < ACQUIRE_WINDOW_MS) {
