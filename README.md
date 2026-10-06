@@ -2308,6 +2308,81 @@ each of these is currently exactly that.
   the collection side; the next run has to actually produce fast trials for the
   comparison to mean anything, and on this runner that is not guaranteed.
 
+  **The three-arm run is the one that answers things, and it starts by retiring
+  two findings from the paragraphs above.** Run `37478744160`: 30 trials, arms
+  60000/30000/15000 interleaved on one runner, all ten per arm completed, every
+  trial archived. The 30000 arm exists because a 15s grid cannot falsify a
+  "crossings land just after a multiple of `roundTimeoutMs`" reading — any value
+  is within 15s of a multiple of 15 — while a 30s grid can.
+
+  | arm | crossings (s) | never crossed |
+  |---|---|---|
+  | 60000 | 9.8 · 44.4 · 44.5 · 0.0 · 134.1 · 153.4 · 138.3 · 123.3 | 2 of 10 |
+  | 30000 | 131.3 · 126.3 · 3.0 · 137.4 · 137.1 · 3.0 · 0.1 · 3.0 · 132.3 | 1 of 10 |
+  | 15000 | 7.6 · 27.1 · 18.1 · 123.3 · 138.4 · 132.3 · 18.1 · 3.0 | 2 of 10 |
+
+  **Retired: the 320-line outlier does not reproduce.** The previous run's
+  strongest single datum was one trial logging `No agents with overlapping arcs
+  available` 320 times. Across these 30 trials the maximum is **2**. One
+  observation, not a signature, and it should not be cited again.
+
+  **Retired: "three of four non-crossings never initiated gossip" was not
+  diagnostic.** `Initiated gossip with` = 0 appears just as readily in the
+  *fastest* trials — 0.0s, 0.1s, 9.8s — because a claim that arrives immediately
+  needs no round initiated to fetch it. The previous run had one control and
+  could not see this; this one has eight sub-10s trials and the reading does not
+  survive them. That is what controls are for, and it is the second time this
+  entry has had to withdraw a pattern drawn without them.
+
+  **Refuted: the cadence reading.** Excess over the nearest multiple of
+  `roundTimeoutMs`, per arm: 60000 → 0.0, 3.3, 9.8, 14.1, 18.3, 33.4, 44.4,
+  44.5; 30000 → 0.1, 3.0, 3.0, 3.0, 6.3, 11.3, 12.3, 17.1, 17.4. The 30s band is
+  filled, not bunched at its start, and 44.4/44.5 sit mid-band under any reading.
+  Killed by the arm added to kill it.
+
+  **Confirmed, now decisively: `roundTimeoutMs` is not the variable.** 2 of 10,
+  1 of 10, 2 of 10 across a 4× range of the setting, interleaved so arm and
+  machine-fatigue are no longer the same variable. §5's `roundTimeoutMs: 60000`
+  has no measured benefit and should be understood as a setting nobody has shown
+  to help.
+
+  **What is real: an arm-independent band at ~123–153s holding 12 of 25
+  crossings**, contributed to about equally by all three arms (4, 5, 3), with the
+  rest split between a fast mode under 10s (eight trials) and a thin middle
+  (five). `partition-rejoin`'s baseline sits inside that band too — 125.3s,
+  twice, to the decimal, on a job that never varies the setting. The band is the
+  thing to explain and it has nothing to do with gossip round timeouts.
+
+  **And the non-crossings split into two distinct modes**, which is the first
+  mechanism-level result this question has produced. Counting nodeD's gossip
+  traffic per trial and normalising by duration — the only valid comparison,
+  since a 330s trial has more time to log anything than a 3s one:
+
+  | class | n | initiates/100s | messages handled/100s |
+  |---|---|---|---|
+  | crossed in 123–153s | 12 | 4.17 | 8.15 |
+  | never crossed | 5 | 0.73 | 1.03 |
+
+  - **Mode 1, four of five: one initiate, then silence.** nodeD sends exactly one
+    `Initiate` and handles zero or one message in the whole 330s. `Starting
+    initiate task` is **2 in all thirty trials**, so the task reliably starts —
+    and then, in these four, does nothing further for five and a half minutes.
+    0.30 initiates/100s against the band's 4.17: a **14×** difference, duration-
+    matched.
+  - **Mode 2, one of five: rounds complete and move nothing.** Eight full rounds,
+    sixteen messages handled, **eight concluding `NoDiff`** — while nodeA held a
+    claim nodeD did not have. Gossip worked repeatedly and still transferred
+    nothing, which is a different and worse failure than not gossiping.
+
+  **`Accept message from wrong peer`: zero across all 30 trials** — 47 trials
+  cumulative with zero, and it should be struck from this entry's candidate list
+  rather than merely demoted.
+
+  **Status: reproducible at 5 in 30 on hardware anybody can rent**, which is the
+  thing this question has never had. The upstream report was always blocked on
+  "a maintainer cannot act on a run nobody can reproduce"; that blocker is gone,
+  and the two modes above are what should be filed — not the 320.
+
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
