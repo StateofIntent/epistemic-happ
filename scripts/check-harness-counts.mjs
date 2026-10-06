@@ -27,6 +27,15 @@
 // in README.md, that the harness contains exactly N `check(...)` call sites
 // with a literal label.
 //
+// AND THREE CLAIMS ABOUT THE SUITE AS A WHOLE, which fail for a duller reason
+// than the per-harness counts: somebody adds a harness. Every harness has a row
+// in `scripts/live-verify/README.md`'s table and every row has a harness; the
+// stated number of harnesses importing `CHROMIUM` is the number that do; and
+// `ui.yml`'s header count is the number of harnesses that workflow runs. Two of
+// those three were wrong on the day this was written and were fixed by hand —
+// and one of those hand fixes was itself wrong, which the gate then caught. See
+// the negative evidence at the bottom.
+//
 // WHY A STATIC COUNT IS LEGITIMATE HERE, AND WHERE IT IS NOT. One call site
 // means one check only when no check sits inside a loop, and that is an
 // assumption rather than a fact — so it was measured. Seven of the eight cited
@@ -76,12 +85,55 @@
 //
 //   Restored and re-run: green, exit 0.
 //
+//   ----- and for the suite indexes, added later -----
+//
+//   Injection: a harness file added with no row in the suite table.
+//   Result: red, "says 42, is 43", NAMING the harness with no row. This is the
+//   direction that actually happens — a harness arrives and the index does not.
+//
+//   Injection: the CHROMIUM importer count moved off by one.
+//   Result: red, "says 21, is 22".
+//
+//   Injection: `ui.yml`'s header count left at seventeen.
+//   Result: red, "says 17, is 18" — which is the exact stale figure this gate
+//   was written after correcting by hand.
+//
+//   Injection: the CHROMIUM sentence reworded to "All of the browser
+//   harnesses here import", so the gated phrasing is gone.
+//   Result: red, CLAIM NOT FOUND, for the reason every other SETUP FAILED in
+//   this repository exists: a gate whose subject can vanish silently is not a
+//   gate.
+//
+//   Restored: green, exit 0, on all six checks.
+//
+//   AND THE FIRST RUN OF THIS GATE CAUGHT AN ERROR I HAD MADE BY HAND HOURS
+//   EARLIER, which is the best argument for it that could have turned up. The
+//   CHROMIUM sentence said "twenty-one" when twenty-two harnesses imported it;
+//   I corrected it to "twenty-three" from a quick `grep -l | wc -l`, which
+//   counted `chromium.mjs` ITSELF — its header carries the line
+//   `//   import { CHROMIUM } from './chromium.mjs';` as usage documentation.
+//   So a stale index was replaced with a wrong one, by the same kind of
+//   ad-hoc recount this file exists to retire, and nothing would have noticed.
+//   The gate excludes the resolver by name, which is why it reads 22.
+//
 // Run: node scripts/check-harness-counts.mjs
 // ============================================================================
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 
 const README = new URL('../README.md', import.meta.url).pathname;
 const HARNESS = (name) => new URL(`../scripts/live-verify/${name}.mjs`, import.meta.url).pathname;
+const LV_DIR = new URL('../scripts/live-verify', import.meta.url).pathname;
+const LV_README = new URL('../scripts/live-verify/README.md', import.meta.url).pathname;
+const UI_WORKFLOW = new URL('../.github/workflows/ui.yml', import.meta.url).pathname;
+
+/** The harnesses, by name. `chromium.mjs` is the shared browser resolver rather
+ *  than a harness, and is the only file in there that is neither. */
+function harnessNames() {
+  return readdirSync(LV_DIR)
+    .filter((f) => f.endsWith('.mjs') && f !== 'chromium.mjs')
+    .map((f) => f.slice(0, -4))
+    .sort();
+}
 
 const log = (...a) => console.log(...a);
 
@@ -143,6 +195,69 @@ function checkSites(source) {
   return single + double + template;
 }
 
+/** Spelled-out numbers, reused for the index claims below. */
+const WORD_RE = '(' + Object.keys(WORDS).join('|') + '|\\d+)';
+
+/** THE THREE INDEX CLAIMS, each of which was WRONG earlier on the day this was
+ *  written and each fixed by hand — which is the whole argument for gating them.
+ *
+ *  They describe the harness suite as a whole rather than one harness, and they
+ *  go stale for the dullest possible reason: somebody adds a harness. The
+ *  `chromium.mjs` count said twenty-one when twenty-two already imported it,
+ *  and `ui.yml`'s header said seventeen when it ran eighteen. Neither is a
+ *  judgement call and neither needs a human to recount it. */
+function indexClaims() {
+  const names = harnessNames();
+  const lv = readFileSync(LV_README, 'utf8');
+  const uiYml = readFileSync(UI_WORKFLOW, 'utf8');
+  const out = [];
+
+  // 1. Every harness has a row in the suite's own table, and every row has a
+  //    harness. A harness added without a row is undocumented; a row without a
+  //    harness describes something that is not there.
+  const rows = [...lv.matchAll(/^\| `([a-z0-9-]+)`/gm)].map((m) => m[1]);
+  out.push({
+    what: 'live-verify/README.md table rows',
+    found: rows.length === 0 ? null : rows.length,
+    actual: names.length,
+    detail: () => {
+      const rowSet = new Set(rows);
+      const missing = names.filter((n) => !rowSet.has(n));
+      const extra = rows.filter((r) => !names.includes(r));
+      return [
+        missing.length ? `harnesses with no row: ${missing.join(', ')}` : '',
+        extra.length ? `rows with no harness: ${extra.join(', ')}` : '',
+      ].filter(Boolean);
+    },
+  });
+
+  // 2. "All <N> browser harnesses here import `CHROMIUM`".
+  const chromium = names.filter((n) => {
+    try { return readFileSync(HARNESS(n), 'utf8').includes("from './chromium.mjs'"); }
+    catch { return false; }
+  }).length;
+  const cm = lv.match(new RegExp(`All ${WORD_RE} browser harnesses here import`, 'i'));
+  out.push({
+    what: 'live-verify/README.md CHROMIUM importers',
+    found: cm ? parseCount(cm[1]) : null,
+    actual: chromium,
+    detail: () => [],
+  });
+
+  // 3. `ui.yml`'s header count against the harnesses that workflow actually
+  //    runs. Counted from the invocations, which is what a reader is being told.
+  const invocations = [...uiYml.matchAll(/node scripts\/live-verify\/[a-z0-9-]+\.mjs/g)].length;
+  const um = uiYml.match(new RegExp(`^# ${WORD_RE} browser harnesses`, 'im'));
+  out.push({
+    what: 'ui.yml header harness count',
+    found: um ? parseCount(um[1]) : null,
+    actual: invocations,
+    detail: () => [],
+  });
+
+  return out;
+}
+
 const stated = claims(readFileSync(README, 'utf8'));
 
 if (stated.length === 0) {
@@ -201,9 +316,47 @@ if (wrong.length > 0) {
   log('');
 }
 
-if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0) {
+// ---------------------------------------------------------------------------
+// The suite's own indexes, which are a different kind of claim from the
+// per-harness counts above: they go stale when somebody ADDS a harness, which
+// is why neither of them should have needed a person to recount it.
+// ---------------------------------------------------------------------------
+const idx = indexClaims();
+const idxBad = [];
+log('  --- suite indexes ---');
+for (const c of idx) {
+  if (c.found === null) {
+    log(`  ${c.what.padEnd(40)} CLAIM NOT FOUND   (actual ${c.actual})`);
+    idxBad.push(c);
+    continue;
+  }
+  const ok = c.found === c.actual;
+  log(`  ${c.what.padEnd(40)} says ${String(c.found).padStart(3)}   is ${String(c.actual).padStart(3)}${ok ? '' : '   <-- DRIFT'}`);
+  if (!ok) idxBad.push(c);
+}
+log('');
+
+if (idxBad.length > 0) {
+  log('DRIFT — the suite index does not describe the suite:');
+  for (const c of idxBad) {
+    if (c.found === null) {
+      log(`  ${c.what}: the sentence this gates is missing or reworded (actual ${c.actual}).`);
+      log('    A gate whose subject can vanish silently is not a gate — if the');
+      log('    wording moved on purpose, move this check with it.');
+    } else {
+      log(`  ${c.what}: says ${c.found}, is ${c.actual}`);
+      for (const d of c.detail()) log(`    ${d}`);
+    }
+  }
+  log('  These drift when a harness is ADDED, which is the dullest possible');
+  log('  reason and the hardest to notice: nobody rereads an index.');
+  log('');
+}
+
+if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBad.length === 0) {
   log('NO DRIFT: every harness check count README.md states is the number of');
-  log('checks that harness has.');
+  log('checks that harness has, every harness has a row in the suite table, and');
+  log('both suite-wide counts match what is actually there.');
   log('(Call sites, not executions — verified equal by real runs for every');
   log('harness it gates. The ones it cannot count are listed above, untested');
   log('here, with the reason they cannot be.)');
