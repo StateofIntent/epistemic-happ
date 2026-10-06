@@ -3223,6 +3223,42 @@ each of these is currently exactly that.
   goes mute again, which is exactly the state the last five failures were
   diagnosed in.
 
+  **The first data arrived immediately and refuted the strong form of the
+  hypothesis.** The next failure censused **`Initiated gossip with=11`** on nodeA
+  and 13 on nodeB — so "no peer was ever found and nothing was initiated" is
+  dead; rounds were being started throughout. It also logged `iroh connect timed
+  out=1` on nodeB, a signature absent from all three earlier failures, and
+  crossed at **425.8s**, a fourth distinct value after 125.3s, 120.3s, 120.3s.
+
+  **And the instrumentation discarded the half that mattered, which is a defect
+  in the commit above rather than a result.** Counts cannot say *when*, and when
+  is the only thing separating the remaining explanations. The timeline was in
+  the log and never reached the job output: the end-of-job dump is `tail -100`,
+  the filter had grown that log to 1017 lines, and every surviving "Initiated
+  gossip with" timestamp fell **after** the baseline window it was meant to
+  explain — 07:17 against a window that closed at 07:12. Instrumentation that
+  produces an answer and then throws it away is worse than none, because the
+  census looks like it reported.
+
+  **So `log-census.sh` prints the first initiation per node, on every run.**
+  Bounded and per-node, so it cannot grow into the thing that gets tailed away;
+  on every run rather than on failure, because that file's own header records
+  what failure-only collection already cost here — three passing runs showed
+  zero occurrences *and* zero conductor log, so zero was the absence of the file
+  rather than of the event. The healthy control, measured:
+
+  | node | initiate task | first initiation | delay |
+  |---|---|---|---|
+  | nodeA | 07:23:48.47 | 07:23:54.48 | 6.0s |
+  | nodeB | 07:23:53.90 | 07:23:55.90 | 2.0s |
+  | nodeC | 07:23:59.31 | **NEVER** | — |
+
+  **nodeC's `NEVER` is the metric validating itself.** It is the isolated control
+  on a different seed, so it has nobody to gossip with — precisely the state the
+  surviving hypothesis attributes to a slow node. A slow baseline should show
+  nodeA or nodeB at ~120s against the 2–6s here, and that comparison is now
+  available on the next occurrence instead of needing another session to arrange.
+
 - [x] **Pre-registration (commit-reveal) — built, and the flaw this entry identified is what the implementation is shaped around.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.
