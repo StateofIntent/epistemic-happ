@@ -63,6 +63,12 @@ jobs:
       - name: spec-drift — §10 lists the functions that exist, and §9 states the real surface count
         run: node scripts/check-spec-drift.mjs
 
+      # Cheap, no conductor, and it belongs beside spec-drift: both exist
+      # because a hand-stated number in README.md went stale with nothing
+      # watching. All seven harness counts were wrong when first measured.
+      - name: harness-counts — README states the number of checks each harness actually has
+        run: node scripts/check-harness-counts.mjs
+
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.
       - name: Install and build the notes service

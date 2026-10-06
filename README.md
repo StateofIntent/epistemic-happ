@@ -2101,6 +2101,37 @@ each of these is currently exactly that.
   call** — `callZome` reach is not evidence a function is well surfaced, and this
   item records a function that had a call site and was still half-surfaced,
   read-only where the write was what mattered. The metric is a floor.
+
+  **The same defect was then found in a third place, and all seven instances of
+  it were wrong.** This document cites harnesses by size — "`taxonomy-ui.mjs`,
+  seventeen checks" — and that figure does real work: it is how a reader judges
+  what a green tick covers without opening the file. Every one was stated by
+  hand and none was gated. Measured against real runs on a live conductor,
+  **all seven were wrong**: `domain-index` said 14 and ran 22, `write-symmetry`
+  12 and ran 11, `taxonomy-ui` 17 and ran 16, `trust-lenses` 28 and ran 27,
+  `expertise-ui` 14 and ran 13, `mode-and-constitution` 16 and ran 15,
+  `worldline-ui` 17 and ran 18. Every harness **passed** — the defect was
+  entirely in the prose, five overstating by one, one understating by one, and
+  one short by eight because the harness grew and the sentence did not. Seven
+  hand-stated numbers drifted seven ways with nothing watching, which is the
+  same story as the surface ratio two paragraphs up, and the same remedy:
+  `scripts/check-harness-counts.mjs` now gates them, beside `check-spec-drift`
+  in the no-conductor workflow.
+
+  **And the gate was nearly shipped resting on a premise its own data refuted**,
+  which is worth recording because it is the failure this repository keeps
+  paying for. It counts `check(...)` call sites, which equals the number of
+  checks only if none sits in a loop — an assumption, so it was measured across
+  all eight cited harnesses. Seven held. **`domain-index` did not:** twelve call
+  sites, twenty-two checks, because one site is reused per poisoning attempt
+  through a helper and an if/else pair means only one of two fires. It is
+  therefore carved out by name, with that reason printed on every run rather
+  than skipped silently, and its figure comes from a run. `layout-fits` is the
+  same shape from the other side — seven call sites, thirty-nine checks, looping
+  over tabs and widths — and is deliberately never cited with a count at all.
+  A harness that later moves a check into a loop makes this gate go red, and
+  the fix is to exempt it with a reason rather than to adjust the number until
+  the gate agrees.
 - ~~**Whether the remaining chain-local reads should have global indexes at all.**~~
   **Answered, per function, and `get_membranes` is now indexed** — see the entry
   on `MembraneRegistry` later in this section. This bullet said §10.0 "names the
@@ -2290,7 +2321,7 @@ each of these is currently exactly that.
 
   **An index is only worth reading if it cannot be poisoned**, so validation enforces three properties rather than trusting `create_claim`: the target must resolve to a real `Claim`; the base anchor must be the one that claim's *own declared domain* derives (or any claim could be filed under any domain — the same failure arriving by another route); and the link author must be the claim's author (§5.2, since a third party filing others' claims is bounded by nobody's friction budget). All three are proven refused, live, through a new `attempt_false_domain_index` prober in the same spirit as `attempt_unaccountable_membrane` — and each refusal is confirmed to come from **DHT validation**, not a coordinator guard, which is the distinction PR #44's audit established as the only one that counts.
 
-  **Verified live with two agents:** `scripts/live-verify/domain-index.mjs`, 14 checks. Both agents see both claims in a shared domain; an unused domain reads empty rather than erroring; all three poisoning attempts are refused by validation; the index is confirmed unchanged afterwards; and — the taxonomy's real test — agent 2 adopts a species agent 1 proposed and the adoption count reads 1, which is the shared vocabulary actually being shared. `read-scope.mjs` was updated to assert the *corrected* behaviour for the two fixed reads rather than being retired, so it stays the live map of `SPEC.md` §10.0 and goes red if either index regresses. 77 unit tests still pass (67 coordinator + 10 integrity).
+  **Verified live with two agents:** `scripts/live-verify/domain-index.mjs`, 22 checks. Both agents see both claims in a shared domain; an unused domain reads empty rather than erroring; all three poisoning attempts are refused by validation; the index is confirmed unchanged afterwards; and — the taxonomy's real test — agent 2 adopts a species agent 1 proposed and the adoption count reads 1, which is the shared vocabulary actually being shared. `read-scope.mjs` was updated to assert the *corrected* behaviour for the two fixed reads rather than being retired, so it stays the live map of `SPEC.md` §10.0 and goes red if either index regresses. 77 unit tests still pass (67 coordinator + 10 integrity).
 
   **Three reads remain chain-local, deliberately:** `get_critiques_by_mode`, `get_membranes`, `get_all_constitutions`. Each would be one global index over an unbounded, ever-growing set, and whether that firehose should exist at all is a real design question — unlike "the claims in this domain" and "the vocabulary of critique types", which are bounded and obviously wanted. Named in `SPEC.md` §10.0 rather than left to be rediscovered. *(Two, as of the entry at the end of this section: the question is answered per function and `get_membranes` is now indexed. Treating the three as one class is what kept it open.)*
 
@@ -2329,7 +2360,7 @@ each of these is currently exactly that.
 
   **A real defect found while building, in code neither this change nor the last one introduced.** `render()` rebuilds `app.innerHTML` wholesale, and opening a critique panel starts `loadCritiques` and `loadConductances`, each of which calls `render()` when it returns. Anything typed into the form before those land is discarded along with the DOM that held it. It surfaced as a critique that was silently never created — no error, no budget spent, just nothing — and a person typing quickly would hit exactly the same thing. Narrowed by making the budget refresh re-render only when the number actually moved, but **not fixed**: the wholesale rebuild is the cause, and the real fix is the local-first in-memory mirror pattern in §4.5, which is a genuine piece of work and not this one. Recorded here rather than left as an unexplained `waitForTimeout` in a harness.
 
-  **Verified live:** `scripts/live-verify/write-symmetry.mjs`, twelve checks. Reinforcing moves the displayed conductance (1.00 → 2.00) and an *independent* client reads the same raised value off the same link, so the UI is shown to be rendering the conductor's number rather than an optimistic local one. A flag with no rationale is refused before it reaches the conductor; a real one is read back off the DHT with kind and rationale intact; and the flagged claim and its critique are both confirmed still present afterwards, because the form promises that in so many words and a promise in microcopy deserves a check like any other. `affordance-surfacing.mjs` and `evidence-retraction-ui.mjs` both still pass.
+  **Verified live:** `scripts/live-verify/write-symmetry.mjs`, eleven checks. Reinforcing moves the displayed conductance (1.00 → 2.00) and an *independent* client reads the same raised value off the same link, so the UI is shown to be rendering the conductor's number rather than an optimistic local one. A flag with no rationale is refused before it reaches the conductor; a real one is read back off the DHT with kind and rationale intact; and the flagged claim and its critique are both confirmed still present afterwards, because the form promises that in so many words and a promise in microcopy deserves a check like any other. `affordance-surfacing.mjs` and `evidence-retraction-ui.mjs` both still pass.
 - [x] **State-driven affordance surfacing shipped — the last of the four game-interface patterns, and the one that made the HUD honest.** The full list of four, with what does *not* transfer, is now written up as §4.5; it had existed only in a commit message, which is a roadmap nobody can act on.
 
   **The gap had a sharp edge.** `frictionStatus.blocked` was read in exactly two places in `mobile-ui/src/main.ts`, both purely cosmetic — the meter's label and its bar colour. Nothing gated the action. A practitioner whose critique budget was spent still saw an enabled "Add critique" button, wrote a critique, submitted it, and got an opaque validation error from the DHT. That is verbatim the failure the HUD work was introduced to prevent ("a user who hits the 20/hour cap today gets an opaque error instead of having watched a budget deplete"). We had shipped the watching half and left the acting half: the meter depleted in front of them, and then the button lied.
@@ -2349,7 +2380,7 @@ each of these is currently exactly that.
 
   **Two smaller things the build settled.** The picker is *hidden* when the taxonomy is empty and *disabled* when the budget is spent — §4.5's rule that structural impossibility hides while transient unavailability explains itself. And both connect paths load the taxonomy, not just the manual one: a Launcher-installed practitioner reaches the critique form without ever opening the tab, so loading it only there would have left the picker empty on precisely the path that ships.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, seventeen checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, sixteen checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
 
 - [x] **Opt-in trust lenses surfaced — the item §9 flagged as needing care under §4.4, and the care turned out to be the whole job.** `AttestationPolicy` is the mechanism §4.4 itself names as the honest kind of lens: aimed explicitly by the caller, so two callers legitimately get different answers because they asked different questions. Surfacing it means `is_agent_attested`, `grant_attestation` and `get_my_membership_action` now have a UI, and `get_discourse_health` can finally be asked a question rather than only a neutral one.
 
@@ -2363,7 +2394,7 @@ each of these is currently exactly that.
 
   **A stated limit: no successful vouch has ever been observed, and none can be in a test.** Validation requires 30 days of membership tenure, so on any conductor a harness can create — minutes old by definition — `grant_attestation` cannot succeed. Confirmed directly rather than assumed: it returns "AttestationGrant requires proof of sufficiently tenured membership in this membrane". What is verified instead is the part that could regress — the affordance is offered, its cost is stated, the refusal reaches the user legibly, and an independent client confirms the refusal was genuine rather than cosmetic.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/trust-lenses.mjs`, twenty-eight checks — two agents *and* a browser, which no other harness here combines, because a lens needs somebody it legitimately excludes. It carries a **vacuity guard**: it refuses to run at all unless the seeded lens demonstrably removes something, after an earlier version seeded no critiques, filtered nothing, and passed every "the lens works" assertion while proving nothing. Then the violation it exists to catch was injected — a lens applied by default — and it failed **five** checks at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/trust-lenses.mjs`, twenty-seven checks — two agents *and* a browser, which no other harness here combines, because a lens needs somebody it legitimately excludes. It carries a **vacuity guard**: it refuses to run at all unless the seeded lens demonstrably removes something, after an earlier version seeded no critiques, filtered nothing, and passed every "the lens works" assertion while proving nothing. Then the violation it exists to catch was injected — a lens applied by default — and it failed **five** checks at once.
 
 - [x] **Expertise assertions surfaced — and the claim that made them legitimate turned out not to be true yet.** `assert_expertise` justifies itself on the grounds that an expertise assertion **is** a Claim, "that anyone can critique through the existing typed CritiqueMode machinery … not a separate, unaccountable field". Surfacing it meant checking that, and the first half was false.
 
@@ -2373,7 +2404,7 @@ each of these is currently exactly that.
 
   **It lives in the New Claim tab and nowhere else, on purpose.** A profile-shaped home would present expertise as a property of the person rather than an assertion they made and can be challenged on — which is the distinction the function exists to preserve. The `WorldlineTrace` is generated at submit rather than chosen: it is derived entirely from the caller's own chain, so the only choice on offer would be stale-or-fresh, and fresh is the honest reading of "evidenced by my history".
 
-  **Verified live, and observed failing twice.** `scripts/live-verify/expertise-ui.mjs`, fourteen checks, two agents — because agent 1 finding its own claim proves nothing, since a source-chain read succeeds for the author whether or not the index was ever written. Reverting the index fix fails three checks including the CONTROL; replacing the marker with "✓ Verified expertise" fails five.
+  **Verified live, and observed failing twice.** `scripts/live-verify/expertise-ui.mjs`, thirteen checks, two agents — because agent 1 finding its own claim proves nothing, since a source-chain read succeeds for the author whether or not the index was ever written. Reverting the index fix fails three checks including the CONTROL; replacing the marker with "✓ Verified expertise" fails five.
 
 - [x] **The last two reads on §9's list surfaced — `get_critiques_by_mode` and `get_agent_constitution` — paired because they fail in opposite directions.** Neither is large. Both are easy to get wrong in a way that leaves a working screen.
 
@@ -2383,7 +2414,7 @@ each of these is currently exactly that.
 
   **Neither gets a bar, a percentage or a colour scale.** All three read as ranking, and there is nothing to rank against — the by-mode read cannot even see another agent.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/mode-and-constitution.mjs`, sixteen checks, **three agents**: agent 2 writes critiques agent 1 must never see, and agent 3 publishes no constitution on purpose so the absence path is exercised rather than assumed. Its first check is a control proving the read really is chain-local, so the honesty assertions cannot pass against a read that is merely broken. Then both violations were injected — presenting the chain-local read as network-wide, and rendering a missing constitution as "unverified" — and ten checks failed at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/mode-and-constitution.mjs`, fifteen checks, **three agents**: agent 2 writes critiques agent 1 must never see, and agent 3 publishes no constitution on purpose so the absence path is exercised rather than assumed. Its first check is a control proving the read really is chain-local, so the honesty assertions cannot pass against a read that is merely broken. Then both violations were injected — presenting the chain-local read as network-wide, and rendering a missing constitution as "unverified" — and ten checks failed at once.
 
   **A documentation drift from the previous increment, fixed here.** SPEC §7's `DomainToClaim` row said "Written by `create_claim`" — true until #56 made `assert_expertise` write it too. Corrected, with the general rule attached: any future function that creates a `Claim` without going through `create_claim` has to write that index itself, which is exactly how the omission #56 fixed came about.
 
@@ -2395,7 +2426,7 @@ each of these is currently exactly that.
 
   **This agent's own worldline only, deliberately.** The coordinator accepts any `AgentPubKey`, but a "how strongly does this agent resonate with domain X" probe over other people would hand every client a per-agent scalar that `get_membrane_members` makes enumerable and sortable — the leaderboard §9 records removing `get_credit_balance` to avoid, arriving by another route. The protocol permitting a read does not oblige a UI to offer it. The harness asserts there is no agent selector on the screen at all.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/worldline-ui.mjs`, seventeen checks, with a control that refuses to run unless the seeded trace has a real HRR payload and at least one period — otherwise "the exact half renders" would pass vacuously. Then the §2.5 inversion was injected — the probe rendered before the exact record, and the score restated as "73% match" — and two checks failed.
+  **Verified live, and observed failing first.** `scripts/live-verify/worldline-ui.mjs`, eighteen checks, with a control that refuses to run unless the seeded trace has a real HRR payload and at least one period — otherwise "the exact half renders" would pass vacuously. Then the §2.5 inversion was injected — the probe rendered before the exact record, and the score restated as "73% match" — and two checks failed.
 
   **Neighborhood binding is not included, and that is §2.5's own division:** it calls neighborhood and worldline binding "two distinct HRR use cases, not one", independent rather than two halves of one job.
 
