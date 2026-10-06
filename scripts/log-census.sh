@@ -82,6 +82,35 @@ for f in "${files[@]}"; do
     printf '[%s=%s] ' "$sig" "${n:-0}"
   done
   printf 'ERROR=%s\n' "$(grep -c 'ERROR' "$f" 2>/dev/null || true)"
+
+  # WHEN THE FIRST GOSSIP ROUND WAS INITIATED, which is the one thing the
+  # counts above cannot say and the only thing that separates the remaining
+  # explanations for a slow baseline.
+  #
+  # THE COUNTS WERE NOT ENOUGH, AND THAT WAS FOUND THE HARD WAY. The log filter
+  # that makes these lines exist landed first, and the next failure duly
+  # censused "Initiated gossip with=11" — refuting "nothing was ever initiated"
+  # and saying nothing at all about WHEN. The timeline was in the log and did
+  # not survive to the job output: the end-of-job dump is `tail -100`, the log
+  # had grown to 1017 lines, and every surviving initiation timestamp fell
+  # AFTER the baseline window it was supposed to explain. Instrumentation that
+  # produces the answer and then discards it is worse than none, because the
+  # census looks like it reported.
+  #
+  # ONE LINE PER NODE, ON EVERY RUN, PASS OR FAIL. Per-node and bounded so it
+  # cannot grow into the thing that gets tailed away; on every run because this
+  # file's own header records what failure-only collection cost last time —
+  # three passing runs showed zero occurrences AND zero log, so zero was the
+  # absence of the file rather than of the event. A first-initiation time is
+  # only meaningful against what healthy runs do.
+  first_init="$(grep -m1 'Initiated gossip with' "$f" 2>/dev/null \
+    | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z' | head -n1)"
+  first_task="$(grep -m1 'Starting initiate task' "$f" 2>/dev/null \
+    | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z' | head -n1)"
+  if [ -n "$first_task" ] || [ -n "$first_init" ]; then
+    printf '    %-22s initiate-task-at=%s first-initiated-at=%s\n' \
+      "$(basename "$f")" "${first_task:-none}" "${first_init:-NEVER}"
+  fi
 done
 
 exit 0
