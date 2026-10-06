@@ -174,6 +174,17 @@ nowhere else, a licence declared in metadata and absent from the tarball. None
 of those is visible until someone installs the published package, by which point
 the version number is spent.
 
+**Also run by that reflex, and it exists because of this directory:**
+`scripts/check-harness-counts.mjs` checks that every "`<harness>.mjs`, N checks"
+figure the root README states is the number of checks that harness has. All
+seven such figures were wrong when first measured against real runs — five
+overstating by one, one understating by one, and one eight short because the
+harness had grown — while every harness itself passed. The counts are how a
+reader judges what a green tick covers, so they are gated now rather than
+hand-stated. It counts call sites, which equals checks only where no check sits
+in a loop; `domain-index` is exempt by name with that reason (twelve sites,
+twenty-two checks) and `layout-fits` is never cited with a count at all.
+
 ## Writing a new one
 
 Follow the shape the existing files share, and two conventions that carry most of their value:
