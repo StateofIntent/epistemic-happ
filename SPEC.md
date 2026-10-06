@@ -276,6 +276,21 @@ This cannot catch a peer running a different version — the DNA hash makes that
 ### 5.1 Global rule: no deletion
 Any `RegisterDelete` operation is **rejected outright** — `ValidateCallbackResult::Invalid("Deletion is not permitted. Entries are immutable.")`. This applies to every entry type without exception. See Invariant #6 (§7).
 
+**The rule is about ENTRIES, and one delete op is accepted: link deletion.** The dispatch has two delete arms, and they disagree:
+
+```rust
+FlatOp::Delete(_)                       => Invalid("Deletion is not permitted. Entries are immutable.")
+FlatOp::Link(OpLink::DeleteLink { .. }) => Valid
+```
+
+The sentence above is written about entry types and validation implements exactly that, so this is not a violation of §5.1. Invariant #6, though, is "Nothing is deleted" with no qualification — so it holds for entries and **not** for links: a `Critique` entry cannot be deleted, while the `SynapticLink` carrying its conductance (§5.11) can be, as can every link type in §4 and §5.17.
+
+**This is the one accepted delete that would change what a reader sees**, which is what separates it from the accepted *update* op discussed below. All 28 `get_links` calls in `dna/coordinator/src/lib.rs` return live links only, and there is no `get_link_details` anywhere in the zomes or the UI — zero. So a deleted link is not merely unread: it is *invisible*, indistinguishable from one never written, leaving no trace any shipped read path can surface. A deleted `SynapticLink` silently removes a critique's edge from `find_synaptic_link` (§10) and from every conductance computation built on it.
+
+**Reachability today is no better than the update op's, and no worse.** No coordinator extern calls `delete_link` or `delete_entry` — zero of either, and no extern with `delete` in its name — so no client can author a delete through the shipped API. But §11.1's table records that a coordinator-zome edit leaves the DNA hash **unchanged** and is hot-swappable via `update_coordinators`, so a peer running a modified coordinator stays on this network and can author `DeleteLink` ops that every node's validation will accept. Latent, not live — but unlike the update gap, a live one would be destructive rather than merely stored and unread.
+
+**Refusing link deletes may well be the better rule, and it is not being changed here** for the reason the rest of this section already gives: it edits the integrity zome, forking the DNA hash (§11.1) for a network with no migration. It belongs in the next commit that forks for a real reason, alongside the message wording discussed below. Documented here instead — and checked, not merely stated: `scripts/check-spec-drift.mjs` reads both arms and fails if either stops returning what this section says it returns.
+
 **The rule is about deletion, and that refusal message claims more than the validator enforces.** `FlatOp::Update(_)` returns `Valid` — every update op is accepted, for every entry type — so "Entries are immutable" is true of deletion and not of mutation. The stated invariant is the narrower one (#6, "nothing is deleted"), and validation implements exactly that; it is the *adjective in the message* that overreaches, which is worth saying plainly in a document whose §11 already warns that a name-level check cited as "the spec is verified" would be an overclaim.
 
 **What actually keeps entries unmutated today is the absence of an update path, which is a weaker guarantee than it looks.** No coordinator extern calls `update_entry`, so no client can author an update through the shipped API. But §11.1's own table records that a coordinator-zome edit leaves the DNA hash **unchanged** and is hot-swappable via `update_coordinators` — so a peer running a modified coordinator stays on this network and can author update ops that every node's validation will accept. The integrity zome is the only part the hash covers, and therefore the only place a guarantee can live.
