@@ -120,7 +120,7 @@
 // ============================================================================
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 
 const NODES = {
   A: { node: 'nodeA', admin: 8899, app: 8898, appId: 'epistemic-net-a' },
@@ -140,6 +140,58 @@ const ARMS = (process.env.EPI_PEERING_TIMEOUTS ?? '60000,15000')
 // thing.
 const CAP_MS = Number(process.env.EPI_PEERING_CAP_MS ?? 330_000);
 const POLL_MS = 3_000;
+
+// A TRIAL'S LOGS DO NOT SURVIVE THE NEXT TRIAL, WHICH IS THE THIRD TIME THIS
+// REPOSITORY HAS LOST THE RUN THAT MATTERED TO EXACTLY THIS.
+//
+// Every trial opens with `network.sh clean`, which deletes NET_ROOT — so the
+// conductor logs from a slow crossing are destroyed by the trial that follows
+// it. Before this, a run could MEASURE a 307.5s crossing and keep nothing
+// explaining it, which is the one artefact an upstream report needs.
+//
+// The two earlier instances, both already written down elsewhere and both the
+// same shape:
+//
+//   - kitsune2#638's own second comment: "the first batch only saved logs when
+//     `wrong peer` matched, which is precisely why the run that mattered was
+//     lost." Conditioning capture on a log STRING loses every failure that
+//     does not print it — and two of the three measured failures printed
+//     nothing distinctive at all.
+//
+//   - `network.yml`'s census step: `if: failure()` made conductor logs exist
+//     only on runs already gone wrong, so "three passing runs showed zero
+//     occurrences" was the absence of the FILE, not of the error.
+//
+// So capture is conditioned on the OUTCOME this file measures — a slow or
+// absent crossing — and never on anything found inside a log. AND CONTROLS ARE
+// KEPT TOO, which is the second lesson rather than a nicety: logs from slow
+// trials alone cannot answer "do the fast ones show this line as well?", and
+// that exact question is what the census gap above destroyed. A couple of fast
+// trials per arm are therefore archived as controls.
+const SLOW_MS = 10_000;
+const KEEP_DIR = process.env.EPI_PEERING_LOG_DIR || '/tmp/epi-peering-logs';
+const CONTROLS_PER_ARM = Number(process.env.EPI_PEERING_CONTROLS ?? 2);
+
+/** Archive this trial's conductor logs under a name that says why they were
+ *  kept. Returns the directory, or null if there was nothing to copy.
+ *
+ * Best-effort by construction: losing an archive must never fail a trial whose
+ * measurement already succeeded, since the measurement is the primary result
+ * and the logs are the follow-up evidence. */
+function keepLogs(arm, trial, label) {
+  const dest = `${KEEP_DIR}/rt${arm}-trial${String(trial).padStart(2, '0')}-${label}`;
+  let copied = 0;
+  try {
+    if (!existsSync(NET_ROOT)) return null;
+    mkdirSync(dest, { recursive: true });
+    for (const f of readdirSync(NET_ROOT)) {
+      if (!f.endsWith('.log')) continue;
+      try { copyFileSync(`${NET_ROOT}/${f}`, `${dest}/${f}`); copied++; }
+      catch { /* one unreadable log is not the end of the archive */ }
+    }
+  } catch { return null; }
+  return copied > 0 ? dest : null;
+}
 
 const log = (...a) => console.log(...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -255,8 +307,10 @@ async function main() {
   log('');
 
   const results = {};
+  let kept = 0;
   for (const arm of ARMS) {
     results[arm] = [];
+    let controls = 0;
     log(`--- roundTimeoutMs = ${arm} ---`);
     for (let i = 1; i <= TRIALS; i++) {
       let r;
@@ -267,7 +321,19 @@ async function main() {
       }
       results[arm].push(r);
       const when = r.ms === null ? `NO CROSSING in ${(CAP_MS / 1000).toFixed(0)}s` : `${(r.ms / 1000).toFixed(1)}s`;
-      log(`  trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}`);
+
+      // BEFORE THE NEXT TRIAL'S `clean` DELETES THEM. Conditioned on the
+      // outcome, never on a log's contents — see KEEP_DIR's note.
+      let archive = null;
+      if (r.ms === null || r.ms > SLOW_MS) {
+        archive = keepLogs(arm, i, r.ms === null ? 'nocrossing' : 'slow');
+      } else if (controls < CONTROLS_PER_ARM) {
+        archive = keepLogs(arm, i, 'control');
+        if (archive) controls++;
+      }
+      if (archive) kept++;
+
+      log(`  trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
     }
     log('');
   }
@@ -279,7 +345,6 @@ async function main() {
   // for both arms — true, and it hid the only thing the run found: one arm had
   // a 307.5s crossing and the other had nothing above a single poll. The
   // question this file asks is about a TAIL, so the summary prints the tail.
-  const SLOW_MS = 10_000;
   log(`  roundTimeoutMs   crossed   timed out   slowest   trials >${SLOW_MS / 1000}s   wrong-peer trials`);
   for (const arm of ARMS) {
     const rs = results[arm];
@@ -298,6 +363,15 @@ async function main() {
   log('seconds is a lost round waiting out that rate limit, and a crossing');
   log('inside one poll is a round that was never lost. Magnitude carries the');
   log('information here; frequency, at this many trials, does not.');
+  log('');
+  if (kept > 0) {
+    log(`  ${kept} trial log set(s) archived under ${KEEP_DIR} — every slow or`);
+    log('  absent crossing, plus fast trials per arm as controls. A slow trial');
+    log('  without a control to compare it against is the collection gap this');
+    log('  repository has now hit three times; read them in pairs.');
+  } else {
+    log(`  No logs archived (nothing slow, and ${KEEP_DIR} took no controls).`);
+  }
 
   // Restores the shape every other harness in this directory expects: three
   // nodes up, nodeD down. The last trial left nodeD running.

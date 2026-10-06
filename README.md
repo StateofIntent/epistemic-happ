@@ -2166,10 +2166,35 @@ each of these is currently exactly that.
   already records that two *later* measured failures produced **no distinctive
   error at all**, that line included. One sighting in three observed failures is
   not a correlation to reason from, and the harness tells its reader to "expect a
-  long tail rather than a broken state". Nothing here is reported upstream: a
-  maintainer cannot act on a log line from a run nobody can reproduce, and this
-  repository does not file what it cannot demonstrate. The harness's own comment
-  carries the four experiments so nobody repeats them.
+  long tail rather than a broken state". The harness's own comment carries the
+  four experiments so nobody repeats them.
+
+  **The upstream report this entry used to point at is closed, and it was closed
+  for the other half of itself.** `holochain/kitsune2#638` carried two separate
+  things: an error-attribution bug read out of the gossip source, and this
+  symptom as a sighting. The first was accepted and fixed — `#639`, *"attribute
+  a gossip message from the wrong peer to that peer"*, merged **2026-09-30** —
+  and the issue was closed on that merge with "The referenced PR has been
+  merged. Closing this". **The symptom half was never addressed**, there is no
+  successor issue, and no upstream record of it now exists. Filing two unrelated
+  things in one issue is what made that possible, and the lesson is the filing
+  shape rather than the outcome.
+
+  **Two pieces of maintainer feedback are worth carrying, since both bear on how
+  the next report should look.** The substantive one: the issue was *"too much
+  text for such a small fix"*, with a pointer to `kitsune2`'s `AI_POLICY.md`.
+  The procedural one is in this repository's own second comment on it — the
+  first batch of runs saved conductor logs only when `wrong peer` matched, which
+  is exactly why the run that mattered was lost. So a re-filing needs a short
+  write-up and a captured log pair, in that order of scarcity.
+
+  **The instrument for the second of those now exists and has not been run.**
+  `peering-rate.mjs` archives the conductor logs of every slow or absent
+  crossing plus fast trials as controls, and `.github/workflows/peering-rate.yml`
+  runs it on a two-vCPU hosted runner — the machine slow enough to lose a 15s
+  gossip round, which the development machine measured below is not. Dispatch
+  only, asserts nothing, uploads the archive. **No run of it has happened yet,
+  so nothing here is claimed from it.**
 
   **That log line does now have a mechanism, which is worth writing down even
   though it is no longer the lead.** Read out of `kitsune2_gossip-0.5.0`: gossip
@@ -2956,7 +2981,7 @@ each of these is currently exactly that.
   |---|---|
   | Whether the remaining chain-local reads should be indexed | **Was already answered** — §10.0, this session. The bullet still said "a question nobody is tracking"; corrected above |
   | `mcp-server` ships no lockfile | **Answerable, and the recorded blocker was too strong** — see the entry below |
-  | Why a node sometimes joins the DHT and exchanges nothing | **Correctly open.** Measured at 3 in 25 this session, cause unknown, upstream, and reported at holochain/kitsune2#638 |
+  | Why a node sometimes joins the DHT and exchanges nothing | **Correctly open.** Measured at 3 in 25 this session, cause unknown, upstream. Reported at holochain/kitsune2#638, which is now **closed** — on the merge of its error-attribution half (#639); the symptom half was never addressed and has no successor issue |
   | No Android or iOS build | **Correctly open**, and the blocker is precise and dated: `tauri-plugin-holochain` pins `holochain_types = "0.6"` while these zomes pin `hdk = "=0.7.0"` |
   | Pre-registration (commit-reveal) | **Closed this session** — built, with the denominator structural rather than bolted on. The need was finally stated; the selective-revelation flaw is what shaped the implementation. See the entry below |
   | Migration across a fork | **Closed this session** — §11.3, in-protocol on the correlative-witness pattern |
