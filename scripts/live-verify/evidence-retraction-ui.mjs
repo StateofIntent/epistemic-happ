@@ -249,8 +249,15 @@ async function main() {
 
     check('the terminal node resolves to the evidence CONTENT, not a hash',
       /Twelve-week randomised trial, n=180\./.test(panelText));
+    // CASE-INSENSITIVE ON PURPOSE, and this is why: `.chain-kind` carries
+    // `text-transform: uppercase`, and Playwright's `innerText` returns
+    // RENDERED text, so the DOM's "Study" reads back as "STUDY". The first
+    // version of this check asserted /Study/ and failed on a working surface.
+    // What matters is that the type is present and is the one published —
+    // its casing is a stylesheet's business, and pinning it here would make
+    // a CSS change look like a broken evidence chain.
     check('and carries its evidence_type, which is part of the answer',
-      /Study/.test(panelText));
+      /\bstudy\b/i.test(panelText));
     check('the claim being read is named rather than numbered',
       /this claim/i.test(await grounded.locator('.chain-ord').first().innerText()));
 
