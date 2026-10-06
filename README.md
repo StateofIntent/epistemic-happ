@@ -2159,12 +2159,42 @@ each of these is currently exactly that.
   node into an already-running network (fresh nodeD, ≤10s); the failing
   configuration specifically, nodeB stopped while nodeA writes (≤10s); and
   `database is locked` from `integrate_dht_ops_consumer`, which appears in
-  healthy runs too and is routine contention. **What survives is a correlation
-  with no mechanism:** `Accept message from wrong peer` appeared in the failing
-  instance and in none of the healthy runs. That is deliberately NOT reported
-  upstream — a maintainer cannot act on a log line from a run nobody can
-  reproduce, and this repository does not file what it cannot demonstrate. The
-  harness's own comment carries the four experiments so nobody repeats them.
+  healthy runs too and is routine contention. **The one surviving correlation has
+  since been demoted, and this entry was overdue in saying so:** `Accept message
+  from wrong peer` appeared in the original sighting and in none of the healthy
+  runs of that session — but `transitive-gossip.mjs`'s own setup-failure text
+  already records that two *later* measured failures produced **no distinctive
+  error at all**, that line included. One sighting in three observed failures is
+  not a correlation to reason from, and the harness tells its reader to "expect a
+  long tail rather than a broken state". Nothing here is reported upstream: a
+  maintainer cannot act on a log line from a run nobody can reproduce, and this
+  repository does not file what it cannot demonstrate. The harness's own comment
+  carries the four experiments so nobody repeats them.
+
+  **That log line does now have a mechanism, which is worth writing down even
+  though it is no longer the lead.** Read out of `kitsune2_gossip-0.5.0`: gossip
+  keeps exactly **one** outgoing round — `initiated_round_state:
+  Arc<Mutex<Option<GossipRoundState>>>`, whose doc comment says "we only initiate
+  one round at a time, so this is a single value" — while *accepted* rounds get
+  `accepted_round_states: Arc<RwLock<HashMap<Url, ...>>>`, keyed per peer. An
+  incoming Accept is therefore checked against that single slot, and
+  `validate_accept` emits this exact string when `self.session_with_peer !=
+  from_peer`. So: initiate with X, lose the round to `round_timeout_ms`, have the
+  reaper clear the slot, initiate with Y, and X's late Accept is then rejected as
+  coming from the wrong peer. It needs at least two gossip peers, which
+  `transitive-gossip`'s four nodes have and a two-node harness does not — which
+  is why it showed up here and nowhere else.
+
+  **What that does and does not buy.** It explains the *symptom*, from source,
+  and it ties it to the same lost-round cause that `scripts/network.sh` now
+  raises `roundTimeoutMs` for. It does **not** explain this entry's actual
+  question, because the symptom is absent from two of the three failures anybody
+  measured — a mechanism for a clue that mostly is not there cannot be the cause
+  of the thing that is. Stated as a prediction instead, at no extra cost: the 60s
+  `roundTimeoutMs` should make `Accept message from wrong peer` rarer, since a
+  lost round is step one of the sequence. If a node still joins and exchanges
+  nothing while that line stays absent, this paragraph is a side-story and the
+  open question is untouched — which, on the evidence, is the likelier outcome.
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
