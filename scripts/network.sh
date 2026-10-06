@@ -526,9 +526,29 @@ start_node() {
     # existed would otherwise resume on the 15s default.
     set_gossip_round_timeout "$name"
 
+    # APPENDED, NOT TRUNCATED, AND THAT ONE CHARACTER IS THE WHOLE FIX.
+    #
+    # Every launch path here used `>`, so a node's log was wiped on each start.
+    # `partition-rejoin` stops and restarts nodes across its phases and the
+    # per-harness census runs after it finishes — so by collection time the
+    # BASELINE phase's log was gone and the census was reading whatever the last
+    # restart had written. The first slow-baseline failure to carry a gossip
+    # timeline duly reported nodeB's first initiation 303.4s after its initiate
+    # task, which is a real and interesting number about a RESTARTED node and
+    # says nothing about the baseline it was collected to explain.
+    #
+    # That is the same defect as the `tail -100` one a commit earlier, moved:
+    # that discarded the part of the log that mattered, this discarded the part
+    # of the RUN that mattered. Fixing where data is kept is useless while the
+    # state is overwritten before anyone reads it.
+    #
+    # Appending keeps a node's whole history across restarts, so
+    # `log-census.sh`'s `grep -m1 'Starting initiate task'` finds the ORIGINAL
+    # start and the first initiation it pairs with is the baseline one. The cost
+    # is a longer log, which is bounded by the harness and already filtered.
     log "Resuming $name (admin :$admin, app :$app, .hc index $idx) with roundTimeoutMs=$GOSSIP_ROUND_TIMEOUT_MS ..."
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
-        run "$idx" > "$NET_ROOT/$name.log" 2>&1 )
+        run "$idx" >> "$NET_ROOT/$name.log" 2>&1 )
   else
     # GENERATED WITHOUT `-r`, THEN PATCHED, THEN RUN — three steps where there
     # used to be one, and the split is the whole point. `-r` makes `generate`
@@ -543,7 +563,7 @@ start_node() {
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped \
         generate -a "$app_id" --in-process-lair --root "$NET_ROOT" -d "$name" \
         -s "$seed" "$HAPP_PATH" \
-        network -b "$BOOTSTRAP_URL" quic "$RELAY_URL" > "$NET_ROOT/$name.log" 2>&1 )
+        network -b "$BOOTSTRAP_URL" quic "$RELAY_URL" >> "$NET_ROOT/$name.log" 2>&1 )
     [ -d "$NET_ROOT/$name" ] || fail "$name was not generated. Log tail:$(echo; tail -n 30 "$NET_ROOT/$name.log")"
 
     set_gossip_round_timeout "$name"
@@ -554,7 +574,7 @@ start_node() {
     gidx=$((gidx - 1))
     log "Starting $name (.hc index $gidx) with roundTimeoutMs=$GOSSIP_ROUND_TIMEOUT_MS ..."
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
-        run "$gidx" -p="$app" > "$NET_ROOT/$name.log" 2>&1 )
+        run "$gidx" -p="$app" >> "$NET_ROOT/$name.log" 2>&1 )
   fi
 
   if ! wait_for_port "$admin" 90 || ! wait_for_port "$app" 90; then
