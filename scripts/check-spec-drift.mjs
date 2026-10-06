@@ -55,7 +55,7 @@
 //
 // So it measures the numerator too, and GATES on it. A hand recount that CI
 // then enforces is not the mistake; a hand recount with nothing preventing
-// recurrence is, and that is what this repository keeps paying for. Two
+// recurrence is, and that is what this repository keeps paying for. Three
 // further checks fall out of having both sets:
 //
 //   A `callZome` literal that is not an extern is a call to a function that
@@ -64,6 +64,14 @@
 //
 //   A README ratio that disagrees with the real one fails the build, so the
 //   number cannot quietly go stale between recounts.
+//
+//   And every unsurfaced extern must have a reason in §9's accounting table.
+//   This file printed "§9 carries a reason for each" for a long time without
+//   testing it — a label claiming more than its assertion, which is the
+//   defect this repository corrects most often, here in its own gate. The
+//   residue had been itemised in prose and recounted by hand three times;
+//   `get_protocol_version` was missed by all three. A table can be checked
+//   where a paragraph cannot.
 //
 // WHAT COUNTS AS SURFACED is deliberately crude: at least one `callZome` call
 // site naming the function as a string literal, anywhere under `mobile-ui/src`.
@@ -92,7 +100,27 @@
 //   matters most, since a check that goes quiet when its subject disappears is
 //   how the metric went unmeasured in the first place.
 //
-//   Restored and re-run: green on all four checks.
+//   ----- and for the residue accounting, added later -----
+//
+//   Injection: `get_protocol_version`'s row deleted from §9's table.
+//   Result: red, naming it. Chosen deliberately as the injection, because it
+//   is not hypothetical: that function really did sit unsurfaced and
+//   unaccounted for through three hand recounts of this residue, and was
+//   found by somebody adding up a paragraph rather than by anything here.
+//
+//   Injection: a row added for `get_foresight_record`, which has a surface.
+//   Result: red, "now surfaced" — the direction that catches accounting kept
+//   after the thing it excuses has been built, which is how a residue list
+//   grows reasons nobody rechecks.
+//
+//   Injection: a row added for `get_claim_by_vibes`, which does not exist.
+//   Result: red, "not an extern".
+//
+//   Injection: the table's header reworded to `| Function | Note |`.
+//   Result: red via SETUP FAILED, for the same reason as the ratio sentence
+//   above — a gate whose subject can vanish silently is not a gate.
+//
+//   Restored and re-run: green, exit 0, on all five checks.
 //
 // Run: node scripts/check-spec-drift.mjs
 // Exits non-zero on drift, and names every difference in both directions.
@@ -178,6 +206,33 @@ function callSites(files) {
       if (!found.has(m[1])) found.set(m[1], new Set());
       found.get(m[1]).add(file.replace(/^.*\/mobile-ui\//, 'mobile-ui/'));
     }
+  }
+  return found;
+}
+
+/** Every function named in §9's unsurfaced-accounting table.
+ *
+ * SCOPED BY ITS HEADER, not by indentation. README.md has other two-column
+ * tables whose first cell is a backticked identifier, and a parser that read
+ * every one of them would gate rows that are not accounting for anything.
+ *
+ * WHY THIS TABLE IS GATED AT ALL. The residue was itemised in prose three
+ * times and went stale three times — once badly enough that a function was
+ * never accounted for at all, which a paragraph cannot notice about itself.
+ * Below, the printed line "§9 carries a reason for each" was an assertion this
+ * file did not test, which is the same overclaim its own harnesses keep being
+ * corrected for. A table is gated where a paragraph cannot be. */
+function accountedFor(readme) {
+  const lines = readme.split('\n');
+  const start = lines.findIndex((l) => /^\s*\|\s*Unsurfaced extern\s*\|/i.test(l));
+  if (start === -1) return null;
+  const found = new Set();
+  for (const line of lines.slice(start + 1)) {
+    if (!/^\s*\|/.test(line)) break;
+    if (/^\s*\|\s*-+/.test(line)) continue;
+    const cell = line.split('|')[1] ?? '';
+    const name = cell.match(/`([a-z_0-9]+)`/);
+    if (name) found.add(name[1]);
   }
   return found;
 }
@@ -279,11 +334,50 @@ log(`Unsurfaced (${residue.length}) — §9 carries a reason for each:`);
 for (const f of residue) log(`  ${f}`);
 log('');
 
-const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0;
+// ---------------------------------------------------------------------------
+// And that the sentence above is TRUE, which until now it merely claimed.
+// Both directions fail differently, and the first is the one that actually
+// happened: `get_protocol_version` sat unsurfaced and unaccounted for through
+// three hand recounts of this residue.
+// ---------------------------------------------------------------------------
+const accounted = accountedFor(readFileSync(README, 'utf8'));
+const unaccounted = accounted === null ? [] : residue.filter((f) => !accounted.has(f));
+const staleRows = accounted === null
+  ? []
+  : [...accounted].filter((f) => !residue.includes(f)).sort();
+
+if (accounted === null) {
+  log('SETUP FAILED: README.md §9 has no "| Unsurfaced extern |" table.');
+  log('  This check gates that table, so its absence means it moved or was');
+  log('  reworded — and the residue has gone unaccounted for again, which is');
+  log('  exactly how a function stayed off the books through three recounts.');
+  log('');
+} else {
+  if (unaccounted.length > 0) {
+    log('DRIFT — unsurfaced, and §9 gives no reason:');
+    for (const f of unaccounted) log(`  ${f}`);
+    log('  Each of these is a protocol surface with no screen and nothing saying');
+    log('  why. Add a row to §9\'s table with the reason, or give it a surface.');
+    log('');
+  }
+  if (staleRows.length > 0) {
+    log('DRIFT — §9 accounts for functions that are not in the residue:');
+    for (const f of staleRows) {
+      log(`  ${f}  (${inCode.has(f) ? 'now surfaced' : 'not an extern'})`);
+    }
+    log('  A row explaining why something has no screen, for something that has');
+    log('  one — or that no longer exists. Remove the row.');
+    log('');
+  }
+}
+
+const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0
+  || accounted === null || unaccounted.length > 0 || staleRows.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
-  log('call names a real extern, and README.md states the measured ratio.');
+  log('call names a real extern, README.md states the measured ratio, and every');
+  log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
   log('(Names only. Nothing here checks that §5 and §7 match validation, and a');
   log('call site is reach, not proof a function is well surfaced.)');
   process.exit(0);
