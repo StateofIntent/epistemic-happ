@@ -8,6 +8,7 @@ import {
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
+  type Evidence,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
   type CritiqueMode, type WorldlineTrace, type PeriodResonance,
   NeighborRecall,
@@ -111,6 +112,53 @@ const crossDomainByMembrane = new Map<string, CrossDomainCritique[]>();
 let foundingOpen = false;
 /** claim entryHash (b64) -> whether its evidence chain reaches Evidence */
 const groundingByClaim = new Map<string, GroundingPath>();
+
+// --- The evidence chain, resolved ------------------------------------
+//
+// `get_grounding_path` answers whether a claim's support terminates in real
+// Evidence and returns the path it walked — `Vec<EntryHash>`, hashes and a
+// bool, NO CONTENT. The badge above the toggle has always rendered that as a
+// step count, and every hash in the path was discarded unread, so the UI could
+// say "reaches a source in 3 steps" and had no way to show what the source
+// SAYS.
+//
+// INVARIANT #3 IS "EVERY CLAIM CARRIES ITS OWN HISTORY", and a step count is
+// not the history. The resonance panel further down this card already tells its
+// reader that "the evidence chain and critiques above are the exact answer" —
+// a sentence that was true of the critiques and not of the chain, since the
+// chain was a number.
+//
+// README §9 listed `get_claim` and `get_evidence` as needing no screen on the
+// grounds that "a screen holding the record does not need to re-read it". That
+// is right wherever the screen holds the record, and this is the one place it
+// does not: it holds a hash the walk returned and nothing else. Those two
+// getters are what resolve it, which is why they are called here and nowhere
+// else.
+//
+// Resolved on request and cached, never eagerly: it is one DHT read per node,
+// and a domain of twenty claims would otherwise fire the whole support graph
+// to render a list nobody has asked to open.
+
+/** One resolved node of a `GroundingPath`.
+ *
+ * Which getter can answer for a node is decided by its POSITION, per
+ * `GroundingPath`'s own doc comment: when `grounded`, the terminal node is the
+ * Evidence that closed the chain and every earlier node is a Claim; when not,
+ * the walk broke down and the last node is wherever it broke. Asking the wrong
+ * getter is not a soft failure — `to_app_option` on the wrong type errors — so
+ * position is read rather than guessed, and anything that still will not
+ * resolve stays visible as its hash. */
+type GroundingStep =
+  | { kind: 'claim'; hash: Uint8Array; claim: Claim }
+  | { kind: 'evidence'; hash: Uint8Array; evidence: Evidence }
+  | { kind: 'unresolved'; hash: Uint8Array };
+
+/** claim entryHash (b64) -> whether its chain is expanded */
+const chainOpen = new Set<string>();
+/** claim entryHash (b64) -> its path resolved node by node */
+const chainByClaim = new Map<string, GroundingStep[]>();
+/** claim entryHash (b64) -> resolution in flight */
+const chainLoading = new Set<string>();
 /** claim entryHash (b64) -> whether its retract form is open */
 const retractingClaims = new Set<string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
@@ -1213,6 +1261,121 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
       ? `Grounded — evidence chain reaches a source in ${grounding.path.length} step${grounding.path.length === 1 ? '' : 's'}`
       : 'Not grounded — no cited evidence chain reaches a source';
     card.appendChild(badge);
+
+    // The chain itself. See GroundingStep's note for why these two getters
+    // are called here and nowhere else in this UI.
+    //
+    // Offered for an UNGROUNDED claim too, deliberately. GroundingPath's doc
+    // comment says the last node of a failed walk is where it broke down, and
+    // "which citation dead-ends" is the more useful answer of the two — a
+    // reader who cannot see where support ran out has only been told that it
+    // did. Nothing here ranks one state above the other; §2's position is that
+    // an ungrounded claim is valid and unranked, and showing its chain is
+    // showing what it cites, not scoring it.
+    const chainBtn = document.createElement('button');
+    chainBtn.className = 'link-button';
+    chainBtn.dataset.testid = 'chain-toggle';
+    const chainIsOpen = chainOpen.has(key);
+    chainBtn.textContent = chainIsOpen
+      ? 'Hide the chain'
+      : grounding.grounded ? 'Read the evidence chain' : 'See where the chain breaks';
+    chainBtn.onclick = () => {
+      if (chainIsOpen) { chainOpen.delete(key); render(); return; }
+      chainOpen.add(key);
+      if (!chainByClaim.has(key)) void loadGroundingChain(claim);
+      else render();
+    };
+    card.appendChild(chainBtn);
+
+    if (chainIsOpen) {
+      const panel = document.createElement('div');
+      panel.className = 'chain-panel';
+      panel.dataset.testid = 'chain-panel';
+
+      const steps = chainByClaim.get(key);
+      if (chainLoading.has(key)) {
+        const p2 = document.createElement('p');
+        p2.className = 'hint';
+        p2.textContent = 'Reading the chain…';
+        panel.appendChild(p2);
+      } else if (!steps || steps.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'hint';
+        empty.dataset.testid = 'chain-empty';
+        empty.textContent = 'The walk returned no path.';
+        panel.appendChild(empty);
+      } else {
+        steps.forEach((step, i) => {
+          const row = document.createElement('div');
+          row.className = 'chain-step';
+          row.dataset.testid = 'chain-step';
+
+          const ord = document.createElement('span');
+          ord.className = 'chain-ord';
+          // The queried claim is its own first node, named as such rather
+          // than numbered — a reader should not have to work out that step 1
+          // is the thing they are already looking at.
+          ord.textContent = i === 0 ? 'this claim' : `${i}.`;
+          row.appendChild(ord);
+
+          const body = document.createElement('span');
+          body.className = 'chain-body';
+          if (step.kind === 'claim') {
+            const what = document.createElement('span');
+            what.className = 'chain-kind';
+            what.textContent = 'Claim';
+            body.appendChild(what);
+            body.appendChild(document.createTextNode(` ${step.claim.content}`));
+          } else if (step.kind === 'evidence') {
+            const what = document.createElement('span');
+            what.className = 'chain-kind chain-kind-evidence';
+            // The TYPE is part of the answer, not decoration: "a study" and
+            // "a case report" terminate a regress differently, and §2 makes
+            // evidence_type a required field rather than a label.
+            what.textContent = step.evidence.evidence_type;
+            body.appendChild(what);
+            body.appendChild(document.createTextNode(` ${step.evidence.content}`));
+            if (step.evidence.source_url) {
+              // Rendered as text, NOT as an anchor. A claim's cited source is
+              // a string some agent published; turning it into a live link
+              // would have this client vouch for where it points.
+              const src = document.createElement('span');
+              src.className = 'chain-source';
+              src.dataset.testid = 'chain-source';
+              src.textContent = step.evidence.source_url;
+              body.appendChild(src);
+            }
+          } else {
+            const what = document.createElement('span');
+            what.className = 'chain-kind chain-kind-unresolved';
+            what.textContent = 'unresolved';
+            body.appendChild(what);
+            body.appendChild(document.createTextNode(
+              ` ${short(step.hash)} — the walk reached this and this client could not read it`,
+            ));
+          }
+          row.appendChild(body);
+          panel.appendChild(row);
+        });
+
+        // What the END of the chain means, stated once beneath it. The badge
+        // states grounded-or-not as a fact about the walk; this says what the
+        // walk does and does not establish, because "reaches a source" is
+        // easily read as "is true".
+        const note = document.createElement('p');
+        note.className = 'hint';
+        note.dataset.testid = 'chain-note';
+        note.textContent = grounding.grounded
+          ? 'The chain terminates in Evidence. That is a statement about '
+            + 'citation, not about truth: nothing here checks whether the '
+            + 'evidence supports the claim, and no part of the protocol scores it.'
+          : 'The chain does not reach Evidence. An ungrounded claim is valid '
+            + 'here and nothing gates on it — this shows what it cites and '
+            + 'where the citations run out, nothing more.';
+        panel.appendChild(note);
+      }
+      card.appendChild(panel);
+    }
   }
 
   // AntibodyPattern flags announce themselves. The kind and rationale
@@ -1932,6 +2095,55 @@ async function loadClaimsByAuthor(agentB64: string) {
  * here searches. Both roles are probed for each candidate, because a claim
  * may sit in another's neighborhood as evidence or as critique and the
  * caller does not know which in advance. */
+/** Resolve a claim's grounding path node by node, through the two
+ *  hash-addressed getters.
+ *
+ * Sequential rather than `Promise.all`: a grounding path is a CHAIN, each node
+ * cited by the one before it, and the display is that order. Firing them in
+ * parallel would save a few hundred milliseconds on a path whose length is
+ * bounded by DEFAULT_GROUNDING_MAX_DEPTH and lose the property that a partial
+ * result is a correct prefix of the walk.
+ *
+ * A node that will not resolve does NOT lose the rest of the chain. Its hash is
+ * still an honest statement about where the walk went, and a chain that renders
+ * three of four steps plus "this one would not resolve" is strictly more than
+ * the step count this replaces. */
+async function loadGroundingChain(claim: DecodedRecord<Claim>) {
+  if (!connection) return;
+  const key = b64(claim.entryHash);
+  const grounding = groundingByClaim.get(key);
+  // No path means get_grounding_path has not answered yet. The toggle is only
+  // rendered once it has, so this is a guard rather than a case.
+  if (!grounding) return;
+
+  chainLoading.add(key);
+  render();
+  try {
+    const steps: GroundingStep[] = [];
+    const last = grounding.path.length - 1;
+    for (let i = 0; i < grounding.path.length; i++) {
+      const hash = grounding.path[i];
+      const terminalEvidence = grounding.grounded && i === last;
+      try {
+        if (terminalEvidence) {
+          const evidence = await connection.callZome<Evidence | null>('get_evidence', hash);
+          steps.push(evidence ? { kind: 'evidence', hash, evidence } : { kind: 'unresolved', hash });
+        } else {
+          const c = await connection.callZome<Claim | null>('get_claim', hash);
+          steps.push(c ? { kind: 'claim', hash, claim: c } : { kind: 'unresolved', hash });
+        }
+      } catch (e) {
+        console.error('grounding node would not resolve', short(hash), e);
+        steps.push({ kind: 'unresolved', hash });
+      }
+    }
+    chainByClaim.set(key, steps);
+  } finally {
+    chainLoading.delete(key);
+    render();
+  }
+}
+
 async function loadResonance(claim: DecodedRecord<Claim>) {
   if (!connection) return;
   const key = b64(claim.entryHash);

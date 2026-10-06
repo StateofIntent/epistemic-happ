@@ -1472,3 +1472,75 @@ button:disabled { opacity: 0.6; cursor: default; }
   gap: 0.75rem;
   margin-top: 0.3rem;
 }
+
+/* --- The resolved evidence chain (main.ts) ---------------------------
+ *
+ * Mirrors .resonance-panel's left-rule treatment on purpose: both are a
+ * panel opened from a claim card, and a reader should recognise the shape.
+ * What they must NOT share is emphasis — this one is the exact answer and
+ * the resonance probe is the approximate one, so nothing here is dimmed
+ * the way .resonance-row is. */
+.chain-panel {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  border-left: 2px solid var(--border);
+  background: var(--bg);
+}
+
+.chain-step {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* Fixed width so the ordinals form a column and the chain reads as a
+   sequence rather than a list of paragraphs. */
+.chain-ord {
+  flex: 0 0 4.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.chain-body { flex: 1 1 auto; }
+
+.chain-kind {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(127, 127, 127, 0.14);
+  color: var(--text-dim);
+}
+
+/* The terminal node is the one the walk was looking for, so it is the one
+   thing in the panel that carries colour. Same green as .grounding.grounded
+   and for the same reason — it marks the END of a regress, never a verdict
+   on the claim. */
+.chain-kind-evidence {
+  background: rgba(30, 132, 73, 0.12);
+  color: #1e8449;
+}
+
+/* Not an error state. A node this client could not read is a fact about the
+   read, not about the claim, so it is styled as neutral-and-quiet rather
+   than as a failure. */
+.chain-kind-unresolved {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.chain-source {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
