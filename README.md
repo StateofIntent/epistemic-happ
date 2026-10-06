@@ -3084,7 +3084,7 @@ each of these is currently exactly that.
 
   **So what is established is narrow, and is stated narrowly.** A reproducible 60s stall exists; it is not load-dependent, not isolation alone, not a fresh start alone, and not simply the first read after an isolated restart. It waits out the client rather than erroring, so the conductor is blocked rather than refusing. **Why** it waits is inside Holochain and this probe measures from outside. Nothing is fixed on it and no timeout is widened — the rule this section has now applied to the same class of defect three times.
 
-- [x] **The dwell fix moved `network` from 83.1% to 93.3%, and the one surviving failure mode is the gossip round timeout — now raised to 60s, with the knob proven real before it was trusted.** `scripts/network.sh`.
+- [x] **The dwell fix moved `network` from 83.1% to ~86%, and the round timeout was raised to 60s with the knob proven real before it was trusted.** `scripts/network.sh`. **The "93.3%" this heading first claimed was a six-run artefact and is corrected below, as is "the one surviving failure mode" — there are two, and the better-evidenced one is not the round timeout.**
 
   **The measurement first, because the exclusion asks for it.** `network` is kept out of `main`'s required checks on the grounds that it is genuinely flaky, with a standing instruction to re-measure rather than assume before revisiting that. Re-measured across 91 completed runs: **83.1% before the dwell fix (64/77), 93.3% after it (14/15)**. Four of the five failures in the days around it were the wasm crash the entry above fixed, and they stop at the commit that fixed it. One is left, and it is a different animal.
 
@@ -3099,6 +3099,49 @@ each of these is currently exactly that.
   **Generated without `-r`, then patched, then run.** `-r` makes `hc sandbox generate` start the conductor too, and a conductor reads its config once at startup, so with `-r` there is no moment at which the file exists unread. Patching afterwards would need a restart — and the entry above established that the first zome call after a node's first restart crashes the ribosome, so setup must not spend that window on the nodes a harness is about to measure. The three steps avoid it entirely.
 
   **Verified on the real three-node network, and what that does and does not establish.** All three nodes carry `roundTimeoutMs: 60000` with zero network-join errors; `real-gossip` is 25 checks green and `partition-rejoin` 26, the latter crossing its baseline in 5.1s and dwelling the full 45s. **It does not establish that the flake is gone.** This machine crosses in 5.1s and has never reproduced the CI failure — the whole point is that a 2-vCPU runner is slow enough to lose a race this one wins. The confirming measurement is the pass rate over the next runs, and until there is one **`network` stays out of the required checks**, on the same instruction that produced the measurement at the top of this entry. 60s is four times the default and well inside the 330s window, so a slow round can finish while a dead one is still reaped long before any harness gives up.
+
+  **AND THE MEASUREMENT CAME BACK AGAINST THE OPTIMISM IN THIS ENTRY, which is
+  what it was for.** The "93.3% (14/15)" above was taken six runs after the dwell
+  fix landed. At twenty-one runs it is **85.7% (18/21)**, and the two most recent
+  runs at the time of writing both failed — so the honest reading is that the
+  dwell fix cleared the wasm-crash family and the rate has not demonstrably moved
+  since, not that the job is nearly clean. A rate quoted off fifteen samples was
+  too few to carry the weight this entry put on it.
+
+  **Both of those failures are one mode, and it is not the round timeout.** Each
+  failed `partition-rejoin`'s baseline — but not by never crossing. The baseline
+  **crossed**, at **120.3s** and **125.3s**, and the harness failed a separate
+  guard requiring a baseline fast enough to measure divergence in budget (≤60s).
+  Its own warning says so: *"THE 120.3s IS THE FINDING, not this cap."*
+
+  **Those two numbers land on a different kitsune2 constant from the 307.5s one.**
+  `initiate_interval_ms` is **120,000** — "how often Kitsune will attempt to find
+  a peer to gossip with" — with `initiate_jitter_ms` of **10,000** added as a
+  random 0–10s. 120.3s and 125.3s are both 120s plus jitter, to the tenth of a
+  second, on two independent runs. The shape that produces it is the **first**
+  attempt at `initial_initiate_interval_ms` (1s) finding no peer to gossip with
+  at all — bootstrap discovery has not completed a second after start — and the
+  crossing then waiting for the next scheduled attempt two minutes later.
+  **Raising `roundTimeoutMs` cannot help that**, because no round was lost to a
+  timeout; none was started.
+
+  **So there are two failure modes with two signatures, and the evidence is the
+  other way round from how this entry ordered them.** The 300s one
+  (`min_initiate_interval_ms`, a lost round rate-limited before retry) rests on a
+  single 307.5s observation from a local experiment. The 120s one rests on two CI
+  observations agreeing to the tenth of a second. The better-evidenced mechanism
+  is the one this entry did not predict.
+
+  **The candidate fix is a sibling knob and is deliberately NOT applied here.**
+  `advanced.k2Gossip.initiateIntervalMs` travels the same proven path as the
+  round timeout, and lowering it would make a missed first attempt cost seconds
+  rather than two minutes — `min_initiate_interval_ms` still rate-limits any
+  individual peer at 300s, so it is the look-for-a-peer cadence that would
+  change, not the load on one. It is not applied because the lesson of this very
+  entry is that a config change needs its effect shown rather than argued, and
+  nothing here can show it: this machine crosses inside one 3s poll and has never
+  reproduced the slow baseline. **`network` therefore stays out of the required
+  checks**, which is now the second measurement in a row to say so.
 
 - [x] **Pre-registration (commit-reveal) — built, and the flaw this entry identified is what the implementation is shaped around.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
