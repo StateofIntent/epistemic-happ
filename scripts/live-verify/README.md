@@ -114,7 +114,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 | `founding-ui` | browser | 1 | Domain founding, and that its accountability is real |
 | `graph-ui` | browser | 1 | Spatial navigation of the critique tree |
 | `onboarding-ui` | browser | 1 | Progressive disclosure staging |
-| `evidence-retraction-ui` | browser | 1 | Evidence, grounding, author-only retraction |
+| `evidence-retraction-ui` | browser | 1 | Evidence, grounding, author-only retraction — and **the grounding path resolved node by node**, which is where `get_claim`/`get_evidence` are surfaced. The decisive check is that the terminal node renders the published evidence's own sentence: a panel showing hashes would satisfy "the chain is shown" while proving nothing resolved |
 | `affordance-surfacing` | browser | 1 | The critique form is unavailable exactly when the protocol would refuse it |
 | `write-symmetry` | browser | 1 | Reinforcement and antibody flagging — the write halves of two read-only surfaces |
 | `published-packages` | conductor, network | 1 + a throwaway npm project | The tarball a stranger installs, driven against a real conductor — packed, installed into an empty project with a fresh dependency resolution, and then made to write a claim and read it back from that install. The gap `check-packages` (proves it imports) and `agent-sdk`/`mcp-server` (drive this tree's build) leave between them, and where the broken 0.1.1 on the registry lives |

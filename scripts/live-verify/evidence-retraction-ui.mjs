@@ -219,6 +219,70 @@ async function main() {
     check('and is not worded as a deficiency either',
       !/unverified|invalid|missing|fails|must/i.test(uText));
 
+    // === The chain itself, not its length ==============================
+    //
+    // The badge above is a STEP COUNT. `get_grounding_path` returns
+    // `Vec<EntryHash>` and a bool — no content — so for as long as the badge
+    // was the whole surface, the UI could say "reaches a source in 3 steps"
+    // and had no way to show what the source said, every hash discarded
+    // unread. Invariant #3 is "every claim carries its own history"; a count
+    // is not the history.
+    //
+    // THE DECISIVE CHECK IS THE EVIDENCE TEXT, not the panel's existence.
+    // A panel that rendered the hashes would satisfy "the chain is shown"
+    // while proving nothing about `get_evidence` having resolved anything —
+    // the same "matched something adjacent to the thing" failure this file
+    // already records for the ungrounded badge, where asserting a class
+    // EXISTED stayed green through a real regression. So the assertion is
+    // that the published evidence's own sentence comes back.
+    log('\n=== The grounding chain resolves, node by node ===');
+    const chainBtn = grounded.locator('[data-testid="chain-toggle"]');
+    const chainBtnText = await chainBtn.innerText();
+    check('a grounded claim offers its chain to be read', /read the evidence chain/i.test(chainBtnText));
+    await chainBtn.click();
+    await grounded.locator('[data-testid="chain-panel"]').waitFor({ timeout: 20000 });
+    // Resolution is one DHT read per node, so the panel renders a loading
+    // line first; wait for a step rather than for a timeout.
+    await grounded.locator('[data-testid="chain-step"]').first().waitFor({ timeout: 20000 });
+    const panelText = await grounded.locator('[data-testid="chain-panel"]').innerText();
+    log(`  panel: ${panelText.replace(/\n+/g, ' | ').slice(0, 180)}`);
+
+    check('the terminal node resolves to the evidence CONTENT, not a hash',
+      /Twelve-week randomised trial, n=180\./.test(panelText));
+    check('and carries its evidence_type, which is part of the answer',
+      /Study/.test(panelText));
+    check('the claim being read is named rather than numbered',
+      /this claim/i.test(await grounded.locator('.chain-ord').first().innerText()));
+
+    // A cited source is a string some agent published. Rendering it as a live
+    // anchor would have this client vouch for where it points, which is a
+    // claim about the world the protocol never made.
+    const sourceEl = grounded.locator('[data-testid="chain-source"]');
+    check('the cited source is shown', /example\.org\/trial/.test(await sourceEl.innerText()));
+    check('  ...as text, NOT as a link this client vouches for',
+      await sourceEl.locator('a').count() === 0);
+
+    // "Reaches a source" reads as "is true" to anybody not holding the spec.
+    const noteText = await grounded.locator('[data-testid="chain-note"]').innerText();
+    check('the panel says what the chain does NOT establish',
+      /not about truth/i.test(noteText));
+    check('  ...and never calls the claim verified, confirmed or proven',
+      !/\bverified\b|\bconfirmed\b|\bproven\b|\btrue\b/i.test(noteText));
+
+    // The ungrounded case is offered too, and worded as the more useful
+    // question: not "is it grounded" (the badge said) but where it ran out.
+    const uChainBtn = ungrounded.locator('[data-testid="chain-toggle"]');
+    check('an ungrounded claim is offered its chain as well',
+      /where the chain breaks/i.test(await uChainBtn.innerText()));
+    await uChainBtn.click();
+    await ungrounded.locator('[data-testid="chain-step"]').first().waitFor({ timeout: 20000 });
+    const uPanel = await ungrounded.locator('[data-testid="chain-panel"]').innerText();
+    check('a broken chain terminates in no evidence node',
+      await ungrounded.locator('.chain-kind-evidence').count() === 0);
+    check('and is still not framed as a defect',
+      /valid here and nothing gates on it/i.test(uPanel)
+      && !/unverified|invalid|fails|must/i.test(uPanel));
+
     log('\n=== Retracting your own claim ===');
     await ungrounded.getByRole('button', { name: 'Retract this claim', exact: true }).click();
     await page.waitForSelector('[data-testid="retract-form"]', { timeout: 20000 });
