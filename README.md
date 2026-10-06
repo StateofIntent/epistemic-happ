@@ -3270,6 +3270,23 @@ Three of the four remaining are genuinely **hash-addressed getters** which a scr
 
   **The breakdown is a table now, and CI reads it, because recounting it by hand is what kept going wrong.** Three times this item recounted the residue in prose and three times the prose went stale — most tellingly when `get_protocol_version` turned out never to have been accounted for *at all*, found by somebody adding up a paragraph rather than by any check. Meanwhile `check-spec-drift.mjs` printed the residue on every run under the heading "§9 carries a reason for each", which was an assertion it did not test: the same defect this repository keeps finding in its own harnesses, a label claiming more than it checks. It checks it now. The table below must name **exactly** the unsurfaced set — a function missing from it fails the build, and so does a row for a function that has since been surfaced or no longer exists.
 
+  **And the other half of this item is gated now too, which is the half nobody
+  would have gone looking at.** The sentence above names fourteen functions as
+  shipped; until now nothing checked that any of them still had a call site. The
+  accounting table and that sentence are two halves of one claim — what has a
+  screen and what does not — and only the second half was tested. `check-spec-
+  drift.mjs` now fails if a function named as shipped has no `callZome` site, or
+  is not an extern at all.
+
+  **The asymmetry mattered more than it looks.** This item already records what
+  the other direction costs: a stale sentence calling a capability unsurfaced a
+  month after it shipped, which sent a session off to build a screen that
+  already existed. That error gets found, eventually, because somebody wants the
+  feature and goes to build it. **A sentence promising a screen that has quietly
+  lost its call site is never found that way** — nobody checks a claim that
+  something exists. It fails silently and for longer, which is why the untested
+  half was the one worth testing.
+
   | Unsurfaced extern | Why it has no screen |
   |---|---|
   | `create_mew` | bridge-only — `bridge/` owns the Twitter surface, and the UI is not a Twitter client |

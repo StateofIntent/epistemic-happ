@@ -65,7 +65,13 @@
 //   A README ratio that disagrees with the real one fails the build, so the
 //   number cannot quietly go stale between recounts.
 //
-//   And every unsurfaced extern must have a reason in §9's accounting table.
+//   And BOTH halves of §9's surfacing claim are checked rather than one. Every
+//   unsurfaced extern must have a reason in the accounting table — and every
+//   function the "Shipped so far:" sentence names must have a call site and be
+//   a real extern. The residue half was gated first; leaving the shipped half
+//   ungated left the direction nobody looks in unguarded, because a sentence
+//   denying a screen gets found when somebody wants the feature, and a
+//   sentence promising one that is gone does not get found at all.
 //   This file printed "§9 carries a reason for each" for a long time without
 //   testing it — a label claiming more than its assertion, which is the
 //   defect this repository corrects most often, here in its own gate. The
@@ -120,7 +126,28 @@
 //   Result: red via SETUP FAILED, for the same reason as the ratio sentence
 //   above — a gate whose subject can vanish silently is not a gate.
 //
-//   Restored and re-run: green, exit 0, on all five checks.
+//   ----- and for the shipped half of §9's claim, added later -----
+//
+//   Injection: `get_grounding_path`'s call site renamed in `mobile-ui`, with
+//   §9 still naming it as shipped.
+//   Result: red, naming it — a sentence promising a screen that is not there.
+//
+//   Injection: `get_imaginary_thing` added to the shipped sentence.
+//   Result: red, "names these as shipped and they are not externs".
+//
+//   THE FIRST ATTEMPT AT THAT SECOND INJECTION DID NOT FIRE, and the check was
+//   right to stay green. The edit was aimed with a bare string replace and
+//   landed on the FIRST `get_grounding_path` in the document — line 190, a §2
+//   table — nowhere near §9's sentence. So it tested nothing and reported a
+//   pass. Recorded because an injection that misses looks exactly like a gate
+//   that works, and the only thing telling them apart is checking where the
+//   edit landed.
+//
+//   Injection: "Shipped so far:" reworded to "Already done:".
+//   Result: red via SETUP FAILED, same as the ratio sentence and the residue
+//   table before it.
+//
+//   Restored and re-run: green, exit 0, on all six checks.
 //
 // Run: node scripts/check-spec-drift.mjs
 // Exits non-zero on drift, and names every difference in both directions.
@@ -208,6 +235,29 @@ function callSites(files) {
     }
   }
   return found;
+}
+
+/** Every function §9 names in its "Shipped so far:" sentence.
+ *
+ * THE MIRROR OF `accountedFor`, AND THE HALF THAT WAS NOT CHECKED. That
+ * function gates the functions §9 says have NO screen; this one gates the ones
+ * it says DO. Both halves of the same claim, and only one of them was tested.
+ *
+ * This repository has already paid for the error in the other direction — §9
+ * records "a stale sentence naming a capability as unsurfaced a month after it
+ * shipped, which cost a session's work before anybody noticed". A sentence
+ * naming something as SHIPPED that has quietly lost its call site fails the
+ * same way and costs the same thing: it tells the next person a screen exists
+ * when it does not, which is a worse lie than the reverse because nobody goes
+ * looking.
+ *
+ * Reads one sentence by its exact opening, so the document can still discuss
+ * shipping elsewhere without being gated on it. */
+function shippedNames(readme) {
+  const i = readme.indexOf('Shipped so far:');
+  if (i === -1) return null;
+  const sentence = readme.slice(i, readme.indexOf('\n', i));
+  return [...sentence.matchAll(/`([a-z_0-9]+)`/g)].map((m) => m[1]);
 }
 
 /** Every function named in §9's unsurfaced-accounting table.
@@ -371,8 +421,50 @@ if (accounted === null) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// And the OTHER half of §9's surfacing claim. `accountedFor` above gates the
+// functions it says have no screen; this gates the ones it says do. Two
+// directions, failing differently:
+//
+//   Named as shipped with no call site: the sentence is stale, and it tells
+//   the next person a screen exists when it does not — the error §9 records
+//   costing a session's work, in the direction nobody goes looking in.
+//
+//   Named as shipped but not an extern at all: renamed or removed, and the
+//   sentence outlived it.
+// ---------------------------------------------------------------------------
+const shipped = shippedNames(readFileSync(README, 'utf8'));
+const shippedUnsurfaced = shipped === null ? [] : shipped.filter((f) => !sites.has(f));
+const shippedPhantom = shipped === null ? [] : shipped.filter((f) => !inCode.has(f));
+
+if (shipped === null) {
+  log('SETUP FAILED: README.md §9 has no "Shipped so far:" sentence.');
+  log('  This check gates that sentence, so its absence means it moved or was');
+  log('  reworded — and the shipped half of the surfacing claim has gone');
+  log('  unchecked again, which is the half nobody goes looking at.');
+  log('');
+} else {
+  log(`§9 names ${shipped.length} functions as shipped; ${shipped.length - shippedUnsurfaced.length} have a call site.`);
+  log('');
+  if (shippedUnsurfaced.length > 0) {
+    log('DRIFT — §9 says these are shipped, and nothing in mobile-ui calls them:');
+    for (const f of shippedUnsurfaced) log(`  ${f}`);
+    log('  Either the surface was removed and the sentence was not, or the call');
+    log('  site was renamed. A sentence promising a screen that is not there is');
+    log('  worse than one denying a screen that is, because nobody checks it.');
+    log('');
+  }
+  if (shippedPhantom.length > 0) {
+    log('DRIFT — §9 names these as shipped and they are not externs:');
+    for (const f of shippedPhantom) log(`  ${f}`);
+    log('  Renamed or removed in the zome, with the sentence left standing.');
+    log('');
+  }
+}
+
 const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0
-  || accounted === null || unaccounted.length > 0 || staleRows.length > 0;
+  || accounted === null || unaccounted.length > 0 || staleRows.length > 0
+  || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
