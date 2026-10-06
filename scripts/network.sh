@@ -282,6 +282,41 @@ PASSPHRASE="${HC_SANDBOX_PASSPHRASE:-sandbox-dev-passphrase-1234}"
 # any harness gives up. Override with EPI_GOSSIP_ROUND_TIMEOUT_MS.
 GOSSIP_ROUND_TIMEOUT_MS="${EPI_GOSSIP_ROUND_TIMEOUT_MS:-60000}"
 
+# THE CONDUCTOR'S LOG FILTER, RAISED SO THE SILENT PATH SPEAKS.
+#
+# The surviving explanation for `network`'s slow baseline is the one that logs
+# nothing wrong: at the first initiation attempt there is no peer to gossip
+# with, and the crossing then waits out `initiate_interval_ms`. Both failures
+# censused eight or nine lines per node with EVERY error signature at zero —
+# `Accept message from wrong peer`, `initiate too soon`, `iroh connect timed
+# out`, all absent — so the question "was gossip even attempted, and when?"
+# could not be asked of the logs at all.
+#
+# It can now. `kitsune2_gossip` logs the timeline at info and debug:
+# "Starting initiate task" once per node at startup, "Selected target for
+# gossip: <url>" and "Initiated gossip with <url>" per attempt, and — the one
+# that matters — `select_next_target`'s reason when there is nobody to gossip
+# with, which the Ok(None) arm explicitly defers to it for ("Nobody to gossip
+# with, expect `select_next_target` to have logged a reason"). A slow baseline
+# with its first "Initiated gossip with" two minutes after start is the
+# surviving mechanism caught in the act; one at t+1s refutes it.
+#
+# HOW THE FILTER TRAVELS, verified rather than assumed: holochain's
+# `tracing_override` config field does nothing but `set_var("CUSTOM_FILTER")`,
+# so exporting `CUSTOM_FILTER` here is the same lever by a shorter route and
+# needs no config patching. Proven locally — node logs went from 8-9 lines to
+# 18-65, carrying timestamped "Initiated gossip with" lines.
+#
+# `warn` IS KEPT AS THE BASE so this only ADDS. A bare "kitsune2_gossip=debug"
+# would be the whole filter and would silence everything else, including the
+# errors the census has counted for months.
+#
+# Checked after startup rather than trusted, for the reason the round timeout
+# above is checked: a filter that silently failed to apply would leave the next
+# failure as mute as the last two, and nothing would say so.
+GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug}"
+export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
+
 log() { echo "[network] $*"; }
 fail() { echo "[network] ERROR: $*" >&2; exit 1; }
 
@@ -533,6 +568,18 @@ start_node() {
   pid="$(pgrep -f "holochain .*--config-path $NET_ROOT/$name/conductor-config.yaml" | head -n1)"
   [ -n "$pid" ] || fail "$name's ports came up but its holochain process could not be found (looked for --config-path $NET_ROOT/$name/conductor-config.yaml). Log tail:$(echo; tail -n 30 "$NET_ROOT/$name.log")"
   echo "$pid" > "$(node_pidfile "$name")"
+
+  # THE LOG FILTER TOOK, OR SAY SO. "Starting initiate task" is logged once per
+  # node by kitsune2_gossip's initiate loop as it starts, so it is present on
+  # every healthy node within moments of the ports answering — unlike the
+  # per-attempt lines, which depend on gossip having happened yet and would
+  # make this a race. Warned rather than fatal: a missing filter degrades the
+  # next failure's diagnosis, it does not break the network, and failing the
+  # whole run over a log level would be worse than the gap it closes.
+  if ! grep -q "Starting initiate task" "$NET_ROOT/$name.log" 2>/dev/null; then
+    log "  WARNING: $name logged no 'Starting initiate task' — CUSTOM_FILTER=\"$CUSTOM_FILTER\""
+    log "  may not have applied, so a slow-baseline failure will be as mute as the last two."
+  fi
 
   # RESUMING DOES NOT RE-ENABLE THE APP. `hc sandbox generate` installs
   # AND enables; `hc sandbox run` on an existing sandbox brings the
