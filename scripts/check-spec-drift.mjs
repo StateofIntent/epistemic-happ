@@ -263,6 +263,60 @@ function callSites(files) {
   return found;
 }
 
+/** SPEC §5.1 and Invariant #6 — "nothing is deleted" — which is this
+ *  protocol's headline promise and was checked by nothing at all.
+ *
+ * §5.1: "Any `RegisterDelete` operation is rejected outright." Invariant #6 is
+ * the same rule stated as a principle. It is what the epistemic argument rests
+ * on: a record that can vanish cannot carry its own history.
+ *
+ * TWO ARMS, NOT ONE, AND THEY DISAGREE — which is why this reads both:
+ *
+ *     FlatOp::Delete(_)                       => Invalid("Deletion is not permitted…")
+ *     FlatOp::Link(OpLink::DeleteLink { .. }) => Valid
+ *
+ * §5.1 is written about entries ("every entry type without exception") and
+ * validation implements exactly that, so the accepted link delete is not a
+ * violation of §5.1. But Invariant #6 says "nothing is deleted" with no
+ * qualification, and a `SynapticLink`'s own `CreateLink` action is deletable —
+ * so a critique's conductance edge can be removed even though the `Critique`
+ * entry it points at cannot. Checking the entry arm alone and printing
+ * "Invariant #6 holds" would be #185's defect — a refusal claiming more than
+ * it enforces — reproduced inside the checker written to catch it. Both arms
+ * are read, the asymmetry is printed rather than smoothed over, and §5.1 now
+ * records it in the document, since the zome cannot be annotated for free.
+ *
+ * NEITHER OBVIOUS INSTRUMENT CAN REACH EITHER ARM, which is why this one is
+ * static and why that is worth writing down rather than apologising for.
+ *
+ *   rustc cannot. `FlatOp::Delete(_) => Ok(ValidateCallbackResult::Valid)`
+ *   compiles perfectly — a one-line edit from refusing every deletion to
+ *   permitting every deletion, and nothing about it is a type error.
+ *
+ *   A LIVE PROBE CANNOT, and this repository already paid to learn it. There is
+ *   no delete path in the coordinator — zero `delete_entry`, zero
+ *   `delete_link`, zero `DeleteInput`, no extern with `delete` in its name —
+ *   so a harness has nothing to call. README §9 records what that produces: a
+ *   probe for "a commitment cannot be updated" called an extern that does not
+ *   exist while asserting the error contained `"not"`, which `"function not
+ *   found"` satisfies. A guard scoring a pass against a function that was never
+ *   there. Verifying a path is ABSENT is this file's job, because it enumerates
+ *   what exists; a live call cannot establish it by being rejected.
+ *
+ * So: both arms must exist and each must still return what §5.1 documents.
+ * Narrow, for a rule that carries a lot — and narrow beats absent. */
+function noDeletion() {
+  const src = readFileSync(INTEGRITY, 'utf8');
+  const entry = src.match(
+    /FlatOp::Delete\s*\([^)]*\)\s*=>\s*Ok\(\s*(ValidateCallbackResult::\w+)/);
+  const link = src.match(
+    /OpLink::DeleteLink\s*\{[^}]*\}\s*\)\s*=>\s*Ok\(\s*(ValidateCallbackResult::\w+)/);
+  return {
+    entryArm: entry ? entry[1] : null,
+    linkArm: link ? link[1] : null,
+  };
+}
+
 /** SPEC §5.2's author binding, which is the first VALIDATION RULE this file
  *  checks rather than a name list.
  *
@@ -563,17 +617,59 @@ if (binding === null) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SPEC §5.1 / Invariant #6. One line from refusing every deletion to permitting
+// every deletion, and until now nothing would have noticed the difference.
+// ---------------------------------------------------------------------------
+const deletion = noDeletion();
+const entryRefuses = deletion.entryArm === 'ValidateCallbackResult::Invalid';
+const linkAccepts = deletion.linkArm === 'ValidateCallbackResult::Valid';
+
+if (deletion.entryArm === null || deletion.linkArm === null) {
+  const missing = deletion.entryArm === null ? '`FlatOp::Delete`' : '`OpLink::DeleteLink`';
+  log(`SETUP FAILED: no ${missing} arm found in the integrity zome.`);
+  log('  Either the arm is gone — in which case those deletes now fall to');
+  log('  whatever the catch-all does — or the arm stopped being a plain');
+  log('  `=> Ok(ValidateCallbackResult::_)` and this parser no longer reads it.');
+  log('  Both need a human.');
+  log('');
+} else {
+  if (!entryRefuses) {
+    log('DRIFT — the entry Delete arm no longer refuses:');
+    log(`  it returns ${deletion.entryArm}, and §5.1 rejects any entry delete`);
+    log('  outright, for every entry type without exception. rustc cannot see');
+    log('  the difference, and no live probe can reach it: there is no delete');
+    log('  extern to call.');
+    log('');
+  }
+  if (!linkAccepts) {
+    log('DRIFT — the DeleteLink arm no longer accepts:');
+    log(`  it returns ${deletion.linkArm}, while §5.1 documents link deletes as`);
+    log('  accepted. Refusing them may well be the better rule, but it forks the');
+    log('  DNA hash (§11.1) and §5.1 has to say so first. Code and document');
+    log('  disagree either way round; that is what this file is for.');
+    log('');
+  }
+  if (entryRefuses && linkAccepts) {
+    log('§5.1 no-deletion: entry deletes refused, link deletes accepted — both as');
+    log('  §5.1 documents. So Invariant #6 holds for entries, NOT for links: a');
+    log('  `SynapticLink` edge is deletable, its `Critique` entry is not.');
+  }
+}
+
 const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0
   || accounted === null || unaccounted.length > 0 || staleRows.length > 0
   || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0
-  || binding === null || unbound.length > 0;
+  || binding === null || unbound.length > 0
+  || deletion.entryArm === null || deletion.linkArm === null
+  || !entryRefuses || !linkAccepts;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.2 is now checked; the REST of §5 and §7 still are not, and a call');
-  log('site is reach, not proof a function is well surfaced.)');
+  log('(§5.1 and §5.2 are checked now; §5.3 and the per-type rules in §2 are');
+  log('not, and a call site is reach, not proof a function is surfaced.)');
   process.exit(0);
 }
 process.exit(1);
