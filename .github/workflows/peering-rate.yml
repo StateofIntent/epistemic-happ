@@ -1,0 +1,209 @@
+# =============================================================================
+# THE STRONG VERSION OF AN EXPERIMENT THAT HAS ONLY EVER BEEN RUN WEAKLY.
+#
+# `scripts/live-verify/peering-rate.mjs` asks why a node sometimes joins the
+# DHT and exchanges nothing — README §9's oldest open question, four hypotheses
+# falsified. Its one informative run so far was on a development machine, and
+# that file says plainly what the limitation is: "this machine crosses inside
+# one 3s poll on 14 of 16 trials, so it is not slow enough to lose a 15s race
+# often. The CI runner is. A run here is a weak version of the real experiment."
+#
+# THIS IS THAT RUN, ON THE SLOW MACHINE. Nothing about the harness changes; it
+# is the same trial at the same two `roundTimeoutMs` arms. The only thing this
+# workflow supplies is the runner — two vCPUs, which is the condition under
+# which a 15s gossip round is actually lost.
+#
+# WHY IT IS workflow_dispatch AND NOT ON PUSH. It takes about an hour at the
+# defaults and asserts nothing: it prints a distribution and exits 0 whatever
+# the distribution says. A job like that on every push would burn an hour a
+# commit to produce output nobody reads, and gating on it would be worse — the
+# harness has no pass condition to gate on, which is deliberate and is the
+# `stall-bisect.mjs` / `dht-isolation-probe.mjs` standing. Run it when the
+# question is being worked on, which is what dispatch is for.
+#
+# WHAT A RUN CAN PRODUCE, stated before running it rather than after, because
+# the last write-up of this experiment got the reading wrong and the correction
+# is in both the harness header and README §9:
+#
+#   - slow crossings clustering near 300s   -> `min_initiate_interval_ms` is
+#     the mechanism; a round is lost to `roundTimeoutMs` and no retry with that
+#     peer is permitted for five minutes. This is the predicted shape and the
+#     dev-machine run saw it once, at 307.5s.
+#   - crossings that never land inside the cap -> the lost-round model does not
+#     cover it. A node in that state does not arrive late, it does not arrive,
+#     and `transitive-gossip.mjs` already records that no window helps: a run
+#     failed at 661s with a 600s window in place.
+#   - the two arms indistinguishable -> `roundTimeoutMs` is not what drives
+#     this and README §9's mechanism paragraph is a side-story. On the evidence
+#     as it stands this is NOT the likeliest outcome any more, but it was the
+#     pre-registered one and it stays listed.
+#
+# AND DO NOT READ A RATE OFF IT. Two slow trials in eight against zero in eight
+# was Fisher exact p = 0.467 on the dev machine; more trials here help, but the
+# harness prints the per-trial lines first for a reason, and its own summary
+# says magnitude carries the information at this sample size and frequency does
+# not. A median erased the entire finding once already.
+#
+# THE LOGS ARE THE POINT OF RUNNING IT HERE, not the table. The harness now
+# archives the conductor logs of every slow or absent crossing — plus a couple
+# of fast trials per arm as CONTROLS, without which "this line appears in the
+# slow ones" cannot be checked against the fast ones. That control is not
+# hypothetical bookkeeping: `network.yml`'s census step and kitsune2#638's own
+# first batch both lost the run that mattered by capturing conditionally, and
+# this is the third guard against the same mistake. The archive is uploaded as
+# an artifact on every run, including a cancelled or failed one.
+#
+# UPSTREAM IS CLOSED AND THAT IS WHY EVIDENCE MATTERS NOW. holochain/kitsune2
+# #638 carried two things: an error-attribution bug read out of the source, and
+# this symptom as an unreproducible sighting. The first was fixed (#639, merged
+# 2026-09-30) and the issue was closed on that merge, taking the symptom half
+# with it unaddressed. Re-filing needs a demonstration rather than prose — the
+# maintainer's one substantive comment on #638 was that it was too much text —
+# and a captured log pair from a slow trial on a machine anybody can rent is
+# the smallest thing that qualifies.
+# =============================================================================
+
+name: peering-rate (nodeD gossip question)
+
+on:
+  workflow_dispatch:
+    inputs:
+      trials:
+        description: 'Trials per arm (each is a whole clean network, ~4 min on a runner)'
+        required: false
+        default: '6'
+      arms:
+        description: 'roundTimeoutMs arms, comma-separated'
+        required: false
+        default: '60000,15000'
+      cap_ms:
+        description: "Per-trial crossing cap in ms (330000 matches transitive-gossip's window)"
+        required: false
+        default: '330000'
+      controls:
+        description: 'Fast trials per arm to archive logs for, as controls'
+        required: false
+        default: '2'
+
+# Its own group, and deliberately NOT cancel-in-progress: a second dispatch
+# must queue behind a running experiment rather than kill an hour of it. The
+# ports `network.sh` binds are per-runner and every hosted job is its own VM,
+# so this does not need to exclude `network.yml` — but two dispatches of THIS
+# workflow would be two experiments whose output lands in one place.
+concurrency:
+  group: peering-rate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  peering-rate:
+    runs-on: ubuntu-latest
+    # Worst case, not typical. A timed-out trial costs the full cap (330s by
+    # default) plus a network bring-up, so 12 trials can legitimately want 80
+    # minutes, and a larger dispatch more. Sized so a slow-but-working run is
+    # never killed and reported as a failure — the flaky-red-meaning-nothing
+    # this repository keeps refusing. 330 is close to the hosted-runner ceiling
+    # of 360 and leaves the setup steps inside it.
+    timeout-minutes: 330
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # Same key as network.yml on purpose: a hit there is a hit here, and this
+      # workflow should never be the reason that binary gets compiled again.
+      - name: Cache the kitsune2 bootstrap server
+        id: k2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kitsune2-bootstrap-srv
+          key: kitsune2-bootstrap-srv-0.5.1-${{ runner.os }}
+
+      - name: Build the bootstrap server and iroh relay
+        if: steps.k2cache.outputs.cache-hit != 'true'
+        run: cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+
+      - name: Prove it is there, cached or freshly built
+        run: |
+          test -x ~/.cargo/bin/kitsune2-bootstrap-srv \
+            || { echo "::error::kitsune2-bootstrap-srv is missing — network.sh resolves it from PATH or ~/.cargo/bin and would fail later with a bare 'not found'"; exit 1; }
+          ~/.cargo/bin/kitsune2-bootstrap-srv --help >/dev/null
+
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/install-holochain.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: federation/package-lock.json
+
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # Build BEFORE packing, as network.yml: `hc dna pack` compiles nothing,
+      # so packing first wraps stale wasm in a fresh timestamp.
+      - name: Build the zomes and pack the hApp
+        run: |
+          ( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+          ( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
+          hc dna pack dna/
+          hc app pack .
+          test -f epistemic-resonance-happ.happ \
+            || { echo "::error::no .happ bundle — network.sh installs this on all four nodes"; exit 1; }
+
+      # The harness drives `network.sh clean && start && start-node nodeD`
+      # itself, once per trial, because a trial that reused a network would be
+      # measuring the previous trial. So there is no bring-up step here.
+      - name: peering-rate — how often does nodeD join and exchange nothing
+        env:
+          EPI_PEERING_TRIALS: ${{ inputs.trials }}
+          EPI_PEERING_TIMEOUTS: ${{ inputs.arms }}
+          EPI_PEERING_CAP_MS: ${{ inputs.cap_ms }}
+          EPI_PEERING_CONTROLS: ${{ inputs.controls }}
+          EPI_PEERING_LOG_DIR: /tmp/epi-peering-logs
+        run: node scripts/live-verify/peering-rate.mjs
+
+      # `always()`, not `failure()`, and the distinction is the whole reason the
+      # archive exists — see the header. The harness exits 0 on a run full of
+      # timeouts, so `failure()` here would collect nothing on exactly the runs
+      # worth collecting from.
+      - name: Keep the archived conductor logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: peering-rate-logs-${{ github.run_id }}
+          path: /tmp/epi-peering-logs
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Network status, if the run broke rather than finished
+        if: failure()
+        run: |
+          scripts/network.sh status || true
+          for f in /tmp/epi-net/*.log; do
+            [ -f "$f" ] || continue
+            echo "--- $f (last 100 lines) ---"
+            tail -100 "$f" || true
+          done
