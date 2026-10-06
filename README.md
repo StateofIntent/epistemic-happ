@@ -3143,6 +3143,53 @@ each of these is currently exactly that.
   reproduced the slow baseline. **`network` therefore stays out of the required
   checks**, which is now the second measurement in a row to say so.
 
+  **CPU STARVATION IS NOT THE LEVER, which retires the framing both this entry
+  and the round-timeout one leaned on.** "A 2-vCPU runner is slow enough to lose
+  the race" was never measured, only asserted. Measured now, by giving the
+  conductors a runner-sized budget *from the moment they start* — CPU affinity is
+  inherited across `fork`/`exec`, including through `setsid --fork`, so pinning
+  the launcher hands the mask to every conductor it spawns, which matters because
+  the trigger is at t≈1s and pinning afterwards would miss it. The mask was read
+  back off the running conductor rather than assumed:
+
+  | conductors' CPU budget | baseline crossings |
+  |---|---|
+  | 12 cores (unconstrained) | ≤3s |
+  | 2 cores | 1.03s |
+  | **1 core**, shared by three conductors and the bootstrap service | 1.03s, 3.07s, 3.06s, 3.06s |
+
+  **The crossing time does not move across a twelve-fold range of CPU budget.**
+  That is a stronger statement than the trial count supports on its own: if core
+  starvation produced the 120s wait, pinning three conductors onto one core
+  should have shifted the distribution, and it did not shift at all. So local
+  reproduction by CPU limiting is the wrong tool, and the runner's relevant
+  difference is not its core count.
+
+  **And the failing runs logged nothing at all, which narrows it further.** The
+  per-harness census (`scripts/log-census.sh`) on both slow-baseline failures:
+
+  ```
+  nodeA.log  lines=9  [initiate too soon=0] [Accept message from wrong peer=0]
+                      [iroh connect timed out=0] [Peer behavior error=0]
+  nodeB.log  lines=8-9  all zero        nodeC.log  lines=8  all zero
+  ```
+
+  Eight or nine lines per node, every signature zero, one routine `database is
+  locked`. **That kills both mechanisms this README had proposed for it:**
+  `Accept message from wrong peer` is absent, and so is `initiate too soon` —
+  which is what hitting the 300s per-peer rate limit logs, so the 307.5s
+  mechanism did not occur here either. Nothing errored; gossip simply did not
+  happen until the two-minute mark.
+
+  **What survives is the one path that logs nothing by design.** Finding no peer
+  to gossip with at the first attempt is not an error, so it writes no line —
+  and it is the only candidate left that produces a silent wait ending on
+  `initiate_interval_ms`. Why a peer is unknown a second after start on a runner
+  and not here is then a question about bootstrap registration and transport
+  setup timing, not about CPU, and that is where anyone picking this up should
+  look. The harness said as much before any of this: *"expect a long tail rather
+  than a broken state"*, and *"do not expect a distinctive error."*
+
 - [x] **Pre-registration (commit-reveal) — built, and the flaw this entry identified is what the implementation is shaped around.** What `EntryVisibility::Private` genuinely provides is not privacy but **timestamped commitment**: an agent commits a private entry now, its Action and entry hash are published, and a later reveal can be checked against that hash — proving they held the content at the earlier time without disclosing it then.
 
   The epistemically apt use, and the only one that clearly fits this protocol, is pre-registering a prediction before the evidence exists — the standard defence against HARKing (hypothesising after results are known). A protocol built around `Claim`, `Critique`, `Evidence` and declared confidence arguably has a shaped hole here, and this is the primitive that fits it.
