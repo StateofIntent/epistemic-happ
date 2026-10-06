@@ -26,10 +26,12 @@
 //
 // WHAT IT DOES NOT CHECK, stated here because the gap is larger than the
 // check. §10 is a name-and-signature reference; most of `SPEC.md` is MUST and
-// SHOULD rules about validation, and NOTHING here verifies that those match
-// `validate_*`. A green run means the function LIST agrees. It does not mean
-// the specification is verified, and this file must not be cited as if it did
-// — that would be the same shape of overclaim §2.3 was just corrected for.
+// SHOULD rules about validation. **One of those rules is now checked** — §5.2's
+// author binding, below — and the rest are not: §5.1, §5.3 and every per-type
+// rule in §2 remain prose. A green run means the function list agrees and that
+// one rule holds. It does not mean the specification is verified, and this file
+// must not be cited as if it did — that would be the same shape of overclaim
+// §2.3 was just corrected for.
 //
 // WHY IT READS TABLES AND NOT EVERY BACKTICK. §10's normative content is its
 // `| Function | Payload | Returns |` tables. Its prose legitimately names
@@ -147,7 +149,30 @@
 //   Result: red via SETUP FAILED, same as the ratio sentence and the residue
 //   table before it.
 //
-//   Restored and re-run: green, exit 0, on all six checks.
+//   ----- and for SPEC §5.2's author binding, added later -----
+//
+//   Injection: `validate_claim`'s `if &claim.author != action.author()`
+//   replaced with `if false`, so the arm exists and checks nothing.
+//   Result: red, "Claim.author (validate_claim: NOT BOUND)".
+//
+//   AND THE INJECTED VERSION COMPILES, which is the premise this check rests
+//   on rather than an aside. `cargo build --release --target
+//   wasm32-unknown-unknown` finished clean, exit 0, with one warning — and the
+//   warning only appeared because `action` became unused in that function. A
+//   validator that still used the action for anything else would compile with
+//   no warning at all. So rustc's exhaustive match guarantees an arm EXISTS
+//   and says nothing about what it checks, and an entry type whose author is
+//   forgeable ships green.
+//
+//   Not injected, because it cannot be done honestly in one edit: a NEW entry
+//   type with an author field and no bind. The check covers it by construction
+//   — it enumerates the structs rather than a fixed list — but that is reach,
+//   not evidence, and is marked as such here.
+//
+//   Restored and re-run: green, exit 0, on all seven checks. The integrity
+//   zome was rebuilt and repacked afterwards and the DNA hash is back to
+//   uhC0keFcP2UoOwpAWpSNZp4gHfxalbVrV_aBQ8Fmi8U8b72kSp68Y, because an
+//   injection into THIS zome leaves a different network behind if it is not.
 //
 // Run: node scripts/check-spec-drift.mjs
 // Exits non-zero on drift, and names every difference in both directions.
@@ -156,6 +181,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 
 const ZOME = new URL('../dna/coordinator/src/lib.rs', import.meta.url).pathname;
+const INTEGRITY = new URL('../dna/integrity/src/lib.rs', import.meta.url).pathname;
 const SPEC = new URL('../SPEC.md', import.meta.url).pathname;
 const UI = new URL('../mobile-ui/src', import.meta.url).pathname;
 const README = new URL('../README.md', import.meta.url).pathname;
@@ -235,6 +261,56 @@ function callSites(files) {
     }
   }
   return found;
+}
+
+/** SPEC §5.2's author binding, which is the first VALIDATION RULE this file
+ *  checks rather than a name list.
+ *
+ * §5.2: "For every entry type carrying an `author`/`agent`/`creator`/`proposer`
+ * field, that field MUST equal the actual authoring action's real author."
+ * A missing bind is forgery — an agent authoring an entry attributed to
+ * somebody else — so it is worth more than a prose rule.
+ *
+ * WHY THE COMPILER DOES NOT ALREADY COVER THIS, which is the whole reason the
+ * check earns its place. `validate_create_entry`'s match over `EntryTypes` has
+ * no wildcard, so rustc refuses to build if a new entry type has no arm — that
+ * part is genuinely gated already and nothing here duplicates it. What rustc
+ * cannot see is what the arm DOES. A new entry type with an `author` field,
+ * wired to a validator that checks everything except the binding, compiles
+ * clean and ships a forgeable entry.
+ *
+ * ALL THIRTEEN BIND TODAY, measured when this was written, so this finds no
+ * current defect and is not pretending to. It exists for the fourteenth.
+ *
+ * The comparison has to name the FIELD, not merely mention the action: an
+ * earlier version of this check looked for any `.author()` call in the
+ * validator and would have passed a validator that called it for some other
+ * purpose entirely. */
+function authorBinding() {
+  const src = readFileSync(INTEGRITY, 'utf8');
+  const structs = [...src.matchAll(/#\[hdk_entry_helper\][\s\S]*?pub struct (\w+) \{([\s\S]*?)\n\}/g)];
+  if (structs.length === 0) return null;
+
+  const AUTHORISH = ['author', 'agent', 'creator', 'proposer'];
+  const snake = (n) => n.replace(/(?<!^)(?=[A-Z])/g, '_').toLowerCase();
+  const out = [];
+
+  for (const [, name, body] of structs) {
+    const fields = [...body.matchAll(/^\s*pub (\w+):/gm)].map((m) => m[1]);
+    const field = fields.find((f) => AUTHORISH.includes(f));
+    if (!field) continue;
+
+    const fn = `validate_${snake(name)}`;
+    const m = src.match(new RegExp(`\\nfn ${fn}\\b[\\s\\S]*?\\n\\}`));
+    if (!m) { out.push({ name, field, fn, status: 'no validator found' }); continue; }
+
+    const bound = new RegExp(
+      `\\.${field}\\s*!=\\s*[^\\n]*action\\.author\\(\\)`
+      + `|action\\.author\\(\\)\\s*!=\\s*[^\\n]*\\.${field}`,
+    ).test(m[0]);
+    out.push({ name, field, fn, status: bound ? 'bound' : 'NOT BOUND' });
+  }
+  return out;
 }
 
 /** Every function §9 names in its "Shipped so far:" sentence.
@@ -462,16 +538,42 @@ if (shipped === null) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SPEC §5.2, and the first validation RULE this file checks rather than a name
+// list. rustc already refuses a new entry type with no match arm; it cannot see
+// whether the arm binds the author. That gap is where forgery would live.
+// ---------------------------------------------------------------------------
+const binding = authorBinding();
+const unbound = binding === null ? [] : binding.filter((b) => b.status !== 'bound');
+
+if (binding === null) {
+  log('SETUP FAILED: no #[hdk_entry_helper] structs found in the integrity zome.');
+  log('  The parser or the zome moved, so §5.2 has gone unchecked again.');
+  log('');
+} else {
+  log(`§5.2 author binding: ${binding.length - unbound.length} of ${binding.length} entry types bind their author field to the action author.`);
+  log('');
+  if (unbound.length > 0) {
+    log('DRIFT — an author-ish field that is not bound to the real action author:');
+    for (const b of unbound) log(`  ${b.name}.${b.field}  (${b.fn}: ${b.status})`);
+    log('  SPEC §5.2 requires that field to equal the authoring action\'s author.');
+    log('  Unbound, an agent can author an entry attributed to somebody else, and');
+    log('  rustc cannot catch it: the match arm exists, it just does not check.');
+    log('');
+  }
+}
+
 const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0
   || accounted === null || unaccounted.length > 0 || staleRows.length > 0
-  || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0;
+  || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0
+  || binding === null || unbound.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(Names only. Nothing here checks that §5 and §7 match validation, and a');
-  log('call site is reach, not proof a function is well surfaced.)');
+  log('(§5.2 is now checked; the REST of §5 and §7 still are not, and a call');
+  log('site is reach, not proof a function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
