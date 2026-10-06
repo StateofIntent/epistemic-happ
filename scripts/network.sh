@@ -246,6 +246,42 @@ SERVICES_PIDFILE="$NET_ROOT/services.pid"
 # this is throwaway local state, deleted wholesale by `clean`.
 PASSPHRASE="${HC_SANDBOX_PASSPHRASE:-sandbox-dev-passphrase-1234}"
 
+# THE GOSSIP ROUND TIMEOUT, RAISED FROM KITSUNE2'S 15s DEFAULT.
+#
+# `network`'s remaining CI flake is a BASELINE crossing that never happens:
+# nodeA writes, nodeB never sees it, and `partition-rejoin` reports SETUP
+# FAILED having watched for 900s. The instrumentation that harness carries for
+# exactly this question answered it on 2026-10-05 — "more time would NOT have
+# helped, so the window is not the thing to change" — and the conductor logs
+# on the 2026-09-12 failures showed the mechanism: a gossip round whose Accept
+# arrived after the initiator's 15s `roundTimeoutMs`, so the round was
+# terminated and the reply discarded. A 2-vCPU runner is slow enough to lose
+# that race; a development machine is not, which is why this read as random.
+#
+# `roundTimeoutMs` IS A REAL KNOB AND THAT WAS VERIFIED, NOT ASSUMED, because
+# the config path it travels silently ignores anything it does not recognise.
+# `kitsune2_gossip-0.5.0/src/config.rs` declares `K2GossipModConfig { k2_gossip:
+# K2GossipConfig { round_timeout_ms: u32 } }` under `#[serde(rename_all =
+# "camelCase")]`, with a default of exactly 15_000; `holochain_conductor_api`'s
+# `NetworkConfig::to_k2_config` passes `network.advanced` through verbatim as
+# the kitsune2 module config; and `K2GossipFactory::create` reads it back with
+# `get_module_config::<K2GossipModConfig>()`. Proven end to end by putting a
+# STRING in this field and watching the conductor log
+# `K2Error(... "decode config" ... invalid type: string, expected u32)`.
+#
+# AND THAT PROOF IS WHY THE PATCH IS CHECKED BELOW RATHER THAN TRUSTED. A
+# malformed or misspelled entry here does NOT stop the conductor: it fails the
+# cell's network join and leaves every port answering — "a network that reports
+# itself fully up, on which nothing ever gossips", which is the failure this
+# file's header already warns about for the bootstrap ports. A silent no-op
+# dressed as a fix is the one outcome worse than the flake.
+#
+# 60s rather than something larger: four times the default and well inside the
+# 330s window the harnesses allow a crossing, so a round that is simply slow
+# can finish while a round that is genuinely dead is still reaped long before
+# any harness gives up. Override with EPI_GOSSIP_ROUND_TIMEOUT_MS.
+GOSSIP_ROUND_TIMEOUT_MS="${EPI_GOSSIP_ROUND_TIMEOUT_MS:-60000}"
+
 log() { echo "[network] $*"; }
 fail() { echo "[network] ERROR: $*" >&2; exit 1; }
 
@@ -382,6 +418,50 @@ start_services() {
   start_one_service "relay"     "$RELAY_PORT"     "$RELAY_LOG"     "$RELAY_PIDFILE"
 }
 
+# Writes `advanced.k2Gossip.roundTimeoutMs` into a freshly generated node's
+# config, and then READS IT BACK. The read-back is not ceremony: an entry under
+# `advanced` that kitsune2 does not recognise is discarded in silence, and a
+# malformed one fails only the cell's network join while every port keeps
+# answering. Neither shows up as a startup failure, so a patch that quietly
+# missed would leave the flake in place and the fix recorded as shipped.
+set_gossip_round_timeout() {
+  local name="$1"
+  local cfg="$NET_ROOT/$name/conductor-config.yaml"
+  [ -f "$cfg" ] || fail "$name has no conductor-config.yaml at $cfg to configure."
+
+  grep -qE '^  advanced:' "$cfg" \
+    || fail "$name's config has no 'advanced:' key, so the gossip config cannot be placed under it. \
+The generated shape changed; check what 'hc sandbox generate ... network' now writes before adjusting this."
+
+  # IDEMPOTENT, BECAUSE THIS ALSO RUNS ON RESUME. A `start` after a `stop`
+  # re-reads the same persistent file, and a blind insert would stack a second
+  # `k2Gossip:` block under `advanced:` every time — a duplicate mapping key,
+  # which is the kind of thing that either errors obscurely or silently keeps
+  # one of the two. So: rewrite the line if it is already there, insert it only
+  # if it is not.
+  #
+  # Resume is covered deliberately rather than incidentally. A network
+  # generated before this setting existed would otherwise come back up on
+  # kitsune2's 15s default while the script reported the new value, and the
+  # next person to measure the flake would be measuring the old behaviour.
+  if grep -qE '^      roundTimeoutMs:' "$cfg"; then
+    sed -i "s|^      roundTimeoutMs:.*|      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS|" "$cfg"
+  else
+    # Inserted immediately after `advanced:`, which `hc sandbox generate`
+    # writes with `irohTransport` already under it — so this adds a sibling
+    # module and touches nothing kitsune2 was already being told.
+    sed -i "s|^  advanced:|  advanced:\n    k2Gossip:\n      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS|" "$cfg"
+  fi
+
+  [ "$(grep -cE '^    k2Gossip:' "$cfg")" = "1" ] \
+    || fail "$name's config has $(grep -cE '^    k2Gossip:' "$cfg") 'k2Gossip:' keys under advanced, expected exactly 1. \
+A duplicated mapping key would leave it ambiguous which value kitsune2 reads."
+
+  grep -qE "^      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS\$" "$cfg" \
+    || fail "$name's config does not contain roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS after patching it. \
+Nothing would have failed at startup, so this is checked here instead."
+}
+
 start_node() {
   local spec="$1"
   IFS=: read -r name admin app app_id seed <<< "$spec"
@@ -406,15 +486,40 @@ start_node() {
     idx="$(grep -nxF "$NET_ROOT/$name" "$NET_ROOT/.hc" 2>/dev/null | head -n1 | cut -d: -f1)"
     [ -n "$idx" ] || fail "$name has a directory but no entry in $NET_ROOT/.hc, so it cannot be resumed by index. Recreate the network: scripts/network.sh clean && scripts/network.sh start"
     idx=$((idx - 1))   # grep -n is 1-based; hc sandbox indices are 0-based.
-    log "Resuming $name (admin :$admin, app :$app, .hc index $idx) ..."
+    # Applied before the conductor starts, for the reason
+    # `set_gossip_round_timeout` gives: a config written before this setting
+    # existed would otherwise resume on the 15s default.
+    set_gossip_round_timeout "$name"
+
+    log "Resuming $name (admin :$admin, app :$app, .hc index $idx) with roundTimeoutMs=$GOSSIP_ROUND_TIMEOUT_MS ..."
     ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
         run "$idx" > "$NET_ROOT/$name.log" 2>&1 )
   else
+    # GENERATED WITHOUT `-r`, THEN PATCHED, THEN RUN — three steps where there
+    # used to be one, and the split is the whole point. `-r` makes `generate`
+    # also start the conductor, and the conductor reads its config once at
+    # startup, so with `-r` there is no moment at which the file exists and
+    # has not yet been read. Patching afterwards would need a restart, and a
+    # restart is not free here: `stall-bisect.mjs` established that the first
+    # zome call after a node's first restart in a clean network crashes the
+    # ribosome. Setup must not spend that window on the nodes a harness is
+    # about to measure.
     log "Generating $name (admin :$admin, app :$app, seed \"$seed\") ..."
-    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
-        generate -a "$app_id" -r="$app" --in-process-lair --root "$NET_ROOT" -d "$name" \
+    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped \
+        generate -a "$app_id" --in-process-lair --root "$NET_ROOT" -d "$name" \
         -s "$seed" "$HAPP_PATH" \
         network -b "$BOOTSTRAP_URL" quic "$RELAY_URL" > "$NET_ROOT/$name.log" 2>&1 )
+    [ -d "$NET_ROOT/$name" ] || fail "$name was not generated. Log tail:$(echo; tail -n 30 "$NET_ROOT/$name.log")"
+
+    set_gossip_round_timeout "$name"
+
+    local gidx
+    gidx="$(grep -nxF "$NET_ROOT/$name" "$NET_ROOT/.hc" 2>/dev/null | head -n1 | cut -d: -f1)"
+    [ -n "$gidx" ] || fail "$name generated but has no entry in $NET_ROOT/.hc, so it cannot be run by index."
+    gidx=$((gidx - 1))
+    log "Starting $name (.hc index $gidx) with roundTimeoutMs=$GOSSIP_ROUND_TIMEOUT_MS ..."
+    ( cd "$NET_ROOT" && echo "$PASSPHRASE" | setsid --fork "$HC_BIN" sandbox -H "$HOLOCHAIN_BIN" --piped -f="$admin" \
+        run "$gidx" -p="$app" > "$NET_ROOT/$name.log" 2>&1 )
   fi
 
   if ! wait_for_port "$admin" 90 || ! wait_for_port "$app" 90; then
