@@ -2258,6 +2258,56 @@ each of these is currently exactly that.
   produce the same rate" cannot separate the hypotheses at eight trials an arm,
   and should have been about crossings near 300s, which is what the data carried.
 
+  **And then the strong run happened and refuted it, which is why the paragraphs
+  above are left standing rather than edited.** `peering-rate.yml` ran the same
+  harness on a two-vCPU hosted runner — the machine the note above says the
+  development machine is not — requesting 10 trials an arm. 17 completed before
+  the harness hung (bounded since; see its own BOUNDS block):
+
+  | `roundTimeoutMs` | crossings (s) |
+  |---|---|
+  | 60000 | 135.3 · 63.0 · **none** · 156.2 · 129.3 · **none** · **none** · 63.0 · 63.0 · 63.0 |
+  | 15000 | 18.1 · 132.3 · 21.1 · **none** · 135.3 · 132.3 · 0.0 · *(3 lost)* |
+
+  **Nothing lands near 300s.** The 307.5s crossing was the entire basis for the
+  `min_initiate_interval_ms` reading, and on the machine that actually loses
+  gossip rounds no crossing comes within 20s of 300s. They cluster at 63.0s
+  (×4), ~129–135s (×5) and ~18–21s instead. **And the 60s arm is not
+  protective**, which was the pre-registered prediction's whole content: 3
+  no-crossings in 10, against the 15s arm's 1 in 7. Fisher exact **p = 0.603**,
+  so no difference is established in either direction — but the point estimate
+  runs *opposite* to the prediction. The round-timeout mechanism is no longer
+  the lead, and §5's `roundTimeoutMs: 60000` is now a setting with no measured
+  benefit rather than a fix.
+
+  **What separates the trials is whether nodeD ever gossiped at all.** Three of
+  the four no-crossings logged `Initiated gossip with` **zero** times; the
+  fourth initiated four times and still never crossed. One no-crossing trial
+  logged `No agents with overlapping arcs available` **320 times with zero
+  initiations** — a conductor up, answering, on the same DNA hash (`sameDht` is
+  asserted before the clock starts), repeatedly finding no peer to gossip with.
+  That is this entry's question restated as a measurement. It is also what
+  `log-census.sh`'s own comment already called "the surviving explanation … the
+  one path that logs nothing wrong", so the census was built for exactly this
+  and found it.
+
+  **`Accept message from wrong peer`: zero in all 17 trials.** Fifth independent
+  confirmation that the demoted marker is absent, and it should stop being
+  mentioned as a candidate.
+
+  **One confound, named because it nearly survived.** That arcs figure is a
+  *lifetime* count, so a trial that ran the full 330s logs more of it than one
+  that crossed in 3s, for reasons unrelated to cause. Only equal-duration trials
+  compare; among the four that ran the full cap the counts are 2, 1, 1 and
+  **320**. The outlier survives the correction — a general "slow trials log more
+  of it" claim does not, and an earlier draft of this paragraph made it.
+
+  **What is still missing is a healthy baseline.** Exactly one trial of 17 came
+  in under 10s, so there is almost nothing to compare the slow ones against. The
+  harness now archives every trial named for its own crossing time, which fixes
+  the collection side; the next run has to actually produce fast trials for the
+  comparison to mean anything, and on this runner that is not guaranteed.
+
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading

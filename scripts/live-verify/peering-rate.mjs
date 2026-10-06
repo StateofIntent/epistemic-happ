@@ -94,6 +94,47 @@
 // poll already found the claim; the true figure is somewhere in 0-3s. The slow
 // figures are real, since they span many polls.
 //
+// ----------------------------------------------------------------------------
+// THE STRONG RUN HAPPENED, AND IT REFUTES THE HYPOTHESIS ABOVE.
+//
+// Run 37464088862 on a two-vCPU hosted runner, 10 trials per arm requested, 17
+// completed before the harness hung (see the BOUNDS block for the hang and its
+// fix). Per-trial crossings:
+//
+//     60000: 135.3  63.0  NONE  156.2  129.3  NONE  NONE  63.0  63.0  63.0
+//     15000:  18.1 132.3  21.1  NONE   135.3 132.3   0.0   (3 trials lost)
+//
+// NOTHING LANDS NEAR 300s. The development machine's single 307.5s crossing was
+// read as `min_initiate_interval_ms` (300_000) — a lost round waiting out the
+// rate limit. On the machine that actually loses rounds, no crossing comes
+// within 20s of 300s. Instead they cluster at 63.0s (x4), ~129-135s (x5) and
+// ~18-21s. That model does not survive, and this block is left standing rather
+// than rewritten because the reasoning was sound and the sample was one.
+//
+// AND THE 60s ARM IS NOT PROTECTIVE, which was the whole pre-registered
+// prediction: 3 no-crossings in 10 against the 15s arm's 1 in 7. Fisher exact
+// p = 0.603, so NO difference is established in either direction — but the
+// point estimate runs opposite to the prediction, and the prediction was that
+// the short arm would be worse.
+//
+// WHAT DOES SEPARATE THE TRIALS is whether nodeD ever initiated gossip at all.
+// Three of the four no-crossings logged `Initiated gossip with` zero times; the
+// fourth initiated four times and still never crossed. One trial
+// (rt60000, no crossing) logged `No agents with overlapping arcs available`
+// 320 times with zero initiations — a node up, on the same DHT (sameDht is
+// checked before the clock starts), repeatedly finding no gossip peer. That is
+// this file's question stated as a measurement rather than a symptom.
+//
+// `Accept message from wrong peer`: ZERO in all 17 trials. Fifth independent
+// confirmation it is not the marker.
+//
+// THE CONFOUND, NAMED BECAUSE IT NEARLY SURVIVED: `No agents with overlapping
+// arcs available` is a LIFETIME count, so a 330s timeout logs more of it than
+// a 3s crossing for reasons that have nothing to do with the cause. Only
+// equal-duration trials compare. Among the four that ran the full cap: 2, 1, 1,
+// 320. The outlier survives the correction; a general "slow trials log more"
+// claim does not.
+//
 // WHY A TRIAL IS A WHOLE CLEAN NETWORK. The one-clean-environment rule is not
 // a precaution here: `scripts/live-verify/README.md` records `partition-rejoin`
 // dying in its baseline phase when run straight after `transitive-gossip` on
@@ -115,6 +156,10 @@
 //   EPI_PEERING_TRIALS      trials per arm            (default 8)
 //   EPI_PEERING_TIMEOUTS    comma-separated arms, ms  (default 60000,15000)
 //   EPI_PEERING_CAP_MS      per-trial crossing cap    (default 330000)
+//   EPI_PEERING_LOG_DIR     where archives go         (default /tmp/epi-peering-logs)
+//   EPI_PEERING_DEADLINE_MIN  whole-run budget, min   (default 300)
+//   EPI_PEERING_NET_TIMEOUT_MS      per network.sh call  (default 300000)
+//   EPI_PEERING_CONNECT_TIMEOUT_MS  per socket/call      (default 120000)
 //
 // Run: node scripts/live-verify/peering-rate.mjs
 // ============================================================================
@@ -140,6 +185,54 @@ const ARMS = (process.env.EPI_PEERING_TIMEOUTS ?? '60000,15000')
 // thing.
 const CAP_MS = Number(process.env.EPI_PEERING_CAP_MS ?? 330_000);
 const POLL_MS = 3_000;
+
+// --- BOUNDS, because the first real run of this file hung and cost a day ---
+//
+// WHAT HAPPENED, since the fix only makes sense against it. Run 37464088862
+// completed 17 of 20 trials on a hosted runner, then stopped progressing after
+// trial 7 of the second arm and sat there for roughly 23 hours. The job's own
+// `timeout-minutes: 330` DID NOT FIRE. Three separate things were wrong:
+//
+//   - `net()` shells out with `execFileSync` and NO timeout, so a `network.sh`
+//     that never returns blocks the harness forever. This is the most likely
+//     site: bringing up three conductors and two services waits on ports.
+//   - `AdminWebsocket.connect` / `AppWebsocket.connect` / `appInfo()` take no
+//     timeout either, so a conductor that accepts a socket and never answers
+//     hangs the same way.
+//   - nothing bounded the RUN, so there was no point at which the harness
+//     would give up and let the workflow reach its upload step.
+//
+// The run survived only because the artifact upload is `if: always()` — 572KB
+// of archives came out of a terminated job. That is luck the next run should
+// not need: an experiment that cannot finish should FAIL FAST and summarise
+// what it has, because a partial distribution is still a result and a wedged
+// job is not.
+//
+// Every bound is generous on purpose. These are not performance limits; they
+// are the difference between "this trial failed" and "this experiment is gone".
+const NET_TIMEOUT_MS = Number(process.env.EPI_PEERING_NET_TIMEOUT_MS ?? 300_000);
+const CONNECT_TIMEOUT_MS = Number(process.env.EPI_PEERING_CONNECT_TIMEOUT_MS ?? 120_000);
+// Default sits UNDER the workflow's `timeout-minutes: 330` so the harness
+// always stops first and the upload step always runs. Raising one without the
+// other is how a run goes back to being killed mid-summary.
+const DEADLINE_MS = Number(process.env.EPI_PEERING_DEADLINE_MIN ?? 300) * 60_000;
+const STARTED_AT = Date.now();
+const deadlineLeftMs = () => DEADLINE_MS - (Date.now() - STARTED_AT);
+
+/** Reject if a promise has not settled inside `ms`.
+ *
+ * The underlying socket is NOT torn down on timeout — @holochain/client owns
+ * it and there is no cancel. A trial that times out here is abandoned and the
+ * next one runs `network.sh clean`, which takes the conductor with it. */
+function withTimeout(promise, ms, what) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} did not answer in ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 // A TRIAL'S LOGS DO NOT SURVIVE THE NEXT TRIAL, WHICH IS THE THIRD TIME THIS
 // REPOSITORY HAS LOST THE RUN THAT MATTERED TO EXACTLY THIS.
@@ -170,16 +263,36 @@ const POLL_MS = 3_000;
 // trials per arm are therefore archived as controls.
 const SLOW_MS = 10_000;
 const KEEP_DIR = process.env.EPI_PEERING_LOG_DIR || '/tmp/epi-peering-logs';
-const CONTROLS_PER_ARM = Number(process.env.EPI_PEERING_CONTROLS ?? 2);
 
-/** Archive this trial's conductor logs under a name that says why they were
- *  kept. Returns the directory, or null if there was nothing to copy.
+// EVERY TRIAL IS ARCHIVED, LABELLED BY ITS OWN CROSSING TIME, and the reason
+// is the first real run rather than tidiness. That run kept "slow" trials plus
+// up to two "controls" per arm chosen by a 10s threshold — and on a two-vCPU
+// runner only ONE trial in seventeen came in under 10s, so the design yielded
+// a single control and no way to characterise a healthy run. The threshold was
+// calibrated on a development machine where 14 of 16 trials crossed inside one
+// poll; on the machine the experiment actually needs, it inverted.
+//
+// A rank cannot be known at archive time either — logs must be copied before
+// the NEXT trial's `clean` deletes them, which is long before the fastest
+// trial is known. So the threshold is abandoned rather than retuned: archive
+// unconditionally, put the measurement in the directory name, and let analysis
+// pick its own controls by sorting. 17 trials cost 572KB, so the disk argument
+// for being selective never existed.
+const pad = (n, w) => String(n).padStart(w, '0');
+const outcomeLabel = (ms) => (ms === null ? 'nocrossing' : `${pad((ms / 1000).toFixed(1), 6)}s`);
+
+/** Archive this trial's conductor logs under a name carrying its outcome.
+ *  Returns the directory, or null if there was nothing to copy.
  *
  * Best-effort by construction: losing an archive must never fail a trial whose
  * measurement already succeeded, since the measurement is the primary result
  * and the logs are the follow-up evidence. */
 function keepLogs(arm, trial, label) {
-  const dest = `${KEEP_DIR}/rt${arm}-trial${String(trial).padStart(2, '0')}-${label}`;
+  // ARM, THEN TIME, THEN TRIAL INDEX — in that order so a plain `ls | sort`
+  // puts the fastest trial of each arm first and `nocrossing` last ('n' sorts
+  // after a digit). Naming it `-trialNN-<time>` instead sorts by trial order,
+  // which is the one ordering the analysis never wants.
+  const dest = `${KEEP_DIR}/rt${arm}-${label}-trial${String(trial).padStart(2, '0')}`;
   let copied = 0;
   try {
     if (!existsSync(NET_ROOT)) return null;
@@ -199,21 +312,28 @@ const nowMicros = () => Date.now() * 1000;
 
 const net = (...args) => {
   const env = { ...process.env };
+  // `timeout` is the whole point — see the BOUNDS block. Without it a
+  // network.sh that waits forever on a port takes the experiment with it.
   return execFileSync('bash', [`${REPO_ROOT}/scripts/network.sh`, ...args], {
     encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: NET_TIMEOUT_MS, killSignal: 'SIGKILL',
   });
 };
 
 async function connectNode(name) {
   const { admin: adminPort, app: appPort, appId } = NODES[name];
-  const admin = await AdminWebsocket.connect({
+  // Each await here is bounded — see the BOUNDS block. A conductor that
+  // accepts the socket and never answers is the second way this file hung.
+  const admin = await withTimeout(AdminWebsocket.connect({
     url: new URL(`ws://localhost:${adminPort}`), wsClientOptions: { origin: 'live-verify' },
-  });
-  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
-  const app = await AppWebsocket.connect({
+  }), CONNECT_TIMEOUT_MS, `${NODES[name].node} admin connect`);
+  const { token } = await withTimeout(
+    admin.issueAppAuthenticationToken({ installed_app_id: appId }),
+    CONNECT_TIMEOUT_MS, `${NODES[name].node} auth token`);
+  const app = await withTimeout(AppWebsocket.connect({
     url: new URL(`ws://localhost:${appPort}`), token, wsClientOptions: { origin: 'live-verify' },
-  });
-  const info = await app.appInfo();
+  }), CONNECT_TIMEOUT_MS, `${NODES[name].node} app connect`);
+  const info = await withTimeout(app.appInfo(), CONNECT_TIMEOUT_MS, `${NODES[name].node} appInfo`);
   const cellIds = [];
   for (const roleCells of Object.values(info.cell_info)) {
     for (const cell of roleCells) {
@@ -224,7 +344,11 @@ async function connectNode(name) {
   for (const cellId of cellIds) {
     let lastErr;
     for (let i = 0; i < 30; i++) {
-      try { await admin.authorizeSigningCredentials(cellId); lastErr = null; break; }
+      try {
+        await withTimeout(admin.authorizeSigningCredentials(cellId),
+          CONNECT_TIMEOUT_MS, `${NODES[name].node} authorizeSigningCredentials`);
+        lastErr = null; break;
+      }
       catch (e) {
         lastErr = e;
         if (!String(e.message ?? e).includes('CellDisabled')) throw e;
@@ -307,12 +431,46 @@ async function main() {
   log('');
 
   const results = {};
+  for (const arm of ARMS) results[arm] = [];
   let kept = 0;
-  for (const arm of ARMS) {
-    results[arm] = [];
-    let controls = 0;
-    log(`--- roundTimeoutMs = ${arm} ---`);
-    for (let i = 1; i <= TRIALS; i++) {
+  let ranOut = false;
+  // A trial needs the cap plus a network bring-up. Stopping BEFORE one that
+  // cannot finish is what keeps the summary and the upload reachable.
+  const perTrialBudget = CAP_MS + 150_000;
+
+  // ARMS ARE INTERLEAVED — one trial of each per round — rather than one arm
+  // run to completion and then the next. The first run of this file is why.
+  //
+  // It ran 60000 to completion and then hung partway through 15000, giving 10
+  // trials against 7, and the headline comparison was a NO-CROSSING RATE
+  // between the arms. Truncation therefore landed entirely on one arm, which
+  // is the one place a missing trial is not neutral: it biases exactly the
+  // quantity being compared, and it does so silently, because an arm that
+  // simply stopped early looks identical to an arm that was always shorter.
+  //
+  // Interleaved, any stop — deadline, hang, cancellation — leaves the arms
+  // differing by at most one trial, and the comparison degrades evenly instead
+  // of lopsidedly. It costs nothing: `roundTimeoutMs` is an environment
+  // variable read when a trial generates its own network, and every trial
+  // already builds one from scratch, so alternating arms is the same work in a
+  // different order.
+  //
+  // It also removes a confound nobody had ruled out. Sequential arms means the
+  // first arm always runs on a freshly-booted runner and the second always
+  // runs after an hour of conductor churn, so "arm" and "how tired the machine
+  // is" were the same variable. Alternating separates them.
+  outer:
+  for (let i = 1; i <= TRIALS; i++) {
+    log(`--- round ${i} of ${TRIALS} ---`);
+    for (const arm of ARMS) {
+      if (deadlineLeftMs() < perTrialBudget) {
+        ranOut = true;
+        log(`  STOPPING: ${(deadlineLeftMs() / 60_000).toFixed(1)} min left of the`);
+        log(`  ${(DEADLINE_MS / 60_000).toFixed(0)}-minute budget, and a trial can need`);
+        log(`  ${(perTrialBudget / 60_000).toFixed(1)}. What ran is below; a partial`);
+        log('  distribution is a result, a wedged job is not.');
+        break outer;
+      }
       let r;
       try {
         r = await oneTrial(arm, i);
@@ -322,18 +480,13 @@ async function main() {
       results[arm].push(r);
       const when = r.ms === null ? `NO CROSSING in ${(CAP_MS / 1000).toFixed(0)}s` : `${(r.ms / 1000).toFixed(1)}s`;
 
-      // BEFORE THE NEXT TRIAL'S `clean` DELETES THEM. Conditioned on the
-      // outcome, never on a log's contents — see KEEP_DIR's note.
-      let archive = null;
-      if (r.ms === null || r.ms > SLOW_MS) {
-        archive = keepLogs(arm, i, r.ms === null ? 'nocrossing' : 'slow');
-      } else if (controls < CONTROLS_PER_ARM) {
-        archive = keepLogs(arm, i, 'control');
-        if (archive) controls++;
-      }
+      // UNCONDITIONALLY, and before the next trial's `clean` deletes them.
+      // The label is the measurement, never anything read out of a log — see
+      // KEEP_DIR's note for what conditioning on either cost before.
+      const archive = keepLogs(arm, i, outcomeLabel(r.ms));
       if (archive) kept++;
 
-      log(`  trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
+      log(`  rt${arm} trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
     }
     log('');
   }
@@ -365,12 +518,27 @@ async function main() {
   log('information here; frequency, at this many trials, does not.');
   log('');
   if (kept > 0) {
-    log(`  ${kept} trial log set(s) archived under ${KEEP_DIR} — every slow or`);
-    log('  absent crossing, plus fast trials per arm as controls. A slow trial');
-    log('  without a control to compare it against is the collection gap this');
-    log('  repository has now hit three times; read them in pairs.');
+    log(`  ${kept} trial log set(s) archived under ${KEEP_DIR}, one per trial,`);
+    log('  each directory named for its own crossing time. Sort them to pick');
+    log('  controls: the fastest trials ARE the controls, and a signature');
+    log('  present in the slow ones and in those too explains nothing. Compare');
+    log('  only trials of similar duration — a lifetime count like "No agents');
+    log('  with overlapping arcs available" rises with how long a trial ran,');
+    log('  so a 330s timeout against a 3s crossing is not a comparison.');
   } else {
-    log(`  No logs archived (nothing slow, and ${KEEP_DIR} took no controls).`);
+    log(`  No logs archived — nothing was written under ${KEEP_DIR}, which`);
+    log('  means no trial ever produced a conductor log. Treat the numbers');
+    log('  above as unexplained rather than as a measurement.');
+  }
+  log('');
+  if (ranOut) {
+    const counts = ARMS.map((a) => `${a}:${results[a].length}`).join(' ');
+    log(`  INCOMPLETE: stopped on the ${(DEADLINE_MS / 60_000).toFixed(0)}-minute budget.`);
+    log(`  Trials per arm — ${counts}. Arms are interleaved, so any stop leaves`);
+    log('  them within one trial of each other: the rate comparison degrades');
+    log('  evenly rather than landing on whichever arm happened to run last.');
+  } else {
+    log(`  Complete: every arm ran its ${TRIALS} trials inside the budget.`);
   }
 
   // Restores the shape every other harness in this directory expects: three
