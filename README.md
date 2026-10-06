@@ -3031,7 +3031,9 @@ Three of the four remaining are genuinely **hash-addressed getters** which a scr
   A note on the denominator moving: it was 57 and is now 58 because PR #51 added `attempt_false_domain_index`, a prober extern that exists so validation can be watched refusing a poisoned index rather than assumed to. It is not a screen anyone wants, and it moves the denominator without moving the goal — recorded because a count that drifts silently is how the last error in this metric went unnoticed.
 
   A note on the count itself: it was reported as "12 of 56" for several increments and was wrong — the metric regex only matched calls whose function name sat on the same line as `callZome`, and several wrap. Corrected by counting across lines.
-- [ ] Academic validation study
+- [x] ~~**Academic validation study**~~ — **decided against, not deferred**, and recorded that way because the distinction is the whole point of this list. It sat here as a bare line with no argument attached, which is the shape of an item that survives by never being examined: listed, unfinished, and not an engineering task, so every pass over this roadmap surfaced it as the obvious remaining gap. It is not a gap. The same treatment the token/cost currency layer got applies here — an item decided against stops being re-proposed, where an item merely unfinished does not.
+
+  **This is the failure mode §9 already describes about itself**, one entry above: "a recorded question acquires standing. It stops being re-read against what shipped after it was written, and the more precisely it was argued the more settled it looks." This line was the opposite case and reached the same end — argued not at all, and therefore never answerable, so it outlived every item around it.
 
 ---
 
