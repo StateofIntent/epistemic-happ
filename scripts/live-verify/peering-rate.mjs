@@ -431,22 +431,45 @@ async function main() {
   log('');
 
   const results = {};
+  for (const arm of ARMS) results[arm] = [];
   let kept = 0;
   let ranOut = false;
   // A trial needs the cap plus a network bring-up. Stopping BEFORE one that
   // cannot finish is what keeps the summary and the upload reachable.
   const perTrialBudget = CAP_MS + 150_000;
-  for (const arm of ARMS) {
-    results[arm] = [];
-    log(`--- roundTimeoutMs = ${arm} ---`);
-    for (let i = 1; i <= TRIALS; i++) {
+
+  // ARMS ARE INTERLEAVED — one trial of each per round — rather than one arm
+  // run to completion and then the next. The first run of this file is why.
+  //
+  // It ran 60000 to completion and then hung partway through 15000, giving 10
+  // trials against 7, and the headline comparison was a NO-CROSSING RATE
+  // between the arms. Truncation therefore landed entirely on one arm, which
+  // is the one place a missing trial is not neutral: it biases exactly the
+  // quantity being compared, and it does so silently, because an arm that
+  // simply stopped early looks identical to an arm that was always shorter.
+  //
+  // Interleaved, any stop — deadline, hang, cancellation — leaves the arms
+  // differing by at most one trial, and the comparison degrades evenly instead
+  // of lopsidedly. It costs nothing: `roundTimeoutMs` is an environment
+  // variable read when a trial generates its own network, and every trial
+  // already builds one from scratch, so alternating arms is the same work in a
+  // different order.
+  //
+  // It also removes a confound nobody had ruled out. Sequential arms means the
+  // first arm always runs on a freshly-booted runner and the second always
+  // runs after an hour of conductor churn, so "arm" and "how tired the machine
+  // is" were the same variable. Alternating separates them.
+  outer:
+  for (let i = 1; i <= TRIALS; i++) {
+    log(`--- round ${i} of ${TRIALS} ---`);
+    for (const arm of ARMS) {
       if (deadlineLeftMs() < perTrialBudget) {
         ranOut = true;
         log(`  STOPPING: ${(deadlineLeftMs() / 60_000).toFixed(1)} min left of the`);
         log(`  ${(DEADLINE_MS / 60_000).toFixed(0)}-minute budget, and a trial can need`);
         log(`  ${(perTrialBudget / 60_000).toFixed(1)}. What ran is below; a partial`);
         log('  distribution is a result, a wedged job is not.');
-        break;
+        break outer;
       }
       let r;
       try {
@@ -463,10 +486,9 @@ async function main() {
       const archive = keepLogs(arm, i, outcomeLabel(r.ms));
       if (archive) kept++;
 
-      log(`  trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
+      log(`  rt${arm} trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
     }
     log('');
-    if (ranOut) break;
   }
 
   log('=== summary ===');
@@ -509,10 +531,15 @@ async function main() {
     log('  above as unexplained rather than as a measurement.');
   }
   log('');
-  log(ranOut
-    ? `  INCOMPLETE: stopped on the ${(DEADLINE_MS / 60_000).toFixed(0)}-minute budget. Arms are`
-      + ' unbalanced, so compare rates with that in mind.'
-    : `  Complete: every arm ran its ${TRIALS} trials inside the budget.`);
+  if (ranOut) {
+    const counts = ARMS.map((a) => `${a}:${results[a].length}`).join(' ');
+    log(`  INCOMPLETE: stopped on the ${(DEADLINE_MS / 60_000).toFixed(0)}-minute budget.`);
+    log(`  Trials per arm — ${counts}. Arms are interleaved, so any stop leaves`);
+    log('  them within one trial of each other: the rate comparison degrades');
+    log('  evenly rather than landing on whichever arm happened to run last.');
+  } else {
+    log(`  Complete: every arm ran its ${TRIALS} trials inside the budget.`);
+  }
 
   // Restores the shape every other harness in this directory expects: three
   // nodes up, nodeD down. The last trial left nodeD running.
