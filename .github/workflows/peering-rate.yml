@@ -44,14 +44,26 @@
 # says magnitude carries the information at this sample size and frequency does
 # not. A median erased the entire finding once already.
 #
-# THE LOGS ARE THE POINT OF RUNNING IT HERE, not the table. The harness now
-# archives the conductor logs of every slow or absent crossing — plus a couple
-# of fast trials per arm as CONTROLS, without which "this line appears in the
-# slow ones" cannot be checked against the fast ones. That control is not
-# hypothetical bookkeeping: `network.yml`'s census step and kitsune2#638's own
-# first batch both lost the run that mattered by capturing conditionally, and
-# this is the third guard against the same mistake. The archive is uploaded as
-# an artifact on every run, including a cancelled or failed one.
+# THE LOGS ARE THE POINT OF RUNNING IT HERE, not the table. The harness
+# archives EVERY trial's conductor logs, each directory named for that trial's
+# own crossing time, so the fastest trials are the controls and a plain sort
+# finds them. The first run of this workflow kept only slow trials plus two
+# threshold-chosen controls per arm, and on this runner exactly one trial in
+# seventeen beat the threshold — so the design yielded a single control and no
+# way to characterise a healthy run. Conditioning capture on anything, a
+# threshold included, is the mistake `network.yml`'s census step and
+# kitsune2#638's first batch both made; this is the third correction of it.
+#
+# The archive uploads on `always()`, which is not belt-and-braces: the first
+# run hung and was terminated, and 572KB of archives came out anyway. That is
+# the only reason it produced a result at all.
+#
+# AND THE HARNESS NOW BOUNDS ITSELF. That first run completed 17 of 20 trials,
+# stopped progressing, and sat for ~23 hours without `timeout-minutes` firing.
+# `net()` shelled out with no timeout and the websocket calls had none either,
+# so there was no point at which it would give up. All three are bounded now,
+# and `deadline_min` stops the run short of this job's timeout so the summary
+# and the upload are always reachable.
 #
 # UPSTREAM IS CLOSED AND THAT IS WHY EVIDENCE MATTERS NOW. holochain/kitsune2
 # #638 carried two things: an error-attribution bug read out of the source, and
@@ -80,10 +92,10 @@ on:
         description: "Per-trial crossing cap in ms (330000 matches transitive-gossip's window)"
         required: false
         default: '330000'
-      controls:
-        description: 'Fast trials per arm to archive logs for, as controls'
+      deadline_min:
+        description: 'Whole-run budget in minutes — must stay under timeout-minutes below'
         required: false
-        default: '2'
+        default: '300'
 
 # Its own group, and deliberately NOT cancel-in-progress: a second dispatch
 # must queue behind a running experiment rather than kill an hour of it. The
@@ -181,7 +193,7 @@ jobs:
           EPI_PEERING_TRIALS: ${{ inputs.trials }}
           EPI_PEERING_TIMEOUTS: ${{ inputs.arms }}
           EPI_PEERING_CAP_MS: ${{ inputs.cap_ms }}
-          EPI_PEERING_CONTROLS: ${{ inputs.controls }}
+          EPI_PEERING_DEADLINE_MIN: ${{ inputs.deadline_min }}
           EPI_PEERING_LOG_DIR: /tmp/epi-peering-logs
         run: node scripts/live-verify/peering-rate.mjs
 
