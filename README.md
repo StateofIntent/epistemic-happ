@@ -2195,6 +2195,44 @@ each of these is currently exactly that.
   lost round is step one of the sequence. If a node still joins and exchanges
   nothing while that line stays absent, this paragraph is a side-story and the
   open question is untouched — which, on the evidence, is the likelier outcome.
+
+  **The prediction was tested locally and it held, on the one measurement that
+  carries information.** `scripts/live-verify/peering-rate.mjs` runs the nodeD
+  peering step as a trial on its own clean network, at `roundTimeoutMs` 60000 and
+  15000, eight trials each, capped at `transitive-gossip`'s own 330s. The
+  per-trial crossings:
+
+  | `roundTimeoutMs` | crossings (s) |
+  |---|---|
+  | 60000 | 3.0 3.0 3.0 3.0 3.0 3.0 3.0 3.0 |
+  | 15000 | **307.5** 3.0 3.0 3.0 3.0 **42.2** 3.0 3.0 |
+
+  **The 307.5s is the result, because of where it lands rather than because it
+  is slow.** `min_initiate_interval_ms` is 300,000 — the minimum before a round
+  may be initiated with a given peer again — so a crossing at 300s plus 7.5s is
+  the predicted shape exactly: the first round lost, no retry permitted for five
+  minutes, then a crossing in a few seconds. Nothing else in play predicts a
+  delay that lands on that constant. The 60s arm produced no crossing above a
+  single poll. **And 307.5s would have been a CI failure on a slightly slower
+  machine:** `real-gossip`'s window is 330s, so that run passed with 22s of
+  margin, and losing that margin is the surviving `network` failure mode exactly.
+
+  **What it does not support is a rate.** Two slow trials in eight against zero
+  in eight is Fisher exact **p = 0.467**; no frequency claim survives that and
+  none is made here. The magnitude is the evidence, the count is not. The 42.2s
+  is not explained by the 300s model and is left unexplained rather than fitted.
+
+  **This entry first recorded the run as a null result, and the correction is the
+  more useful half.** The harness's summary printed "crossed 8, timed out 0,
+  **median** 3.0s" for both arms — every figure true, and the median of a
+  distribution whose only interesting feature is one long tail is precisely the
+  statistic that erases it. It was written up as "16/16, no information in it"
+  from that table, with the per-trial lines sitting directly above it. The
+  summary now prints the slowest crossing and a count of trials over 10s. The
+  pre-registered condition was wrong in the same direction — "if the two arms
+  produce the same rate" cannot separate the hypotheses at eight trials an arm,
+  and should have been about crossings near 300s, which is what the data carried.
+
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
