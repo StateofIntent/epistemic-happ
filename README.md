@@ -2624,7 +2624,7 @@ each of these is currently exactly that.
   `main`, migrated to 0.7, and compiled: **`cargo check` exits 0**. Both wasmer
   backends build, including **`wasmer-wasmi`**, the interpreted backend this
   section credits with making iOS possible at all; it is confirmed present in
-  0.7's feature list. The delta is ~70 lines, kept as a patch:
+  0.7's feature list. The delta is ~70 lines, kept as [`docs/holochain-runtime-0.7.patch`](docs/holochain-runtime-0.7.patch) — committed rather than left on one machine, because a measured figure with no artefact behind it is the kind of claim this repository does not keep. That file states what it is verified to do (`cargo check`, both backends) and what it is not (anything at runtime):
 
   | kind | change |
   |---|---|
