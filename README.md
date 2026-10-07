@@ -2526,6 +2526,40 @@ each of these is currently exactly that.
   survives to upload, so the next twelve extend this table instead of restarting
   the question.
 
+  **A second batch of twelve broke that reading, and produced the strongest
+  evidence this question has ever had.** Run `37652304206`, same configuration:
+  three non-crossings this time, so five across twenty-four trials (21%). Four
+  of the five carry an `iroh connect timed out`, which is the pattern above and
+  the same four-of-five split the original 30-trial run showed. **The fifth does
+  not, and it is the interesting one.**
+
+  `rt15000-nocrossing-trial04`: **zero transport errors, 60 initiations, 121
+  `NoDiff` rounds**, and the entry never arrived in 330 seconds. Every
+  explanation that dissolved the earlier `NoDiff` case fails against it:
+
+  | explanation | why it does not apply |
+  |---|---|
+  | transport failure | `iroh connect timed out` = **0**, `MultipathNotNegotiated` = 1, the same as the fast controls |
+  | the initiate interval | **60** initiations across the window — the node was asking constantly |
+  | rounds predated the entry | the earlier case's informative rounds were at t+9.4s against a claim created at t+17.0s. Here the rounds run from t+10.0s to **t+342.2s** |
+  | gossiping with the wrong peer | peer URLs resolve uniquely across the four logs, and **58 of the `NoDiff` rounds are with nodeA after t+25s** — the node that holds the claim, well past its creation |
+
+  **So: two conductors on one DHT, completing fifty-eight gossip rounds over
+  five minutes, agreeing each time that their snapshots were identical, while
+  one of them held an entry the other never received.** That is a gossip-level
+  result rather than a transport one, and it is the first time this question has
+  produced a case that survives all four checks rather than dissolving under the
+  third or fourth.
+
+  **One caveat that is not resolved and should not be glossed.** The harness
+  confirms `create_claim` returned on nodeA; it does not independently confirm
+  that nodeA had *integrated* the op into the shard gossip offers from. Sixty
+  rounds over five minutes makes an integration lag implausible, but implausible
+  is not checked, and the honest statement is that this is one trial in
+  twenty-four with one unverified assumption in it. The instrument now archives
+  every trial and survives to upload, so the next batch either reproduces this
+  or it does not.
+
   **It also points away from gossip and towards transport.** `iroh connect timed
   out` is a QUIC-layer failure, and `MultipathNotNegotiated` — 2 to 4 occurrences
   in population B against 1 in A — is `noq_proto`, below kitsune2 entirely.
