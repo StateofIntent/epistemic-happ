@@ -263,6 +263,93 @@ function callSites(files) {
   return found;
 }
 
+/** SPEC §6's temporal-friction table, against the numbers THREE separate places
+ *  independently hardcode.
+ *
+ * §6 states five rate limits as a table — window and ceiling per act — and then
+ * says: "Every row is an absolute cutoff. Nothing in this protocol can be
+ * bought past." That is the strongest security claim in the document, because
+ * friction is the only thing standing between this DHT and a sybil farm
+ * mass-reinforcing its own conductance. §5.11 records that a purchasable tier
+ * existed once and was removed.
+ *
+ * THE SAME FIVE NUMBERS LIVE IN THREE PLACES AND NOTHING COMPARES THEM:
+ *
+ *   SPEC §6's table                  — the documented cutoff
+ *   dna/integrity  *_VALIDATION      — the ENFORCED cutoff (DHT validation)
+ *   dna/coordinator *                — a courtesy pre-check (§5.21)
+ *
+ * and the only thing holding them equal is a comment. The integrity constants
+ * say "must match coordinator's limit"; the coordinator's say "must match
+ * integrity zome's limit". Two files politely asking a human to keep ten
+ * literals in agreement.
+ *
+ * WHY rustc CANNOT. They are separate literals in separate crates with no
+ * shared definition — there is nothing to type-check against. A coordinator
+ * limit raised to 200 compiles, and so does an integrity limit lowered to 2.
+ * Neither crate can see SPEC's table at all.
+ *
+ * AND THE TWO FAILURE DIRECTIONS ARE DIFFERENT, which is why this compares all
+ * three rather than just the enforced pair:
+ *
+ *   coordinator HIGHER than integrity -> the client lets a write through and
+ *   the DHT refuses it. A user is told their action succeeded locally and then
+ *   finds it rejected by validation; §5.21's whole point is that the
+ *   coordinator is a courtesy, so the courtesy becomes a lie.
+ *
+ *   coordinator LOWER than integrity -> the client refuses writes the protocol
+ *   would have accepted, inventing a limit nobody specified.
+ *
+ *   SPEC disagreeing with either -> the documented cutoff is not the real one,
+ *   and §6's "absolute cutoff" sentence is false about the number it names.
+ *
+ * Window units are compared in SECONDS, so "7 days" in the table and
+ * `7 * 24 * 3600` in the zome are the same fact in two notations rather than a
+ * drift — the check evaluates the product instead of matching the text. */
+function frictionTable() {
+  const spec = readFileSync(SPEC, 'utf8');
+  const integrity = readFileSync(INTEGRITY, 'utf8');
+  const coordinator = readFileSync(ZOME, 'utf8');
+
+  // `| `Critique` creation | 1 hour | 20 | DHT (§5.15) + coordinator pre-check |`
+  const rows = [...spec.matchAll(
+    /^\|\s*`(\w+)`\s+creation[^|]*\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|/gm)]
+    .map((m) => ({ type: m[1], windowText: m[2].trim(), limit: Number(m[3]) }));
+
+  const windowSecs = (text) => {
+    const m = text.match(/^(\d+)\s*(hour|hours|day|days|minute|minutes)$/i);
+    if (!m) return null;
+    const n = Number(m[1]);
+    const unit = m[2].toLowerCase();
+    return unit.startsWith('hour') ? n * 3600 : unit.startsWith('day') ? n * 86400 : n * 60;
+  };
+
+  // `7 * 24 * 3600` and `3600` are both just products of integers.
+  const evalProduct = (expr) => {
+    const parts = expr.split('*').map((x) => Number(x.trim()));
+    return parts.some(Number.isNaN) ? null : parts.reduce((a, b) => a * b, 1);
+  };
+
+  const constIn = (src, name) => {
+    const m = src.match(new RegExp(`const ${name}\\s*:\\s*\\w+\\s*=\\s*([^;]+);`));
+    return m ? evalProduct(m[1]) : null;
+  };
+
+  const screaming = (t) => t.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+
+  return rows.map((r) => {
+    const base = screaming(r.type);
+    return {
+      ...r,
+      specWindow: windowSecs(r.windowText),
+      dhtWindow: constIn(integrity, `${base}_WINDOW_SECS_VALIDATION`),
+      dhtLimit: constIn(integrity, `${base}_MAX_PER_WINDOW_VALIDATION`),
+      coordWindow: constIn(coordinator, `${base}_WINDOW_SECS`),
+      coordLimit: constIn(coordinator, `${base}_MAX_PER_WINDOW`),
+    };
+  });
+}
+
 /** SPEC §5.1 and Invariant #6 — "nothing is deleted" — which is this
  *  protocol's headline promise and was checked by nothing at all.
  *
@@ -657,19 +744,73 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SPEC §6's friction table, against the integrity zome and the coordinator.
+// Ten literals in three files held equal by a comment until now.
+// ---------------------------------------------------------------------------
+const friction = frictionTable();
+const frictionBroken = [];
+const frictionUnparsed = [];
+
+if (friction.length === 0) {
+  frictionUnparsed.push('no rows parsed out of §6 at all — the table moved or changed shape');
+} else {
+  for (const r of friction) {
+    const missing = Object.entries({
+      'the §6 window': r.specWindow, 'the DHT window': r.dhtWindow, 'the DHT limit': r.dhtLimit,
+      'the coordinator window': r.coordWindow, 'the coordinator limit': r.coordLimit,
+    }).filter(([, v]) => v === null).map(([k]) => k);
+    if (missing.length > 0) { frictionUnparsed.push(`${r.type}: could not read ${missing.join(', ')}`); continue; }
+
+    if (r.dhtLimit !== r.limit || r.dhtWindow !== r.specWindow) {
+      frictionBroken.push(`${r.type}: §6 says ${r.limit} per ${r.windowText} `
+        + `(${r.specWindow}s), DHT enforces ${r.dhtLimit} per ${r.dhtWindow}s `
+        + `— the DOCUMENTED cutoff is not the enforced one`);
+    }
+    if (r.coordLimit !== r.dhtLimit || r.coordWindow !== r.dhtWindow) {
+      const dir = r.coordLimit > r.dhtLimit
+        ? 'the client will let writes through that validation then refuses, so §5.21\'s "courtesy" becomes a lie'
+        : 'the client refuses writes the protocol would accept, inventing a limit nobody specified';
+      frictionBroken.push(`${r.type}: coordinator ${r.coordLimit} per ${r.coordWindow}s vs `
+        + `DHT ${r.dhtLimit} per ${r.dhtWindow}s — ${dir}`);
+    }
+  }
+}
+
+if (frictionUnparsed.length > 0) {
+  log('SETUP FAILED — §6 friction could not be read:');
+  for (const m of frictionUnparsed) log(`  ${m}`);
+  log('  A number this check cannot find is a number it is not guarding. Fix the');
+  log('  parser or the shape it reads, rather than leaving it quietly unchecked.');
+  log('');
+}
+if (frictionBroken.length > 0) {
+  log('DRIFT — SPEC §6 and the code disagree about a rate limit:');
+  for (const m of frictionBroken) log(`  ${m}`);
+  log('  §6 says "Every row is an absolute cutoff. Nothing in this protocol can');
+  log('  be bought past." That sentence is only true while these agree.');
+  log('');
+}
+if (friction.length > 0 && frictionBroken.length === 0 && frictionUnparsed.length === 0) {
+  log(`§6 friction: ${friction.length} of ${friction.length} rows agree across SPEC, the`);
+  log('  integrity zome and the coordinator — window and ceiling both.');
+}
+
 const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.length > 0
   || accounted === null || unaccounted.length > 0 || staleRows.length > 0
   || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0
   || binding === null || unbound.length > 0
   || deletion.entryArm === null || deletion.linkArm === null
-  || !entryRefuses || !linkAccepts;
+  || !entryRefuses || !linkAccepts
+  || frictionBroken.length > 0 || frictionUnparsed.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1 and §5.2 are checked now; §5.3 and the per-type rules in §2 are');
-  log('not, and a call site is reach, not proof a function is surfaced.)');
+  log('(§5.1, §5.2 and §6 are checked now — three of SPEC\'s ~105 MUSTs. §5.3');
+  log('and the per-type rules in §2 are not, and a call site is reach, not proof');
+  log('a function is surfaced.)');
   process.exit(0);
 }
 process.exit(1);
