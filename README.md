@@ -2516,7 +2516,8 @@ each of these is currently exactly that.
   runner produces the same observable as a protocol fault. A red run is a prompt
   to read the conductor logs, which upload on `always()`.
 
-  **IT RAN, AND IT CROSSED IN 5.0 SECONDS.** Run `37564173490`, two jobs:
+  **IT RAN TWICE AND CROSSED BOTH TIMES, EACH INSIDE ONE POLL.** Run
+  `37564173490`, two jobs:
 
   | | publisher | reader |
   |---|---|---|
@@ -2539,9 +2540,21 @@ each of these is currently exactly that.
   off one machine.** Forty-three harnesses preceded it and every one ran on a
   single host.
 
-  **Three things it does NOT establish, and they matter more than the result.**
-  It is **one run**, so it shows the crossing can happen and nothing about how
-  often. Those were two **datacentre VMs with public addresses and good
+  **Run `37567632325` repeated it**: crossed on the first poll again, same DNA
+  hash on both hosts, different agent keys, both jobs green. Two for two, and
+  the aligned-start coordination worked twice rather than having happened to
+  line up once — which was the other thing a second run was for.
+
+  **"5.0s" IS THE POLL INTERVAL, NOT A LATENCY, and the first write-up of this
+  got that wrong.** `cross-internet.mjs` polls every 5s, and both runs found the
+  entry on the first poll after `t+0s`. So the crossing took *somewhere between
+  0 and 5 seconds* and the harness cannot say where — exactly the distinction
+  `peering-rate.mjs`'s header already draws about its own 3.0s figures ("the
+  fast times are poll granularity, not latency"). Two runs bound it under five
+  seconds; neither measures it.
+
+  **Three things this does NOT establish, and they matter more than the result.**
+  **Two runs** show the crossing can happen and are nowhere near a rate. Those were two **datacentre VMs with public addresses and good
   connectivity** — two laptops behind consumer routers is the harder case, the
   one relays exist for, and it is still unchecked; INSTALL.md says so to users
   rather than claiming their case is covered. And the publisher **held** for the
