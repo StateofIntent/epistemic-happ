@@ -2486,6 +2486,52 @@ each of these is currently exactly that.
   Fixed with an explicit exit, and the other 43 harnesses were checked for the
   same shape — a harness that connects and has no exit. None of them has it.
 
+  **And with the exit fixed, the census this question has wanted since the
+  beginning finally exists.** Run `37648330341`, 12 trials, and — for the first
+  time in four attempts — **the archive uploaded**, which is the fix confirmed
+  by the one thing it was supposed to enable. Two trials never crossed, so the
+  run carries non-crossings and fast controls in the same archive.
+
+  ```
+  15.1  18.1  21.1  12.0  NONE  21.1  45.6  11.0  11.1  45.9  18.1  NONE
+  ```
+
+  **nodeD's own census splits the twelve into two populations, cleanly:**
+
+  | | population A | population B |
+  |---|---|---|
+  | `iroh connect timed out` | **0** | **1 each** |
+  | `Initiated gossip with` | 3–4 | 0–1 |
+  | `NoDiff` rounds | 4–8 | 0–1 |
+  | `MultipathNotNegotiated` | 1 | 2–4 |
+  | crossings | 12.0, 15.1, 18.1, 18.1, 21.1, 21.1 | 11.0, 11.1, 45.6, 45.9 |
+  | never crossed | **0 of 6** | **2 of 6** |
+
+  **Every non-crossing has an iroh connect timeout, and no trial that crossed in
+  12–21s has one.** In population B nodeD's own gossip is effectively dead —
+  zero or one initiation against three or four, and almost no completed rounds —
+  so arrival depends entirely on a peer pushing to it. Four of six got that
+  push; two did not, and those are the non-crossings.
+
+  That is a coherent mechanism and it matches the earlier finding that four of
+  five non-crossings carried iroh timeouts — but it now has **controls**, which
+  that finding did not, and the controls are what make the comparison mean
+  anything.
+
+  **The rate is not established and the sample is twelve.** 2 of 6 against 0 of
+  6 is Fisher exact **p = 0.45**. The correlation is perfect in one direction,
+  which is suggestive and nothing more; this section has twice recorded a
+  pattern read off too few controls and had to withdraw it. What is new is not a
+  rate but a reproducible instrument: a run that archives every trial and
+  survives to upload, so the next twelve extend this table instead of restarting
+  the question.
+
+  **It also points away from gossip and towards transport.** `iroh connect timed
+  out` is a QUIC-layer failure, and `MultipathNotNegotiated` — 2 to 4 occurrences
+  in population B against 1 in A — is `noq_proto`, below kitsune2 entirely.
+  Neither is something this protocol's validation, friction or arc logic can
+  cause or fix.
+
   **And the "21 runs, no failures" figure was an artefact of this entry's own
   warning.** It was read off `gh run list`, which cannot see a failure that was
   re-run — and this session re-ran four of them. So the headline claim was wrong
