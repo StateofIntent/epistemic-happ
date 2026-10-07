@@ -276,11 +276,33 @@ PASSPHRASE="${HC_SANDBOX_PASSPHRASE:-sandbox-dev-passphrase-1234}"
 # file's header already warns about for the bootstrap ports. A silent no-op
 # dressed as a fix is the one outcome worse than the flake.
 #
-# 60s rather than something larger: four times the default and well inside the
-# 330s window the harnesses allow a crossing, so a round that is simply slow
-# can finish while a round that is genuinely dead is still reaped long before
-# any harness gives up. Override with EPI_GOSSIP_ROUND_TIMEOUT_MS.
-GOSSIP_ROUND_TIMEOUT_MS="${EPI_GOSSIP_ROUND_TIMEOUT_MS:-60000}"
+# REVERTED TO kitsune2's DEFAULT, AND THE REASON IS THAT THIS SETTING'S OWN
+# PREMISE WAS REMOVED THREE SETTINGS BELOW.
+#
+# It was set to 60s on the argument quoted above: "a round lost to that timeout
+# cannot be retried with the same peer for `min_initiate_interval_ms` (300s)".
+# That was true, and it is why four times the default looked cheap. But
+# `min_initiate_interval_ms` is now 10s here (see below), so a lost round costs
+# ten seconds rather than five minutes, and buying insurance against it with a
+# 4x timeout no longer buys anything.
+#
+# It also never showed a benefit when finally measured. `peering-rate.mjs` run
+# 37478744160 ran 30 interleaved trials at 60000, 30000 and 15000 and produced
+# 2, 1 and 2 non-crossings of ten — no effect across a 4x range, and the band
+# that had been blamed on this setting turned out to be `initiate_interval_ms`.
+#
+# SO THE LOCAL DIVERGENCE IS DROPPED RATHER THAN KEPT ON A DEAD ARGUMENT. The
+# reasoning above is left standing because it was sound on what was known then:
+# a 2-vCPU runner really is slow enough to lose a 15s round, that really was
+# verified end to end rather than assumed, and the 300s floor really did make
+# it expensive. Only the floor changed.
+#
+# THE VARIABLE STAYS EVEN THOUGH IT NOW MATCHES THE DEFAULT, and not for
+# symmetry: `peering-rate.mjs` sets `EPI_GOSSIP_ROUND_TIMEOUT_MS` per arm to
+# vary this very setting, so removing the override would break the harness that
+# measured it. Writing the default explicitly also keeps it under the read-back
+# below, which is what catches a key kitsune2 silently discards.
+GOSSIP_ROUND_TIMEOUT_MS="${EPI_GOSSIP_ROUND_TIMEOUT_MS:-15000}"
 
 # THE GOSSIP INITIATION INTERVAL, WHICH IS WHAT THE SLOW BASELINE ACTUALLY WAS.
 #
