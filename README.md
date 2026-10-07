@@ -2560,6 +2560,45 @@ each of these is currently exactly that.
   every trial and survives to upload, so the next batch either reproduces this
   or it does not.
 
+  **It reproduced twice in the next batch, and the fingerprint is tight.** Run
+  `37656458850`, same configuration, five non-crossings in twelve — so ten
+  across thirty-six trials (28%). Two of the five are the same thing:
+
+  | | initiations | `NoDiff` | rounds with nodeA | post-entry | last round |
+  |---|---|---|---|---|---|
+  | batch 2, trial 04 | 60 | 121 | 61 | 58 | t+342.2s |
+  | batch 3, trial 03 | 58 | 118 | 64 | 62 | t+334.1s |
+  | batch 3, trial 06 | 60 | 122 | 65 | 63 | t+336.6s |
+
+  Zero transport errors in all three. **Three occurrences, which is the
+  threshold this section has invoked against itself repeatedly** — the nodeD
+  question's own counts "answered on the third occurrence", and a single
+  occurrence has twice been called not a finding here. This is the third, and
+  the signature barely varies: 58–60 initiations, 118–122 completed rounds,
+  58–63 of them with the entry-holding node after the entry exists, running to
+  within fifteen seconds of the window's end.
+
+  **So the ten non-crossings across thirty-six trials are two distinct faults,
+  not one:**
+
+  | | occurrences | signature |
+  |---|---|---|
+  | transport | 7 of 10 | `iroh connect timed out` ≥ 1, 0–1 initiations, elevated `MultipathNotNegotiated`. nodeD's gossip never starts; arrival depends on being pushed to |
+  | **gossip** | **3 of 10** | zero transport errors, ~60 initiations, ~120 rounds all concluding no difference, against the node that holds the entry |
+
+  The second is a protocol-level result and the first is not. Both were hiding
+  inside one symptom — "a node joins the DHT and exchanges nothing" — for the
+  life of this entry, which is why every single-cause hypothesis tried against
+  it got partial support and then collapsed.
+
+  **The integration caveat still stands and is now the only thing between this
+  and an upstream report.** The harness confirms `create_claim` returned on
+  nodeA; it does not confirm nodeA integrated the op into the shard gossip
+  offers from. Across three trials and roughly 180 completed rounds spanning
+  five minutes each, an integration lag is not a credible explanation — but it
+  is still an assumption rather than a measurement, and closing it means having
+  nodeA read its own claim back before the clock starts.
+
   **It also points away from gossip and towards transport.** `iroh connect timed
   out` is a QUIC-layer failure, and `MultipathNotNegotiated` — 2 to 4 occurrences
   in population B against 1 in A — is `noq_proto`, below kitsune2 entirely.
