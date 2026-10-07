@@ -263,6 +263,90 @@ function callSites(files) {
   return found;
 }
 
+/** SPEC §5.18 — only a membrane's own founder may federate on its behalf.
+ *
+ * §5.18: "`local_membrane` MUST resolve to a real `Membrane` entry, and the
+ * creating agent MUST equal that `Membrane`'s own `creator` field — only a
+ * membrane's own founder may declare federation on its behalf."
+ *
+ * A GOVERNANCE RULE, NOT A REFERENTIAL ONE, which is why neither existing gate
+ * reaches it. §5.2's author binding only says the `author` FIELD matches
+ * whoever signed the action; it says nothing about whether that agent is
+ * entitled to act for the membrane named. And `local_membrane` is absent from
+ * §5.3's field list, so the referential gate does not cover it either.
+ *
+ * WITHOUT THE CREATOR COMPARISON, any agent could publish a `FederationRecord`
+ * naming somebody else's membrane — and §10.14 records that federation carries
+ * NO temporal friction, so the forgery would be unrated and unlimited too. That
+ * combination is why this one is worth a gate of its own: the cheapest possible
+ * write against the strongest possible claim, namely that a membrane has
+ * federated with a remote network.
+ *
+ * FOUR PROPERTIES, each able to rot alone:
+ *
+ *   1. `local_membrane` is FETCHED — without it there is nothing to compare.
+ *   2. the fetched entry is DOWNCAST to `Membrane`. §5.18 says the reference
+ *      must resolve to a real Membrane, not merely to something that
+ *      deserialises.
+ *   3. the membrane's `creator` is COMPARED to the record's author. This is the
+ *      rule; the first two are its preconditions.
+ *   4. the comparison REFUSES. A comparison whose branch does not return
+ *      Invalid is decoration — and this file has already caught itself shipping
+ *      a gate that printed drift and exited 0, so "it compares" is checked
+ *      separately from "it acts on the comparison".
+ *
+ * rustc cannot see any of it: each of the four is an optional host call or an
+ * optional `if`, and omitting any of them compiles clean. */
+function federationGovernance() {
+  const src = readFileSync(INTEGRITY, 'utf8');
+  const start = src.indexOf('fn validate_federation_record(');
+  if (start === -1) return { missing: true };
+  const m = src.slice(start).match(/^fn validate_federation_record\(\s*(\w+)\s*:/);
+  if (!m) return { missing: true };
+  const binding = m[1];
+  const next = src.indexOf('\nfn ', start + 10);
+  const body = src.slice(start, next === -1 ? src.length : next);
+
+  // The creator comparison, in either direction, and whether the branch it
+  // guards actually refuses.
+  const cmp = new RegExp(
+    `\\w+\\.creator\\s*[!=]=\\s*${binding}\\.author|${binding}\\.author\\s*[!=]=\\s*\\w+\\.creator`);
+  const at = body.search(cmp);
+
+  return {
+    missing: false,
+    binding,
+    fetches: new RegExp(`must_get_entry\\(\\s*${binding}\\.local_membrane`).test(body),
+    // TWO WAYS TO NAME THE TARGET TYPE, and matching only the turbofish gave a
+    // false negative here: this validator writes
+    // `let membrane: Membrane = ...to_app_option()`, taking the type from the
+    // let annotation. That is the third idiom variant to cause a false negative
+    // in this file — see §5.3's note on the direct-vs-bound fetch and §5.4's on
+    // the target fetch. A gate that recognises one spelling of a thing reports
+    // correct code as broken, which is worse than not checking it.
+    downcasts: /to_app_option::<Membrane>/.test(body)
+      || /let\s+\w+\s*:\s*Membrane\s*=[\s\S]{0,120}?to_app_option\(/.test(body),
+    compares: at !== -1,
+    // SCOPED TO THE GUARD'S OWN BLOCK BY BRACE MATCHING, not by a character
+    // window. A 400-character window passed a mutation that deleted this
+    // refusal, because the window ran on into the NEXT check's
+    // `return Invalid` for an empty remote_network_label. That is the fourth
+    // proximity error in this file; the lesson has been learned once per gate
+    // and is written here so the next one starts from brace matching.
+    refuses: at !== -1 && (() => {
+      const open = body.indexOf('{', at);
+      if (open === -1) return false;
+      let depth = 0;
+      for (let i = open; i < body.length; i++) {
+        if (body[i] === '{') depth++;
+        else if (body[i] === '}') { depth--; if (depth === 0)
+          return /ValidateCallbackResult::Invalid/.test(body.slice(open, i)); }
+      }
+      return false;
+    })(),
+  };
+}
+
 /** Every constant SPEC names WITH ITS VALUE, against the code that defines it.
  *
  * §8.1 writes `HRR_DIM = 512`, §8.3 writes `MAX_NEIGHBORHOOD_CRITIQUES = 512`,
@@ -993,6 +1077,35 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
 }
 
 // ---------------------------------------------------------------------------
+// SPEC §5.18 — only a membrane's founder may federate on its behalf. A
+// governance rule neither §5.2's author binding nor §5.3's resolution reaches.
+// ---------------------------------------------------------------------------
+const fed = federationGovernance();
+const fedBroken = [];
+if (fed.missing) {
+  fedBroken.push('validate_federation_record not found, or its parameter could not be read — '
+    + '§5.18 describes a validator that is not there in a recognisable shape');
+} else {
+  if (!fed.fetches) fedBroken.push(`local_membrane is never fetched, so there is no Membrane to compare against`);
+  if (!fed.downcasts) fedBroken.push(`the fetched entry is never resolved to a Membrane — §5.18 requires it resolve to a real one, not merely to something that deserialises`);
+  if (!fed.compares) fedBroken.push(`the Membrane's creator is never compared to ${fed.binding}.author — ANY agent could then federate on ANY membrane's behalf, and §10.14 gives federation no temporal friction, so the forgery would be unrated too`);
+  else if (!fed.refuses) fedBroken.push(`the creator comparison exists but its branch does not return Invalid — it detects the forgery and permits it`);
+}
+
+if (fedBroken.length > 0) {
+  log('DRIFT — §5.18 federation governance:');
+  for (const m of fedBroken) log(`  ${m}`);
+  log('  "Only a membrane\'s own founder may declare federation on its behalf"');
+  log('  is the same governance principle that gates founding the membrane at');
+  log('  all. It holds only while this comparison does.');
+  log('');
+} else {
+  log('§5.18 federation governance: local_membrane is fetched, resolved to a real');
+  log('  Membrane, and its creator compared to the record author — with a refusal');
+  log('  on mismatch. Only a founder can federate their own membrane.');
+}
+
+// ---------------------------------------------------------------------------
 // Every constant SPEC names with its value. Four figures stated as fact in the
 // document and defined independently in Rust.
 // ---------------------------------------------------------------------------
@@ -1167,14 +1280,15 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || frictionBroken.length > 0 || frictionUnparsed.length > 0
   || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
   || xcheckBroken.length > 0
-  || boundsBroken.length > 0;
+  || boundsBroken.length > 0
+  || fedBroken.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1, §5.2, §5.3, §5.4, §5.5, §5.6, §6 and the figures §8 states are');
-  log('checked now — eight of SPEC\'s ~105 MUSTs. The per-type rules in §2 are');
+  log('(§5.1, §5.2, §5.3, §5.4, §5.5, §5.6, §5.18, §6 and the figures §8 states');
+  log('are checked now — nine of SPEC\'s ~105 MUSTs. The per-type rules in §2 are');
   log('not, and a call site is reach, not proof a function is well surfaced.)');
   process.exit(0);
 }
