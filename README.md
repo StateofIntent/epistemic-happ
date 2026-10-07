@@ -2478,9 +2478,12 @@ each of these is currently exactly that.
   **What cannot get there is the packaging.** The desktop installers are
   Kangaroo builds — Electron — and Electron does not target mobile, so this is a
   separate project on Tauri 2 plus `tauri-plugin-holochain` rather than an extra
-  entry in a build matrix. And as of **2026-09-12** that plugin pins
-  `holochain_types = "0.6"`, its branches stop at `main-0.6.1`, and `main` was
-  last updated 2026-05-15 by merging `main-0.6`. These zomes pin
+  entry in a build matrix. **Re-checked 2026-10-07 and still
+  true:** every branch of that plugin pins `holochain_types = "0.6"` — `main`,
+  `develop`, `main-0.6` and `main-0.6.1` (at `0.6.1-rc`) — there is no 0.7
+  branch, and the repository has had no push since **2026-07-16**. (The reading
+  dated 2026-09-12 said `main` was last updated 2026-05-15; that was its last
+  merge commit, not the repository's last push.) These zomes pin
   `hdk = "=0.7.0"`; a 0.6 conductor cannot run them. iOS is unclear even at 0.6
   — Android is supported, every iOS reference says "in development", and that
   project's own iOS how-to page 404s. It is also source-available rather than
@@ -2529,6 +2532,37 @@ each of these is currently exactly that.
   is still being built. That is the only step in this entire item that does not
   wait on somebody else's schedule or somebody else's permission — which is reason
   enough to record it as an action rather than as background.
+
+  **The darksoil migration itself has now been measured, which matters only as a
+  fallback — the official path is a cleanroom implementation and does not need
+  it.** Recorded because the size was never known, and an unknown cost is how
+  "blocked upstream" turns into "assumed impossible".
+
+  `holochain_runtime` — the sibling crate in darksoil's repository where the
+  conductor is actually embedded, 14 files and ~84KB of Rust — was taken at
+  `main`, migrated to 0.7, and compiled: **`cargo check` exits 0**. Both wasmer
+  backends build, including **`wasmer-wasmi`**, the interpreted backend this
+  section credits with making iOS possible at all; it is confirmed present in
+  0.7's feature list. The delta is ~70 lines, kept as a patch:
+
+  | kind | change |
+  |---|---|
+  | versions | `holochain`, `mr_bundle`, `holochain_types`, `holochain_keystore`, `holochain_conductor_api`, `holochain_util` 0.6.1 → 0.7; `holochain_client` 0.8 → 0.9; `lair_keystore_api`/`lair_keystore` 0.6.3 → 0.7 |
+  | features | `wasmer_sys` → `wasmer-sys` **plus** `wasmer-sys-cranelift`, since 0.7 requires a compiler sub-feature; `transport-iroh` dropped, iroh no longer being optional; `holochain/sqlite` gone and `sqlite-encrypted` → `holochain/encryption` |
+  | pins | the `ed25519`/`pkcs8` hard pins removed — their own comment said to drop them once `iroh-base-holochain` unpinned, and 0.7 uses `kitsune2_transport_iroh` 0.5, so that crate has left the tree |
+  | source | `InstallAppPayload` gained `restore_from_dht: bool` → `false`; `CoordinatorZomeDef::wasm_hash()` removed, replaced by matching `as_any_zome_def()` for `WasmZomeDef.wasm_hash` and returning `ZomeError::NonWasmZome` exactly as 0.7's own `get_wasm_zome_hash` does; `Conductor::shutdown(self: Arc<Self>)` now takes the Arc by value and needs a `.clone()` |
+
+  Three source edits and one helper. The lair bump alone cleared three of the
+  seven original errors, all of them "expected `LairClient`, found a different
+  `LairClient`" — two lair versions in one tree rather than an API change.
+
+  **What this does not establish, since the gap is the entire remaining risk.**
+  `cargo check` is not a build, not a test run, and no evidence anything works at
+  runtime. Only `holochain_runtime` was migrated; `tauri-plugin-holochain` itself
+  is untouched, as are `hc-pilot` and the scaffold crates. **No mobile artifact
+  was produced and none could be here** — iOS cannot be built on Linux at all,
+  and this machine has no JDK, Android SDK/NDK, `adb` or Tauri CLI. It bounds a
+  cost; it does not move the roadmap.
 
   **Two consequences to weigh even once it is unblocked**, neither of them a
   packaging problem: mobile nodes run **zero-arc**, so they hold and serve no DHT
