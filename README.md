@@ -2431,6 +2431,43 @@ each of these is currently exactly that.
   built to eliminate. Lowering `initiate_interval_ms` genuinely removed the
   120s-shaped stall, and something else produces a longer one.
 
+  **The distribution was then measured deliberately rather than waited for, and
+  it confirms the split.** `peering-rate` already does this job — a fresh
+  network per trial, N trials, per-trial crossing times — and its 30-trial run
+  predated the fix, so re-running it measures the current configuration with no
+  new code. Run `37621098063`, 12 trials, one arm (the three-arm run having
+  settled that `roundTimeoutMs` is not the variable):
+
+  ```
+  0.0  0.0  0.0  3.0  3.0  18.0  21.0  27.0  27.1  49.9  142.0  NO CROSSING
+  ```
+
+  | | pre-fix (30 trials) | post-fix (12 trials) |
+  |---|---|---|
+  | never crossed | 5 of 30 (17%) | 1 of 12 (8%) |
+  | crossings over 120s | 12 of 25, banded 123–153s | 1 of 11, at 142.0s |
+  | median crossing | in the 123–153s band | **18.0s** |
+  | inside one poll | rare on this runner | **5 of 12** |
+
+  **So the median moved hard and the tail did not disappear.** Five of twelve
+  now cross inside a single poll, where the pre-fix run's crossings clustered
+  above two minutes — and there is still a 142.0s crossing and still a trial
+  that never crossed at all. That is the same conclusion the correction above
+  reaches from CI failures, reached independently from a deliberate measurement,
+  which is the first time these two routes have agreed about this question.
+
+  **What the run did NOT produce is the archive**, and the reason is worth
+  recording. The harness finished all 12 trials in 20 minutes; the job then hung
+  AFTER the harness step and was terminated 45 minutes later with the upload
+  never running — so the crossing times survived in the step log and the
+  conductor logs did not. Two of the three long `peering-rate` runs have now
+  been orphaned this way, both times after the harness itself completed, and
+  `timeout-minutes` did not fire on either. That is outside the harness
+  entirely: no amount of in-process bounding helps when the job, not the
+  process, is what stops progressing. The mitigation is shorter dispatches —
+  four trials rather than twelve — since the exposure scales with how long the
+  job stays alive.
+
   **And the "21 runs, no failures" figure was an artefact of this entry's own
   warning.** It was read off `gh run list`, which cannot see a failure that was
   re-run — and this session re-ran four of them. So the headline claim was wrong
