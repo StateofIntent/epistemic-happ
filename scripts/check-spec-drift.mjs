@@ -263,6 +263,107 @@ function callSites(files) {
   return found;
 }
 
+/** SPEC §5.3's referential integrity, per VALIDATOR rather than per field name.
+ *
+ * §5.3: every field typed as an `EntryHash` reference to another entry MUST
+ * resolve to a real entry of the expected type. It names eight such fields, and
+ * names exactly ONE exception — `Critique.evidence_hashes` — with three
+ * paragraphs on why: nothing traverses it, `must_get_entry` is a deterministic
+ * dependency fetch that DEFERS validation until the dependency has propagated,
+ * and paying that on the protocol's most frequent act buys nothing.
+ *
+ * SO THE INTERESTING PROPERTY IS NOT "EVERY FIELD IS CHECKED" BUT "THE SET OF
+ * EXCEPTIONS IS EXACTLY THE DOCUMENTED ONE". A new reference field added without
+ * a cross-check is a silent ninth exception; so is somebody quietly removing an
+ * existing check to make validation resolve faster. Either leaves §5.3 claiming
+ * a guarantee the zome no longer provides, and `Membrane.constitution` is
+ * precedent that the list does move — §5.3 records it as a former exception now
+ * cross-checked.
+ *
+ * PER-VALIDATOR, BECAUSE `evidence_hashes` EXISTS ON TWO TYPES with opposite
+ * answers: `Claim`'s is checked and `Critique`'s is the exception. A check keyed
+ * on the field name alone cannot tell them apart and would report whichever it
+ * found first — the "matched something adjacent to the thing" error this file
+ * already records twice.
+ *
+ * AND THE BINDER IS TIED TO THE FIELD, not merely found nearby. The idiom is:
+ *
+ *     if let Some(h) = &mew.linked_claim {        // or: for h in &claim.evidence_hashes
+ *         if must_get_entry(h.clone()).is_err() { ... Invalid ... }
+ *
+ * so the check captures the binding name from the field and then requires
+ * `must_get_entry(<that same name>.clone())`. A nearby `must_get_entry` on an
+ * unrelated hash does not satisfy it. Proximity counting was tried first and
+ * reported 3 matches for a field checked once.
+ *
+ * rustc CANNOT see any of this: `must_get_entry` is a host call, calling it is
+ * optional, and omitting it is not a type error. */
+function referentialIntegrity() {
+  const spec = readFileSync(SPEC, 'utf8');
+  const src = readFileSync(INTEGRITY, 'utf8');
+
+  // The field list, read out of §5.3's own first sentence rather than restated.
+  const sect = spec.slice(spec.indexOf('### 5.3 Referential integrity'));
+  const firstPara = sect.slice(0, sect.indexOf('\n\n'));
+  const fields = [...new Set([...firstPara.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]))];
+
+  // The documented exceptions, as `Type.field`, read out of §5.3 too.
+  const exceptions = [...new Set(
+    [...sect.slice(0, sect.indexOf('### 5.4')).matchAll(/`(\w+)\.([a-z_]+)`\s+is the one remaining exception/g)]
+      .map((m) => `${m[1]}.${m[2]}`))];
+
+  // Split the zome into validator bodies, keyed by the type each one validates.
+  const validators = {};
+  const re = /^fn (validate_[a-z_]+)\(\s*(\w+)\s*:\s*&(\w+)/gm;
+  const marks = [...src.matchAll(re)];
+  marks.forEach((m, i) => {
+    const end = i + 1 < marks.length ? marks[i + 1].index : src.length;
+    validators[m[3]] = { fn: m[1], binding: m[2], body: src.slice(m.index, end) };
+  });
+
+  // ENUMERATE FROM THE STRUCT DEFINITIONS, NOT FROM THE VALIDATORS. Keying on
+  // "validators that mention this field" leaves the exact hole this check
+  // exists to close: a reference field whose validator ignores it entirely is
+  // then invisible, which is a silent ninth exception. It also could not see
+  // `Critique.evidence_hashes` — the one DOCUMENTED exception — because
+  // `validate_critique` does not mention the field at all, so the exception
+  // could quietly stop being one and nothing would notice.
+  const structFields = {};
+  for (const m of src.matchAll(/pub struct (\w+)\s*\{([^}]*)\}/g)) {
+    structFields[m[1]] = fields.filter((f) => new RegExp(`\\bpub ${f}\\s*:`).test(m[2]));
+  }
+
+  const found = [];
+  for (const [type, present] of Object.entries(structFields)) {
+    const v = validators[type];
+    for (const field of present) {
+      if (!v) { found.push({ type, field, fn: '(no validator)', checked: false }); continue; }
+      // TWO IDIOMS, BOTH REAL, and recognising only one produced three false
+      // negatives on first run — `Retraction.target_claim`,
+      // `BridgeRecord.mew_hash` and `ExternalCritique.linked_holochain_claim`
+      // are all checked directly, with no intermediate binding. A gate with
+      // false negatives fails CI on correct code, which is worse than no gate.
+      //
+      //   direct:    must_get_entry(record.mew_hash.clone())
+      //   indirect:  if let Some(h) = &mew.linked_claim { must_get_entry(h.clone())
+      //              for h in &claim.evidence_hashes    { must_get_entry(h.clone())
+      //
+      // The indirect form still ties the binder to the field rather than
+      // accepting any nearby call.
+      const direct = new RegExp(
+        `must_get_entry\\(\\s*${v.binding}\\.${field}\\.clone\\(\\)`).test(v.body);
+      const bind = v.body.match(new RegExp(
+        `(?:if let Some\\(\\s*(\\w+)\\s*\\)\\s*=|for\\s+(\\w+)\\s+in)\\s*&?${v.binding}\\.${field}\\b`));
+      const name = bind ? (bind[1] ?? bind[2]) : null;
+      const indirect = name !== null
+        && new RegExp(`must_get_entry\\(\\s*${name}\\.clone\\(\\)`).test(v.body);
+      const checked = direct || indirect;
+      found.push({ type, field, fn: v.fn, checked });
+    }
+  }
+  return { fields, exceptions, found };
+}
+
 /** SPEC §6's temporal-friction table, against the numbers THREE separate places
  *  independently hardcode.
  *
@@ -745,6 +846,42 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
 }
 
 // ---------------------------------------------------------------------------
+// SPEC §5.3's referential integrity. The property is not "every field is
+// checked" but "the exceptions are exactly the documented ones".
+// ---------------------------------------------------------------------------
+const ref = referentialIntegrity();
+const refUndocumented = ref.found
+  .filter((f) => !f.checked && !ref.exceptions.includes(`${f.type}.${f.field}`))
+  .map((f) => `${f.type}.${f.field} (${f.fn}) is not cross-checked and §5.3 does not except it`);
+const refStaleException = ref.exceptions
+  .filter((e) => { const f = ref.found.find((x) => `${x.type}.${x.field}` === e); return f && f.checked; })
+  .map((e) => `${e} IS cross-checked now, but §5.3 still lists it as the exception`);
+const refSetupFailed = ref.found.length === 0
+  ? ['no (type, field) pairs found at all — §5.3\'s field list or the entry structs changed shape']
+  : [];
+
+if (refSetupFailed.length > 0) {
+  log('SETUP FAILED — §5.3 referential integrity could not be read:');
+  for (const m of refSetupFailed) log(`  ${m}`);
+  log('');
+} else if (refUndocumented.length > 0 || refStaleException.length > 0) {
+  log('DRIFT — §5.3 and the validators disagree about what resolves:');
+  for (const m of refUndocumented) log(`  ${m}`);
+  for (const m of refStaleException) log(`  ${m}`);
+  log('  §5.3 grants exactly one exception and explains at length why it is');
+  log('  safe. A second one nobody wrote down is a guarantee the document');
+  log('  claims and the zome does not provide — and an exception that quietly');
+  log('  became checked leaves §5.3 describing a zome that no longer exists.');
+  log('');
+} else {
+  const n = ref.found.length;
+  log(`§5.3 referential integrity: ${n - ref.exceptions.length} of ${n} reference fields`);
+  const ex = ref.exceptions.length;
+  log(`  resolve their target, and the ${ex} that ${ex === 1 ? 'does' : 'do'} not ${ex === 1 ? 'is' : 'are'} exactly what`);
+  log(`  §5.3 excepts (${ref.exceptions.join(', ')}).`);
+}
+
+// ---------------------------------------------------------------------------
 // SPEC §6's friction table, against the integrity zome and the coordinator.
 // Ten literals in three files held equal by a comment until now.
 // ---------------------------------------------------------------------------
@@ -802,15 +939,16 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || binding === null || unbound.length > 0
   || deletion.entryArm === null || deletion.linkArm === null
   || !entryRefuses || !linkAccepts
-  || frictionBroken.length > 0 || frictionUnparsed.length > 0;
+  || frictionBroken.length > 0 || frictionUnparsed.length > 0
+  || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1, §5.2 and §6 are checked now — three of SPEC\'s ~105 MUSTs. §5.3');
-  log('and the per-type rules in §2 are not, and a call site is reach, not proof');
-  log('a function is surfaced.)');
+  log('(§5.1, §5.2, §5.3 and §6 are checked now — four of SPEC\'s ~105 MUSTs.');
+  log('The per-type rules in §2 are not, and a call site is reach, not proof a');
+  log('function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
