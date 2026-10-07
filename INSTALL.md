@@ -116,7 +116,8 @@ declares no network seed, so the bundle inside determines which network you
 join: same version, same peers.
 
 One caveat repeated from above, because it is the one that will actually
-bite, and one more:
+bite, and three more — two of which are permanent and worth reading before
+you write anything you would mind standing behind forever:
 
 - **Peer discovery across the internet has not been tested.** Everything in
   this project has been verified with several conductors on one machine
@@ -146,6 +147,35 @@ bite, and one more:
   peer while it was down waits out a retry backoff before trying again;
   with a third person online it is usually seconds, since a returning node
   has no failure history against someone who stayed up.
+- **Nothing you publish can ever be deleted — not by you, not by anyone.**
+  This is the protocol's central design choice, not a missing feature: a record
+  that can vanish cannot carry its own history, so validation refuses every
+  delete, of entries and of links. You *can* publish a **retraction**, which is
+  a new entry saying you withdraw an earlier claim and why. The original stays
+  readable with the retraction attached to it. Other people can **flag** your
+  claim with a typed objection, which likewise adds something rather than
+  removing anything. There is no moderator, no takedown, and no administrator
+  with a delete button — not as policy, but because the capability does not
+  exist in the code.
+
+  **So an erasure request cannot be honoured.** If you are considering running
+  this for a group of people, that is a decision to make deliberately rather
+  than discover: under GDPR and similar regimes a person may ask for their data
+  to be erased, and this network has no mechanism that could comply. For a
+  private group among people who understand that, fine. For a public deployment
+  it is a real exposure, and it belongs in whatever you tell participants before
+  they join.
+- **If you lose your key, your writing stands forever and you can never take it
+  back.** Your identity here is a cryptographic key held by the app on your own
+  machine. There is no account, no password reset, no recovery phrase, and
+  nobody who can issue you a replacement — lose it and that identity is simply
+  gone. Everything it published stays on the network, because nothing is ever
+  deleted, and **only the original author can retract a claim** — validation
+  checks that the retraction's author matches the claim's, so a key you no
+  longer hold is a claim nobody can ever withdraw. Others can still flag it;
+  nobody can retire it. Two practical consequences: back up the app's keystore
+  if you care about keeping your identity, and treat a first claim from a fresh
+  install as permanent rather than as a draft.
 
   On Holochain 0.7 that wait is **about a minute**: two conductors taken
   offline, each having written history the other could not see, converged
