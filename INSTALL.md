@@ -127,9 +127,11 @@ bite, and one more:
   **One crossing has now been measured, and it is not your case.**
   `.github/workflows/cross-internet.yml` ran two conductors on two different
   machines against this same public bootstrap, with the DHT as the only channel
-  between them, and an entry crossed in **5.0 seconds** — peer discovery, NAT
-  traversal through the relay, and gossip of one entry, between two hosts that
-  had never heard of each other. That is the first evidence this project has
+  between them, and an entry crossed **inside five seconds** on
+  each of two runs — peer discovery, NAT traversal through the relay, and gossip
+  of one entry, between two hosts that had never heard of each other. (Five
+  seconds is how often the test looked, not how long it took; both runs found it
+  on the first look.) That is the first evidence this project has
   ever had that any of it works off one machine.
 
   **But those were two datacentre VMs with good connectivity, which is the easy
