@@ -2467,6 +2467,57 @@ each of these is currently exactly that.
   this case off a log without checking a clock. What the question actually was,
   all along, is a test network running a protocol tuned for the open internet.
 
+- **Cross-internet peer discovery is still untested — but that is now a fact
+  about what has been run, not about what can be.** This was recorded for the
+  life of the repository as the one thing nobody could check: every verification
+  here is one machine, `sandbox.sh` being a single conductor and `network.sh`
+  three or four against a bootstrap and iroh relay on 127.0.0.1. Loopback peers
+  establish that gossip works and nothing whatever about peer *discovery* across
+  NATs through a public rendezvous.
+
+  **What made it testable was noticing that two CI jobs are two machines.**
+  GitHub gives each job its own VM with its own address and no network path to
+  the other — which is the situation two people installing the `.webhapp` are
+  actually in. So `.github/workflows/cross-internet.yml` runs a matrix of two:
+  one publishes an entry, the other polls for it, and **the DHT is the only
+  channel between them**. They agree on a network seed and a domain by both
+  deriving them from `github.run_id`; that is the entire coordination mechanism.
+
+  **The infrastructure is Holochain's own default**, read out of
+  `holochain_conductor_api-0.7.0/src/config/conductor.rs` rather than picked:
+  bootstrap `https://dev-test-bootstrap2.holochain.org`, relay
+  `https://use1-1.relay.n0.iroh-canary.iroh.link./`. A node started by
+  `scripts/cross-internet-node.sh` therefore joins by the same path a Launcher
+  install would — the path that was never exercised.
+
+  **The seed is a safety requirement, not hygiene, and the script refuses
+  without one.** The shipped `.happ` declares no network seed, so every
+  installer lands on one shared DHT. Testing on that DHT would write test
+  entries into the network real users join, and **Invariant #6 means they could
+  never be removed.** A run-unique seed gives a genuine crossing of the public
+  internet through public rendezvous infrastructure while writing nothing
+  anywhere it cannot be taken back.
+
+  **Two design points exist because the obvious version produces false
+  negatives.** Setup takes 8–10 minutes and varies by a couple between runners,
+  so both jobs wait until a fixed offset past the run's own `created_at` before
+  starting their windows — otherwise a slow publisher and a fast reader miss
+  each other and report a discovery failure that never happened. And the
+  publisher **holds** for the whole window: Holochain is not a server, so once
+  the publishing conductor exits there is no peer holding the entry, and a
+  publisher that exited on success would produce exactly the reader-side failure
+  being measured.
+
+  **It is an experiment, never a gate**, for the reason `peering-rate` is: it
+  depends on two third-party services, and either being down or rate-limiting a
+  runner produces the same observable as a protocol fault. A red run is a prompt
+  to read the conductor logs, which upload on `always()`.
+
+  **AND IT HAS NEVER BEEN RUN.** Nothing above is evidence about peer discovery;
+  it is evidence that the question is now answerable. The claim in INSTALL.md
+  stands unchanged until a run exists, and when one does, this entry should say
+  what it found rather than that it is possible.
+
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
@@ -2567,7 +2618,8 @@ each of these is currently exactly that.
   **Two consequences to weigh even once it is unblocked**, neither of them a
   packaging problem: mobile nodes run **zero-arc**, so they hold and serve no DHT
   data and depend on reliable full-arc peers — and cross-internet peer discovery
-  is the one thing this project has never been able to test. And the desktop
+  is the one thing this project has never tested, though **a harness for it now
+  exists and has not been run** (see the §9 entry below). And the desktop
   builds are unsigned today, which is survivable for sideloading and impossible
   for the App Store.
 
@@ -3680,8 +3732,10 @@ Everyone installing the same `.webhapp` lands on the same network — the bundle
 declares no network seed, so the file itself decides which peers you join.
 INSTALL.md states the two caveats that matter to a first-time user in plain
 terms: cross-internet peer discovery is the one thing this project has never
-been able to test, and a returning node takes minutes rather than seconds to
-catch up when it is the only other peer.
+tested, and a returning node takes minutes rather than seconds to catch up when
+it is the only other peer. **"Never tested" is now a statement about what has
+been run rather than about what can be** — `.github/workflows/cross-internet.yml`
+exists and has never been dispatched; see §9.
 
 ## Licence
 

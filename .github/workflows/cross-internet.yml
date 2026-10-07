@@ -1,0 +1,199 @@
+# =============================================================================
+# THE ONE DIMENSION THIS PROJECT HAS NEVER TESTED.
+#
+# README's installation section and INSTALL.md both tell a first-time user that
+# "cross-internet peer discovery is the one thing this project has never been
+# able to test". That is accurate and it has been for the life of the repo:
+# `conductor.yml` is one conductor on one machine, and `network.yml` runs three
+# against a bootstrap server and iroh relay on 127.0.0.1. Loopback peers
+# establish that gossip works. They establish nothing about peer DISCOVERY
+# between two hosts that have never heard of each other, across NATs, through a
+# public bootstrap, over a relay.
+#
+# TWO JOBS ARE TWO MACHINES, which is the whole reason this is possible at all.
+# GitHub gives each job its own VM with its own address, and they have no
+# network path to each other — exactly the situation two users installing the
+# `.webhapp` are in. So one job publishes an entry and the other polls for it,
+# and THE DHT IS THE ONLY CHANNEL BETWEEN THEM. If the reader sees it,
+# discovery and gossip both worked across the open internet.
+#
+# BOTH SIDES AGREE ON TWO STRINGS, WITHOUT COMMUNICATING: the network seed and
+# the domain, each derived from `github.run_id`, which both jobs can read. That
+# is the entire coordination mechanism.
+#
+# THE SEED IS A SAFETY REQUIREMENT, NOT A CONVENIENCE. The shipped `.happ`
+# declares no network seed, so every installer lands on one shared DHT — README
+# says so in as many words. Testing on that DHT would write test entries into
+# the network real users join, and **Invariant #6 means they could never be
+# removed**. A run-unique seed puts each run on its own DHT: a genuine crossing
+# of the public internet through public rendezvous infrastructure, writing
+# nothing anywhere it cannot be taken back. `cross-internet-node.sh` REFUSES to
+# start without one.
+#
+# THE INFRASTRUCTURE IS HOLOCHAIN'S OWN DEFAULT, read out of
+# `holochain_conductor_api-0.7.0/src/config/conductor.rs` rather than chosen:
+#
+#   bootstrap  https://dev-test-bootstrap2.holochain.org
+#   relay      https://use1-1.relay.n0.iroh-canary.iroh.link./
+#
+# So a node here joins by the same path a Launcher install would, and the
+# bootstrap's own name says it is for exactly this.
+#
+# THE TIMED PHASES ARE ALIGNED TO WALL CLOCK, which is the design decision that
+# makes this an experiment rather than a coin flip. Setup is ~8-10 minutes and
+# varies by a couple of minutes between runners; if each job simply started its
+# window when it happened to be ready, a slow publisher and a fast reader would
+# miss each other and report a discovery failure that never happened. Both jobs
+# therefore read the run's own `created_at` from the API and wait until a fixed
+# offset past it before starting. Their windows then coincide regardless of
+# setup skew.
+#
+# AND THE PUBLISHER HOLDS. Holochain is not a server: once the publishing
+# conductor exits there is no peer holding the entry and nothing to fetch it
+# from. The publisher writes and then stays up for the whole window. A publisher
+# that exited on success would produce a reader-side failure indistinguishable
+# from the thing being measured.
+#
+# NOT A GATE, AND NEVER A REQUIRED CHECK. It depends on two third-party services;
+# either being down or rate-limiting a CI runner produces the same observable as
+# a protocol fault. A red run is a prompt to read the logs, not evidence against
+# the protocol. Same standing as `peering-rate.yml`.
+# =============================================================================
+
+name: cross-internet (two hosts, public bootstrap)
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_s:
+        description: 'Seconds the publisher holds and the reader polls'
+        required: false
+        default: '600'
+      start_offset_s:
+        description: 'Seconds after the run started before both jobs begin the timed phase (must exceed setup time)'
+        required: false
+        default: '780'
+
+# Its own group, and NOT cancel-in-progress: two concurrent dispatches would be
+# two experiments whose halves could pair up across runs.
+concurrency:
+  group: cross-internet-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  crossing:
+    runs-on: ubuntu-latest
+    # Two jobs from one matrix so they are guaranteed to start together and
+    # share a run id — the two strings they coordinate on come from it.
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [publisher, reader]
+    # Setup, then the aligned wait, then the window. Generous so a slow-but-
+    # working run is never killed and reported as a failed crossing.
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/install-holochain.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: federation/package-lock.json
+
+      - name: Install the harness's one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # Build BEFORE packing: `hc dna pack` compiles nothing, so packing first
+      # would wrap stale wasm in a fresh timestamp. Both jobs must produce a
+      # byte-identical .happ or their DNA hashes differ and nothing can cross —
+      # the build is deterministic, which is what makes that safe to rely on.
+      - name: Build the zomes and pack the hApp
+        run: |
+          ( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+          ( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
+          hc dna pack dna/
+          hc app pack .
+          test -f epistemic-resonance-happ.happ || { echo "::error::no .happ bundle"; exit 1; }
+
+      - name: Is the public bootstrap even answering?
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            https://dev-test-bootstrap2.holochain.org/ || echo 000)
+          echo "dev-test-bootstrap2.holochain.org/ -> HTTP $code"
+          # 404 on / is EXPECTED — it is an API, not a website. 000 means it was
+          # not reachable at all, which is worth saying before the window rather
+          # than inferring from a failed crossing afterwards.
+          if [ "$code" = "000" ]; then
+            echo "::warning::the dev-test bootstrap did not respond; a failed crossing below is probably this, not the protocol"
+          fi
+
+      # ALIGNED START. Both jobs wait until the same wall-clock moment, computed
+      # from the run's own created_at, so their windows coincide however much
+      # their setup times differed. See the header.
+      - name: Wait for the shared start moment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          created=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq .created_at)
+          start_epoch=$(( $(date -u -d "$created" +%s) + ${{ inputs.start_offset_s }} ))
+          now=$(date -u +%s)
+          wait=$(( start_epoch - now ))
+          echo "run created at $created; shared start in ${wait}s (offset ${{ inputs.start_offset_s }}s)"
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; else
+            echo "::warning::setup took longer than the offset — this job starts late and the windows may not fully overlap"
+          fi
+
+      - name: Start a conductor on the public bootstrap
+        run: |
+          scripts/cross-internet-node.sh start "xnet-${GITHUB_RUN_ID}"
+
+      - name: ${{ matrix.role }} — publish, or poll for what the other host wrote
+        env:
+          EPI_XNET_ROLE: ${{ matrix.role }}
+          EPI_XNET_DOMAIN: XNet${{ github.run_id }}
+          EPI_XNET_HOLD_S: ${{ inputs.window_s }}
+        run: node scripts/live-verify/cross-internet.mjs
+
+      # `always()`: the conductor log is the only way to tell a protocol result
+      # from an infrastructure outage, and it is needed most on the runs that
+      # failed.
+      - name: Keep the conductor log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-internet-${{ matrix.role }}-${{ github.run_id }}
+          path: /tmp/epi-xnet/*.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop the conductor
+        if: always()
+        run: scripts/cross-internet-node.sh stop || true

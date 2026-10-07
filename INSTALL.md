@@ -122,9 +122,14 @@ bite, and one more:
   this project has been verified with several conductors on one machine
   against local discovery services — real separate processes, real transport,
   real gossip, but one physical host. Whether two laptops behind different
-  home routers find each other is the one thing nobody here has been able to
-  check. If you are the first two people to try it, you are also the first
-  test.
+  home routers find each other is the one thing nobody here has checked. If you
+  are the first two people to try it, you are also the first test.
+
+  There is now a way to check it — `.github/workflows/cross-internet.yml` starts
+  two conductors on two different machines against this same public bootstrap,
+  with the DHT as the only channel between them — but **it has never been run,
+  so nothing above is softened by it.** Once it has, this caveat will say what it
+  found rather than that it exists.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
