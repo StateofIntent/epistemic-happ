@@ -541,10 +541,15 @@ function frictionTable() {
  * the same rule stated as a principle. It is what the epistemic argument rests
  * on: a record that can vanish cannot carry its own history.
  *
- * TWO ARMS, NOT ONE, AND THEY DISAGREE — which is why this reads both:
+ * TWO ARMS, AND SINCE protocol_version 4 THEY AGREE — which is why this still
+ * reads both: the agreement is the thing worth guarding.
  *
  *     FlatOp::Delete(_)                       => Invalid("Deletion is not permitted…")
- *     FlatOp::Link(OpLink::DeleteLink { .. }) => Valid
+ *     FlatOp::Link(OpLink::DeleteLink { .. }) => Invalid("Link deletion is not permitted…")
+ *
+ * For versions 1-3 the second arm returned Valid, which made Invariant #6 true
+ * of entries and false of links. The fork that closed it is the only reason
+ * this file can now assert the invariant without qualifying it.
  *
  * §5.1 is written about entries ("every entry type without exception") and
  * validation implements exactly that, so the accepted link delete is not a
@@ -894,7 +899,7 @@ if (binding === null) {
 // ---------------------------------------------------------------------------
 const deletion = noDeletion();
 const entryRefuses = deletion.entryArm === 'ValidateCallbackResult::Invalid';
-const linkAccepts = deletion.linkArm === 'ValidateCallbackResult::Valid';
+const linkRefuses = deletion.linkArm === 'ValidateCallbackResult::Invalid';
 
 if (deletion.entryArm === null || deletion.linkArm === null) {
   const missing = deletion.entryArm === null ? '`FlatOp::Delete`' : '`OpLink::DeleteLink`';
@@ -913,18 +918,20 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
     log('  extern to call.');
     log('');
   }
-  if (!linkAccepts) {
-    log('DRIFT — the DeleteLink arm no longer accepts:');
-    log(`  it returns ${deletion.linkArm}, while §5.1 documents link deletes as`);
-    log('  accepted. Refusing them may well be the better rule, but it forks the');
-    log('  DNA hash (§11.1) and §5.1 has to say so first. Code and document');
-    log('  disagree either way round; that is what this file is for.');
+  if (!linkRefuses) {
+    log('DRIFT — the DeleteLink arm no longer refuses:');
+    log(`  it returns ${deletion.linkArm}, while §5.1 refuses every link delete`);
+    log('  as of protocol_version 4. This arm returned Valid for versions 1-3,');
+    log('  which is what made Invariant #6 true of entries and false of links;');
+    log('  the version-4 fork closed it. Going back re-opens it AND disagrees');
+    log('  with a protocol number that was bumped to record the change.');
     log('');
   }
-  if (entryRefuses && linkAccepts) {
-    log('§5.1 no-deletion: entry deletes refused, link deletes accepted — both as');
-    log('  §5.1 documents. So Invariant #6 holds for entries, NOT for links: a');
-    log('  `SynapticLink` edge is deletable, its `Critique` entry is not.');
+  if (entryRefuses && linkRefuses) {
+    log('§5.1 no-deletion: BOTH arms refuse — entry deletes and link deletes.');
+    log('  Invariant #6 ("nothing is deleted") is therefore true without');
+    log('  qualification, which it was not before protocol_version 4. Updates');
+    log('  are still accepted; §5.1 says so rather than implying otherwise.');
   }
 }
 
@@ -1073,7 +1080,7 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || shipped === null || shippedUnsurfaced.length > 0 || shippedPhantom.length > 0
   || binding === null || unbound.length > 0
   || deletion.entryArm === null || deletion.linkArm === null
-  || !entryRefuses || !linkAccepts
+  || !entryRefuses || !linkRefuses
   || frictionBroken.length > 0 || frictionUnparsed.length > 0
   || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
   || xcheckBroken.length > 0;

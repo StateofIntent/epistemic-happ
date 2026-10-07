@@ -462,7 +462,7 @@ epistemic-happ/
 1. `validate_claim`: Author must match action author. Content and domain must be non-empty. Evidence hashes must point to valid Evidence entries.
 2. `validate_critique`: Author must match. Target must exist and its real DHT-derived entry type must match the claimed `target_type` (Claim, Critique, Constitution, Membrane, or CritiqueSpecies — scale-invariant, see §2.6). Content must be non-empty. Subject to SWO temporal friction (§2.3).
 3. `validate_worldline_trace`: Author must match agent field. At least one period boundary. Each `sample_action` must exist on the author's chain. Checksum must be 32 bytes. Temporal consistency. Expiration must be in future. HRR payload < 64KB.
-4. `validate_delete`: **Rejected.** Nothing is deleted. Entries are immutable.
+4. `validate_delete`: **Rejected**, and since `protocol_version: 4` so is every `DeleteLink` — nothing written is ever removed, entry or link. Entries may still be *updated*: the no-deletion rule is not immutability, and §5.1 is explicit about the difference rather than letting the shorter word stand in.
 
 **Link Types:**
 

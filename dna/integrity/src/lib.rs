@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -820,7 +820,8 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
         }
         FlatOp::Update(_) => Ok(ValidateCallbackResult::Valid),
         FlatOp::Delete(_) => Ok(ValidateCallbackResult::Invalid(
-            "Deletion is not permitted. Entries are immutable.".into()
+            "Deletion is not permitted. Nothing written here is ever removed; \
+entries may still be updated.".into()
         )),
         // The link arms are no longer struct variants carrying loose
         // base_address/target_address/tag fields. Those fields now live
@@ -832,7 +833,15 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
             }
             validate_create_link(link_type, action)
         }
-        FlatOp::Link(OpLink::DeleteLink { .. }) => Ok(ValidateCallbackResult::Valid),
+        // REFUSED AS OF PROTOCOL VERSION 4. This arm returned Valid for the
+        // life of versions 1-3, which made Invariant #6 ("nothing is deleted")
+        // true of entries and false of links: a `Critique` could not be
+        // deleted while the `SynapticLink` carrying its conductance could.
+        // §5.1 recorded that asymmetry and deferred the fix because any edit
+        // here forks the DNA hash. This commit is that fork.
+        FlatOp::Link(OpLink::DeleteLink { .. }) => Ok(ValidateCallbackResult::Invalid(
+            "Link deletion is not permitted. Nothing written here is ever removed.".into()
+        )),
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }
