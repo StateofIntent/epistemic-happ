@@ -282,6 +282,60 @@ PASSPHRASE="${HC_SANDBOX_PASSPHRASE:-sandbox-dev-passphrase-1234}"
 # any harness gives up. Override with EPI_GOSSIP_ROUND_TIMEOUT_MS.
 GOSSIP_ROUND_TIMEOUT_MS="${EPI_GOSSIP_ROUND_TIMEOUT_MS:-60000}"
 
+# THE GOSSIP INITIATION INTERVAL, WHICH IS WHAT THE SLOW BASELINE ACTUALLY WAS.
+#
+# The comment above says the surviving explanation for `network`'s slow baseline
+# is "the one that logs nothing wrong: at the first initiation attempt there is
+# no peer to gossip with, and the crossing then waits out `initiate_interval_ms`".
+# That was a hypothesis when it was written. IT IS NOW MEASURED, and the figure
+# is exactly the default:
+#
+#   `kitsune2_gossip-0.5.0/src/config.rs` defaults —
+#     initial_initiate_interval_ms: 1_000     (the opening burst)
+#     initiate_interval_ms:       120_000     <- the band
+#     initiate_jitter_ms:          10_000
+#     min_initiate_interval_ms:   300_000     (a PER-PEER floor)
+#
+# `peering-rate.mjs` run 37478744160, 30 trials across roundTimeoutMs 60000/
+# 30000/15000 interleaved: 12 of 25 crossings landed in a band at 123-153s,
+# contributed to about equally by all three arms, and EVERY ONE of those 12
+# trials contains a single stall of 107-123s with zero transport errors. A
+# 120s+jitter sleep minus the trailing accept/terminate lines of the burst
+# before it is that band, and nothing else in play produces it.
+# `partition-rejoin`'s own baseline failures — 125.3s twice to the decimal, and
+# 120.3s — sit in the same band on a harness that never varies roundTimeoutMs.
+#
+# SO roundTimeoutMs WAS NOT THE VARIABLE, which those 30 trials also settled:
+# 2, 1 and 2 non-crossings of ten across a 4x range of it. The setting above
+# stays because a lost round still cannot be retried for min_initiate_interval,
+# but it was never the thing making baselines slow.
+#
+# LOWERING initiate_interval_ms ALONE WOULD NOT HELP, and that is the whole
+# reason three keys change here rather than one. Its own doc comment: "This can
+# be set as low as you'd like, but you will still be limited by
+# min_initiate_interval_ms. So a low value for this will result in Kitsune doing
+# its gossip initiation in a burst. Then, when it has run out of peers, it will
+# idle for a while." On a four-node network a node exhausts its peers in
+# seconds, so the 300s per-peer floor becomes the binding constraint — which is
+# what the band trials show: nodeD initiated with both peers by ~25s and the
+# crossing then arrived INBOUND, from a peer initiating to it, in 8 of 12.
+#
+# These values are for a LOCAL TEST NETWORK of three or four nodes on one
+# machine, where the defaults' purpose — not hammering peers across a real
+# DHT — does not apply. Jitter is kept non-zero deliberately: its doc comment
+# explains it exists so that between a pair of nodes the same one is not always
+# the initiator, which still matters here.
+#
+# min_initiate_interval_ms is "enforced against incoming gossip and therefore
+# must be respected when initiating too", so a node whose peers disagree about
+# it gets its initiations refused. Every node here is configured by this script
+# from these same variables, so they agree — and `log-census.sh` already counts
+# `initiate too soon`, which is the refusal, so a value set too low announces
+# itself rather than quietly degrading.
+GOSSIP_INITIATE_INTERVAL_MS="${EPI_GOSSIP_INITIATE_INTERVAL_MS:-5000}"
+GOSSIP_INITIATE_JITTER_MS="${EPI_GOSSIP_INITIATE_JITTER_MS:-1000}"
+GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
+
 # THE CONDUCTOR'S LOG FILTER, RAISED SO THE SILENT PATH SPEAKS.
 #
 # The surviving explanation for `network`'s slow baseline is the one that logs
@@ -459,7 +513,7 @@ start_services() {
 # malformed one fails only the cell's network join while every port keeps
 # answering. Neither shows up as a startup failure, so a patch that quietly
 # missed would leave the flake in place and the fix recorded as shipped.
-set_gossip_round_timeout() {
+set_gossip_config() {
   local name="$1"
   local cfg="$NET_ROOT/$name/conductor-config.yaml"
   [ -f "$cfg" ] || fail "$name has no conductor-config.yaml at $cfg to configure."
@@ -468,33 +522,62 @@ set_gossip_round_timeout() {
     || fail "$name's config has no 'advanced:' key, so the gossip config cannot be placed under it. \
 The generated shape changed; check what 'hc sandbox generate ... network' now writes before adjusting this."
 
+  # Four keys, same treatment each. They are listed as key/value pairs rather
+  # than written out four times so that adding a fifth cannot accidentally skip
+  # the read-back below, which is the part that makes any of this trustworthy.
+  local -a keys=(
+    "roundTimeoutMs:$GOSSIP_ROUND_TIMEOUT_MS"
+    "initiateIntervalMs:$GOSSIP_INITIATE_INTERVAL_MS"
+    "initiateJitterMs:$GOSSIP_INITIATE_JITTER_MS"
+    "minInitiateIntervalMs:$GOSSIP_MIN_INITIATE_INTERVAL_MS"
+  )
+
+  # The block first, if it is not there at all. Inserted immediately after
+  # `advanced:`, which `hc sandbox generate` writes with `irohTransport`
+  # already under it — so this adds a sibling module and touches nothing
+  # kitsune2 was already being told.
+  if ! grep -qE '^    k2Gossip:' "$cfg"; then
+    sed -i "s|^  advanced:|  advanced:\n    k2Gossip:|" "$cfg"
+  fi
+
   # IDEMPOTENT, BECAUSE THIS ALSO RUNS ON RESUME. A `start` after a `stop`
   # re-reads the same persistent file, and a blind insert would stack a second
-  # `k2Gossip:` block under `advanced:` every time — a duplicate mapping key,
-  # which is the kind of thing that either errors obscurely or silently keeps
-  # one of the two. So: rewrite the line if it is already there, insert it only
-  # if it is not.
+  # copy of every key under `k2Gossip:` each time — duplicate mapping keys,
+  # which either error obscurely or silently keep one of the two. So: rewrite
+  # the line if it is already there, insert it only if it is not.
   #
   # Resume is covered deliberately rather than incidentally. A network
-  # generated before this setting existed would otherwise come back up on
-  # kitsune2's 15s default while the script reported the new value, and the
-  # next person to measure the flake would be measuring the old behaviour.
-  if grep -qE '^      roundTimeoutMs:' "$cfg"; then
-    sed -i "s|^      roundTimeoutMs:.*|      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS|" "$cfg"
-  else
-    # Inserted immediately after `advanced:`, which `hc sandbox generate`
-    # writes with `irohTransport` already under it — so this adds a sibling
-    # module and touches nothing kitsune2 was already being told.
-    sed -i "s|^  advanced:|  advanced:\n    k2Gossip:\n      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS|" "$cfg"
-  fi
+  # generated before these settings existed would otherwise come back up on
+  # kitsune2's defaults while the script reported the new values, and the next
+  # person to measure the flake would be measuring the old behaviour.
+  local pair key val
+  for pair in "${keys[@]}"; do
+    key="${pair%%:*}"; val="${pair#*:}"
+    if grep -qE "^      $key:" "$cfg"; then
+      sed -i "s|^      $key:.*|      $key: $val|" "$cfg"
+    else
+      sed -i "s|^    k2Gossip:|    k2Gossip:\n      $key: $val|" "$cfg"
+    fi
+  done
 
   [ "$(grep -cE '^    k2Gossip:' "$cfg")" = "1" ] \
     || fail "$name's config has $(grep -cE '^    k2Gossip:' "$cfg") 'k2Gossip:' keys under advanced, expected exactly 1. \
 A duplicated mapping key would leave it ambiguous which value kitsune2 reads."
 
-  grep -qE "^      roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS\$" "$cfg" \
-    || fail "$name's config does not contain roundTimeoutMs: $GOSSIP_ROUND_TIMEOUT_MS after patching it. \
+  # READ BACK EVERY ONE. Not ceremony: an entry under `advanced` that kitsune2
+  # does not recognise is discarded in silence, and a malformed one fails only
+  # the cell's network join while every port keeps answering. Neither shows up
+  # as a startup failure, so a patch that quietly missed would leave the flake
+  # in place and the fix recorded as shipped. A misspelled camelCase key is
+  # exactly the mistake this catches.
+  for pair in "${keys[@]}"; do
+    key="${pair%%:*}"; val="${pair#*:}"
+    grep -qE "^      $key: $val\$" "$cfg" \
+      || fail "$name's config does not contain '$key: $val' after patching it. \
 Nothing would have failed at startup, so this is checked here instead."
+    [ "$(grep -cE "^      $key:" "$cfg")" = "1" ] \
+      || fail "$name's config has $(grep -cE "^      $key:" "$cfg") '$key' keys under k2Gossip, expected exactly 1."
+  done
 }
 
 start_node() {
@@ -522,9 +605,9 @@ start_node() {
     [ -n "$idx" ] || fail "$name has a directory but no entry in $NET_ROOT/.hc, so it cannot be resumed by index. Recreate the network: scripts/network.sh clean && scripts/network.sh start"
     idx=$((idx - 1))   # grep -n is 1-based; hc sandbox indices are 0-based.
     # Applied before the conductor starts, for the reason
-    # `set_gossip_round_timeout` gives: a config written before this setting
+    # `set_gossip_config` gives: a config written before these settings
     # existed would otherwise resume on the 15s default.
-    set_gossip_round_timeout "$name"
+    set_gossip_config "$name"
 
     # APPENDED, NOT TRUNCATED, AND THAT ONE CHARACTER IS THE WHOLE FIX.
     #
@@ -566,7 +649,7 @@ start_node() {
         network -b "$BOOTSTRAP_URL" quic "$RELAY_URL" >> "$NET_ROOT/$name.log" 2>&1 )
     [ -d "$NET_ROOT/$name" ] || fail "$name was not generated. Log tail:$(echo; tail -n 30 "$NET_ROOT/$name.log")"
 
-    set_gossip_round_timeout "$name"
+    set_gossip_config "$name"
 
     local gidx
     gidx="$(grep -nxF "$NET_ROOT/$name" "$NET_ROOT/.hc" 2>/dev/null | head -n1 | cut -d: -f1)"
