@@ -263,6 +263,89 @@ function callSites(files) {
   return found;
 }
 
+/** SPEC §5.4 and §5.5 — the target cross-check, which is an ANTI-FORGERY rule
+ *  rather than a referential one.
+ *
+ * §5.4: "`Critique.target_type` MUST equal the *actual* DHT-derived type of the
+ * entry `Critique.target` resolves to. The validator independently fetches
+ * `target` and determines its real type." §5.5 applies the identical mechanism
+ * to `AntibodyPattern`.
+ *
+ * THE POINT IS THE WORD "INDEPENDENTLY". `target_type` is a field the AUTHOR
+ * fills in. If validation trusted it, anybody could attach a critique to a
+ * `Membrane` while labelling it a `Claim`, and every reader that branches on
+ * `target_type` — the UI's graph, the N4L export's alias prefixes (§9.2) — would
+ * follow the label rather than the entry. The whole typed-critique graph is only
+ * as sound as this one comparison.
+ *
+ * THREE PROPERTIES ARE CHECKED PER VALIDATOR, because each can rot alone:
+ *
+ *   1. it FETCHES the target (`must_get_entry`). Without the fetch there is no
+ *      independent anything.
+ *   2. it DERIVES the real type by downcasting the fetched entry, and the set of
+ *      kinds it can recognise equals `CritiqueTargetType`'s variants exactly.
+ *      A variant added to the enum without a matching branch means §3.4 and
+ *      §5.4 declare a target kind valid that the validator cannot identify; a
+ *      branch deleted silently narrows what may be critiqued.
+ *   3. it COMPARES the derived type against the claimed `target_type` field.
+ *      Steps 1 and 2 can both be present while nothing acts on the result —
+ *      the comparison is the only line that actually refuses a forgery.
+ *
+ * rustc CANNOT see any of it. `to_app_option` returns an `Option`, so dropping
+ * a branch is not a type error; `must_get_entry` is a host call nobody is
+ * obliged to make; and comparing two values is not something the compiler can
+ * require. Adding a sixth enum variant compiles everywhere, because the `if /
+ * else if` chain has an `else` and `match` has a `None` arm. It FAILS CLOSED,
+ * which is the safe direction and also the silent one: the new kind is simply
+ * refused while §3.4 keeps advertising it. */
+function targetCrossChecks() {
+  const src = readFileSync(INTEGRITY, 'utf8');
+
+  // The enum is the authority on which kinds exist. §3.4 defines it; the
+  // validators must be able to recognise exactly these.
+  const em = src.match(/pub enum CritiqueTargetType\s*\{([^}]*)\}/);
+  const variants = em
+    ? [...em[1].matchAll(/^\s*([A-Z]\w*)\s*,/gm)].map((m) => m[1])
+    : null;
+
+  const targets = [
+    { fn: 'validate_critique', binding: 'critique', next: 'fn validate_antibody_pattern' },
+    { fn: 'validate_antibody_pattern', binding: 'pattern', next: 'fn validate_evidence' },
+  ];
+
+  return {
+    variants,
+    checked: targets.map((t) => {
+      const start = src.indexOf(`fn ${t.fn}(`);
+      const end = src.indexOf(t.next, start);
+      if (start === -1 || end === -1) return { ...t, missing: true };
+      const body = src.slice(start, end);
+      const downcasts = [...new Set(
+        [...body.matchAll(/to_app_option::<(\w+)>/g)].map((m) => m[1]))];
+      return {
+        ...t,
+        missing: false,
+        // TIED TO THE TARGET, not merely present in the body. Accepting any
+        // `must_get_entry` here passed a mutation that removed the target
+        // fetch, because `validate_critique` also fetches `species_hash` for
+        // an unrelated check — the same too-loose matching as counting by
+        // proximity. So: capture the hash bound FROM `.target` and require the
+        // fetch to be of that binding.
+        fetches: (() => {
+          const bind = body.match(new RegExp(
+            `let\\s+(\\w+)\\s*=\\s*EntryHash::try_from\\(\\s*${t.binding}\\.target\\b`));
+          return bind !== null
+            && new RegExp(`must_get_entry\\(\\s*${bind[1]}\\b`).test(body);
+        })(),
+        downcasts,
+        // the derived value compared against the author's claimed field
+        compares: new RegExp(`==\\s*${t.binding}\\.target_type`).test(body)
+          || new RegExp(`${t.binding}\\.target_type\\s*==`).test(body),
+      };
+    }),
+  };
+}
+
 /** SPEC §5.3's referential integrity, per VALIDATOR rather than per field name.
  *
  * §5.3: every field typed as an `EntryHash` reference to another entry MUST
@@ -846,6 +929,58 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
 }
 
 // ---------------------------------------------------------------------------
+// SPEC §5.4/§5.5's target cross-check. An anti-forgery rule: the author's
+// claimed target_type must be compared against the type the DHT actually holds.
+// ---------------------------------------------------------------------------
+const xcheck = targetCrossChecks();
+const xcheckBroken = [];
+
+if (xcheck.variants === null) {
+  xcheckBroken.push('CritiqueTargetType could not be parsed — §3.4 names it as the authority '
+    + 'on valid target kinds, so without it there is nothing to compare the validators against');
+} else {
+  for (const c of xcheck.checked) {
+    if (c.missing) { xcheckBroken.push(`${c.fn} not found — §5.${c.fn.includes('critique') ? 4 : 5} describes a validator that is not there`); continue; }
+    if (!c.fetches) {
+      xcheckBroken.push(`${c.fn} does not fetch its target — §5.4 requires the validator to `
+        + `"independently fetch" it, and without the fetch the author's claimed target_type is `
+        + `simply believed`);
+    }
+    const missingKinds = xcheck.variants.filter((v) => !c.downcasts.includes(v));
+    const extraKinds = c.downcasts.filter((d) => !xcheck.variants.includes(d));
+    if (missingKinds.length > 0) {
+      xcheckBroken.push(`${c.fn} cannot recognise ${missingKinds.join(', ')} — `
+        + `CritiqueTargetType declares ${xcheck.variants.length} valid kinds and this validator `
+        + `identifies ${c.downcasts.length}. It fails CLOSED, so the kind is refused while §3.4 `
+        + `still advertises it as valid`);
+    }
+    if (extraKinds.length > 0) {
+      xcheckBroken.push(`${c.fn} downcasts to ${extraKinds.join(', ')}, which is not a `
+        + `CritiqueTargetType variant`);
+    }
+    if (!c.compares) {
+      xcheckBroken.push(`${c.fn} never compares the derived type against ${c.binding}.target_type — `
+        + `it may fetch and downcast and then act on neither, which is the one line that `
+        + `actually refuses a forgery`);
+    }
+  }
+}
+
+if (xcheckBroken.length > 0) {
+  log('DRIFT — §5.4/§5.5 target cross-check:');
+  for (const m of xcheckBroken) log(`  ${m}`);
+  log('  `target_type` is a field the AUTHOR fills in. Every reader that branches');
+  log('  on it — the UI graph, N4L\'s alias prefixes (§9.2) — follows the label');
+  log('  rather than the entry, so the typed-critique graph is only as sound as');
+  log('  this comparison.');
+  log('');
+} else {
+  log(`§5.4/§5.5 target cross-check: both validators fetch their target, recognise`);
+  log(`  all ${xcheck.variants.length} CritiqueTargetType kinds, and compare the derived type`);
+  log('  against the claimed one — so a mislabelled target cannot be published.');
+}
+
+// ---------------------------------------------------------------------------
 // SPEC §5.3's referential integrity. The property is not "every field is
 // checked" but "the exceptions are exactly the documented ones".
 // ---------------------------------------------------------------------------
@@ -940,15 +1075,16 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || deletion.entryArm === null || deletion.linkArm === null
   || !entryRefuses || !linkAccepts
   || frictionBroken.length > 0 || frictionUnparsed.length > 0
-  || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0;
+  || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
+  || xcheckBroken.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1, §5.2, §5.3 and §6 are checked now — four of SPEC\'s ~105 MUSTs.');
-  log('The per-type rules in §2 are not, and a call site is reach, not proof a');
-  log('function is well surfaced.)');
+  log('(§5.1, §5.2, §5.3, §5.4, §5.5 and §6 are checked now — six of SPEC\'s');
+  log('~105 MUSTs. The per-type rules in §2 are not, and a call site is reach,');
+  log('not proof a function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
