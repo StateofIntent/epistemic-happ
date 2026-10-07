@@ -1,0 +1,150 @@
+# Migrating darksoil-studio/tauri-plugin-holochain's holochain_runtime to Holochain 0.7
+#
+# Applies to `crates/holochain_runtime` of
+# https://github.com/darksoil-studio/tauri-plugin-holochain at branch `main`
+# (last push 2026-07-16), taken on 2026-10-07. `git apply -p1` from the repo root.
+#
+# NOT A CONTRIBUTION AND NOT UPSTREAMED. It exists because README §9 records the
+# cost of that migration as measured rather than estimated, and a figure with no
+# artefact behind it is the kind of claim this repository does not keep. The
+# official mobile path is Holochain's own cleanroom implementation, already on
+# 0.7 and awaiting permission to reuse a name — so this is a fallback nobody
+# currently needs.
+#
+# WHAT IT IS VERIFIED TO DO: `cargo check` exits 0, on both wasmer backends —
+# `wasmer-sys` + `wasmer-sys-cranelift` for desktop and Android, and
+# `wasmer-wasmi`, the interpreted backend iOS requires.
+#
+# WHAT IT IS NOT VERIFIED TO DO: anything at runtime. It was never built, never
+# tested, and no mobile artefact was produced from it. `tauri-plugin-holochain`
+# itself, `hc-pilot` and the scaffold crates are untouched.
+#
+# It will rot: it is a patch against a third-party `main`. The per-change
+# reasoning is in README §9, which survives the rot.
+
+--- a/crates/holochain_runtime/Cargo.toml
++++ b/crates/holochain_runtime/Cargo.toml
+@@ -5,23 +5,23 @@
+ 
+ [dependencies]
+ # Holochain dependencies
+-holochain = { version = "0.6.1", default-features = false, features = [ "wasmer_sys", "transport-iroh", "schema" ] }
+-mr_bundle = {version = "0.6.1", default-features = false }
+-holochain_types = {version = "0.6.1", default-features = false }
+-holochain_keystore = {version = "0.6.1", default-features = false }
+-holochain_conductor_api = {version = "0.6.1", default-features = false }
+-holochain_util = {version = "0.6.1", default-features = false }
++holochain = { version = "0.7", default-features = false, features = [ "wasmer-sys", "wasmer-sys-cranelift", "schema" ] }
++mr_bundle = {version = "0.7", default-features = false }
++holochain_types = {version = "0.7", default-features = false }
++holochain_keystore = {version = "0.7", default-features = false }
++holochain_conductor_api = {version = "0.7", default-features = false }
++holochain_util = {version = "0.7", default-features = false }
+ 
+ kitsune_p2p_mdns = { path = "../mdns" }
+ kitsune2_api = "*"
+ kitsune2_core = "*"
+ 
+ # Lair dependencies
+-lair_keystore_api = { version = "0.6.3", default-features = false }
+-lair_keystore = { version = "0.6.3", default-features = false }
++lair_keystore_api = { version = "0.7", default-features = false }
++lair_keystore = { version = "0.7", default-features = false }
+ 
+ # Holochain client
+-holochain_client = { version = "0.8", default-features = false }
++holochain_client = { version = "0.9", default-features = false }
+ 
+ # Other dependencies
+ tracing = { version = "0.1", features = ["log", "log-always"] }
+@@ -44,15 +44,15 @@
+ tokio = "1"
+ anyhow = "1"
+ 
+-# Workaround: iroh-base-holochain 0.95.1 hard-pins ed25519-dalek = "=3.0.0-pre.1",
+-# which fails to compile against released RustCrypto crates. Pin pkcs8 to the
+-# same version Holochain's scaffolded zomes pin to, so consumers that mix this
+-# plugin with Holochain zomes get a consistent resolution. Remove once
+-# iroh-base-holochain publishes a release that unpins ed25519-dalek.
+-ed25519 = "=3.0.0-rc.0"
+-pkcs8 = "=0.11.0-rc.11"
++# The ed25519/pkcs8 hard pins that lived here are REMOVED. Their own comment
++# said "Remove once iroh-base-holochain publishes a release that unpins
++# ed25519-dalek" — on 0.7 the transport is `kitsune2_transport_iroh` 0.5 and
++# `iroh-base-holochain` is no longer in the tree, so the premise is gone. They
++# were resolution hints, not used by this crate's source.
+ 
+ [features]
++# 0.7 renamed these. `sqlite` and `sqlite-encrypted` are gone; the encryption
++# toggle is now `encryption`, and plain sqlite is unconditional.
+ default = ["sqlite-encrypted"]
+-sqlite = ["holochain/sqlite", "lair_keystore/rusqlite-bundled"]
+-sqlite-encrypted = ["holochain/sqlite-encrypted", "lair_keystore/rusqlite-bundled-sqlcipher-vendored-openssl"]
++sqlite = ["lair_keystore/rusqlite-bundled"]
++sqlite-encrypted = ["holochain/encryption", "lair_keystore/rusqlite-bundled-sqlcipher-vendored-openssl"]
+--- a/crates/holochain_runtime/src/happs/install.rs
++++ b/crates/holochain_runtime/src/happs/install.rs
+@@ -21,6 +21,10 @@
+             source: AppBundleSource::Path(app_bundle_path),
+             installed_app_id: Some(app_id.clone()),
+             ignore_genesis_failure: false,
++            // 0.7 added this. `true` suppresses genesis and rebuilds each cell's
++            // source chain from the DHT, and requires `agent_key` to be Some —
++            // not what a fresh install wants.
++            restore_from_dht: false,
+         })
+         .await
+         .map_err(|err| crate::Error::ConductorApiError(err))?;
+--- a/crates/holochain_runtime/src/happs/update.rs
++++ b/crates/holochain_runtime/src/happs/update.rs
+@@ -112,10 +112,8 @@
+                     .iter()
+                     .find(|(zome, _)| zome.eq(&zome_name))
+                 {
+-                    if !old_zome_def
+-                        .1
+-                        .wasm_hash(&zome_name)?
+-                        .eq(&coordinator_zome.wasm_hash(&zome_name)?)
++                    if !coordinator_wasm_hash(&zome_name, &old_zome_def.1)?
++                        .eq(&coordinator_wasm_hash(&zome_name, &coordinator_zome)?)
+                     {
+                         log::info!("Updating coordinator zome {zome_name} for role {role_name}");
+                         zomes.push(ZomeManifest {
+@@ -207,3 +205,24 @@
+     let (dna_file, original_hash) = dna_bundle.into_dna_file(Default::default()).await?;
+     Ok((dna_file, original_hash))
+ }
++
++/// 0.7 removed `CoordinatorZomeDef::wasm_hash(&ZomeName)`. The hash still lives
++/// on the inner `WasmZomeDef`, reachable through `as_any_zome_def`, so this is
++/// the same value by a different route rather than a behaviour change.
++///
++/// It returns `ZomeError::NonWasmZome` deliberately: that is exactly what 0.7's
++/// own `DnaDef::get_wasm_zome_hash` returns in the same situation, and
++/// `UpdateHappError` already has `#[from] ZomeError`, so `?` keeps working at
++/// the call sites without a new error variant.
++///
++/// `ZomeDef::Inline` sits behind the `full-dna-def` feature, so the match needs
++/// a catch-all rather than being exhaustive over what is visible here.
++fn coordinator_wasm_hash(
++    zome_name: &holochain_types::prelude::ZomeName,
++    def: &holochain_types::prelude::CoordinatorZomeDef,
++) -> std::result::Result<holochain_types::prelude::WasmHash, ZomeError> {
++    match def.as_any_zome_def() {
++        holochain_types::prelude::ZomeDef::Wasm(w) => Ok(w.wasm_hash.clone()),
++        _ => Err(ZomeError::NonWasmZome(zome_name.clone())),
++    }
++}
+--- a/crates/holochain_runtime/src/holochain_runtime.rs
++++ b/crates/holochain_runtime/src/holochain_runtime.rs
+@@ -462,7 +462,10 @@
+ 
+         log::info!("Disabled all running apps to leave their networks.");
+ 
++        // 0.7: `Conductor::shutdown(self: Arc<Self>)` takes the Arc BY VALUE, so
++        // calling it through `&self` needs an owned clone of the handle.
+         self.conductor_handle
++            .clone()
+             .shutdown()
+             .await
+             .map_err(|e| crate::Error::HolochainShutdownError(e.to_string()))?
