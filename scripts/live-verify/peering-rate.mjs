@@ -544,6 +544,33 @@ async function main() {
   // Restores the shape every other harness in this directory expects: three
   // nodes up, nodeD down. The last trial left nodeD running.
   try { net('stop-node', 'nodeD'); } catch { /* best effort */ }
+
+  // EXIT EXPLICITLY, BECAUSE THIS HARNESS OTHERWISE NEVER DOES — and that cost
+  // three runs before anybody noticed, including a 12-trial measurement whose
+  // conductor-log archive was lost because the job was killed before the
+  // upload step.
+  //
+  // `connectNode` opens an AdminWebsocket and an AppWebsocket per node per
+  // trial and returns neither, so nothing can close them. Open sockets are
+  // live libuv handles, so Node keeps the event loop alive after `main()`
+  // resolves. Earlier trials get away with it because the NEXT trial runs
+  // `network.sh clean`, which takes those conductors down and lets the client
+  // sockets error out — but the last trial has no successor, and
+  // `stop-node nodeD` leaves nodeA, nodeB and nodeC running. So the process
+  // ends every run holding live sockets to a live conductor, and waits forever.
+  //
+  // The symptom is NOT a hang in the measurement: every orphaned run printed
+  // its full summary first, trials and all. The work finished; the process
+  // would not leave. Diagnosed by noticing that `cross-internet.mjs` — same
+  // connect pattern, same client library — never orphaned once, and the only
+  // relevant difference is that its `main()` ends with an explicit exit.
+  //
+  // Exiting rather than closing the sockets: closing them would mean threading
+  // both clients out of `connectNode` and through every trial's error paths, to
+  // tear down something the operating system reclaims a millisecond later. A
+  // harness that has printed its result has nothing left to do, and the archive
+  // is already on disk before this line.
+  process.exit(0);
 }
 
 main().catch((e) => { console.error('\nHARNESS ERROR:', e); process.exit(1); });

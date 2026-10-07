@@ -2456,17 +2456,35 @@ each of these is currently exactly that.
   reaches from CI failures, reached independently from a deliberate measurement,
   which is the first time these two routes have agreed about this question.
 
-  **What the run did NOT produce is the archive**, and the reason is worth
-  recording. The harness finished all 12 trials in 20 minutes; the job then hung
-  AFTER the harness step and was terminated 45 minutes later with the upload
-  never running — so the crossing times survived in the step log and the
-  conductor logs did not. Two of the three long `peering-rate` runs have now
-  been orphaned this way, both times after the harness itself completed, and
-  `timeout-minutes` did not fire on either. That is outside the harness
-  entirely: no amount of in-process bounding helps when the job, not the
-  process, is what stops progressing. The mitigation is shorter dispatches —
-  four trials rather than twelve — since the exposure scales with how long the
-  job stays alive.
+  **What the run did NOT produce is the archive, and the cause was a bug in this
+  harness rather than anything about CI.** The paragraph that stood here blamed
+  GitHub for orphaning the job and proposed shorter dispatches as the
+  mitigation. Both were wrong, and a four-trial run disproved the mitigation
+  within the hour: it finished its trials in five minutes and then hung for
+  eighty-seven more.
+
+  **`peering-rate.mjs` never exited.** `connectNode` opens an `AdminWebsocket`
+  and an `AppWebsocket` per node per trial and returns neither, so nothing can
+  close them; open sockets are live libuv handles, so Node keeps the event loop
+  alive after `main()` resolves. Earlier trials escape it because the next trial
+  runs `network.sh clean`, which takes those conductors down and lets the client
+  sockets error out — but the last trial has no successor, and `stop-node nodeD`
+  leaves nodeA, nodeB and nodeC running. Every run therefore ended holding live
+  sockets to a live conductor and waited forever.
+
+  **Three runs were lost to it, and the symptom pointed away from the cause the
+  whole time.** Every orphaned run printed its complete summary first — trials,
+  table, footer. The measurement always finished; the process would not leave.
+  That looked exactly like infrastructure losing a runner, which is what it was
+  twice written up as, and `timeout-minutes` not firing seemed to confirm it.
+  What settled it was a control sitting in the same directory:
+  `cross-internet.mjs` uses the same connect pattern and the same client
+  library, has never orphaned once, and differs in one relevant respect — its
+  `main()` ends with an explicit `process.exit`. `peering-rate.mjs` had one only
+  on the error path.
+
+  Fixed with an explicit exit, and the other 43 harnesses were checked for the
+  same shape — a harness that connects and has no exit. None of them has it.
 
   **And the "21 runs, no failures" figure was an artefact of this entry's own
   warning.** It was read off `gh run list`, which cannot see a failure that was
