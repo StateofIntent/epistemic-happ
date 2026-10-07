@@ -2406,6 +2406,34 @@ each of these is currently exactly that.
   development machine's 307.5s looked like `min_initiate_interval_ms` and was a
   coincidence; the driver is the 120s interval.
 
+  **The fix held, and the rate is worth stating with its own caveat.** Since
+  `initiate_interval_ms` was lowered, `network` has run 21 times to completion
+  with no failure recorded, against a job that was failing often enough before
+  it to need a re-run on three consecutive pull requests. One post-fix failure
+  did occur — on a documentation-only branch, so not caused by the change under
+  test — and it is characterised below.
+
+  **AND THE RECORDED HISTORY UNDERCOUNTS, BECAUSE RE-RUNNING A FAILED JOB
+  OVERWRITES ITS CONCLUSION.** `gh run list` shows two `network` failures in the
+  project's history, both from 2026-10-06. That is not the real number: every
+  failure that was re-run — #190, #191, #192 and the one below — had its
+  conclusion replaced by the re-run's, so the evidence of the failure rate was
+  destroyed by the act of remediating it. The honest figures come from what was
+  observed at the time, not from the run list, and anyone computing a flake rate
+  from GitHub's API here will get a number that is too low by however many times
+  somebody pressed re-run. Worth knowing before trusting that endpoint for any
+  reliability claim.
+
+  **The one post-fix failure is not either known cause, and that is the open
+  thread.** `real-gossip`'s crossing never happened inside 330s, with
+  `iroh connect timed out` at **zero** — so not the transport class that
+  explained four of five non-crossings — and `Initiated gossip with` at
+  **70**. A node that initiated seventy times in 330 seconds and still never
+  received the entry rules out "it needed to retry more often", which is exactly
+  what the lowered interval bought. It is one occurrence, which by this
+  section's own standard is not a finding; the census is instrumented to
+  recognise it if it recurs.
+
   **So the band is not a bug — it is a configured default**, and
   `partition-rejoin`'s three baseline failures today (125.3s, 125.3s, 120.3s)
   were the same default, on a harness that never varies `roundTimeoutMs`.
