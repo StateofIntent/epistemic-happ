@@ -2188,13 +2188,16 @@ each of these is currently exactly that.
   is exactly why the run that mattered was lost. So a re-filing needs a short
   write-up and a captured log pair, in that order of scarcity.
 
-  **The instrument for the second of those now exists and has not been run.**
-  `peering-rate.mjs` archives the conductor logs of every slow or absent
-  crossing plus fast trials as controls, and `.github/workflows/peering-rate.yml`
-  runs it on a two-vCPU hosted runner — the machine slow enough to lose a 15s
-  gossip round, which the development machine measured below is not. Dispatch
-  only, asserts nothing, uploads the archive. **No run of it has happened yet,
-  so nothing here is claimed from it.**
+  **The instrument for the second of those was built, run twice, and settled the
+  question against the hypothesis it was built to test.** `peering-rate.mjs`
+  archives every trial's conductor logs, and
+  `.github/workflows/peering-rate.yml` runs it on a two-vCPU hosted runner — the
+  machine slow enough to lose a 15s gossip round, which the development machine
+  measured below is not. Dispatch only, asserts nothing, uploads the archive.
+  **What it found is below**, and the short version is that there is nothing to
+  re-file: the symptom decomposed into `initiate_interval_ms` and an iroh
+  transport timeout, neither a kitsune2 gossip defect, so the log pair this
+  paragraph was written to go and capture turned out not to document a bug.
 
   **That log line does now have a mechanism, which is worth writing down even
   though it is no longer the lead.** Read out of `kitsune2_gossip-0.5.0`: gossip
@@ -2467,8 +2470,8 @@ each of these is currently exactly that.
   this case off a log without checking a clock. What the question actually was,
   all along, is a test network running a protocol tuned for the open internet.
 
-- **Cross-internet peer discovery is still untested — but that is now a fact
-  about what has been run, not about what can be.** This was recorded for the
+- **Cross-internet peer discovery has one measured crossing, after a lifetime of
+  having none.** This was recorded for the
   life of the repository as the one thing nobody could check: every verification
   here is one machine, `sandbox.sh` being a single conductor and `network.sh`
   three or four against a bootstrap and iroh relay on 127.0.0.1. Loopback peers
@@ -2513,10 +2516,37 @@ each of these is currently exactly that.
   runner produces the same observable as a protocol fault. A red run is a prompt
   to read the conductor logs, which upload on `always()`.
 
-  **AND IT HAS NEVER BEEN RUN.** Nothing above is evidence about peer discovery;
-  it is evidence that the question is now answerable. The claim in INSTALL.md
-  stands unchanged until a run exists, and when one does, this entry should say
-  what it found rather than that it is possible.
+  **IT RAN, AND IT CROSSED IN 5.0 SECONDS.** Run `37564173490`, two jobs:
+
+  | | publisher | reader |
+  |---|---|---|
+  | DNA hash | `hC0kdkvws+au+3nTMDR8tirf…` | **identical** |
+  | agent key | `hCAkZlX7D7U0J+VmQuhjKRy3…` | **different** |
+  | | published into `XNet37564173490` at 03:07:03.70 | `t+0s` nothing · **CROSSED in 5.0s** at 03:07:09.14 |
+
+  All three of the checks this harness prints for exactly this purpose are
+  clean: the two hosts reported the **same DNA hash**, so they were genuinely on
+  one DHT; **different agent keys**, so it was two nodes rather than one
+  conductor finding its own entry; and the bootstrap was answering, with
+  `cross-internet-node.sh` confirming the generated config actually named the
+  public services rather than silently falling back to localhost. The crossing
+  took one poll interval — discovery through
+  `dev-test-bootstrap2.holochain.org`, NAT traversal via iroh's canary relay,
+  and the gossip of a single entry, all inside five seconds between two machines
+  that had never heard of each other.
+
+  **This is the first evidence in this repository's life that any of it works
+  off one machine.** Forty-three harnesses preceded it and every one ran on a
+  single host.
+
+  **Three things it does NOT establish, and they matter more than the result.**
+  It is **one run**, so it shows the crossing can happen and nothing about how
+  often. Those were two **datacentre VMs with public addresses and good
+  connectivity** — two laptops behind consumer routers is the harder case, the
+  one relays exist for, and it is still unchecked; INSTALL.md says so to users
+  rather than claiming their case is covered. And the publisher **held** for the
+  whole window, so this measured discovery-then-gossip with both peers up, which
+  is not a node that was offline coming back.
 
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
@@ -2618,8 +2648,8 @@ each of these is currently exactly that.
   **Two consequences to weigh even once it is unblocked**, neither of them a
   packaging problem: mobile nodes run **zero-arc**, so they hold and serve no DHT
   data and depend on reliable full-arc peers — and cross-internet peer discovery
-  is the one thing this project has never tested, though **a harness for it now
-  exists and has not been run** (see the §9 entry below). And the desktop
+  now has **one measured crossing** (5.0s, two datacentre VMs — not the
+  consumer-router case; see the §9 entry below). And the desktop
   builds are unsigned today, which is survivable for sideloading and impossible
   for the App Store.
 
@@ -2842,7 +2872,7 @@ each of these is currently exactly that.
 
   **That run also showed something no green run could have.** Check 9's own assertion — nodeB does not see nodeA's constitution — **passed** during the injection, because the node in the nodeB slot was on a different DHT and could not have seen anything at all. What exposed the pass as empty was the paired control immediately after it going red. That is the exact job the paired control was added to do, now confirmed rather than assumed: without it, the sharpest check in this harness reports a meaningless green precisely when the network is broken in the way that matters most. Restored afterwards and re-run: all 25 checks green again, on the same conductors, without cleaning them.
 
-  **The honest limit, since a green result here invites a bigger claim than it supports.** All three conductors run on one machine against a localhost bootstrap and a localhost signal server. What is now verified is that this hApp's entries propagate between genuinely separate conductors over a real transport, with real peer discovery, and that the chain-local reads stay chain-local when they do. What is *not* touched: NAT traversal, a public signal server, real internet latency, network partition and rejoin, or more than trivially few nodes. That is the next real networking gap, named here the same way the Launcher-install gap is named above rather than left to be discovered by someone reading a passing test as more than it is.
+  **The honest limit, since a green result here invites a bigger claim than it supports.** All three conductors run on one machine against a localhost bootstrap and a localhost signal server. What is now verified is that this hApp's entries propagate between genuinely separate conductors over a real transport, with real peer discovery, and that the chain-local reads stay chain-local when they do. What is *not* touched here: network partition and rejoin, or more than trivially few nodes. **Three items were struck from this list after it was written, and by different work:** partition and rejoin is covered by `partition-rejoin` in `network.yml`, and NAT traversal, a public bootstrap and real internet latency were all exercised by the cross-internet crossing recorded in §9 — one run, two hosts, 5.0s. The sentence is left in place rather than deleted because a list of what a green result does *not* cover is worth keeping honest as the coverage changes, and this one was wrong in the direction of understating it. That is the next real networking gap, named here the same way the Launcher-install gap is named above rather than left to be discovered by someone reading a passing test as more than it is.
 
 - [x] **Partition and rejoin — a node that was offline while history was written catches up. It took about five and a half minutes on Holochain 0.4.4, and takes about 55 seconds on 0.7; see the correction at the end of this section.** `scripts/live-verify/partition-rejoin.mjs`, and `stop-node`/`start-node` added to `scripts/network.sh`.
 
@@ -3731,11 +3761,10 @@ and install it from a file. No Rust, no Node, no terminal, no account.
 Everyone installing the same `.webhapp` lands on the same network — the bundle
 declares no network seed, so the file itself decides which peers you join.
 INSTALL.md states the two caveats that matter to a first-time user in plain
-terms: cross-internet peer discovery is the one thing this project has never
-tested, and a returning node takes minutes rather than seconds to catch up when
-it is the only other peer. **"Never tested" is now a statement about what has
-been run rather than about what can be** — `.github/workflows/cross-internet.yml`
-exists and has never been dispatched; see §9.
+terms: cross-internet peer discovery now has **exactly one measured crossing**
+— 5.0s between two hosts, which is one run on datacentre VMs and not the
+two-consumer-routers case that matters to a user — and a returning node takes
+minutes rather than seconds to catch up when it is the only other peer. See §9.
 
 ## Licence
 
