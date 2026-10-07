@@ -263,6 +263,82 @@ function callSites(files) {
   return found;
 }
 
+/** Every "MUST be non-empty" §2 states, against the validator for that type.
+ *
+ * THIS IS THE GAP THIS FILE'S OWN CLOSING LINE HAS ADMITTED ALL ALONG. It has
+ * said, every green run, that "the per-type rules in §2 are not" checked. §2's
+ * tables are where this protocol says what each entry type's fields must be,
+ * row by row, and fifteen of those rows say a field MUST be non-empty.
+ *
+ * WHY NON-EMPTINESS IS WORTH FIFTEEN CHECKS RATHER THAN BEING BENEATH NOTICE.
+ * Every one of these fields is the thing its entry exists to carry. A `Critique`
+ * with empty `content` is a typed objection that says nothing — it still
+ * attaches to its target, still occupies a `TargetToCritique` link, still
+ * counts against the author's friction budget, and still appears in every
+ * reader's critique stack as an entry demanding attention. A `Retraction` with
+ * an empty `reason` withdraws a claim while explaining nothing, which §2.3 is
+ * explicit about not wanting. A `Membrane` with empty `required_promises` is a
+ * membrane nobody can fail to qualify for, which empties §5's whole governance
+ * story. The rule is dull; the consequence of dropping one is not.
+ *
+ * PARSED FROM §2's TABLES, NOT LISTED HERE. The gate walks `### 2.N `Type``
+ * sections and takes the rows whose description says MUST be non-empty, so
+ * adding a field to §2 with that requirement extends the check automatically
+ * and removing one narrows it. A hardcoded list would drift from the document
+ * it exists to enforce — which is this file's recurring lesson in another form.
+ *
+ * TWO THINGS ARE CHECKED PER PAIR, because the first without the second is
+ * decoration: the validator GUARDS the field with `is_empty()`, and the block
+ * that guard opens actually returns `Invalid`. Brace-matched rather than
+ * window-matched, which is the §5.18 lesson — a character window there ran on
+ * into the next check's refusal and passed a mutation that deleted the real
+ * one.
+ *
+ * rustc cannot help: an `if` nobody writes is not a type error, and §2 is
+ * Markdown. */
+function nonEmptyRules() {
+  const spec = readFileSync(SPEC, 'utf8');
+  const src = readFileSync(INTEGRITY, 'utf8');
+
+  const pairs = [];
+  for (const [, type, body] of spec.matchAll(/^### 2\.\d+ `(\w+)`[^\n]*\n([\s\S]*?)(?=^### |\Z)/gm)) {
+    for (const row of body.matchAll(/^\| `([a-z_]+)` \|[^|]*\|([^|]*)\|/gm)) {
+      if (/MUST (be non-empty|NOT be empty)/.test(row[2])) pairs.push({ type, field: row[1] });
+    }
+  }
+
+  const vals = {};
+  const marks = [...src.matchAll(/^fn (validate_[a-z_]+)\(\s*(\w+)\s*:\s*&(\w+)/gm)];
+  marks.forEach((m, i) => {
+    const end = i + 1 < marks.length ? marks[i + 1].index : src.length;
+    vals[m[3]] = { fn: m[1], binding: m[2], body: src.slice(m.index, end) };
+  });
+
+  return pairs.map((p) => {
+    const v = vals[p.type];
+    if (!v) return { ...p, fn: '(no validator)', guarded: false, refuses: false };
+    // `.is_empty()` on the field, allowing one intervening accessor such as
+    // `.trim()` — the guard must still be ON this field.
+    const at = v.body.search(
+      new RegExp(`${v.binding}\\.${p.field}(?:\\.\\w+\\(\\))?\\s*\\.is_empty\\(\\)`));
+    let refuses = false;
+    if (at !== -1) {
+      const open = v.body.indexOf('{', at);
+      if (open !== -1) {
+        let d = 0;
+        for (let i = open; i < v.body.length; i++) {
+          if (v.body[i] === '{') d++;
+          else if (v.body[i] === '}') {
+            d--;
+            if (d === 0) { refuses = /ValidateCallbackResult::Invalid/.test(v.body.slice(open, i)); break; }
+          }
+        }
+      }
+    }
+    return { ...p, fn: v.fn, guarded: at !== -1, refuses };
+  });
+}
+
 /** SPEC §5.18 — only a membrane's own founder may federate on its behalf.
  *
  * §5.18: "`local_membrane` MUST resolve to a real `Membrane` entry, and the
@@ -1077,6 +1153,38 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
 }
 
 // ---------------------------------------------------------------------------
+// Every "MUST be non-empty" §2 states. The gap this file's closing line has
+// admitted on every green run: "the per-type rules in §2 are not" checked.
+// ---------------------------------------------------------------------------
+const nonEmpty = nonEmptyRules();
+const nonEmptyBroken = nonEmpty
+  .filter((r) => !r.guarded || !r.refuses)
+  .map((r) => (!r.guarded
+    ? `${r.type}.${r.field} (${r.fn}) is never checked for emptiness, and §2 says it MUST be non-empty`
+    : `${r.type}.${r.field} (${r.fn}) is guarded by is_empty() but that branch does not return Invalid — it notices and permits`));
+const nonEmptySetup = nonEmpty.length === 0
+  ? ['no (type, field) pairs parsed from §2 at all — its tables or headings changed shape']
+  : [];
+
+if (nonEmptySetup.length > 0) {
+  log('SETUP FAILED — §2 non-emptiness could not be read:');
+  for (const m of nonEmptySetup) log(`  ${m}`);
+  log('');
+} else if (nonEmptyBroken.length > 0) {
+  log('DRIFT — §2 requires a field to be non-empty and validation does not:');
+  for (const m of nonEmptyBroken) log(`  ${m}`);
+  log('  Each of these fields is what its entry exists to carry. A Critique with');
+  log('  empty content still attaches to its target, still holds a link, still');
+  log('  spends friction and still appears in every reader\'s stack — saying');
+  log('  nothing. The rule is dull; dropping one is not.');
+  log('');
+} else {
+  log(`§2 non-emptiness: ${nonEmpty.length} of ${nonEmpty.length} fields §2 requires non-empty are`);
+  log('  guarded AND refused — parsed from §2\'s own tables, so adding a row');
+  log('  extends this check rather than bypassing it.');
+}
+
+// ---------------------------------------------------------------------------
 // SPEC §5.18 — only a membrane's founder may federate on its behalf. A
 // governance rule neither §5.2's author binding nor §5.3's resolution reaches.
 // ---------------------------------------------------------------------------
@@ -1281,15 +1389,16 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
   || xcheckBroken.length > 0
   || boundsBroken.length > 0
-  || fedBroken.length > 0;
+  || fedBroken.length > 0
+  || nonEmptyBroken.length > 0 || nonEmptySetup.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1, §5.2, §5.3, §5.4, §5.5, §5.6, §5.18, §6 and the figures §8 states');
-  log('are checked now — nine of SPEC\'s ~105 MUSTs. The per-type rules in §2 are');
-  log('not, and a call site is reach, not proof a function is well surfaced.)');
+  log('(§5.1, §5.2, §5.3, §5.4, §5.5, §5.6, §5.18, §6, the figures §8 states and');
+  log(`§2's ${nonEmpty.length} non-emptiness rules are checked now — about ${9 + nonEmpty.length} of SPEC's ~105`);
+  log('MUSTs. A call site is still reach, not proof a function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
