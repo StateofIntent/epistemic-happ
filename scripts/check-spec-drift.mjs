@@ -263,6 +263,63 @@ function callSites(files) {
   return found;
 }
 
+/** Every constant SPEC names WITH ITS VALUE, against the code that defines it.
+ *
+ * §8.1 writes `HRR_DIM = 512`, §8.3 writes `MAX_NEIGHBORHOOD_CRITIQUES = 512`,
+ * §8.2 writes `MAX_RESONANCE_QUERY_PERIODS = 4096`, and §5.6 writes
+ * "`Mew.content` MUST be ≤ 560 bytes". Four numbers stated as fact in a
+ * specification and defined independently in Rust, with nothing comparing them.
+ *
+ * THIS IS THE FRICTION-TABLE GATE'S SHAPE APPLIED WHEREVER ELSE SPEC COMMITS TO
+ * A NUMBER. The friction table was worth gating because §6 calls those limits
+ * absolute cutoffs; these are worth gating for a plainer reason — a
+ * specification that states a figure is making a promise a reader will rely on,
+ * and three of these four are quoted in §8 as part of the HRR scheme's
+ * definition. `HRR_DIM` in particular is load-bearing in a way a reader cannot
+ * check: §8.1 fixes the vector encoding at 512 x 4 = 2048 bytes and calls the
+ * round-trip exact, so a zome built with a different dimension would produce
+ * payloads that decode to the wrong length and silently mis-score every
+ * resonance query against stored traces.
+ *
+ * WHY THE SET IS ONLY FOUR, SAID PLAINLY BECAUSE IT LOOKS THIN. The zome
+ * defines well over twenty numeric constants — `CHECKPOINT_SCAN_CAP`,
+ * `DEFAULT_GROUNDING_MAX_DEPTH`, `MAX_ATTESTATION_SEARCH_NODES`,
+ * `CONDUCTANCE_HALF_LIFE_SECS` and more. SPEC names none of those, so there is
+ * nothing to compare them against and a gate asserting anything about them
+ * would be inventing a requirement rather than checking one. Four is the number
+ * of places SPEC actually commits to a figure outside §6, and the gate covers
+ * exactly those.
+ *
+ * rustc CANNOT: these are independent literals in a Rust crate and a Markdown
+ * file. Nothing links them.
+ *
+ * READ FROM SPEC RATHER THAN RESTATED HERE, so that changing SPEC's figure
+ * changes what the gate demands — a gate carrying its own copy of the number
+ * would pass while both it and the zome drifted away from the document. */
+function namedBounds() {
+  const spec = readFileSync(SPEC, 'utf8');
+  const src = readFileSync(INTEGRITY, 'utf8') + readFileSync(ZOME, 'utf8');
+
+  const named = ['HRR_DIM', 'MAX_NEIGHBORHOOD_CRITIQUES', 'MAX_RESONANCE_QUERY_PERIODS'];
+  const out = named.map((name) => {
+    const sm = spec.match(new RegExp(`${name}\\s*=\\s*([0-9_]+)`));
+    const cm = src.match(new RegExp(`const ${name}\\s*:\\s*\\w+\\s*=\\s*([0-9_]+)`));
+    const n = (x) => (x ? Number(x[1].replace(/_/g, '')) : null);
+    return { name, spec: n(sm), code: n(cm) };
+  });
+
+  // §5.6 is a bound rather than a named constant: SPEC states the number in
+  // prose and the zome enforces it with a comparison.
+  const mewSpec = spec.match(/`Mew\.content`\s+MUST be ≤ ([0-9]+) bytes/);
+  const mewCode = src.match(/content\s*\.\s*len\(\)\s*>\s*([0-9]+)|len\(\)\s*>\s*([0-9]{3})/);
+  out.push({
+    name: 'Mew.content byte bound (§5.6)',
+    spec: mewSpec ? Number(mewSpec[1]) : null,
+    code: mewCode ? Number(mewCode[1] ?? mewCode[2]) : null,
+  });
+  return out;
+}
+
 /** SPEC §5.4 and §5.5 — the target cross-check, which is an ANTI-FORGERY rule
  *  rather than a referential one.
  *
@@ -936,6 +993,32 @@ if (deletion.entryArm === null || deletion.linkArm === null) {
 }
 
 // ---------------------------------------------------------------------------
+// Every constant SPEC names with its value. Four figures stated as fact in the
+// document and defined independently in Rust.
+// ---------------------------------------------------------------------------
+const bounds = namedBounds();
+const boundsBroken = bounds
+  .filter((b) => b.spec === null || b.code === null || b.spec !== b.code)
+  .map((b) => {
+    if (b.spec === null) return `${b.name}: SPEC no longer states a value — the gate cannot check what the document does not commit to`;
+    if (b.code === null) return `${b.name}: SPEC says ${b.spec} and no matching constant was found in either zome`;
+    return `${b.name}: SPEC says ${b.spec}, the code says ${b.code}`;
+  });
+
+if (boundsBroken.length > 0) {
+  log('DRIFT — a figure SPEC states is not the figure the code uses:');
+  for (const m of boundsBroken) log(`  ${m}`);
+  log('  A specification that states a number is making a promise a reader will');
+  log('  rely on. HRR_DIM is the sharp one: §8.1 fixes the encoding at 512 x 4 =');
+  log('  2048 bytes and calls the round-trip exact, so a different dimension');
+  log('  silently mis-scores every resonance query against a stored trace.');
+  log('');
+} else {
+  log(`Named bounds: ${bounds.length} of ${bounds.length} figures SPEC states match the code`);
+  log(`  (${bounds.map((b) => `${b.name.replace(/ .*/, '')}=${b.spec}`).join(', ')}).`);
+}
+
+// ---------------------------------------------------------------------------
 // SPEC §5.4/§5.5's target cross-check. An anti-forgery rule: the author's
 // claimed target_type must be compared against the type the DHT actually holds.
 // ---------------------------------------------------------------------------
@@ -1083,15 +1166,16 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || !entryRefuses || !linkRefuses
   || frictionBroken.length > 0 || frictionUnparsed.length > 0
   || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
-  || xcheckBroken.length > 0;
+  || xcheckBroken.length > 0
+  || boundsBroken.length > 0;
 
 if (undocumented.length === 0 && phantom.length === 0 && !countDrift) {
   log('NO DRIFT: every extern is listed, every listed function exists, every UI');
   log('call names a real extern, README.md states the measured ratio, and every');
   log('unsurfaced extern has a reason in §9 — checked, not just claimed.');
-  log('(§5.1, §5.2, §5.3, §5.4, §5.5 and §6 are checked now — six of SPEC\'s');
-  log('~105 MUSTs. The per-type rules in §2 are not, and a call site is reach,');
-  log('not proof a function is well surfaced.)');
+  log('(§5.1, §5.2, §5.3, §5.4, §5.5, §5.6, §6 and the figures §8 states are');
+  log('checked now — eight of SPEC\'s ~105 MUSTs. The per-type rules in §2 are');
+  log('not, and a call site is reach, not proof a function is well surfaced.)');
   process.exit(0);
 }
 process.exit(1);
