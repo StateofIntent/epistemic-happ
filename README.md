@@ -2422,11 +2422,50 @@ each of these is currently exactly that.
   **zero** transport errors and is the only case left where gossip ran
   correctly — eight complete rounds, all concluding `NoDiff` — and was wrong.
 
-  **What that leaves.** The question "why does a node join the DHT and exchange
-  nothing" was three phenomena wearing one name: a 120s configured interval, an
-  iroh connect timeout, and one unexplained `NoDiff` round in thirty trials.
-  Only the third is a kitsune2 gossip defect, and filing the other two as one
-  would have been wrong — which the previous draft of the upstream report did.
+  **And then the `NoDiff` trial turned out to be correct behaviour too, which
+  removes the last candidate defect.** The paragraph that stood here called it
+  "the only case left where gossip ran correctly and was wrong". It is not, and
+  the check that settles it is a clock comparison the earlier reading skipped.
+
+  Mapping peer URLs to nodes (each URL appears in exactly two logs — its owner's
+  and its partner's — which pins all three uniquely) gives nodeD's partners as
+  nodeA and nodeB. Then, against nodeD's own conductor clock:
+
+  | nodeD.log offset | round | the entry existed? |
+  |---|---|---|
+  | 9.4s | `NoDiff` with **nodeA** | **no** — created at 17.0s |
+  | 9.7s | `NoDiff` with **nodeA** | **no** |
+  | 136.7s | `NoDiff` with nodeB | yes |
+  | 263.9s | `NoDiff` with nodeB | yes |
+
+  **Both rounds with the node that held the entry predate the entry.** They
+  correctly reported no difference. After it existed nodeD gossiped only with
+  nodeB — and whether *those* `NoDiff`s were right depends on whether nodeB had
+  yet received it from nodeA, which nodeD's log cannot say. Nothing here
+  demonstrates a wrong answer.
+
+  **Why nodeD never asked nodeA again is the same constants as the band.** It
+  initiated with nodeA at 3.5s and 9.5s, so `min_initiate_interval_ms` (300s,
+  per peer) barred it until ~309s, and `initiate_interval_ms` put its next
+  attempt past the 330s cap. It spent both of its nodeA initiations in the first
+  ten seconds, before there was anything to fetch.
+
+  **What that leaves: nothing for upstream.** The question "why does a node join
+  the DHT and exchange nothing" was two phenomena wearing one name — the
+  initiation constants (the band, and the `NoDiff` trial) and `iroh connect
+  timed out` (four of the five non-crossings). Neither is a kitsune2 gossip
+  defect. `scripts/network.sh` addresses the first for this repo's test networks
+  and `partition-rejoin`'s baseline went from 125.3s to **10.0s** on that change;
+  the second is a transport-layer observation, and a 2-vCPU runner on loopback
+  is a plausible enough cause that it is not worth filing as a bug either.
+
+  **So this entry closes, and the honest summary of how is that nothing was
+  found to be broken.** Four hypotheses were falsified before this session and
+  five more during it — the 300s reading, the 320-line outlier, the
+  never-initiated reading, the cadence reading, and this `NoDiff` one. Every one
+  failed the same way: a pattern read off a run with too few controls, or in
+  this case off a log without checking a clock. What the question actually was,
+  all along, is a test network running a protocol tuned for the open internet.
 
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
