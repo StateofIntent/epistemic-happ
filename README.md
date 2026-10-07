@@ -2406,12 +2406,38 @@ each of these is currently exactly that.
   development machine's 307.5s looked like `min_initiate_interval_ms` and was a
   coincidence; the driver is the 120s interval.
 
-  **The fix held, and the rate is worth stating with its own caveat.** Since
-  `initiate_interval_ms` was lowered, `network` has run 21 times to completion
-  with no failure recorded, against a job that was failing often enough before
-  it to need a re-run on three consecutive pull requests. One post-fix failure
-  did occur — on a documentation-only branch, so not caused by the change under
-  test — and it is characterised below.
+  **The fix held for the median and NOT for the tail, and the first write-up of
+  this said "the fix held" full stop.** That claim lasted about two hours. The
+  post-fix baselines, each captured before a re-run could overwrite it:
+
+  | run | baseline |
+  |---|---|
+  | #193 (the fix itself) | 10.0s |
+  | #195 | 25.1s |
+  | #207, first attempt | **195.5s** — failed |
+  | #207, re-run | 0.0s |
+  | #201, first attempt | **170.4s** — failed |
+  | #201, re-run | **900s** — failed, 300s past a 600s window |
+  | #201, third attempt | 5.0s |
+
+  **The last three rows are one commit.** 170.4s, then 900s, then 5.0s, from
+  identical code — a 180× spread that no code change can explain, which is also
+  what rules the v4 fork out as a cause. The slow mode is independent of what is
+  being tested, and #207 hitting it at 195.5s with no zome change at all
+  confirms that from the other direction.
+
+  **So the fix moved the fast mode and the median dramatically, and the slow
+  mode survived it and got worse** — 900s against the 120–125s band the fix was
+  built to eliminate. Lowering `initiate_interval_ms` genuinely removed the
+  120s-shaped stall, and something else produces a longer one.
+
+  **And the "21 runs, no failures" figure was an artefact of this entry's own
+  warning.** It was read off `gh run list`, which cannot see a failure that was
+  re-run — and this session re-ran four of them. So the headline claim was wrong
+  *because of* the hazard documented in the same paragraph: the only numbers
+  worth anything here are the ones captured before pressing re-run, which is why
+  the table above exists and why it is the first honest measurement of this
+  distribution.
 
   **AND THE RECORDED HISTORY UNDERCOUNTS, BECAUSE RE-RUNNING A FAILED JOB
   OVERWRITES ITS CONCLUSION.** `gh run list` shows two `network` failures in the
