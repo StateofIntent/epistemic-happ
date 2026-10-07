@@ -41,14 +41,22 @@ SIGNATURES=(
   'database is locked'
   'Accept message from wrong peer'
   'already accepted'
-  # THE LAST THREE ARE NOT ERRORS, AND THAT IS WHY THEY ARE HERE. The surviving
-  # explanation for a slow baseline is the one path that logs nothing wrong:
+  # THE LAST THREE ARE NOT ERRORS, AND THAT IS WHY THEY ARE HERE. The
+  # explanation for a slow baseline was the one path that logs nothing wrong:
   # no peer to gossip with at the first attempt, then a silent wait until the
   # next scheduled one. Both slow-baseline failures censused eight or nine
   # lines per node with every error signature at zero, so counting errors
   # harder was never going to reach it. These count whether gossip was
   # ATTEMPTED and whether a target was found — present only because
   # `network.sh` now raises the conductor's log filter to let them through.
+  #
+  # THAT WAS A HYPOTHESIS AND IT IS NOW MEASURED. `peering-rate.mjs` run
+  # 37478744160: every one of the 12 crossings in the 123-153s band contains a
+  # single 107-123s stall with zero transport errors, which is
+  # `initiate_interval_ms` (120_000 + up to 10s jitter) less the trailing lines
+  # of the burst before it. `network.sh` now lowers that interval and the
+  # per-peer floor beneath it, so a slow baseline here should become rare — and
+  # if it does not, these three counters are how that gets seen. See README §9.
   'Starting initiate task'
   'Initiated gossip with'
   'No agents with overlapping arcs available'

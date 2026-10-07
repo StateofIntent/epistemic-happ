@@ -2383,6 +2383,51 @@ each of these is currently exactly that.
   "a maintainer cannot act on a run nobody can reproduce"; that blocker is gone,
   and the two modes above are what should be filed — not the 320.
 
+  **And then the band stopped being a mystery, from reading the archives and
+  kitsune2's own config defaults.** Every one of those 12 band trials contains a
+  **single stall of 107–123s with zero transport errors**, and in 8 of 12 the
+  activity resumes *inbound* — a peer initiating to nodeD, not nodeD retrying.
+  `kitsune2_gossip-0.5.0/src/config.rs`:
+
+  | constant | default |
+  |---|---|
+  | `initial_initiate_interval_ms` | 1_000 |
+  | `initiate_interval_ms` | **120_000** |
+  | `initiate_jitter_ms` | 10_000 |
+  | `min_initiate_interval_ms` | 300_000 (per peer) |
+
+  A 120s-plus-jitter sleep, minus the trailing accept/terminate lines of the
+  burst before it, is a measured gap of ~107–125s. That is the band, exactly.
+  It also explains the opening burst at ~1s intervals, and why the band is
+  **arm-independent**: not one of those constants is `roundTimeoutMs`. The
+  development machine's 307.5s looked like `min_initiate_interval_ms` and was a
+  coincidence; the driver is the 120s interval.
+
+  **So the band is not a bug — it is a configured default**, and
+  `partition-rejoin`'s three baseline failures today (125.3s, 125.3s, 120.3s)
+  were the same default, on a harness that never varies `roundTimeoutMs`.
+  `scripts/network.sh` now sets `initiateIntervalMs`, `initiateJitterMs` and
+  `minInitiateIntervalMs` for the local test network. All three are needed, not
+  just the first: `initiate_interval_ms`'s own doc comment says a low value only
+  produces a burst, after which "when it has run out of peers, it will idle for
+  a while" — bounded by the 300s per-peer floor, which on a four-node network is
+  what actually binds.
+
+  **The non-crossings decompose too, and only one of them is a gossip problem.**
+  Counting `iroh connect timed out` per trial: **0 of 12** band trials, 1 of 8
+  fast, 4 of 5 middle — and **4 of the 5 non-crossings**, which are precisely
+  the four mode-1 trials. Those four are a *transport* failure (`iroh connect
+  timed out`, `MultipathNotNegotiated`): gossip never gets a connection, which
+  is why it sent one `Initiate` and went quiet. The single mode-2 trial has
+  **zero** transport errors and is the only case left where gossip ran
+  correctly — eight complete rounds, all concluding `NoDiff` — and was wrong.
+
+  **What that leaves.** The question "why does a node join the DHT and exchange
+  nothing" was three phenomena wearing one name: a 120s configured interval, an
+  iroh connect timeout, and one unexplained `NoDiff` round in thirty trials.
+  Only the third is a kitsune2 gossip defect, and filing the other two as one
+  would have been wrong — which the previous draft of the upstream report did.
+
 - **There is no Android or iOS build, and the blocker is one version upstream.**
   Holochain 0.7 is the release that made iOS possible at all — it added wasmer's
   wasmi interpreted backend, which satisfies Apple's prohibition on hot-loading
