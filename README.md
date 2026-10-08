@@ -2591,6 +2591,33 @@ each of these is currently exactly that.
   life of this entry, which is why every single-cause hypothesis tried against
   it got partial support and then collapsed.
 
+  **Four batches, forty-eight trials, and the caveat is weakened but not closed.**
+
+  | batch | trials | never crossed | transport | gossip |
+  |---|---|---|---|---|
+  | 1 | 12 | 2 | 2 | 0 |
+  | 2 | 12 | 3 | 2 | 1 |
+  | 3 | 12 | 5 | 3 | 2 |
+  | 4 | 12 | 3 | 3 | 0 |
+  | | **48** | **13 (27%)** | **10 (77%)** | **3 (23%)** |
+
+  So the `NoDiff` mode is **3 in 48 trials, about 6%** — rare enough that a
+  twelve-trial batch misses it more often than not, which batch 4 duly did.
+
+  **Batch 4 ran with the integration check active and found integration
+  instantaneous: 0.0s in 12 of 12, including all three non-crossings.** That
+  rules integration lag out as a general effect in this harness. It does **not**
+  close the specific question, because batch 4 produced no `NoDiff` trial — the
+  check was added after batch 3, and the three `NoDiff` cases predate it. So
+  "nodeA had integrated the op in those three trials" is now a strong inference
+  from twelve consecutive 0.0s measurements plus ~180 completed rounds apiece,
+  and still an inference rather than a measurement.
+
+  Stated plainly because the temptation runs the other way: twelve immediate
+  integrations do not retroactively measure a trial that ran before the
+  instrument existed. Closing it needs a `NoDiff` trial to occur with the check
+  active, which at 6% means roughly another two or three batches.
+
   **The integration caveat still stands and is now the only thing between this
   and an upstream report.** The harness confirms `create_claim` returned on
   nodeA; it does not confirm nodeA integrated the op into the shard gossip
