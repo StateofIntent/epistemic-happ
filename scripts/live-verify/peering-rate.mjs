@@ -185,6 +185,10 @@ const ARMS = (process.env.EPI_PEERING_TIMEOUTS ?? '60000,15000')
 // thing.
 const CAP_MS = Number(process.env.EPI_PEERING_CAP_MS ?? 330_000);
 const POLL_MS = 3_000;
+// How long nodeA gets to read its own claim back before the trial is abandoned
+// as never having established its premise. Generous: integration is normally
+// immediate and a slow one is itself worth seeing rather than waiting out.
+const INTEGRATE_CAP_MS = Number(process.env.EPI_PEERING_INTEGRATE_CAP_MS ?? 60_000);
 
 // --- BOUNDS, because the first real run of this file hung and cost a day ---
 //
@@ -410,6 +414,44 @@ async function oneTrial(roundTimeoutMs, i) {
     author: A.me, timestamp: nowMicros(), evidence_hashes: [], attestation_policy: null,
   });
 
+  // THE CLOCK STARTS ONLY ONCE nodeA CAN READ ITS OWN CLAIM BACK, and this
+  // exists to close the one assumption left in the NoDiff finding.
+  //
+  // Three trials have now shown nodeD completing ~120 gossip rounds with nodeA
+  // — ~60 of them after the entry was written — every one concluding that their
+  // snapshots were identical, while the entry never arrived. The only
+  // alternative explanation left was that nodeA had not INTEGRATED the op into
+  // the shard it gossips from, so "no difference" would have been correct and
+  // the fault would be an integration lag rather than a gossip one.
+  //
+  // `create_claim` returning proves the op was committed to nodeA's source
+  // chain. It does not prove integration. `get_claims_by_domain` resolves
+  // through the `DomainToClaim` link index, so nodeA answering it is nodeA
+  // demonstrating the op is in the store gossip offers from — which is exactly
+  // the premise the finding needs and exactly what was never checked.
+  //
+  // Measured rather than assumed away: the wait is reported per trial, so if
+  // integration ever takes a meaningful fraction of the window that becomes
+  // visible instead of silently shifting the baseline.
+  const integStart = Date.now();
+  let integrated = false;
+  while (Date.now() - integStart < INTEGRATE_CAP_MS) {
+    try {
+      if ((await A.call('get_claims_by_domain', domain)).length > 0) { integrated = true; break; }
+    } catch { /* a read that cannot answer yet is "not yet" */ }
+    await sleep(500);
+  }
+  const integMs = Date.now() - integStart;
+  if (!integrated) {
+    // Not a crossing failure. nodeA could not see its own write, so the trial
+    // never established the premise and must not be counted as either outcome.
+    return {
+      ms: null, integMs,
+      note: `SETUP: nodeA could not read its own claim back in ${(INTEGRATE_CAP_MS / 1000).toFixed(0)}s`,
+      wrongPeer: wrongPeerHits(),
+    };
+  }
+
   const t0 = Date.now();
   let ms = null;
   while (Date.now() - t0 < CAP_MS) {
@@ -420,7 +462,7 @@ async function oneTrial(roundTimeoutMs, i) {
     await sleep(POLL_MS);
   }
 
-  return { ms, note: null, wrongPeer: wrongPeerHits() };
+  return { ms, integMs, note: null, wrongPeer: wrongPeerHits() };
 }
 
 async function main() {
@@ -486,7 +528,8 @@ async function main() {
       const archive = keepLogs(arm, i, outcomeLabel(r.ms));
       if (archive) kept++;
 
-      log(`  rt${arm} trial ${String(i).padStart(2)}: ${when}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
+      const integNote = r.integMs === undefined ? '' : `   (nodeA held it after ${(r.integMs / 1000).toFixed(1)}s)`;
+      log(`  rt${arm} trial ${String(i).padStart(2)}: ${when}${integNote}${r.wrongPeer ? `   wrong-peer lines: ${r.wrongPeer}` : ''}${r.note ? `   ${r.note}` : ''}${archive ? `\n              logs kept: ${archive}` : ''}`);
     }
     log('');
   }
