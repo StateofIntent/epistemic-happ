@@ -281,6 +281,11 @@ jobs:
           rc=0
           node scripts/live-verify/real-gossip.mjs || rc=$?
           scripts/log-census.sh real-gossip
+          # ARCHIVE BEFORE THE NEXT STEP CLEANS THESE AWAY, for the same reason
+          # the census is per-harness. `cp` and not a move: the tails step below
+          # still reads /tmp/epi-net.
+          mkdir -p /tmp/epi-net-logs/real-gossip
+          cp /tmp/epi-net/*.log /tmp/epi-net-logs/real-gossip/ 2>/dev/null || true
           exit $rc
 
       # partition-rejoin drives `network.sh stop-node`/`start-node` ITSELF, mid
@@ -298,6 +303,8 @@ jobs:
           rc=0
           node scripts/live-verify/partition-rejoin.mjs || rc=$?
           scripts/log-census.sh partition-rejoin
+          mkdir -p /tmp/epi-net-logs/partition-rejoin
+          cp /tmp/epi-net/*.log /tmp/epi-net-logs/partition-rejoin/ 2>/dev/null || true
           exit $rc
 
       # Three conductors and two services failing to come up looks identical to
@@ -321,6 +328,33 @@ jobs:
       #
       # What remains here is the part that is for reading after a break rather
       # than for comparing across runs, so it stays conditional on failure.
+      # ARCHIVED ON EVERY RUN, NOT ONLY ON FAILURE, AND THAT IS THE WHOLE POINT.
+      # The tails step below keeps 100 lines per log and runs only on failure,
+      # and because each harness step CLEANS /tmp/epi-net first, those tails
+      # describe the last harness alone. Both limits bit on 2026-10-10: a
+      # `partition-rejoin` baseline crossed in 175.4s and the claim op's fetch
+      # history could not be reconstructed, because 100 lines reached 25 of the
+      # relevant entries.
+      #
+      # AND FAILURE-ONLY WOULD STILL HAVE MISSED THE BEST EVIDENCE. The most
+      # informative `network.yml` runs that day were GREEN ones — a `real-gossip`
+      # forward leg of 176.8s and a Phase 0 baseline of 50.1s, both inside their
+      # windows, both passing, both unrecoverable now. README.md §9 already
+      # records the same mistake in an earlier form: the first flake batch saved
+      # conductor logs only when `wrong peer` matched, which is exactly why the
+      # run that mattered was lost. `always()` is that lesson applied.
+      #
+      # The cost is one artifact per run; 14 days is short on purpose, since
+      # anything worth keeping longer gets quoted into §9 with its run id.
+      - name: Archive the conductor logs, pass or fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-logs-${{ github.run_id }}
+          path: /tmp/epi-net-logs
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Full conductor-log tails, if anything failed
         if: failure()
         run: |

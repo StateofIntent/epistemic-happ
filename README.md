@@ -974,7 +974,9 @@ rather than tidying.
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
 | Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
-| nodeA's `stored_at` for the claim op | **partly instrumented, and it is the live lead.** `stored_at` is Holochain's **integration timestamp** (`holochain_p2p` `op_store.rs:305`). Per-op values need Holochain patched, but `integrate_dht_ops_workflow=debug` now prints each pass's time and count — a proxy that discriminates t0 from t0+423s on a one-claim network. **If it does not discriminate, write the upstream report instead of a fourth instrument.** |
+| ~~nodeA's `stored_at` for the claim op~~ | **MEASURED: integrated ~4.7s after authoring, then never again.** Recovered from `changed / ops_ps` — the pass that took the claim logged at `13:50:44.308Z`, elapsed 2.8ms, so `when_integrated` ≈ `13:50:44.306Z`. Integration lag on the authoring node is **ruled out**. |
+| Why an eligible op went undelivered for seven minutes | **needs Holochain patched — and the stopping rule says write the report instead.** The op sits at the only cursor nodeD advertised (`13:50:44.306176Z`) and `sync_queries.rs` compares `when_integrated >= ?`, **inclusive** — so it was eligible on every round. No explanation; four instruments is where this stops. |
+| Write the upstream report on the structural finding | **effort, and it is the live lead.** `respond.rs:181` advances the cursor before `:187` fetches, and `core_fetch.rs:346` drops silently. Four timestamp arguments built on that have been withdrawn; the code reading has not moved. **That is the reportable finding.** |
 | ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
@@ -3569,6 +3571,118 @@ each of these is currently exactly that.
   unreachable on the track whose cursor has advanced past it, which is
   structural and argued from code rather than from any of the timestamps this
   thread has had to withdraw.
+
+  **The integration instrument answered its question on the first run that used
+  it, and the answer is the branch that keeps the puzzle open.** Run
+  [`38055534977`](../../actions/runs/38055534977), 12 for 12 crossed at the 1500s
+  cap, with **both** slow modes present in one batch: `rt60000` trial 4 at
+  **929.1s** carrying the blocking signature (1 failed initiation, **894**
+  `No agents to gossip with`, zero `NoDiff`), and `rt60000` trial 5 at **415.0s**
+  carrying the other one.
+
+  **Trial 5 is the first ~425s instance with no failed initiation at all** — 79
+  initiations, zero failures, zero `No agents to gossip with`, 56 dequeued
+  against 27 sent. So the failed connect that accompanied both earlier instances
+  is **not** part of this mode. It was a coincidence of two samples.
+
+  **What the instrument established, and this is what it was built for.** nodeA's
+  integration passes in trial 5 run from `13:49:58` to `13:50:44` and then
+  **stop entirely** for the remaining seven minutes. With t0 ≈ `13:50:39.6`
+  (delivery minus 415.0s), the pass that logged `changed=11` at `13:50:44.309`
+  is the one that took the claim — **roughly 4.7 seconds after it was
+  authored.** So integration on the authoring node is **early**, it never moves
+  again, and the possibility that this mode is integration lag — which the
+  harness's own 0.0s check could not have seen, since it reads the link index
+  rather than the DHT op store — is **ruled out.**
+
+  **And the arithmetic then landed on a coincidence worth stating precisely.**
+  nodeD advertised exactly **one** cursor to nodeA across the whole trial:
+  `1791640244306176`, which is `13:50:44.306176Z`. The claim's integration
+  timestamp is recoverable because `ops_ps` is logged alongside `changed`, so the
+  pass duration is `changed / ops_ps` and `when_integrated` — captured at
+  workflow start, logged at its end — is the log time minus that:
+
+  | pass logged | changed | elapsed | `when_integrated` ≈ |
+  |---|---|---|---|
+  | `13:50:30.389Z` | 1 | 2.2ms | `13:50:30.387Z` |
+  | `13:50:39.395Z` | 6 | 1.7ms | `13:50:39.394Z` |
+  | **`13:50:44.308Z`** | **11** | **2.8ms** | **`13:50:44.306Z`** |
+
+  **The op's `stored_at` and the cursor nodeD advertises are the same
+  millisecond.**
+
+  **Which looked exactly like a boundary race, and is not one.** The obvious
+  reading is that an op landing on the cursor falls on the excluded side and is
+  stranded — a tidy explanation for a seven-minute silence. **The SQL says
+  otherwise.** `holochain_data-0.7.0/src/dht/inner/sync_queries.rs` builds
+  `op_ids_since_time_batch` with `ChainOp.when_integrated >= ?` — **inclusive**,
+  for both the `ChainOp` and `WarrantOp` arms, ordered `when_integrated ASC`.
+  An op whose timestamp equals the cursor is **returned**. Reading that one line
+  is the only reason this entry is not a confident write-up of the wrong
+  mechanism.
+
+  **So the mode is sharper and still unexplained.** What is now measured: the op
+  was integrated early, its timestamp is fixed, it sits at or just after the only
+  cursor nodeD ever advertised, and the retrieval predicate includes that
+  boundary. **The op was eligible to be offered on every one of those rounds and
+  was not delivered for seven minutes.** That is a narrower statement than this
+  thread has managed before and it is not an explanation.
+
+  **The blocking mode, meanwhile, is at n=4 and its recovery clusters.** Two
+  trials hit the 600s cap in batch 7, one recovered at 943.0s in batch 8, and
+  this one at 929.1s — the two measured recoveries **14 seconds apart**. Recorded
+  because a second figure near 930s is the sort of thing that becomes a constant
+  on a third sample, and because this mode has a mechanism already (one failed
+  connect, the peer skipped, recovery on a URL turnover) where the 415s mode does
+  not.
+
+  **This is where this line of work should stop, and the stopping rule written
+  one entry above is the reason.** The instrument discriminated — integration lag
+  is out, which is a real result — and the remaining question needs per-op
+  retrieval tracing inside Holochain's SQL layer, which means patching Holochain.
+  **What is established and worth reporting upstream is the structural half**:
+  `respond.rs:181` advances the new-ops cursor before `:187` requests the fetch,
+  so a fetch that is dropped — and `core_fetch.rs:346` drops silently, with no
+  log line — leaves an op whose re-offer depends on a cursor that has already
+  moved. Four timestamp arguments have been built on top of that and withdrawn;
+  the code reading has not moved once.
+
+  **And this entry's own CI produced a fourth slow baseline, which could not be
+  analysed — so the archiving gap is closed in the same change.** The
+  `network` job on [#233](../../pull/233) failed with
+  `partition-rejoin`'s Phase 0 baseline at **175.4s**, the harness printing
+  `THE 175.4s IS THE FINDING, not this cap` and reporting the divergence
+  assertion INCONCLUSIVE, exactly as the 426.0s occurrence did at the top of
+  this section. The poll trace is unambiguous — zero at t+170s, one at t+175s.
+
+  **175.4s is also the second crossing near 176s**, after the `real-gossip`
+  forward leg of 176.8s recorded further up, on a different harness. Two figures
+  1.4 seconds apart, and no claim built on them: this section has a ~425s pair
+  and a ~930s pair already, and a third coincidence is a reason to keep counting
+  rather than to start explaining.
+
+  **What could not be done is the thing that worked all day on `peering-rate`.**
+  The claim op's fetch history — dequeued, dropped, re-offered — is how the ~425s
+  mode was characterised, and it needs the conductor logs. `network.yml` had no
+  artifact: it tailed **100 lines per log, on failure only**, and because each
+  harness step cleans `/tmp/epi-net` first, those tails describe the last
+  harness alone. Of the fetch entries that mattered, **25 survived**.
+
+  **Failure-only archiving would not have been enough either, and that is the
+  part worth stating.** The most informative `network.yml` runs today were
+  **green**: the 176.8s forward leg and the 50.1s baseline both passed, inside
+  their windows, and both are unrecoverable. §9 already records this mistake in
+  an earlier dress — the first flake batch saved conductor logs only when
+  `wrong peer` matched, *"which is exactly why the run that mattered was lost"*.
+  So `network.yml` now archives both harnesses' logs **on every run, pass or
+  fail**, at 14 days' retention.
+
+  **Which means this occurrence is recorded as a sighting and not as evidence**,
+  and the next one will be analysable. That asymmetry — a mode with three
+  instruments on it and a harness that threw the logs away — is the sort of thing
+  that stays invisible until a red run asks for the one file nobody kept.
+
+
 
 
   **So the account is half closed, and the halves should not be run together.**
