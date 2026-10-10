@@ -471,7 +471,35 @@ GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
 # fetch counters would have had without a crossing to pair against. This one
 # fires on every successful broadcast, so zero on a healthy run indicts the
 # filter rather than the network.
-GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug,kitsune2_core::factories::core_space=debug,kitsune2_core::factories::core_bootstrap=debug,kitsune2_core::factories::mem_peer_store=debug}"
+# AND HOLOCHAIN'S INTEGRATION PASS, WHICH IS THE CLOCK THE GOSSIP CURSOR USES.
+# README.md §9's ~425s entry retracted a page of timestamp arithmetic on finding
+# that `new_since` is not a possession claim and not comparable to an op's
+# creation time. `kitsune2_api`'s `op_store.rs:126` says the cursor retrieves ops
+# "by their `stored_at` timestamp rather than their creation timestamp", and
+# Holochain's implementation names that clock outright: `holochain_p2p`'s
+# `op_store.rs:305` comment calls it "the integration timestamp", and the query
+# is `op_ids_since_time_batch(arc_start, arc_end, cursor_t, 500)`.
+#
+# So the value that decides whether a peer offers an op is WHEN THAT PEER
+# INTEGRATED IT, and on the authoring node that is not the same moment as
+# authoring — `integrate_dht_ops_workflow` is a separate workflow with its own
+# `when_integrated = Timestamp::now()`.
+#
+# WHAT THIS BUYS, AND IT IS A PROXY: `integrate_dht_ops_workflow` logs
+# `tracing::debug!(?changed, %ops_ps, "ops integrated")` — a COUNT, not op
+# identities. So this gives, per node, when each integration pass ran and how
+# many ops it took, and does NOT give the `stored_at` of any particular op.
+# `holochain_p2p`'s op store carries only `warn!` lines, so there is no filter
+# that reaches per-op integration times; that would need Holochain patched.
+#
+# IT IS STILL THE RIGHT MEASUREMENT FOR THE QUESTION ASKED. A `peering-rate`
+# trial is a fresh network carrying one claim, so an integration pass at t0
+# against one at t0+423s is exactly the discrimination §9 needs, and the counts
+# bound which pass could have carried the claim.
+#
+# The directive parses: verified against tracing-subscriber 0.3 with all seven
+# in place, module paths intact and `warn` still the base.
+GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug,kitsune2_core::factories::core_space=debug,kitsune2_core::factories::core_bootstrap=debug,kitsune2_core::factories::mem_peer_store=debug,holochain::core::workflow::integrate_dht_ops_workflow=debug}"
 export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
 
 log() { echo "[network] $*"; }

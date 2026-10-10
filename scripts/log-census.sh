@@ -147,6 +147,19 @@ SIGNATURES=(
   "Not updating agent info because we don't have a current url"
   'Failed to broadcast agent info'
   'Pruning expired agent info'
+  # HOLOCHAIN'S INTEGRATION PASS — the clock the gossip cursor actually reads.
+  # `new_since` pages the serving peer's store by `stored_at`, which Holochain
+  # implements as the INTEGRATION timestamp (`holochain_p2p` `op_store.rs:305`,
+  # `op_ids_since_time_batch`). So when a node integrated an op decides whether
+  # it offers that op, and on the authoring node that is a separate workflow
+  # from authoring.
+  #
+  # A COUNT, NOT IDENTITIES. The workflow logs `?changed` and `ops_ps` only, so
+  # this says when a pass ran and how many ops it took — never which. Per-op
+  # integration times would need Holochain patched; its op store has only
+  # `warn!` lines. In a `peering-rate` trial, one claim on a fresh network, a
+  # pass at t0 against one at t0+423s is still the discrimination that matters.
+  'ops integrated'
 )
 
 echo "=== log census after ${LABEL} ==="
