@@ -957,28 +957,44 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
-**Current as of 2026-10-10, and every open item below names what would change
-it.** This section's own failure mode is a status line that was true when written
-and went stale without anybody editing it — it did exactly that for a day while
-[#134](../../pull/134) sat in CI — so the rows are written to be checkable rather
-than trusted.
+**Current as of 2026-10-10, restructured because the single table had grown to
+fourteen rows with eight struck through and the live items were buried inside
+the settled ones.** This section's own failure mode is a status line that was
+true when written and went stale without anybody editing it — it did exactly
+that for a day while [#134](../../pull/134) sat in CI — so the rows are written
+to be checkable rather than trusted, and the split below is maintenance of that
+rather than tidying.
+
+**Five things are open. One needs a person; the rest need effort or a decision.**
 
 | Open item | Blocked on |
 |---|---|
-| `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
-| ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
-| ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
-| ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
-| ~~Which filter excludes nodeD's only peer after one failed connect~~ | **PARTLY ANSWERED, and the number is wrong.** The `set_unresponsive`/`agent_info.expires_at` reading (`core_space.rs:268`, `:498`, `:566`) predicts 1200s. Batch 8 measured the block ending at **926.4s**, 965.3s after nodeA started — before that expiry could land. The block is real and bounded; what releases it is not established. |
-| ~~What releases the peer at ~926s~~ | **ANSWERED from logs already on hand: nodeA came back under a NEW URL.** The unresponsive entry is keyed by URL (`core_space.rs:268`, `initiate.rs:269`), so a URL turnover voids it. The expiry never came into it, which is why 926.4s bore no relation to 1200s. |
-| Why nodeA's URL turns over at ~926s | **instrumented in this PR, and it is the live lead.** A transport-level event — most likely a relay reconnection handing nodeA a new address. `core_space.rs:703` logs the successful broadcast at INFO, which the added module directive unsilences, so the turnover is now a timestamped line rather than an inference off peer URLs. |
-| Why one failed connect escalates and another does not | **open, and narrower than it was.** `rt60000` trial 4 failed once with zero `No agents to gossip with` and recovered in 1.0s, so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
-| ~~A batch at ~1500s, past the 1200s unresponsive expiry~~ | **DONE — batch 8, 12 for 12.** ([`38036069009`](../../actions/runs/38036069009)) No non-crossings at a 1500s cap, and one trial shows the batch 7 signature completing at 943.0s. The historical non-crossings of that shape were truncated recoveries. |
-| ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
-| ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
+| `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
+| Why nodeA's URL turns over at ~926s | **effort, and it is the live lead.** A transport event — most likely a relay reconnection handing nodeA a new address. Instrumented in [#227](../../pull/227) `967a671`: `core_space.rs:703` logs the successful broadcast at INFO and the added module directive unsilences it, so the turnover is a timestamped line rather than an inference off peer URLs. **Needs one slow `peering-rate` trial with those modules on** — not a batch. |
+| Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
-| Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
-| ~~[#219](../../pull/219)~~ | **Landed** as `da74ee7`, along with [#220](../../pull/220) `8742211` and [#221](../../pull/221) `a708142`. The row is kept to show what it looked like in flight. |
+| Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
+
+**And one standing recommendation, which is the clearest thing eight batches
+established: stop running batches.** Batches 1 through 8 produced sixty trials of
+distribution and one mechanism, and that mechanism came from reading four
+conductor logs rather than from the sixty. Every advance on 2026-10-10 came from
+an instrument or a source reading; every batch after the fifth confirmed a shape
+already visible. The next finding is in the logs the modules now emit.
+
+**Settled on 2026-10-10, kept because a reader needs to know these were asked
+and answered rather than never considered.**
+
+| Was open | Outcome |
+|---|---|
+| Closing the `NoDiff` caveat | **Closed by batch 5** ([`38024547790`](../../actions/runs/38024547790)) — the `NoDiff` trial with the integration check active at 0.0s. [#222](../../pull/222) `43018b4`. |
+| The `NoDiff` mechanism | **Falsified by the same trial.** All 35 `NoDiff` messages carried non-empty `new_ops`; identical snapshots are the expected state for a recent op, which rides the bookmark into a fetch queue. An expected condition had been taken for the defect. |
+| Make the fetch queue visible | **Done**, [#223](../../pull/223) `6ea451e` — and its first run disproved the mechanism #222 had proposed. |
+| Is the fetch drop the defect? | **No**, at n=12. 74% dropped and crossed in 24.1s; 78% dropped and never crossed. The fetcher drops in 12 of 12 at 43–78%; the publisher drops nothing. Positional as to which node, variable as to rate, predictive of nothing. [#224](../../pull/224) `1d3596a`, [#225](../../pull/225) `c5669e8`. |
+| Do the ops never recover, or does the harness stop watching? | **Both.** Batch 7 at 600s crossed two at **424.6s** and **360.6s**; batch 8 at 1500s crossed one at **943.0s** and went 12 for 12. Non-crossings of that shape were truncated recoveries. [#226](../../pull/226) `9b6526f`. |
+| What excludes nodeD's only peer | **The unresponsive entry, keyed by URL** (`core_space.rs:268`, `initiate.rs:269`) — not by expiry. Batch 8's block ended at **926.4s** when nodeA reappeared under a new URL, which is why it bore no relation to the 1200s `agent_info.expires_at` predicted from the code. [#227](../../pull/227) `967a671`. |
+| The `iroh incoming connection failed` discriminator | **Falsified on its passing row.** A run logging `nodeB: 6 x` passed every check, so the signature marks a disrupted transport rather than a failed run. [#221](../../pull/221) `a708142`. |
+| Does `roundTimeoutMs` separate anything? | **No**, across 36 trials. Batches 6 and 7 are exact mirrors; batch 8 is 6-for-6 on both arms. The arms are the experiment's own independent variable and they predict neither failures nor slow crossings. |
 
 **#218 landed** as merge commit `3018178`, and it carried two things. The
 four-batch census: 48 trials, 13 non-crossings (27%), and the `NoDiff` mode at
