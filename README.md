@@ -972,7 +972,8 @@ rather than tidying.
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
-| Which gossip mechanism re-offers a dropped op after ~365s | **a log re-read, and it is the live lead.** The re-offer is observed; which path produced it is inferred. Correlating the re-dequeue against the round type in the same second — `NoDiff` versus disc/ring-sector messages, both already in the gossip log — settles it. **Data in hand, no run needed.** |
+| ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. nodeD is the *responder* in the first and the *initiator* in the second, so the interval is nodeD's own initiation cadence toward that peer. |
+| The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
@@ -3338,14 +3339,40 @@ each of these is currently exactly that.
   **The hypothesis was wrong about the consequence and right about the
   mechanism**, which is the inverse of the error made about the 1200s expiry.
 
-  **What is inferred rather than measured, stated plainly.** That the re-offer
-  comes from a DHT-diff round rather than from the bookmark path is a reading, not
-  an observation: these logs show the op being announced again and do not show
-  *which* gossip mechanism announced it. Confirming it means correlating the
-  re-dequeue against the round type in the same second — the `NoDiff` versus
-  disc/ring-sector messages already in the gossip log — which is another re-read
-  of data in hand rather than another run. **Two occurrences, 6.2s apart, is
-  also n=2**, and this section has been wrong four times today by acting on less.
+  **And that correlation has now been done, on the same logs, and it names the two
+  paths.** Each dequeue sits milliseconds after a specific received gossip
+  message, and the pairing is identical across both trials:
+
+  | | first announce | the one that worked |
+  |---|---|---|
+  | batch 8 | `NoDiff` at `08:02:20.026` → dequeue **+1.5ms** | `Accept` at `08:08:29.164` → dequeue **+3.8ms** |
+  | batch 9 | `NoDiff` at `10:50:55.391` → dequeue **+3.0ms** | `Accept` at `10:57:07.615` → dequeue **+7.0ms** |
+
+  Two different messages, so two different call sites. A received `NoDiff` goes
+  through `respond/no_diff.rs` into `handle_accept_response`
+  (`respond.rs:187`) — the bookmark path. A received `Accept` goes through
+  `respond/accept.rs:52`, which calls `request_ops` directly on
+  `accept.new_ops`. **So the op is first offered by one mechanism, dropped, and
+  then only ever re-offered by the other.** The bookmark path does not bring it
+  back, which is what [#222](../../pull/222)'s reading predicted and what this
+  pairing now shows rather than infers.
+
+  **The asymmetry is in which side started the round, and that is what sets the
+  ~365s.** Read off the state machine: a node receiving `NoDiff` is the one that
+  *accepted* a round (`no_diff.rs` rejects an unsolicited one by checking
+  `accepted_round_states`), and a node receiving `Accept` is the one that
+  *initiated* (`initiated_round_state`, `initiate.rs:105`). So in both trials the
+  op was announced to nodeD in a round **nodeD did not start**, dropped, and not
+  seen again until **nodeD itself initiated** one with that peer. The interval is
+  therefore nodeD's own initiation cadence toward that peer, not a fetch timer
+  and not a diff schedule.
+
+  **Still n=2, and one thing in the trace remains unaccounted for.** The middle
+  dequeue — `08:08:21.872` and `10:57:03.404` — has no received message within a
+  second of it in either trial, where the other two couple within 7ms. Both were
+  dropped, so neither mattered to the outcome, and neither is explained. Recorded
+  rather than smoothed over: a trace with three dequeues and two explanations is
+  not a trace with three explanations.
 
 
 
