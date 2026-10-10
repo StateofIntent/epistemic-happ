@@ -969,13 +969,39 @@ that for a day while [#134](../../pull/134) sat in CI — so the rows are writte
 to be checkable rather than trusted, and the split below is maintenance of that
 rather than tidying.
 
-**One thing is open, it is optional, and it is about somebody else's
-dependency. Everything else in this section is a record rather than a to-do
-list — see the freeze note below.**
+**One thing is open against the roadmap, and it is optional. The roadmap being
+finished is not the same as being ready for a crowd — the four items under
+"Before mass adoption" below are the difference, and they are the work this
+project turns to next.**
 
 | Open item | Blocked on |
 |---|---|
 | Post the upstream draft, or decide not to | **a person, and now the only such item.** `~/upstream-kitsune2-cursor-before-fetch-draft.md`. Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**. Optional: nothing here depends on it. |
+
+### Before mass adoption
+
+**The roadmap above is 78 of 79 and CI is green on every layer. That is not the
+same claim as professional-grade for mass adoption, and the gap is written here
+so it is not mistaken for finished work.** Each of these is documented elsewhere
+in this file; what was missing was a list of them in one place.
+
+| What | Where it stands | What it needs |
+|---|---|---|
+| **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
+| **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
+| **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
+| **A security review** | None exists — no `SECURITY.md`, no audit. And this file states plainly that **nothing resists sybil creation**; containment is topological, claims unreachable rather than refused | A review of the zomes and the validation path, plus a conscious decision to stand behind the sybil position before inviting a crowd |
+
+**Also worth stating once: Holochain `0.7.0` is pre-1.0**, and the API churn
+absorbed over the last month is the evidence for that rather than an argument
+about it.
+
+**What can be shipped today, honestly:** a release for early adopters who
+install a `.webhapp` and expect rough edges. INSTALL.md already states the real
+caveats in plain terms — the single measured cross-internet crossing, and a
+returning node taking minutes to catch up — which is further than most projects
+get at this stage. **What should not be claimed today is mass-adoption grade.**
+
 
 **AND THE NPM REPUBLISH ROW IS GONE BECAUSE IT WAS STALE FOR A MONTH, which is
 the failure this section exists to prevent, committed by this section.** The row
