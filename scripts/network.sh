@@ -390,7 +390,57 @@ GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
 # Checked after startup rather than trusted, for the reason the round timeout
 # above is checked: a filter that silently failed to apply would leave the next
 # failure as mute as the last two, and nothing would say so.
-GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug}"
+# AND THE FETCH QUEUE, BECAUSE THAT IS WHERE THE NoDiff FINDING LANDED. Batch 5
+# closed the integration caveat and relocated the suspect in the same run: every
+# one of the 35 `NoDiff` messages nodeD received from nodeA carried a NON-EMPTY
+# `new_ops` (11-14 op ids, 28 distinct sets), and the claim still never arrived.
+# `kitsune2_gossip-0.5.0/src/respond.rs:187` hands those ids to
+# `fetch.request_ops`, so they were enqueued — and `kitsune2_core`'s fetch module
+# logged nothing at all, because `warn` silenced it. The queue was the one link
+# in the chain with no instrumentation, which is why the investigation stopped
+# there. See README.md §9.
+#
+# WHAT THE FOUR LINES BUY, read from `kitsune2_core-0.5.0/src/factories/
+# core_fetch.rs` rather than guessed:
+#
+#   "processing outgoing request"            :327  dequeued, about to be sent
+#   "sending fetch request"                  :371  handed to `send_module`
+#   "incoming op response"                   :476  a response came back
+#   "processed incoming ops with op ids"     :505  written to the op store
+#
+# THE GAPS BETWEEN THEM ARE THE DIAGNOSIS, and one of them is silent in the
+# source. An op whose peer is marked unresponsive is removed from the request
+# set at :346 and then simply not sent — no log line marks the drop. So
+# "processing outgoing request" WITHOUT a following "sending fetch request" is
+# the fingerprint of an op dropped for an unresponsive peer, which is exactly
+# what §9 records an accept timeout as causing. The other two gaps are "sent and
+# never answered" and "answered but not stored".
+#
+# NARROW TARGET ON PURPOSE. `kitsune2_core=debug` would also turn on bootstrap,
+# the peer store and publish; the module path keeps this to the fetch queue.
+#
+# THE DIRECTIVE PARSES, CHECKED RATHER THAN ASSUMED. A `::` module path is valid
+# `EnvFilter` target syntax, and the failure mode if it were not is the one that
+# matters: `EnvFilter::try_new` rejects the WHOLE string on a bad directive, so a
+# malformed addition here would silence the gossip lines too and make this change
+# a regression rather than a gap. Verified against tracing-subscriber 0.3 —
+# `EnvFilter::try_new("warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug")`
+# returns Ok and renders back as
+# `kitsune2_core::factories::core_fetch=debug,kitsune2_gossip=debug,warn`, with
+# the module path preserved verbatim and `warn` still the base.
+#
+# AND THE EXISTING STARTUP CHECK IS THE BACKSTOP ANYWAY. `start-node` already
+# warns when a node logs no "Starting initiate task", which is precisely what a
+# filter broken by this addition would look like — so the regression has a
+# detector even though the fetch half does not.
+#
+# THIS ONE CANNOT BE CHECKED AT STARTUP the way the gossip filter can. There is
+# no fetch line at boot — the module is silent until an op is actually queued —
+# so `start-node` has nothing to grep for. The disambiguator is a CROSSING: any
+# trial where the entry arrived must have fetched ops, so a PASSING run with zero
+# fetch lines means the filter did not apply. `log-census.sh` counts all four so
+# that reading is available without re-reading logs by hand.
+GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug}"
 export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
 
 log() { echo "[network] $*"; }

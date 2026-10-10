@@ -57,6 +57,29 @@ SIGNATURES=(
   # of the burst before it. `network.sh` now lowers that interval and the
   # per-peer floor beneath it, so a slow baseline here should become rare — and
   # if it does not, these three counters are how that gets seen. See README §9.
+  # THE FETCH QUEUE, ADDED AFTER BATCH 5 PUT THE SUSPECT THERE. The `NoDiff`
+  # messages nodeD received all carried non-empty `new_ops`, so ops were
+  # announced and enqueued, and nothing downstream of `fetch.request_ops` was
+  # instrumented. These four are the chain, and the GAPS between them are what
+  # they are for:
+  #
+  #   processing outgoing request  but no  sending fetch request
+  #     -> dropped before sending. The unresponsive-peer path at
+  #        `core_fetch.rs:346` removes the request and logs NOTHING, so this
+  #        pair is the only way that drop is visible.
+  #   sending fetch request        but no  incoming op response
+  #     -> sent and never answered.
+  #   incoming op response         but no  processed incoming ops
+  #     -> answered and not written to the op store.
+  #
+  # ZERO ACROSS ALL FOUR IS AMBIGUOUS and must not be read as "the queue was
+  # idle": it is equally "the filter did not apply". The disambiguator is a
+  # trial that CROSSED — a crossing cannot happen without fetching ops, so zero
+  # on a passing run means the filter, not the queue.
+  'processing outgoing request'
+  'sending fetch request'
+  'incoming op response'
+  'processed incoming ops with op ids'
   'Starting initiate task'
   'Initiated gossip with'
   'No agents with overlapping arcs available'
