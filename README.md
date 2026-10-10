@@ -973,7 +973,9 @@ rather than tidying.
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
-| Why nodeA omits the op from ~60 consecutive Accepts | **the arc set, by elimination — and it is the live lead.** nodeD initiated 73 times at a 5.5s median gap, and sent the **same `new_since` on all 71 later rounds**, including the one that delivered the op. So the bookmark is not the discriminator and #222's ordering is retired on a measurement. The remaining input to `retrieve_new_op_ids` is `common_arc_set`, which nothing prints. |
+| Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
+| nodeA's `stored_at` for the claim op | **an instrument, and it is the live lead.** It is the one value that would settle both the silence and the delivery, and nothing prints it. The whole thread has been circling it. |
+| ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3409,6 +3411,133 @@ each of these is currently exactly that.
   the common arc for those six minutes and came back inside it. **Not
   established**, and the honest statement of its difficulty is that arcs are the
   one input to that call which nothing currently prints.
+
+  **The byte budget is eliminated, and eliminating it exposed that the previous
+  entry retired the wrong hypothesis on the wrong test.** Both corrections are
+  recorded here because the second is the finding.
+
+  **First, the budget, dead in one grep.** `accept.max_op_data_bytes` is
+  **constant at 104,857,600** — 100 MiB — across all 289 occurrences in the
+  trial, and `respond/accept.rs`'s own `"Used {}/{} op budget to send {} op ids"`
+  line shows actual consumption of **340 to 13,769 bytes**. nodeA's dominant line
+  is `Used 3219/104857600 op budget to send 10 op ids`, 136 times. The limit is
+  never approached, so `respect_size_limit_for_new_ops` truncation cannot be
+  withholding anything. Checked before being written up as a candidate, which is
+  the only reason it cost a grep instead of an entry.
+
+  **Second, and this is the correction: the bookmark hypothesis is reinstated,
+  with a timestamp.** The entry above retired
+  [#222](../../pull/222)'s `update_new_ops_bookmark` ordering on the grounds that
+  nodeD's `new_since` was *constant* across the rounds that omitted the op and
+  the round that delivered it. **Constancy was the wrong test.** The question is
+  not whether the bookmark moved; it is whether the op is **older than** it:
+
+  | | value | wall clock |
+  |---|---|---|
+  | claim created (t0 = delivery − 424.9s) | — | **≈10:50:02.7Z** |
+  | `new_since` nodeD advertised from `10:50:40` | `1791629434400057` | **10:50:34.400Z** |
+
+  **The op is roughly 32 seconds older than the bookmark nodeD was advertising.**
+  So `retrieve_new_op_ids(&arc, since: 10:50:34.400, …)` was never going to
+  return it — not once in sixty rounds, correctly, because nodeD had told nodeA
+  it already held everything up to 10:50:34.4. nodeA was not withholding the op.
+  **nodeD had disclaimed it**, at `10:50:40`, while that very op sat in its fetch
+  queue waiting to be dropped.
+
+  That is `respond.rs:181` advancing the bookmark before `respond.rs:187`
+  requests the fetch — [#222](../../pull/222)'s reading — and the six minutes of
+  silence is not a delay in offering the op but the correct behaviour of a peer
+  answering the question it was asked.
+
+  **And the "same input, different output" argument that retired it was comparing
+  two different tracks.** The first offer arrived on a received `NoDiff` and the
+  delivery on a received `Accept`, which the entry above establishes are different
+  call sites — and they are also fed by **different `since` values**, built by
+  different responders in different messages. Holding one track's `new_since`
+  constant and then pointing at the other track's delivery is not a controlled
+  comparison, and it read as one. The error is recorded rather than quietly
+  fixed because it is the same error this section has made before in a different
+  dress: a figure that was genuinely constant, carrying an inference it could not
+  support.
+
+  **The batch 8 trial carries the same relation, and shows the before-and-after
+  this one could not.** Its t0 is `08:01:19.367Z`, and nodeD advertised three
+  distinct bookmarks to nodeA:
+
+  | `new_since` | wall clock | vs t0 | rounds |
+  |---|---|---|---|
+  | `1791619261876925` | `08:01:01.876Z` | **t0 −17.5s** | 4 |
+  | `1791619327008021` | `08:02:07.008Z` | **t0 +47.6s** | **68** |
+  | `1791619702882175` | `08:08:22.882Z` | t0 +423.5s | 1 |
+
+  **It begins below the op's timestamp, advances above it, and stays above for
+  all 68 rounds of the stall.** That is the disclaimer happening in the record
+  rather than reconstructed from a single value, and it is why batch 8 is the
+  better of the two traces: batch 9's bookmarks were *both* above its t0
+  (+10.3s and +31.7s), so that trial can show the silence but not its onset.
+  **n is 2 for the silence.**
+
+  **What it does not explain is the delivery, and the arithmetic says so
+  sharply.** In batch 8 nodeD sent its highest bookmark — `t0 +423.5s`, which
+  excludes the op by a wide margin — at `08:08:29.138`, received an `Accept`
+  26ms later at `.164`, and dequeued the op at `.167`. **So nodeA put the op in
+  an `Accept` answering an Initiate whose bookmark disclaimed it.**
+
+  **Both explanations offered for that have now been read in the source, and both
+  are false.** `respond/initiate.rs:110` passes
+  `Timestamp::from_micros(initiate.new_since)` into `retrieve_new_op_ids` — so
+  the Accept's `new_ops` **is** built from the Initiate's bookmark, not from
+  something else. And `get_request_new_since` at `:105` — nodeA's own stored
+  bookmark for nodeD — feeds only the *outgoing* `new_since` field at `:135`,
+  never the retrieval. Nor is a fetch-level retry hiding the third dequeue:
+  `core_fetch.rs:195`, inside `request_ops`, is the **only** producer for the
+  outgoing queue, so three dequeues are three distinct announcements and the
+  queue has no memory, as recorded above.
+
+  **That assumption was mine, it has now been read, and it was wrong — so the
+  arithmetic in this entry is measuring the wrong clock.**
+  `kitsune2_api-0.5.0/src/op_store.rs:126` documents the predicate exactly:
+
+  > The `start` timestamp is used to retrieve ops by their **`stored_at`**
+  > timestamp rather than their **creation** timestamp. This means that the
+  > `start` value can be used to page an op store.
+
+  So `new_since` is a **pagination cursor over the serving peer's store**, keyed
+  on when *that peer stored* each op — not a statement about what the requester
+  possesses, and **not comparable to t0**, which is when the claim was authored.
+  Every "the op is ~32 seconds older than the bookmark" comparison above puts a
+  creation time next to a `stored_at` cursor.
+
+  **What survives, and it is the structural half.** The ordering
+  [#222](../../pull/222) identified is still there in the code and needs no
+  arithmetic: `respond.rs:181` records the returned cursor and `:187` then
+  requests the fetch, so **the cursor advances whether or not the op is ever
+  fetched** — and `retrieve_op_ids_bounded`'s own doc says that returned value
+  "should be used as the `start` value for the next call", which is precisely
+  what makes an unfetched op unreachable on that track afterwards. The observed
+  pattern survives too: cursor low, op announced, op dropped, cursor high for 68
+  rounds, silence.
+
+  **What does not survive is the proof.** "The op was older than the bookmark"
+  is no longer established — it may well be true, and these logs cannot say,
+  because nodeA's `stored_at` for that op is not in them. The same dissolves the
+  delivery contradiction: an `Accept` built from a high cursor can legitimately
+  carry the op if nodeA's `stored_at` for it is higher still, which an authored
+  op's integration path could easily make true.
+
+  **So this entry ends weaker than its middle reads, deliberately.** The
+  mechanism is a cursor that advances past unfetched ops — structural, and
+  argued from code. The timestamps were the wrong comparison and are retained
+  only as the record of how the reading was reached. **Establishing it needs
+  nodeA's `stored_at`**, which nothing currently prints and which is the one
+  measurement this whole thread has been circling.
+
+  **So the account is half closed, and the halves should not be run together.**
+  The six minutes of silence is explained at n=2: nodeD disclaimed the op and
+  nodeA correctly withheld it. The delivery is **not** explained, and the
+  obvious-looking story — "the bookmark eventually let it through" — is the one
+  thing these timestamps rule out.
+
 
   **Still n=2, and one thing in the trace remains unaccounted for.** The middle
   dequeue — `08:08:21.872` and `10:57:03.404` — has no received message within a
