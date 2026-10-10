@@ -969,7 +969,7 @@ than trusted.
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
 | Why one op is never recovered, when drops are routine | **effort, and it is the live lead.** A passing run dropped 49 ops from nodeB's fetch queue and crossed in 4.0s, so a drop is background. What needs explaining is an op that never comes back across 35 rounds — what makes one ineligible for re-announcement or re-fetch. |
-| Why every drop was nodeB's | **an observation with n=1, not yet a question worth effort.** nodeA's fetch chain matched exactly in both harnesses while nodeB dropped ~30%, same machine, same seconds. Noted so a second occurrence is recognised rather than discovered again. |
+| ~~Why every drop was nodeB's~~ | **ANSWERED by the next run, which dropped nothing.** nodeB was 49-of-127 in [`38026557039`](../../actions/runs/38026557039) and 0-of-75 in [`38028080100`](../../actions/runs/38028080100), so a drop is occasional rather than positional. Closed before it could become a standing assumption. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
 | ~~[#219](../../pull/219)~~ | **Landed** as `da74ee7`, along with [#220](../../pull/220) `8742211` and [#221](../../pull/221) `a708142`. The row is kept to show what it looked like in flight. |
@@ -2886,13 +2886,34 @@ each of these is currently exactly that.
   ineligible for re-announcement or re-fetch, and it is the first version of this
   question that the logs can now be pointed at.
 
-  **A second thing the table raises, unexplained and not to be folded into the
-  first.** nodeA's chain is perfectly matched in both harnesses — 26/26/26/26 and
-  22/22/22/22 — and every drop in the run is nodeB's. One run is not a pattern
-  and the two nodes do differ in role, but a drop rate that is 0% on one
-  conductor and ~30% on the other, on the same machine in the same seconds, is
-  not what "background contention" predicts either. Noted as an observation with
-  n=1 rather than an explanation.
+  **A second thing the table raised — and the next run answered it, so it is
+  recorded with the answer rather than as an open question.** In the run above,
+  nodeA's chain matched exactly in both harnesses (26/26/26/26 and 22/22/22/22)
+  and every drop was nodeB's: 0% on one conductor against ~30% on the other, same
+  machine, same seconds, which is not what background contention predicts either.
+  That looked like it might be a property of nodeB's role.
+
+  **It is not. The very next run with the filter on dropped nothing at all.** Run
+  [`38028080100`](../../actions/runs/38028080100) — forward leg 2.0s, Phase 0
+  baseline 0.0s, both harnesses passing — censused nodeB at **35/35/35/35** and
+  **40/40/40/40**, nodeA at 26/26/26/26 and 22/22/22/22.
+
+  | run | nodeB dequeued | nodeB sent | dropped |
+  |---|---|---|---|
+  | [`38026557039`](../../actions/runs/38026557039) | 127 | 78 | **49** |
+  | [`38028080100`](../../actions/runs/38028080100) | 75 | 75 | **0** |
+
+  So a drop is **occasional rather than positional** — it is not nodeB's role
+  that drops ops, and two runs on near-identical trees differ by 49 of them. This
+  is written down with both runs because an n=1 asymmetry left standing for a day
+  is the exact failure this section is an argument against, and the run that
+  settled it arrived within the hour, in the CI of the pull request recording the
+  first one.
+
+  *(One small thing the pair does establish: nodeA's counts are identical across
+  both runs — 26 in `real-gossip`, 22 in `partition-rejoin`, four times over.
+  nodeB's vary (127 and 75). Not interpreted here beyond noting that one side
+  looks deterministic and the other does not.)*
 
   **Superseded by batch 5, and kept because the reasoning it records is what the
   batch was run to settle.** The integration caveat below was "the only thing
