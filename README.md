@@ -976,7 +976,8 @@ rather than tidying.
 | Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
 | ~~nodeA's `stored_at` for the claim op~~ | **MEASURED: integrated ~4.7s after authoring, then never again.** Recovered from `changed / ops_ps` — the pass that took the claim logged at `13:50:44.308Z`, elapsed 2.8ms, so `when_integrated` ≈ `13:50:44.306Z`. Integration lag on the authoring node is **ruled out**. |
 | Why an eligible op went undelivered for seven minutes | **needs Holochain patched — and the stopping rule says write the report instead.** The op sits at the only cursor nodeD advertised (`13:50:44.306176Z`) and `sync_queries.rs` compares `when_integrated >= ?`, **inclusive** — so it was eligible on every round. No explanation; four instruments is where this stops. |
-| Write the upstream report on the structural finding | **effort, and it is the live lead.** `respond.rs:181` advances the cursor before `:187` fetches, and `core_fetch.rs:346` drops silently. Four timestamp arguments built on that have been withdrawn; the code reading has not moved. **That is the reportable finding.** |
+| ~~Write the upstream report on the structural finding~~ | **DRAFTED, and the send is a person's.** `~/upstream-kitsune2-cursor-before-fetch-draft.md` — 343 words, filed as a question about intended behaviour rather than a defect. Not posted: `kitsune2`'s `AI_POLICY.md` names posting with the maintainer's credentials as grounds for closing a contribution, and this account already drew that warning on #638. |
+| Post the upstream draft | **a person, and it is the only thing here that needs one besides the npm publish.** Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**; see the entry below. |
 | ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
@@ -3646,6 +3647,42 @@ each of these is currently exactly that.
   log line — leaves an op whose re-offer depends on a cursor that has already
   moved. Four timestamp arguments have been built on top of that and withdrawn;
   the code reading has not moved once.
+
+  **The upstream report is drafted, and what it deliberately does not say is the
+  part worth recording.** It lives at
+  `~/upstream-kitsune2-cursor-before-fetch-draft.md`, beside the withdrawn one,
+  and it is **343 words**: one claim, one code path, two verbatim quotes, no
+  symptom narrative. All three constraints come from `#638`'s post-mortem
+  recorded above — *"too much text for such a small fix"*, and two unrelated
+  things in one issue letting the unfixed half die when the other merged.
+
+  **It is filed as a question, not a defect, and that is a judgement rather than
+  modesty.** The claim is the ordering alone: `respond.rs:181` advances the
+  new-ops bookmark, `:187` then requests the fetch, `core_fetch.rs:346` drops
+  silently with no log line, and `CoreFetchConfig` has no retry timer. Asking
+  whether that is intended cannot be wrong the way the withdrawn draft was wrong.
+  The cost is real and should not be glossed: **a question gets a lower-priority
+  answer than a defect report**, and filing it as a defect would require
+  demonstrating the stranding, which is the Holochain-patch work the stopping
+  rule above declined.
+
+  **The first maintainer question is predictable and the answer is no.** "Have
+  you observed this stranding an op?" — the one instance measured to that
+  resolution had the op's integration timestamp and the cursor **in the same
+  millisecond**, and `holochain_data`'s `op_ids_since_time_batch` compares
+  `ChainOp.when_integrated >= ?`, inclusive. So in that instance the op was
+  eligible and the ordering did not strand it. The draft never claims otherwise,
+  and the sender should know it before posting rather than discover it in a
+  reply.
+
+  **And the send is a person's, for a recorded reason.** `kitsune2`'s
+  `AI_POLICY.md` names *"having it post directly because it has your
+  credentials"* as grounds for closing a contribution, and this account already
+  drew that warning on `#638`. The draft carries a defend-these-as-your-own
+  checklist, the same disclosure line the previous one used, two optional archive
+  directories from run `38055534977`, and a note on what to cut if asked to
+  shorten.
+
 
   **And this entry's own CI produced a fourth slow baseline, which could not be
   analysed — so the archiving gap is closed in the same change.** The
