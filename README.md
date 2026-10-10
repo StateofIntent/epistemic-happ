@@ -3647,6 +3647,42 @@ each of these is currently exactly that.
   moved. Four timestamp arguments have been built on top of that and withdrawn;
   the code reading has not moved once.
 
+  **And this entry's own CI produced a fourth slow baseline, which could not be
+  analysed — so the archiving gap is closed in the same change.** The
+  `network` job on [#233](../../pull/233) failed with
+  `partition-rejoin`'s Phase 0 baseline at **175.4s**, the harness printing
+  `THE 175.4s IS THE FINDING, not this cap` and reporting the divergence
+  assertion INCONCLUSIVE, exactly as the 426.0s occurrence did at the top of
+  this section. The poll trace is unambiguous — zero at t+170s, one at t+175s.
+
+  **175.4s is also the second crossing near 176s**, after the `real-gossip`
+  forward leg of 176.8s recorded further up, on a different harness. Two figures
+  1.4 seconds apart, and no claim built on them: this section has a ~425s pair
+  and a ~930s pair already, and a third coincidence is a reason to keep counting
+  rather than to start explaining.
+
+  **What could not be done is the thing that worked all day on `peering-rate`.**
+  The claim op's fetch history — dequeued, dropped, re-offered — is how the ~425s
+  mode was characterised, and it needs the conductor logs. `network.yml` had no
+  artifact: it tailed **100 lines per log, on failure only**, and because each
+  harness step cleans `/tmp/epi-net` first, those tails describe the last
+  harness alone. Of the fetch entries that mattered, **25 survived**.
+
+  **Failure-only archiving would not have been enough either, and that is the
+  part worth stating.** The most informative `network.yml` runs today were
+  **green**: the 176.8s forward leg and the 50.1s baseline both passed, inside
+  their windows, and both are unrecoverable. §9 already records this mistake in
+  an earlier dress — the first flake batch saved conductor logs only when
+  `wrong peer` matched, *"which is exactly why the run that mattered was lost"*.
+  So `network.yml` now archives both harnesses' logs **on every run, pass or
+  fail**, at 14 days' retention.
+
+  **Which means this occurrence is recorded as a sighting and not as evidence**,
+  and the next one will be analysable. That asymmetry — a mode with three
+  instruments on it and a harness that threw the logs away — is the sort of thing
+  that stays invisible until a red run asks for the one file nobody kept.
+
+
 
 
   **So the account is half closed, and the halves should not be run together.**
