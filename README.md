@@ -973,8 +973,9 @@ rather than tidying.
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
-| ~~Why nodeA omits the op from ~60 consecutive Accepts~~ | **ANSWERED — nodeD disclaimed the op.** Its advertised `new_since` was **10:50:34.400Z** while the claim was created **≈10:50:02.7Z**, so the op was ~32s *older* than the bookmark and `retrieve_new_op_ids` was right never to return it. [#222](../../pull/222)'s `update_new_ops_bookmark`-before-`request_ops` ordering is **reinstated**; the entry retiring it tested constancy instead of ordering, and compared two different message tracks. |
-| What `retrieve_new_op_ids`'s `since` actually filters on | **a source read, and it is the live lead.** The two candidate explanations for the delivery are both read and both false — `respond/initiate.rs:110` does use `initiate.new_since`, `:105` feeds only the outgoing field, and `core_fetch.rs:195` is the sole queue producer. What remains unexamined is the retrieval predicate itself, in the op store and `kitsune2_dht`. **The silence is explained at n=2; the delivery is not.** |
+| Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
+| nodeA's `stored_at` for the claim op | **an instrument, and it is the live lead.** It is the one value that would settle both the silence and the delivery, and nothing prints it. The whole thread has been circling it. |
+| ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3493,14 +3494,43 @@ each of these is currently exactly that.
   outgoing queue, so three dequeues are three distinct announcements and the
   queue has no memory, as recorded above.
 
-  **Which leaves one assumption standing where three used to be, and it is
-  mine.** Every step above takes `retrieve_new_op_ids(…, since, …)` to filter on
-  something close to when the op was authored or stored — on nodeA, the claim's
-  own ~t0. If that filter is instead on a value that advances for other reasons,
-  the contradiction dissolves and the arithmetic in this entry is measuring the
-  wrong clock. **That is now the open question, and it is one level below
-  anything this section has examined**: the predicate lives in the op store and
-  `kitsune2_dht`, neither of which has been read.
+  **That assumption was mine, it has now been read, and it was wrong — so the
+  arithmetic in this entry is measuring the wrong clock.**
+  `kitsune2_api-0.5.0/src/op_store.rs:126` documents the predicate exactly:
+
+  > The `start` timestamp is used to retrieve ops by their **`stored_at`**
+  > timestamp rather than their **creation** timestamp. This means that the
+  > `start` value can be used to page an op store.
+
+  So `new_since` is a **pagination cursor over the serving peer's store**, keyed
+  on when *that peer stored* each op — not a statement about what the requester
+  possesses, and **not comparable to t0**, which is when the claim was authored.
+  Every "the op is ~32 seconds older than the bookmark" comparison above puts a
+  creation time next to a `stored_at` cursor.
+
+  **What survives, and it is the structural half.** The ordering
+  [#222](../../pull/222) identified is still there in the code and needs no
+  arithmetic: `respond.rs:181` records the returned cursor and `:187` then
+  requests the fetch, so **the cursor advances whether or not the op is ever
+  fetched** — and `retrieve_op_ids_bounded`'s own doc says that returned value
+  "should be used as the `start` value for the next call", which is precisely
+  what makes an unfetched op unreachable on that track afterwards. The observed
+  pattern survives too: cursor low, op announced, op dropped, cursor high for 68
+  rounds, silence.
+
+  **What does not survive is the proof.** "The op was older than the bookmark"
+  is no longer established — it may well be true, and these logs cannot say,
+  because nodeA's `stored_at` for that op is not in them. The same dissolves the
+  delivery contradiction: an `Accept` built from a high cursor can legitimately
+  carry the op if nodeA's `stored_at` for it is higher still, which an authored
+  op's integration path could easily make true.
+
+  **So this entry ends weaker than its middle reads, deliberately.** The
+  mechanism is a cursor that advances past unfetched ops — structural, and
+  argued from code. The timestamps were the wrong comparison and are retained
+  only as the record of how the reading was reached. **Establishing it needs
+  nodeA's `stored_at`**, which nothing currently prints and which is the one
+  measurement this whole thread has been circling.
 
   **So the account is half closed, and the halves should not be run together.**
   The six minutes of silence is explained at n=2: nodeD disclaimed the op and
