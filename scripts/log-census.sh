@@ -123,6 +123,30 @@ SIGNATURES=(
   'Failed to initiate gossip'
   'All agents with overlapping arcs are on timeout'
   'No agents to gossip with'
+  # THE AGENT-INFO PUBLICATION PATH, ADDED WITH THE MODULES THAT CARRY IT.
+  # Batch 8 showed the unresponsive block ending when the peer's URL turned
+  # over rather than when the entry expired, and these bound the turnover: a
+  # failed bootstrap push or a missing current url before it reads very
+  # differently from a clean one, and the prune line says whether the old agent
+  # info was expiring at the same moment.
+  #
+  # AND THE TURNOVER ITSELF IS LOGGED, which an earlier version of this comment
+  # denied. `core_space.rs:703` is `tracing::info!("Broadcast new agent info to
+  # {} peers", ok)` — the successful publish, at INFO, which the base `warn`
+  # silences and the module directive in `network.sh` lets through. So the event
+  # batch 8 had to infer from peer URLs in the gossip lines is directly
+  # countable, and lining nodeA's broadcast timestamps up against nodeD's URL
+  # change is now a log read rather than an inference.
+  #
+  # IT IS ALSO THE CANARY FOR THE THREE MODULES. The other four fire only on
+  # failures and prunes, so all-zero is the healthy case and proves nothing
+  # about whether the directive took. This one fires on every successful
+  # broadcast: **zero here on a healthy run means the filter, not the network.**
+  'Broadcast new agent info to'
+  'Failed to push agent info to bootstrap server'
+  "Not updating agent info because we don't have a current url"
+  'Failed to broadcast agent info'
+  'Pruning expired agent info'
 )
 
 echo "=== log census after ${LABEL} ==="

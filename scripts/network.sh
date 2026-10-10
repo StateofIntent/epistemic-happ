@@ -440,7 +440,38 @@ GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
 # trial where the entry arrived must have fetched ops, so a PASSING run with zero
 # fetch lines means the filter did not apply. `log-census.sh` counts all four so
 # that reading is available without re-reading logs by hand.
-GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug}"
+# AND THE AGENT-INFO PUBLICATION PATH, FOR THE URL TURNOVER. Batch 8 settled
+# what releases a peer from the unresponsive set: not the entry expiring, but
+# the peer reappearing under a NEW URL, since `set_unresponsive` keys on
+# `agent_info.url` (`core_space.rs:268`) and `select_next_target` tests
+# `get_unresponsive(url)` (`initiate.rs:269`). nodeD's own gossip lines showed
+# it — failed on `…/4c86264e…` at t+25s, recovered on `…/f61381fd…` 926.4s
+# later. What is NOT known is why the URL turns over when it does, and that is
+# a transport event in the agent-info publication path. See README.md §9.
+#
+# WHAT THESE BUY, AND THE ONE THAT MATTERS IS THE EVENT ITSELF.
+# `core_space.rs:703` is `tracing::info!("Broadcast new agent info to {} peers",
+# ok)` — the SUCCESSFUL publish. It sits at INFO, which the base `warn` silences
+# and `kitsune2_core::factories::core_space=debug` lets through, so adding that
+# module turns the turnover from something batch 8 had to infer off peer URLs
+# into a timestamped line on nodeA. Lining those up against nodeD's URL change
+# is the whole question.
+#
+# The rest are the surround, and they bound it: "Failed to push agent info to
+# bootstrap server" (`core_bootstrap.rs:264`), "Not updating agent info because
+# we don't have a current url" (`core_space.rs:541`), "Failed to broadcast agent
+# info" (:538), and from the peer store "Pruning expired agent info" and
+# "Ignoring insert for older agent info". A turnover with a failed push before
+# it reads differently from a clean one, and the prune line says whether the old
+# info was expiring at the same moment.
+#
+# AND THE BROADCAST LINE IS THE CANARY FOR ALL THREE MODULES. Every other
+# signature here fires only on a failure or a prune, so all-zero is the healthy
+# case and says nothing about whether the directive took — the same hole the
+# fetch counters would have had without a crossing to pair against. This one
+# fires on every successful broadcast, so zero on a healthy run indicts the
+# filter rather than the network.
+GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug,kitsune2_core::factories::core_space=debug,kitsune2_core::factories::core_bootstrap=debug,kitsune2_core::factories::mem_peer_store=debug}"
 export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
 
 log() { echo "[network] $*"; }
