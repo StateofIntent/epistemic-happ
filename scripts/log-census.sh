@@ -102,6 +102,17 @@ SIGNATURES=(
   #   'All agents ... are on timeout' tracking    -> the fallback pass is
   #     'No agents to gossip with'                    firing and still empty
   #
+  # AND THESE FIRE ROUTINELY IN `partition-rejoin`, WHICH IS NOT THE DEFECT.
+  # That harness takes conductors offline on purpose, so a `Failed to initiate
+  # gossip` and a run of `No agents to gossip with` are it working. The first
+  # run carrying these counters censused nodeB at 7 attempts / 6 initiated / 1
+  # failed / 7 on-timeout / 7 no-agents and PASSED every check. The batch 7
+  # failures are the same sequence at 1 failed and **584** no-agents, i.e. the
+  # whole run — so the diagnostic is the DOSE, and single digits next to a
+  # healthy `Initiated` count mean nothing. In `real-gossip` and `peering-rate`,
+  # where nothing is taken down deliberately, any non-zero `Failed to initiate
+  # gossip` is worth reading.
+  #
   # WHY THE FILTER ITSELF CANNOT BE COUNTED: `select_next_target`'s exclusion
   # branches (`initiate.rs:255-277` — expired agent info, missing URL,
   # unresponsive) every one of them bare `continue` with no tracing at all, so
