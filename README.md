@@ -969,8 +969,9 @@ than trusted.
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
 | ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
-| ~~Which filter excludes nodeD's only peer after one failed connect~~ | **ANSWERED: the unresponsive one, expiring at 1200s.** `CoreSpace::set_unresponsive` (`core_space.rs:268`) sets the entry's expiry to `agent_info.expires_at`, and agent info is minted `created_at + 60*20` (`:498`, `:566`). Both caps are shorter, so nodeA stays skipped at `initiate.rs:269` for the whole run. |
-| A batch at ~1500s, past the 1200s unresponsive expiry | **one dispatch, and it is the live lead.** It is the test that discriminates: if the marking is what holds these trials down, a cap past its expiry recovers them. Cheap — it only has to run until the two failures recover or do not. |
+| ~~Which filter excludes nodeD's only peer after one failed connect~~ | **PARTLY ANSWERED, and the number is wrong.** The `set_unresponsive`/`agent_info.expires_at` reading (`core_space.rs:268`, `:498`, `:566`) predicts 1200s. Batch 8 measured the block ending at **926.4s**, 965.3s after nodeA started — before that expiry could land. The block is real and bounded; what releases it is not established. |
+| What releases the peer at ~926s, and why one failed connect escalates and another does not | **one log module, and it is the live lead.** A new agent info — republished, or on a changed URL — would make the stale entry irrelevant, and `core_bootstrap`/the peer store are silenced by the current filter. Same move that made the fetch queue legible. **Not another batch**: eight have now produced distributions rather than mechanism. |
+| ~~A batch at ~1500s, past the 1200s unresponsive expiry~~ | **DONE — batch 8, 12 for 12.** ([`38036069009`](../../actions/runs/38036069009)) No non-crossings at a 1500s cap, and one trial shows the batch 7 signature completing at 943.0s. The historical non-crossings of that shape were truncated recoveries. |
 | ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
 | ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3111,6 +3112,75 @@ each of these is currently exactly that.
   per arm cannot establish a rate. These batches are worth running for the
   per-trial evidence they dump, not for the arm comparison they are nominally
   shaped around.
+
+  **Batch 8 raised the cap to 1500s and crossed 12 for 12 — the prediction held
+  in direction and failed on its number.** Run
+  [`38036069009`](../../actions/runs/38036069009), `cap_ms=1500000`:
+
+  | arm | crossed | timed out | slowest |
+  |---|---|---|---|
+  | `rt60000` | **6** | 0 | 429.8s |
+  | `rt15000` | **6** | 0 | **943.0s** |
+
+  | batch | trials | never crossed |
+  |---|---|---|
+  | 8 (1500s cap) | 12 | **0** |
+  | | **96** | **18 (19%)** |
+
+  **The batch 7 failures were truncated recoveries, and this is the trial that
+  shows it finishing.** `rt15000` trial 4 carries the batch 7 signature exactly —
+  and then ends differently:
+
+  | nodeD, `rt15000` trial 4 | |
+  |---|---|
+  | `Attempting to initiate gossip with` | 3 |
+  | `Failed to initiate gossip` | 1, at **t+25s** |
+  | `No agents to gossip with` | **924** |
+  | `All agents with overlapping arcs are on timeout` | 924 |
+  | `Initiated gossip with` | **2**, the first at **08:24:48.300** |
+  | crossing | **943.0s** |
+
+  One failed initiation, 924 consecutive iterations finding nobody, then two
+  rounds and the entry arrives. Batch 7's two non-crossings are the same shape
+  stopped at 584 iterations by a 600s shutter. **So the question "do these ops
+  never recover" is answered: they recover, and the block has a measured length
+  — 926.4 seconds from the failed initiation to the first successful one.**
+
+  **And 926.4s is not the 1200s this section predicted, which refutes the clock
+  rather than the mechanism.** The reading was that
+  `CoreSpace::set_unresponsive` expires the entry at `agent_info.expires_at`, and
+  that agent info is minted `created_at + 60 * 20`. nodeA's conductor started at
+  `08:08:43` and nodeD recovered at `08:24:48` — **965.3s later**, roughly 235
+  seconds before `created_at + 1200s` could possibly have landed, since the
+  network is built fresh per trial and nodeA's info cannot predate its own
+  conductor. So whatever released the peer, it was not that expiry elapsing.
+  The `set_unresponsive` reading stands as a reading of the code and is **not**
+  the explanation of the measurement.
+
+  **The second slow trial is the control that narrows it, and it rules out the
+  obvious simplification.** `rt60000` trial 4 also logged exactly one
+  `Failed to initiate gossip` — and **zero** `No agents to gossip with`,
+  recovering in **1.0 second** with 73 successful initiations over the trial. So
+  a failed connect does **not** reliably produce the block: it is necessary and
+  nowhere near sufficient, and something about the one case escalated it from a
+  one-second stumble to fifteen minutes. That trial's own 429.8s crossing is
+  slow for some other reason entirely and is not explained here.
+
+  **What would settle it is one more log module, not another batch.** The thing
+  that plausibly clears an unresponsive peer before its expiry is a **new agent
+  info** — a republish with a fresh `expires_at`, or a changed URL after the
+  relay connection re-established, either of which would make the stale entry
+  irrelevant. nodeA's log says nothing about it because the conductor filter is
+  `warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug`, and
+  agent-info publication lives in `core_bootstrap` and the peer store, both
+  silenced. Adding one of those is the same move that made the fetch queue
+  legible, and it is cheap; eight batches have now established that more trials
+  produce more distributions and not more mechanism.
+
+  **The arms still predict nothing**, for the third batch running: 6-for-6 and
+  6-for-6 here, mirrored failures in batches 6 and 7. `roundTimeoutMs` has not
+  separated an outcome in 36 trials.
+
 
 
 
