@@ -968,8 +968,9 @@ than trusted.
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
-| Why one op is never recovered, when drops are routine | **effort, and it is the live lead.** A passing run dropped 49 ops from nodeB's fetch queue and crossed in 4.0s, so a drop is background. What needs explaining is an op that never comes back across 35 rounds — what makes one ineligible for re-announcement or re-fetch. |
-| ~~Why every drop was nodeB's~~ | **ANSWERED by the next run, which dropped nothing.** nodeB was 49-of-127 in [`38026557039`](../../actions/runs/38026557039) and 0-of-75 in [`38028080100`](../../actions/runs/38028080100), so a drop is occasional rather than positional. Closed before it could become a standing assumption. |
+| Do the ops never recover, or does the harness stop watching? | **one dispatch, and it is the live lead.** Batch 6 saw an op dropped 32 times and arrive at **213.5s** against a 330s cap — a factor of 1.5. `peering-rate.yml` takes `cap_ms`, so a batch at 600s settles it. Worth doing before more mechanism hunting: every mechanism proposed so far has been for a failure that may not exist. |
+| ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
+| ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
 | ~~[#219](../../pull/219)~~ | **Landed** as `da74ee7`, along with [#220](../../pull/220) `8742211` and [#221](../../pull/221) `a708142`. The row is kept to show what it looked like in flight. |
@@ -2904,7 +2905,11 @@ each of these is currently exactly that.
   | [`38028080100`](../../actions/runs/38028080100) | 75 | 75 | **0** |
 
   So a drop is **occasional rather than positional** — it is not nodeB's role
-  that drops ops, and two runs on near-identical trees differ by 49 of them. This
+  that drops ops, and two runs on near-identical trees differ by 49 of them.
+  **(Too strong, and corrected by batch 6 immediately below: which node drops IS
+  positional — the fetcher, in twelve of twelve — while the rate varies with how
+  much it has to fetch. These three `network.yml` runs are the low-volume end of
+  that, not a counterexample to it.)** This
   is written down with both runs because an n=1 asymmetry left standing for a day
   is the exact failure this section is an argument against, and the run that
   settled it arrived within the hour, in the CI of the pull request recording the
@@ -2914,6 +2919,85 @@ each of these is currently exactly that.
   both runs — 26 in `real-gossip`, 22 in `partition-rejoin`, four times over.
   nodeB's vary (127 and 75). Not interpreted here beyond noting that one side
   looks deterministic and the other does not.)*
+
+  **Batch 6 is the first with the fetch chain live, and it found two
+  non-crossings, a 213.5s crossing, and a reason to doubt the cap itself.** Run
+  [`38029161000`](../../actions/runs/38029161000) off `6ea451e`:
+
+  | batch | trials | never crossed | transport | gossip |
+  |---|---|---|---|---|
+  | 6 | 12 | 2 | 0 | 2 |
+  | | **72** | **16 (22%)** | **10 (63%)** | **6 (37%)** |
+
+  | arm | crossed | timed out | slowest |
+  |---|---|---|---|
+  | `rt60000` | 4 | **2** | 24.1s |
+  | `rt15000` | 6 | 0 | **213.5s** |
+
+  **nodeD's fetch chain, all twelve trials.** The two zero rows are the control
+  the harness's own note asks for — they crossed fastest, so the direct publish
+  landed and the queue was never involved:
+
+  | trial | dequeued | sent | dropped | |
+  |---|---|---|---|---|
+  | `rt15000` 8.0s | 0 | 0 | 0 | queue never used |
+  | `rt60000` 10.2s | 0 | 0 | 0 | queue never used |
+  | `rt15000` 15.0s | 47 | 18 | 29 | 62% |
+  | `rt60000` 15.0s | 47 | 18 | 29 | 62% |
+  | `rt15000` 21.1s | 47 | 18 | 29 | 62% |
+  | `rt15000` 21.1s | 47 | 27 | 20 | 43% |
+  | `rt60000` 24.1s | 47 | 18 | 29 | 62% |
+  | `rt60000` 24.1s | 43 | 11 | 32 | **74%, and it crossed** |
+  | `rt15000` **213.5s** | 59 | 27 | 32 | 54% |
+  | `rt60000` **no crossing** | 37 | 8 | 29 | **78%** |
+  | `rt60000` **no crossing** | 27 | 10 | 17 | 63% |
+
+  nodeA was **18/18/18/18 with zero drops in every single trial.**
+
+  **The drop rate does not separate a crossing from a non-crossing, now at n=12
+  rather than n=1.** A trial dropping **74%** crossed in 24.1s; one dropping
+  **78%** never crossed. That is the entry above confirmed on a second harness
+  and an order of magnitude more data, and it closes the question of whether the
+  drop is the defect. It is not.
+
+  **But "occasional rather than positional", one entry above, is too strong and
+  is corrected here.** That read came from three `network.yml` runs where nodeB
+  dropped 49, then 0, then 2. Across these twelve trials the **fetching** node
+  drops in **ten of twelve, at 43% to 78%**, while nodeA — the publisher, which
+  holds everything and fetches little — drops **nothing, in twelve of twelve**.
+  So the accurate statement has three parts, and the earlier one collapsed them:
+  **which** node drops is positional (the fetcher, always), the **rate** varies
+  with how much it has to fetch, and **neither** predicts the outcome. The
+  `network.yml` zero-drop runs are consistent with that — nodeB there is up from
+  the start and has little to fetch, where `peering-rate`'s nodeD joins late and
+  must fetch a history.
+
+  **And the finding that matters most is the 213.5 seconds.** An op was dropped
+  thirty-two times and **still arrived**. So recovery does happen, and it happens
+  late — which means a "non-crossing" at the 330s cap is not demonstrably a
+  failure to recover. **The cap is 330s and the longest observed recovery is
+  213.5s: a factor of 1.5.** A distribution whose tail reaches 213.5s cannot be
+  said to end before 330s on this evidence, and the two non-crossings may simply
+  be the same tail past the shutter.
+
+  **That reframes the live lead rather than answering it.** The question was "what
+  makes one op never recover" and the honest version is now **"do these ops never
+  recover, or does the harness stop watching first"** — which is a cheaper
+  question: `peering-rate.yml` takes `cap_ms` as a dispatch input, so a batch at
+  600s or 900s answers it directly. Worth doing before any more mechanism
+  hunting, because every mechanism proposed so far has been for a failure that
+  may not exist.
+
+  **One more thing batch 6 broke: integration is no longer always instantaneous.**
+  Three of twelve trials measured it at **8.1s, 8.1s and 8.2s**, where batches 4
+  and 5 were 0.0s almost throughout. The distribution matters less than what it
+  does to the reasoning: §9 has been treating "integration is instantaneous" as
+  settled, and it is a property of those batches rather than of the harness. It
+  is still not the cause here — one non-crossing had 8.1s integration and the
+  other had 0.0s, and the 213.5s crossing had 8.1s — but the figure needs
+  measuring per trial rather than assuming, which is exactly why #217 reports it
+  per trial.
+
 
   **Superseded by batch 5, and kept because the reasoning it records is what the
   batch was run to settle.** The integration caveat below was "the only thing
