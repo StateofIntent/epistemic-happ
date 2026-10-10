@@ -967,7 +967,9 @@ than trusted.
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
-| Make nodeD's fetch queue visible | **effort, and it is the live lead.** The `NoDiff` rounds carried non-empty `new_ops` every time, so announced ops reach a fetch queue that no tracing covers. This replaces the caveat above as what stands between this and an upstream report. |
+| ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
+| Why one op is never recovered, when drops are routine | **effort, and it is the live lead.** A passing run dropped 49 ops from nodeB's fetch queue and crossed in 4.0s, so a drop is background. What needs explaining is an op that never comes back across 35 rounds — what makes one ineligible for re-announcement or re-fetch. |
+| ~~Why every drop was nodeB's~~ | **ANSWERED by the next run, which dropped nothing.** nodeB was 49-of-127 in [`38026557039`](../../actions/runs/38026557039) and 0-of-75 in [`38028080100`](../../actions/runs/38028080100), so a drop is occasional rather than positional. Closed before it could become a standing assumption. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
 | ~~[#219](../../pull/219)~~ | **Landed** as `da74ee7`, along with [#220](../../pull/220) `8742211` and [#221](../../pull/221) `a708142`. The row is kept to show what it looked like in flight. |
@@ -2839,6 +2841,79 @@ each of these is currently exactly that.
     past everything looks like, and these logs cannot reconcile it: nodeD's
     `fetch` module has no tracing enabled, so the queue is invisible. **Making it
     visible is the next step**, not another batch.
+
+  **The queue is visible now, and its first run disproved the candidate above
+  within the hour.** [#223](../../pull/223) put
+  `kitsune2_core::factories::core_fetch=debug` on the conductors and counted its
+  four lines in the census. Run
+  [`38026557039`](../../actions/runs/38026557039) — that pull request's own
+  `network` job, a passing one, forward leg 4.0s:
+
+  | | `processing` | `sending` | `response` | `stored` |
+  |---|---|---|---|---|
+  | real-gossip nodeA | 26 | 26 | 26 | 26 |
+  | real-gossip nodeB | **42** | **18** | 18 | 18 |
+  | real-gossip nodeC | 0 | 0 | 0 | 0 |
+  | partition-rejoin nodeA | 22 | 22 | 22 | 22 |
+  | partition-rejoin nodeB | **85** | **60** | 60 | 60 |
+  | partition-rejoin nodeC | 0 | 0 | 0 | 0 |
+
+  The instrumentation is sound on its own terms: non-zero on a run that crossed,
+  all four counters carried by the census, and nodeC — a different DHT with
+  nothing to fetch — at zero across the board, which is the control that makes
+  the other rows mean something.
+
+  **And nodeB dequeued 24 and 25 ops it never sent, in a run that passed every
+  check.** That is the silent-drop fingerprint the entry above predicted, found
+  immediately — and it refutes the hypothesis rather than confirming it. **If a
+  dropped op alone caused a non-crossing, this run would have failed.** It
+  dropped forty-nine and crossed in four seconds. So the drop is **background**,
+  in the same category as `database is locked`: ops are re-announced on a later
+  round and fetched then, and the queue losing some is the normal operation of a
+  system that expects to be told again.
+
+  Recorded at this length because of how fast it went: the mechanism was proposed
+  from a source reading, instrumented, and disproved by the instrument's first
+  run. The two limits stated alongside it were the right limits and they were not
+  what killed it — what killed it was a passing run doing the thing that was
+  supposed to be diagnostic, forty-nine times.
+
+  **So the suspect moves a third time, and this time it is narrower rather than
+  merely elsewhere.** Drops are routine and recovery normally follows, so what
+  needs explaining is not a lost op but **a lost op that is never recovered** —
+  one entry failing to come back across 35 rounds and 319 seconds while the
+  machinery around it works. That is a question about what makes a particular op
+  ineligible for re-announcement or re-fetch, and it is the first version of this
+  question that the logs can now be pointed at.
+
+  **A second thing the table raised — and the next run answered it, so it is
+  recorded with the answer rather than as an open question.** In the run above,
+  nodeA's chain matched exactly in both harnesses (26/26/26/26 and 22/22/22/22)
+  and every drop was nodeB's: 0% on one conductor against ~30% on the other, same
+  machine, same seconds, which is not what background contention predicts either.
+  That looked like it might be a property of nodeB's role.
+
+  **It is not. The very next run with the filter on dropped nothing at all.** Run
+  [`38028080100`](../../actions/runs/38028080100) — forward leg 2.0s, Phase 0
+  baseline 0.0s, both harnesses passing — censused nodeB at **35/35/35/35** and
+  **40/40/40/40**, nodeA at 26/26/26/26 and 22/22/22/22.
+
+  | run | nodeB dequeued | nodeB sent | dropped |
+  |---|---|---|---|
+  | [`38026557039`](../../actions/runs/38026557039) | 127 | 78 | **49** |
+  | [`38028080100`](../../actions/runs/38028080100) | 75 | 75 | **0** |
+
+  So a drop is **occasional rather than positional** — it is not nodeB's role
+  that drops ops, and two runs on near-identical trees differ by 49 of them. This
+  is written down with both runs because an n=1 asymmetry left standing for a day
+  is the exact failure this section is an argument against, and the run that
+  settled it arrived within the hour, in the CI of the pull request recording the
+  first one.
+
+  *(One small thing the pair does establish: nodeA's counts are identical across
+  both runs — 26 in `real-gossip`, 22 in `partition-rejoin`, four times over.
+  nodeB's vary (127 and 75). Not interpreted here beyond noting that one side
+  looks deterministic and the other does not.)*
 
   **Superseded by batch 5, and kept because the reasoning it records is what the
   batch was run to settle.** The integration caveat below was "the only thing
