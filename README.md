@@ -1056,6 +1056,67 @@ which until now ended at a hypothesis: an accept timeout is exactly what marks a
 peer unresponsive or fails a `send_module`, and `core_publish.rs` then skips or
 drops the op with no retry.
 
+**That table's passing row is now falsified, by a run that passed.** Twelve
+`network.yml` dispatches off `8742211` (runs
+[`38023962491`](../../actions/runs/38023962491) through
+[`38024007232`](../../actions/runs/38024007232)) **all twelve passed**, and one of
+them — [`38024003109`](../../actions/runs/38024003109) — logged `nodeA: 1 x` and
+`nodeB: 6 x "iroh incoming connection failed"` while passing every check in both
+harnesses. Six occurrences is inside the 2-to-7 band the failing runs showed. So
+the signature does **not** separate failures from passes: it marks a transport
+that was disrupted, and whether that disruption costs the run depends on how much
+of the window it covers — which is what the paragraph above says about the two
+*shapes*, now true one level up as well.
+
+**The honest limit on that correction.** The log-signature block only prints when
+a crossing is slow, so this batch can count the signature in that one run and in
+none of the other eleven. The counterexample stands on its own — a passing run
+with six — but no replacement rate is measurable from here, and the original
+table's numbers are left as written rather than edited, because they were a true
+reading of the runs they described.
+
+**The same run is shape A's third occurrence, and the first one that was
+repaired.** Its probe signature held exactly as the previous two did — peer
+counts `2` and `2` at publish and again at 60s, then `STRANDED OP: the fresh
+claim crossed in 0.0s and the missed one is STILL absent`. The difference is the
+ending: the missed claim **arrived after 176.8s**. The two earlier occurrences
+turned up ~134s after their own publish and never arrived at all, so this is the
+first time the repair has been watched completing. **It would have failed under
+both retired windows** — 120s and 145s — and passed under 330s as a warning
+carrying its time. That is a second vindication of the widening, from a run
+nobody set up to test it.
+
+**A single `initiate too soon` is background noise, which bounds what the
+five-on-nodeB occurrence meant.** Four of these twelve passing runs carry exactly
+one (`38023962491`, `38023994105`, `38023998911`, `38024007232`), all with fast
+crossings. The count was the finding, not the presence — worth stating because a
+reader grepping a green run's census will find the string and have no way to know
+it is unremarkable.
+
+**Twenty-four fresh measurements, and the middle of the range is populated.**
+
+| | n | measured |
+|---|---|---|
+| `real-gossip` forward leg | 12 | 2.0 2.0 2.0 4.0 4.0 4.0 6.1 6.1 12.1 14.1 20.1 **176.8** |
+| `partition-rejoin` Phase 0 baseline | 12 | 0.0 0.0 0.0 5.0 5.0 5.0 10.0 15.1 20.1 20.1 20.1 **50.1** |
+
+Read against the 426.0s baseline recorded above, 50.1s and 176.8s matter more
+than the eleven fast ones: the entry two above this says the pair 426.0s-then-5.0s
+shows a network "either immediate or minutes-long with nothing in between", and
+these two sit in between. **That sentence was about one pair and is defensible as
+written, and it reads as a stronger claim than twenty-four measurements support**
+— so it is qualified here rather than left to be quoted on its own. A long right
+tail is the shape the evidence now has; two modes is not.
+
+*(Provenance, because it explains why there are twelve `network.yml` runs and not
+one: these were dispatched while aiming at a fifth `NoDiff` batch, which lives in
+`peering-rate.yml` and not here. A twelve-trial `NoDiff` batch is one dispatch of
+that workflow, with `trials: 6` across two arms — and the throwaway-ref-per-run
+method belongs to this workflow's flake probe, because `network.yml` sets
+`cancel-in-progress: true` on a per-ref group while `peering-rate.yml` does not.
+The batch was wrong for its purpose and the runs are still measurements, so they
+are recorded for what they are.)*
+
 **Two more signatures change what the repair interval actually is.** The same
 logs carry `PeerBehaviorError { ctx: "initiate too soon" }` and
 `Unsolicited Accept message`. So a gossip round can time out at 15s, its late
