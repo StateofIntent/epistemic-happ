@@ -123,6 +123,22 @@ SIGNATURES=(
   'Failed to initiate gossip'
   'All agents with overlapping arcs are on timeout'
   'No agents to gossip with'
+  # THE AGENT-INFO PUBLICATION PATH, ADDED WITH THE MODULES THAT CARRY IT.
+  # Batch 8 showed the unresponsive block ending when the peer's URL turned
+  # over rather than when the entry expired, and these bound the turnover: a
+  # failed bootstrap push or a missing current url before it reads very
+  # differently from a clean one, and the prune line says whether the old agent
+  # info was expiring at the same moment.
+  #
+  # NONE of them is the turnover itself — no module logs a successful publish,
+  # `core_space` re-signs at :490-505 with no tracing on the happy path. So a
+  # run where all four are zero and a URL still changed is the expected healthy
+  # case, NOT a missing signature. The turnover is read from the peer URL in
+  # the gossip lines, which needed no filter change at all.
+  'Failed to push agent info to bootstrap server'
+  "Not updating agent info because we don't have a current url"
+  'Failed to broadcast agent info'
+  'Pruning expired agent info'
 )
 
 echo "=== log census after ${LABEL} ==="

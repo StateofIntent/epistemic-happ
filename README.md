@@ -970,7 +970,9 @@ than trusted.
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
 | ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
 | ~~Which filter excludes nodeD's only peer after one failed connect~~ | **PARTLY ANSWERED, and the number is wrong.** The `set_unresponsive`/`agent_info.expires_at` reading (`core_space.rs:268`, `:498`, `:566`) predicts 1200s. Batch 8 measured the block ending at **926.4s**, 965.3s after nodeA started — before that expiry could land. The block is real and bounded; what releases it is not established. |
-| What releases the peer at ~926s, and why one failed connect escalates and another does not | **one log module, and it is the live lead.** A new agent info — republished, or on a changed URL — would make the stale entry irrelevant, and `core_bootstrap`/the peer store are silenced by the current filter. Same move that made the fetch queue legible. **Not another batch**: eight have now produced distributions rather than mechanism. |
+| ~~What releases the peer at ~926s~~ | **ANSWERED from logs already on hand: nodeA came back under a NEW URL.** The unresponsive entry is keyed by URL (`core_space.rs:268`, `initiate.rs:269`), so a URL turnover voids it. The expiry never came into it, which is why 926.4s bore no relation to 1200s. |
+| Why nodeA's URL turns over at ~926s | **one log module, and it is the live lead.** A transport-level event — most likely a relay reconnection handing nodeA a new address. `core_bootstrap` and `core_space` carry the publication path and are silenced; neither logs a successful publish, so they add the failure and prune lines around it, not the event. |
+| Why one failed connect escalates and another does not | **open, and narrower than it was.** `rt60000` trial 4 failed once with zero `No agents to gossip with` and recovered in 1.0s, so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | ~~A batch at ~1500s, past the 1200s unresponsive expiry~~ | **DONE — batch 8, 12 for 12.** ([`38036069009`](../../actions/runs/38036069009)) No non-crossings at a 1500s cap, and one trial shows the batch 7 signature completing at 943.0s. The historical non-crossings of that shape were truncated recoveries. |
 | ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
 | ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
@@ -3166,16 +3168,39 @@ each of these is currently exactly that.
   one-second stumble to fifteen minutes. That trial's own 429.8s crossing is
   slow for some other reason entirely and is not explained here.
 
-  **What would settle it is one more log module, not another batch.** The thing
-  that plausibly clears an unresponsive peer before its expiry is a **new agent
-  info** — a republish with a fresh `expires_at`, or a changed URL after the
-  relay connection re-established, either of which would make the stale entry
-  irrelevant. nodeA's log says nothing about it because the conductor filter is
-  `warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug`, and
-  agent-info publication lives in `core_bootstrap` and the peer store, both
-  silenced. Adding one of those is the same move that made the fetch queue
-  legible, and it is cheap; eight batches have now established that more trials
-  produce more distributions and not more mechanism.
+  **And the answer was already in the logs, under the filter that was already on.
+  nodeA came back under a different URL.** The second of the two guesses in the
+  paragraph this replaces — a republish with a fresh expiry, or a changed URL —
+  is the right one, and nodeD's own gossip lines say so without any new module:
+
+  | | time | nodeA's peer URL |
+  |---|---|---|
+  | `Attempting to initiate gossip with` | `08:08:59` | `…/4c86264ee78a92b7…` |
+  | `Failed to initiate gossip` | `08:09:21` | *(same)* |
+  | `Initiated gossip with` | `08:24:48` | `…/f61381fd9e416d96…` |
+
+  **So the unresponsive entry is keyed by URL, and what ends the block is the
+  peer's URL turning over — not the entry expiring.** `set_unresponsive` stores
+  against `agent_info.url` (`core_space.rs:268`), `select_next_target` tests
+  `get_unresponsive(url)` (`initiate.rs:269`), and when nodeA re-signs its agent
+  info with a new URL (`core_space.rs:490-505`, which mints a fresh
+  `created_at`/`expires_at` whenever `current_url` is set) the old entry stops
+  matching anything nodeD will try. That is why 926.4s bore no relation to
+  1200s: **the expiry never came into it.** The 1200s figure is a real constant
+  in the code and was simply the wrong constant for this observable — the third
+  reading in this investigation to be right about the code and wrong about the
+  measurement.
+
+  **What is left is a smaller and better question: why does the URL turn over at
+  ~926s?** That is a transport-level event — a relay reconnection giving nodeA a
+  new address — and it is the thing worth instrumenting now, where the old
+  phrasing of this paragraph would have instrumented a question that had already
+  been answered. `core_bootstrap` and `core_space` carry the agent-info
+  publication path and both are silenced by the current filter; neither logs a
+  *successful* publish, so what they add is the failure and prune lines around
+  it rather than the event itself. Worth having, with that limit stated, and
+  still cheaper than a ninth batch: eight have now produced distributions rather
+  than mechanism.
 
   **The arms still predict nothing**, for the third batch running: 6-for-6 and
   6-for-6 here, mirrored failures in batches 6 and 7. `roundTimeoutMs` has not

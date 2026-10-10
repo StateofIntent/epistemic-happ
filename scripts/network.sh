@@ -440,7 +440,31 @@ GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
 # trial where the entry arrived must have fetched ops, so a PASSING run with zero
 # fetch lines means the filter did not apply. `log-census.sh` counts all four so
 # that reading is available without re-reading logs by hand.
-GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug}"
+# AND THE AGENT-INFO PUBLICATION PATH, FOR THE URL TURNOVER. Batch 8 settled
+# what releases a peer from the unresponsive set: not the entry expiring, but
+# the peer reappearing under a NEW URL, since `set_unresponsive` keys on
+# `agent_info.url` (`core_space.rs:268`) and `select_next_target` tests
+# `get_unresponsive(url)` (`initiate.rs:269`). nodeD's own gossip lines showed
+# it — failed on `…/4c86264e…` at t+25s, recovered on `…/f61381fd…` 926.4s
+# later. What is NOT known is why the URL turns over when it does, and that is
+# a transport event in the agent-info publication path. See README.md §9.
+#
+# WHAT THESE TWO ACTUALLY BUY, AND THE LIMIT STATED UP FRONT: neither module
+# logs a SUCCESSFUL publish. `core_space` re-signs at :490-505 with no tracing
+# on the happy path, and `core_bootstrap`'s debug line at :264 is a FAILED
+# push. So what this adds is the failure and prune lines AROUND the event —
+# "Failed to push agent info to bootstrap server", "Not updating agent info
+# because we don't have a current url" (`core_space.rs:541`), "Failed to
+# broadcast agent info" (:538) — plus, from the peer store, "Pruning expired
+# agent info" and "Ignoring insert for older agent info". The turnover itself
+# stays inferred from the URL in the gossip lines, which is where batch 8 read
+# it from and which needs no filter change at all.
+#
+# Added anyway because the surrounding lines bound the question: a turnover
+# with a failed bootstrap push before it reads differently from one without,
+# and the peer-store prune lines say whether the old info was expiring at the
+# same moment or not.
+GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug,kitsune2_core::factories::core_space=debug,kitsune2_core::factories::core_bootstrap=debug,kitsune2_core::factories::mem_peer_store=debug}"
 export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
 
 log() { echo "[network] $*"; }
