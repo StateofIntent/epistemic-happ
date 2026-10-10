@@ -973,7 +973,7 @@ rather than tidying.
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
-| Why nodeA omits the op from ~60 consecutive Accepts | **an instrument, and it is the live lead.** nodeD initiated toward nodeA **73 times at a 5.5s median gap** straight through the stall, so the delay is not a cadence. `new_ops` is built from the requester's bookmark (`respond/accept.rs:86`), so either nodeD's bookmark advanced past the dropped op — #222's ordering — or the arc set excluded it. **Needs the bookmark values printed**; the filter does not carry them. |
+| Why nodeA omits the op from ~60 consecutive Accepts | **the arc set, by elimination — and it is the live lead.** nodeD initiated 73 times at a 5.5s median gap, and sent the **same `new_since` on all 71 later rounds**, including the one that delivered the op. So the bookmark is not the discriminator and #222's ordering is retired on a measurement. The remaining input to `retrieve_new_op_ids` is `common_arc_set`, which nothing prints. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3379,18 +3379,36 @@ each of these is currently exactly that.
   roughly sixty rounds with the peer that had it**, and the delay cannot be a
   cadence of anything nodeD does.
 
-  **Which moves the question onto what nodeA puts in those sixty Accepts.**
-  `retrieve_new_op_ids(&common_arc_set, since: accept.new_since, …)`
-  (`respond/accept.rs:86`) builds `new_ops` from the **requester's own bookmark**,
-  so if nodeD's stored bookmark for nodeA has advanced past the dropped op, nodeA
-  will not offer it again however often nodeD asks — which is precisely the
-  `update_new_ops_bookmark`-before-`request_ops` ordering
-  [#222](../../pull/222) flagged, now with sixty rounds of silence as its
-  evidence rather than one. The other candidate is the `common_arc_set`
-  excluding the op until arcs move. **Distinguishing them means reading the
-  bookmark values nodeD sends**, which the current filter does not print — the
-  first thing in this investigation that genuinely needs an instrument rather
-  than a re-read.
+  **Which moved the question onto what nodeA puts in those sixty Accepts — and
+  that is measurable from the same logs, which a first pass at this paragraph
+  wrongly said needed a new instrument.** `new_since` and `updated_new_since` are
+  printed in the message structs already. nodeD's bookmark toward nodeA across
+  the whole trial took exactly two values:
+
+  | `new_since` nodeD sent to nodeA | occurrences |
+  |---|---|
+  | `1791629412967360` | 2, at `10:50:34` and `10:50:35` |
+  | `1791629434400057` | **71**, from `10:50:40` through `10:57:07` |
+
+  **It advanced once, forty seconds in, and never moved again — including on the
+  round that finally delivered the op.** The sixty rounds that omitted the op and
+  the one round that carried it were sent with the *same* `new_since`.
+
+  **So the bookmark is not the discriminator, and
+  [#222](../../pull/222)'s ordering is finished as an explanation for this
+  delay.** `retrieve_new_op_ids(&common_arc_set, since: accept.new_since, …)`
+  (`respond/accept.rs:86`) was handed an identical `since` and returned the op
+  once, then not for six minutes, then again. Same input, different output: the
+  cause is in the other argument or in nodeA's store, not in the bookmark. That
+  reading survived two entries on the strength of being mechanically plausible,
+  and it is retired here on a measurement rather than on another plausibility.
+
+  **What is left, and it is narrower than anything this section has had.** The
+  remaining variable in that call is `common_arc_set`, which `update_storage_arcs`
+  moves as snapshots are exchanged — so the candidate is that the op fell outside
+  the common arc for those six minutes and came back inside it. **Not
+  established**, and the honest statement of its difficulty is that arcs are the
+  one input to that call which nothing currently prints.
 
   **Still n=2, and one thing in the trace remains unaccounted for.** The middle
   dequeue — `08:08:21.872` and `10:57:03.404` — has no received message within a
