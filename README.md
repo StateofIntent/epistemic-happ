@@ -974,7 +974,7 @@ rather than tidying.
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
 | Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
-| nodeA's `stored_at` for the claim op | **an instrument, and it is the live lead.** It is the one value that would settle both the silence and the delivery, and nothing prints it. The whole thread has been circling it. |
+| nodeA's `stored_at` for the claim op | **partly instrumented, and it is the live lead.** `stored_at` is Holochain's **integration timestamp** (`holochain_p2p` `op_store.rs:305`). Per-op values need Holochain patched, but `integrate_dht_ops_workflow=debug` now prints each pass's time and count — a proxy that discriminates t0 from t0+423s on a one-claim network. **If it does not discriminate, write the upstream report instead of a fourth instrument.** |
 | ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
@@ -3531,6 +3531,45 @@ each of these is currently exactly that.
   only as the record of how the reading was reached. **Establishing it needs
   nodeA's `stored_at`**, which nothing currently prints and which is the one
   measurement this whole thread has been circling.
+
+  **The clock has a name, and it is Holochain's integration pass.** The entry
+  above retracted its arithmetic on finding that `new_since` pages the serving
+  peer's store by `stored_at` rather than by creation time. Holochain's
+  implementation says what `stored_at` is:
+  `holochain_p2p-0.7.0/src/op_store.rs:305` calls it **"the integration
+  timestamp"** in its own comment, and the query beneath it is
+  `op_ids_since_time_batch(arc_start, arc_end, cursor_t, 500)`.
+
+  **So the value deciding whether a peer offers an op is when that peer
+  integrated it** — and on the node that *authored* the claim that is not the
+  moment of authoring: `integrate_dht_ops_workflow` is a separate workflow with
+  its own `when_integrated = Timestamp::now()`. Every reconstruction in this
+  thread used t0, the authoring moment, which is why the arithmetic had to go.
+
+  **Instrumented, with the limit first.** The workflow logs
+  `tracing::debug!(?changed, %ops_ps, "ops integrated")` — **a count, never op
+  identities** — so the filter now carries
+  `holochain::core::workflow::integrate_dht_ops_workflow=debug` and the census
+  counts `ops integrated`. That yields, per node, **when each integration pass
+  ran and how many ops it took**, and yields nothing about any particular op's
+  `stored_at`. `holochain_p2p`'s op store has only `warn!` lines, so no filter
+  reaches per-op integration times; that needs Holochain patched.
+
+  **Why a proxy is still the right measurement here.** A `peering-rate` trial is
+  a fresh network carrying one claim, so an integration pass at t0 against one at
+  t0+423s is exactly the discrimination the ~425s mode needs, and the counts
+  bound which pass could have carried the claim.
+
+  **And the honest ceiling on this line of work, recorded before it is reached.**
+  This is the **third** instrument added to chase one mode, and its output is a
+  proxy rather than the value. If integration-pass timings do not discriminate,
+  the next step is patching Holochain to log per-op integration times — a
+  different order of effort — and the better move at that point is an upstream
+  report built on what is established: that a dropped fetch leaves an op
+  unreachable on the track whose cursor has advanced past it, which is
+  structural and argued from code rather than from any of the timestamps this
+  thread has had to withdraw.
+
 
   **So the account is half closed, and the halves should not be run together.**
   The six minutes of silence is explained at n=2: nodeD disclaimed the op and
