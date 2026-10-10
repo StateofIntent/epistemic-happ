@@ -957,6 +957,29 @@ only one with outside impact:
 > the `@stateofintent` npm scope. Both published packages are broken against
 > Holochain 0.7 today. Everything else about that republish is done and checked.
 
+**Current as of 2026-10-10, and every open item below names what would change
+it.** This section's own failure mode is a status line that was true when written
+and went stale without anybody editing it — it did exactly that for a day while
+[#134](../../pull/134) sat in CI — so the rows are written to be checkable rather
+than trusted.
+
+| Open item | Blocked on |
+|---|---|
+| `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
+| Closing the `NoDiff` caveat | **a recurrence.** A `NoDiff` trial with the integration check active. At ~6% that is roughly two or three more twelve-trial batches. |
+| Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
+| Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
+| [#219](../../pull/219) | **CI at the time of writing.** Documentation only. `git log --oneline origin/main` is the answer to whether it landed — not this row. |
+
+**#218 landed** as merge commit `3018178`, and it carried two things. The
+four-batch census: 48 trials, 13 non-crossings (27%), and the `NoDiff` mode at
+**3 in 48, about 6%** — with the caveat explicitly *not* closed, because batch 4
+produced no `NoDiff` trial and twelve immediate integrations do not retroactively
+measure a trial that ran before the instrument existed. And the **426.0s Phase 0
+baseline** recorded below, whose value is not the figure but the census beside
+it: `initiate too soon` at **zero on every node**, which is what stopped burst
+exhaustion being the only available path into the 300–600s band.
+
 **#127 through #135 all landed.** #127 is a diagnostic rather than a fix —
 `real-gossip` reporting how many peers each conductor has heard of, so the next
 missed gossip says whether the two nodes had even met; the occurrence that
