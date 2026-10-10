@@ -965,28 +965,46 @@ that for a day while [#134](../../pull/134) sat in CI — so the rows are writte
 to be checkable rather than trusted, and the split below is maintenance of that
 rather than tidying.
 
-**Five things are open. One needs a person; the rest need effort or a decision.**
+**Two things are open, and both need a person. Everything else in this section
+is a record rather than a to-do list — see the freeze note below.**
 
 | Open item | Blocked on |
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
-| Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
-| ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
-| ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
-| Why nodeA omits the op from ~60 consecutive Accepts | **mechanism argued from code; the arithmetic is retracted.** `new_since` is a pagination cursor over the *serving* peer's store keyed on `stored_at` (`kitsune2_api` `op_store.rs:126`), not a possession claim, so comparing it to the claim's creation time was the wrong comparison. [#222](../../pull/222)'s ordering still holds structurally — `respond.rs:181` advances the cursor before `:187` fetches — but it is not proven here. |
-| ~~nodeA's `stored_at` for the claim op~~ | **MEASURED: integrated ~4.7s after authoring, then never again.** Recovered from `changed / ops_ps` — the pass that took the claim logged at `13:50:44.308Z`, elapsed 2.8ms, so `when_integrated` ≈ `13:50:44.306Z`. Integration lag on the authoring node is **ruled out**. |
-| Why an eligible op went undelivered for seven minutes | **needs Holochain patched — and the stopping rule says write the report instead.** The op sits at the only cursor nodeD advertised (`13:50:44.306176Z`) and `sync_queries.rs` compares `when_integrated >= ?`, **inclusive** — so it was eligible on every round. No explanation; four instruments is where this stops. |
-| Why nodeA never offered the claim at all | **effort, and it is the live lead.** Run [`38061088387`](../../actions/runs/38061088387): nodeB fetched and stored **every** op it was told about (44/44/44, zero lost) across 330s, 89 rounds and 179 `NoDiff` messages — and the claim was never among them. An **announcement** failure, upstream of everything instrumented so far. |
-| ~~Write the upstream report on the structural finding~~ | **DRAFTED, and the send is a person's.** `~/upstream-kitsune2-cursor-before-fetch-draft.md` — 343 words, filed as a question about intended behaviour rather than a defect. Not posted: `kitsune2`'s `AI_POLICY.md` names posting with the maintainer's credentials as grounds for closing a contribution, and this account already drew that warning on #638. |
 | Post the upstream draft | **a person, and it is the only thing here that needs one besides the npm publish.** Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**; see the entry below. |
-| ~~What `retrieve_new_op_ids`'s `since` actually filters on~~ | **ANSWERED: `stored_at` on the serving peer, as a pagination cursor** (`kitsune2_api` `op_store.rs:126`). Not creation time, not a possession claim — which retracts this thread's timestamp arithmetic and dissolves the delivery contradiction along with it. |
-| The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
-| Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
-| Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
-| Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
 
-**And one standing recommendation, which is the clearest thing eight batches
-established: stop running batches.** Batches 1 through 8 produced sixty trials of
+**THE GOSSIP INVESTIGATION IS FROZEN as of 2026-10-11, and the reason is that it
+stopped being about this project.** Every remaining question below sits in
+`kitsune2` or Holochain's op store, not in this repository, and the work had
+reached the point where each answer produced a question one level further away:
+five hypotheses proposed in a day, four retired, three instruments added, and
+the last live lead further from this codebase than the first. The roadmap above
+is **78 of 79 items checked**, and the one open item is a surfacing ratio whose
+residue is deliberate. There is no code here waiting on any of this.
+
+**What is frozen, kept in one place so none of it has to be rediscovered:**
+
+| Question | Where it got to |
+|---|---|
+| Why nodeA's URL turns over at ~926s | instrumented, event has not recurred |
+| Why nodeA omits the op from ~60 consecutive Accepts | bookmark eliminated by measurement; arcs constant; unexplained |
+| Why an eligible op went undelivered for seven minutes | `when_integrated` ≈ the cursor, and the comparison is inclusive — so it was eligible. Unexplained |
+| Why nodeA never offered the claim at all | an announcement failure, upstream of everything instrumented |
+| Why one failed connect marks the peer and another does not | the 1.0s control rules out the simple reading |
+| The middle dequeue in both slow traces | no gossip message within a second of it |
+| Shape B's trigger | starvation versus an iroh-level defect, undistinguished |
+| Report burst exhaustion as an outcome, or widen past 600s | a decision, deliberately not taken |
+
+**What reopens it: a user-visible failure, not a red tick.** An entry that never
+arrives at all, a report from somebody running the `.webhapp`, or a CI failure
+whose *first* occurrence is already outside everything documented here. A slow
+crossing, a non-crossing that later crosses, or another sighting of a mode
+already named above is the known behaviour of this substrate and is **not** a
+reason to resume — INSTALL.md states the caveats to a first-time user, and the
+three instruments stay in place so that a real failure arrives already legible.
+
+**And the standing recommendation the freeze above makes binding, which was the
+clearest thing eight batches established: stop running batches.** Batches 1 through 8 produced sixty trials of
 distribution and one mechanism, and that mechanism came from reading four
 conductor logs rather than from the sixty. Every advance on 2026-10-10 came from
 an instrument or a source reading; every batch after the fifth confirmed a shape
