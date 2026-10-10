@@ -83,6 +83,35 @@ SIGNATURES=(
   'Starting initiate task'
   'Initiated gossip with'
   'No agents with overlapping arcs available'
+  # THE INITIATE-LOOP DEAD END, ADDED AFTER BATCH 7 FOUND IT BY HAND. Two
+  # trials at a 600s cap failed with nodeD never gossiping at all: one
+  # `Attempting to initiate gossip with`, one `Failed to initiate gossip:
+  # iroh connect timed out`, and then 584 consecutive `No agents to gossip
+  # with` over the remaining 597 seconds. `Initiated gossip with` — already
+  # counted above — was ZERO, and so were every NoDiff and every fetch
+  # counter, because no round was ever started.
+  #
+  # Finding that needed downloading the per-trial artifact and reading four
+  # conductor logs. These three make the same mode legible from the census
+  # line alone, and the diagnostic is a RATIO rather than any single count:
+  #
+  #   Attempting >> Initiated           -> initiations are being refused or
+  #                                        failing, not merely unscheduled
+  #   'No agents to gossip with' in the           -> the peer is excluded by a
+  #     hundreds, with Initiated at 0                 filter, not absent
+  #   'All agents ... are on timeout' tracking    -> the fallback pass is
+  #     'No agents to gossip with'                    firing and still empty
+  #
+  # WHY THE FILTER ITSELF CANNOT BE COUNTED: `select_next_target`'s exclusion
+  # branches (`initiate.rs:255-277` — expired agent info, missing URL,
+  # unresponsive) every one of them bare `continue` with no tracing at all, so
+  # there is no line to grep. The filter is identified by ELIMINATION plus the
+  # fallback firing, which is what README.md §9 records; these counters are how
+  # the elimination gets set up without a manual download next time.
+  'Attempting to initiate gossip with'
+  'Failed to initiate gossip'
+  'All agents with overlapping arcs are on timeout'
+  'No agents to gossip with'
 )
 
 echo "=== log census after ${LABEL} ==="

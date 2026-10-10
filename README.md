@@ -969,7 +969,8 @@ than trusted.
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
 | ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
-| Which filter excludes nodeD's only peer after one failed connect | **a code question, and it is the live lead.** Both 600s failures: one `iroh connect timed out` at t+3s, then 584 consecutive `No agents to gossip with`. `select_next_target` has two filters that could do it (`initiate.rs:269` unresponsive, `:213` timeout-with-fallback) and the logs do not say which. One census signature, not another batch. |
+| ~~Which filter excludes nodeD's only peer after one failed connect~~ | **ANSWERED: the unresponsive one, expiring at 1200s.** `CoreSpace::set_unresponsive` (`core_space.rs:268`) sets the entry's expiry to `agent_info.expires_at`, and agent info is minted `created_at + 60*20` (`:498`, `:566`). Both caps are shorter, so nodeA stays skipped at `initiate.rs:269` for the whole run. |
+| A batch at ~1500s, past the 1200s unresponsive expiry | **one dispatch, and it is the live lead.** It is the test that discriminates: if the marking is what holds these trials down, a cap past its expiry recovers them. Cheap — it only has to run until the two failures recover or do not. |
 | ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
 | ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3055,23 +3056,52 @@ each of these is currently exactly that.
   something inside them was wrong. In these two trials nothing was happening at
   all.
 
-  **What this leaves, and it is a code question rather than another batch.**
-  `select_next_target` has two independent filters that can exclude a peer —
-  `get_unresponsive` at `initiate.rs:269`, and the last-gossip-timestamp timeout
-  at `:213` whose fallback is "selecting from all agents". The logs show the
-  fallback firing and still finding nobody, which means a *second* filter
-  excluded the peer, and these logs do not say which: unresponsive marking,
-  expired agent info, or a missing URL are all live possibilities at `:255-:277`.
-  Naming it needs one more census signature, not twelve more trials.
+  **And the code says which filter, with a number attached.** It is the
+  unresponsive one, and the marking lasts far longer than either cap. When the
+  transport gives up on a peer, `CoreSpace::set_unresponsive`
+  (`kitsune2_core-0.5.0/src/factories/core_space.rs:268`) writes the entry with
+  its expiry set to **`agent_info.expires_at`** — not a backoff, not an
+  interval, the peer's own agent-info lifetime. And agent info is minted with
+  `created_at + Duration::from_secs(60 * 20)` (`core_space.rs:498` and `:566`),
+  so that expiry is **1200 seconds**.
 
-  **One thing deliberately not claimed.** 424.6s against a 600s cap is a factor
-  of 1.4 — very nearly the 213.5s-against-330s ratio that prompted this batch in
-  the first place. That is a reason to distrust 600s as a ceiling too, and it is
-  *not* a reason to keep doubling: the two trials that failed here failed for a
-  reason that has nothing to do with the cap, and a 1200s batch would spend an
-  hour to re-find them. The distribution worth having now is of **recovery
-  times** among trials that do recover, which the existing per-trial lines
-  already give.
+  `select_next_target` skips unresponsive peers at `initiate.rs:269`, and it does
+  so in **both** passes — the overlapping-arc pass and the "selecting from all
+  agents" fallback. So:
+
+  | t+3s | nodeD's first initiation fails, `iroh connect timed out` |
+  |---|---|
+  | immediately | the transport marks nodeA unresponsive, expiring at nodeA's agent-info expiry |
+  | for up to 1200s from agent-info creation | `select_next_target` skips nodeA in both passes |
+  | consequence | `No agents to gossip with`, 584 times, and no round ever starts |
+
+  **The filter is named by elimination rather than by a log line, because those
+  branches are silent.** Every exclusion arm at `initiate.rs:255-277` is a bare
+  `continue` with no tracing. What rules the other two out: the agent had a URL
+  (it was selected as a target three seconds earlier), and its agent info was
+  three seconds old so it had not expired. Unresponsive is what is left, and the
+  1200s figure is what makes it fit — both caps are shorter.
+
+  **So "it is a code question, not another batch" was half right, and the half it
+  got wrong is the useful half.** A batch *can* test this, and it is the one test
+  that discriminates: a cap meaningfully past **1200s** should see these trials
+  recover, because the marking will have expired. The paragraph below said
+  doubling the cap again was not worth it, written before this reading; a ~1500s
+  cap is now the sharpest single experiment available, and it is cheap because it
+  only has to run until the two failures either recover or do not.
+
+  **One thing not claimed, and one thing this paragraph got wrong.** 424.6s
+  against a 600s cap is a factor of 1.4 — very nearly the 213.5s-against-330s
+  ratio that prompted this batch — so 600s is not demonstrably a ceiling either,
+  and that still stands. What this paragraph originally went on to say was that
+  doubling again was not worth it, "because the two trials that failed here
+  failed for a reason that has nothing to do with the cap". **That reasoning was
+  right about the cause and wrong about the consequence**: the cause is an
+  unresponsive marking that expires at 1200s, so the cap is exactly what decides
+  whether those trials recover. Kept as written, with the correction, because the
+  error is instructive — "this failure is not about the window" was true of the
+  *mechanism* and false of the *observable*, and the two got conflated inside one
+  sentence.
 
   **The arms stopped meaning anything, which is worth saying since they are the
   experiment's own independent variable.** Batch 6 had `rt60000` failing twice
