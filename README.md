@@ -971,7 +971,8 @@ rather than tidying.
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
-| Why one op waits out 27 others — the ~425s mode | **effort, and it is the live lead now.** Two occurrences 4.9s apart (**429.8s**, **424.9s**), each with 1 failed initiation, zero blocking, 73 initiations. Nothing is stalled: 144 `NoDiff` rounds and 27 ops stored across the window while the claim arrives last. Question is announcement timing or fetch ordering — unlike every earlier mode, this is everything working. n=2. |
+| ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
+| Which gossip mechanism re-offers a dropped op after ~365s | **a log re-read, and it is the live lead.** The re-offer is observed; which path produced it is inferred. Correlating the re-dequeue against the round type in the same second — `NoDiff` versus disc/ring-sector messages, both already in the gossip log — settles it. **Data in hand, no run needed.** |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
@@ -3287,6 +3288,65 @@ each of these is currently exactly that.
   used the queue at all, where the fast trials that do that cross in under 10s.
   A 44.8s crossing with no fetch activity does not fit either the fast
   direct-publish shape or this 425s one.)*
+
+  **The ~425s mode is solved, from logs already on disk, and it is the claim's own
+  op being dropped and not re-offered for six minutes.** No new run: the two
+  slow trials recorded above were re-read for the one thing nobody had checked —
+  the history of **the specific op that was late**, rather than the aggregate
+  counters. Both trials carry an identical five-line trace.
+
+  | | batch 8, 429.8s ([`38036069009`](../../actions/runs/38036069009)) | batch 9, 424.9s ([`38045749074`](../../actions/runs/38045749074)) |
+  |---|---|---|
+  | claim op | `uhCQkqYTstrwlVvodxCelZTW2…` | `uhCQkOVdHZE9H3rFNehExQdB_…` |
+  | dequeued | `08:02:20.027` | `10:50:55.394` |
+  | *no* `sending fetch request` | **dropped** | **dropped** |
+  | dequeued again | `08:08:21.872` — **+361.8s** | `10:57:03.404` — **+368.0s** |
+  | *no* `sending fetch request` | **dropped again** | **dropped again** |
+  | dequeued, sent | `08:08:29.167` (+7.3s) | `10:57:07.622` (+4.2s) |
+  | stored | `08:08:29.186` (+19ms) | `10:57:07.633` (+11ms) |
+
+  Three dequeues each, the first two silently dropped, the third sent and stored
+  within milliseconds. **The entire ~425s is one op being dropped and then not
+  offered again for ~365 seconds.** Two occurrences, intervals 6.2 seconds apart.
+
+  **This reconciles the contradiction the fetch instrumentation created.** §9
+  established above that the drop rate predicts nothing — a trial dropping 74%
+  crossed in 24.1s, one dropping 78% did not cross — and that is still true and
+  was still the right conclusion from aggregates. What it missed is that the
+  aggregate was the wrong unit. **A trial can drop 74% of ops and cross fast
+  because the claim's own op was not among them.** When it *is* among them, the
+  trial waits out a re-offer. The per-op history explains what the per-trial rate
+  could not, and no rate over a trial will ever recover it.
+
+  **The ~365s is a gossip interval, not a fetch one, and the code says why.**
+  `CoreFetchConfig` has exactly one field — `parallel_request_count`, default 2 —
+  and **no retry timer at all**. On the unresponsive path the op is *removed*
+  from the request set (`core_fetch.rs:346`) rather than deferred. So nothing in
+  the fetch module will ever come back to a dropped op: a re-dequeue can only be
+  a fresh `request_ops` call, which means gossip announced it again. The fetch
+  queue has no memory, and that is the whole of why a drop costs minutes rather
+  than milliseconds.
+
+  **Which revives the bookmark reading from [#222](../../pull/222), in a narrower
+  and better-evidenced form.** That entry proposed that
+  `update_new_ops_bookmark` running *before* `fetch.request_ops`
+  (`respond.rs:181` then `:187`) could let an op be skipped permanently, and it
+  was set aside when the drop turned out not to cause failures. It does not cause
+  failures — and it is exactly what a ~365s delay looks like. The bookmark has
+  already advanced past the op, so the cheap `new_ops` path will not re-offer it,
+  and recovery has to wait for whatever slower mechanism notices the discrepancy.
+  **The hypothesis was wrong about the consequence and right about the
+  mechanism**, which is the inverse of the error made about the 1200s expiry.
+
+  **What is inferred rather than measured, stated plainly.** That the re-offer
+  comes from a DHT-diff round rather than from the bookmark path is a reading, not
+  an observation: these logs show the op being announced again and do not show
+  *which* gossip mechanism announced it. Confirming it means correlating the
+  re-dequeue against the round type in the same second — the `NoDiff` versus
+  disc/ring-sector messages already in the gossip log — which is another re-read
+  of data in hand rather than another run. **Two occurrences, 6.2s apart, is
+  also n=2**, and this section has been wrong four times today by acting on less.
+
 
 
 
