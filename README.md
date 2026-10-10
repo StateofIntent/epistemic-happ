@@ -971,7 +971,10 @@ rather than tidying.
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
-| Why one op waits out 27 others — the ~425s mode | **effort, and it is the live lead now.** Two occurrences 4.9s apart (**429.8s**, **424.9s**), each with 1 failed initiation, zero blocking, 73 initiations. Nothing is stalled: 144 `NoDiff` rounds and 27 ops stored across the window while the claim arrives last. Question is announcement timing or fetch ordering — unlike every earlier mode, this is everything working. n=2. |
+| ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
+| ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
+| Why nodeA omits the op from ~60 consecutive Accepts | **the arc set, by elimination — and it is the live lead.** nodeD initiated 73 times at a 5.5s median gap, and sent the **same `new_since` on all 71 later rounds**, including the one that delivered the op. So the bookmark is not the discriminator and #222's ordering is retired on a measurement. The remaining input to `retrieve_new_op_ids` is `common_arc_set`, which nothing prints. |
+| The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
@@ -3287,6 +3290,133 @@ each of these is currently exactly that.
   used the queue at all, where the fast trials that do that cross in under 10s.
   A 44.8s crossing with no fetch activity does not fit either the fast
   direct-publish shape or this 425s one.)*
+
+  **The ~425s mode is solved, from logs already on disk, and it is the claim's own
+  op being dropped and not re-offered for six minutes.** No new run: the two
+  slow trials recorded above were re-read for the one thing nobody had checked —
+  the history of **the specific op that was late**, rather than the aggregate
+  counters. Both trials carry an identical five-line trace.
+
+  | | batch 8, 429.8s ([`38036069009`](../../actions/runs/38036069009)) | batch 9, 424.9s ([`38045749074`](../../actions/runs/38045749074)) |
+  |---|---|---|
+  | claim op | `uhCQkqYTstrwlVvodxCelZTW2…` | `uhCQkOVdHZE9H3rFNehExQdB_…` |
+  | dequeued | `08:02:20.027` | `10:50:55.394` |
+  | *no* `sending fetch request` | **dropped** | **dropped** |
+  | dequeued again | `08:08:21.872` — **+361.8s** | `10:57:03.404` — **+368.0s** |
+  | *no* `sending fetch request` | **dropped again** | **dropped again** |
+  | dequeued, sent | `08:08:29.167` (+7.3s) | `10:57:07.622` (+4.2s) |
+  | stored | `08:08:29.186` (+19ms) | `10:57:07.633` (+11ms) |
+
+  Three dequeues each, the first two silently dropped, the third sent and stored
+  within milliseconds. **The entire ~425s is one op being dropped and then not
+  offered again for ~365 seconds.** Two occurrences, intervals 6.2 seconds apart.
+
+  **This reconciles the contradiction the fetch instrumentation created.** §9
+  established above that the drop rate predicts nothing — a trial dropping 74%
+  crossed in 24.1s, one dropping 78% did not cross — and that is still true and
+  was still the right conclusion from aggregates. What it missed is that the
+  aggregate was the wrong unit. **A trial can drop 74% of ops and cross fast
+  because the claim's own op was not among them.** When it *is* among them, the
+  trial waits out a re-offer. The per-op history explains what the per-trial rate
+  could not, and no rate over a trial will ever recover it.
+
+  **The ~365s is a gossip interval, not a fetch one, and the code says why.**
+  `CoreFetchConfig` has exactly one field — `parallel_request_count`, default 2 —
+  and **no retry timer at all**. On the unresponsive path the op is *removed*
+  from the request set (`core_fetch.rs:346`) rather than deferred. So nothing in
+  the fetch module will ever come back to a dropped op: a re-dequeue can only be
+  a fresh `request_ops` call, which means gossip announced it again. The fetch
+  queue has no memory, and that is the whole of why a drop costs minutes rather
+  than milliseconds.
+
+  **Which revives the bookmark reading from [#222](../../pull/222), in a narrower
+  and better-evidenced form.** That entry proposed that
+  `update_new_ops_bookmark` running *before* `fetch.request_ops`
+  (`respond.rs:181` then `:187`) could let an op be skipped permanently, and it
+  was set aside when the drop turned out not to cause failures. It does not cause
+  failures — and it is exactly what a ~365s delay looks like. The bookmark has
+  already advanced past the op, so the cheap `new_ops` path will not re-offer it,
+  and recovery has to wait for whatever slower mechanism notices the discrepancy.
+  **The hypothesis was wrong about the consequence and right about the
+  mechanism**, which is the inverse of the error made about the 1200s expiry.
+
+  **And that correlation has now been done, on the same logs, and it names the two
+  paths.** Each dequeue sits milliseconds after a specific received gossip
+  message, and the pairing is identical across both trials:
+
+  | | first announce | the one that worked |
+  |---|---|---|
+  | batch 8 | `NoDiff` at `08:02:20.026` → dequeue **+1.5ms** | `Accept` at `08:08:29.164` → dequeue **+3.8ms** |
+  | batch 9 | `NoDiff` at `10:50:55.391` → dequeue **+3.0ms** | `Accept` at `10:57:07.615` → dequeue **+7.0ms** |
+
+  Two different messages, so two different call sites. A received `NoDiff` goes
+  through `respond/no_diff.rs` into `handle_accept_response`
+  (`respond.rs:187`) — the bookmark path. A received `Accept` goes through
+  `respond/accept.rs:52`, which calls `request_ops` directly on
+  `accept.new_ops`. **So the op is first offered by one mechanism, dropped, and
+  then only ever re-offered by the other.** The bookmark path does not bring it
+  back, which is what [#222](../../pull/222)'s reading predicted and what this
+  pairing now shows rather than infers.
+
+  **The asymmetry in which side started the round is real, and the explanation
+  first built on it was wrong — measured and discarded in the same sitting.**
+  Read off the state machine, a node receiving `NoDiff` is the one that
+  *accepted* a round (`no_diff.rs` rejects an unsolicited one by checking
+  `accepted_round_states`) and a node receiving `Accept` is the one that
+  *initiated* (`initiated_round_state`, `initiate.rs:105`), so the op was
+  announced to nodeD in a round nodeD did not start and delivered in one it did.
+  The tempting next step was that the ~365s is therefore nodeD's initiation
+  cadence toward that peer. **It is not, and the logs say so flatly:**
+
+  | nodeD's initiations toward nodeA in the 424.9s trial | |
+  |---|---|
+  | count | **73** (against 1 toward nodeB) |
+  | median gap | **5.5s** |
+  | maximum gap | **6.0s** |
+
+  nodeD initiated with the right peer every five or six seconds, without
+  interruption, straight through the stall. **So the op sat undelivered across
+  roughly sixty rounds with the peer that had it**, and the delay cannot be a
+  cadence of anything nodeD does.
+
+  **Which moved the question onto what nodeA puts in those sixty Accepts — and
+  that is measurable from the same logs, which a first pass at this paragraph
+  wrongly said needed a new instrument.** `new_since` and `updated_new_since` are
+  printed in the message structs already. nodeD's bookmark toward nodeA across
+  the whole trial took exactly two values:
+
+  | `new_since` nodeD sent to nodeA | occurrences |
+  |---|---|
+  | `1791629412967360` | 2, at `10:50:34` and `10:50:35` |
+  | `1791629434400057` | **71**, from `10:50:40` through `10:57:07` |
+
+  **It advanced once, forty seconds in, and never moved again — including on the
+  round that finally delivered the op.** The sixty rounds that omitted the op and
+  the one round that carried it were sent with the *same* `new_since`.
+
+  **So the bookmark is not the discriminator, and
+  [#222](../../pull/222)'s ordering is finished as an explanation for this
+  delay.** `retrieve_new_op_ids(&common_arc_set, since: accept.new_since, …)`
+  (`respond/accept.rs:86`) was handed an identical `since` and returned the op
+  once, then not for six minutes, then again. Same input, different output: the
+  cause is in the other argument or in nodeA's store, not in the bookmark. That
+  reading survived two entries on the strength of being mechanically plausible,
+  and it is retired here on a measurement rather than on another plausibility.
+
+  **What is left, and it is narrower than anything this section has had.** The
+  remaining variable in that call is `common_arc_set`, which `update_storage_arcs`
+  moves as snapshots are exchanged — so the candidate is that the op fell outside
+  the common arc for those six minutes and came back inside it. **Not
+  established**, and the honest statement of its difficulty is that arcs are the
+  one input to that call which nothing currently prints.
+
+  **Still n=2, and one thing in the trace remains unaccounted for.** The middle
+  dequeue — `08:08:21.872` and `10:57:03.404` — has no received message within a
+  second of it in either trial, where the other two couple within 7ms. Both were
+  dropped, so neither mattered to the outcome, and neither is explained. Recorded
+  rather than smoothed over: a trace with three dequeues and two explanations is
+  not a trace with three explanations.
+
 
 
 
