@@ -970,7 +970,8 @@ rather than tidying.
 | Open item | Blocked on |
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
-| Why nodeA's URL turns over at ~926s | **effort, and it is the live lead.** A transport event — most likely a relay reconnection handing nodeA a new address. Instrumented in [#227](../../pull/227) `967a671`: `core_space.rs:703` logs the successful broadcast at INFO and the added module directive unsilences it, so the turnover is a timestamped line rather than an inference off peer URLs. **Needs one slow `peering-rate` trial with those modules on** — not a batch. |
+| Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
+| Why one op waits out 27 others — the ~425s mode | **effort, and it is the live lead now.** Two occurrences 4.9s apart (**429.8s**, **424.9s**), each with 1 failed initiation, zero blocking, 73 initiations. Nothing is stalled: 144 `NoDiff` rounds and 27 ops stored across the window while the claim arrives last. Question is announcement timing or fetch ordering — unlike every earlier mode, this is everything working. n=2. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has repeatedly been wrong to act on. |
@@ -3229,6 +3230,64 @@ each of these is currently exactly that.
   **The arms still predict nothing**, for the third batch running: 6-for-6 and
   6-for-6 here, mirrored failures in batches 6 and 7. `roundTimeoutMs` has not
   separated an outcome in 36 trials.
+
+  **A targeted run was dispatched for the URL lead and did not get its event —
+  and ruled something out instead.** Run
+  [`38045749074`](../../actions/runs/38045749074), `cap_ms=1500000`, first with
+  [#227](../../pull/227)'s publication modules live: **12 for 12 crossed**, and
+  **zero `No agents to gossip with` in any trial**. The blocking mode simply did
+  not occur, so the broadcast-versus-URL comparison it was dispatched to make had
+  nothing to compare. Recorded as a run that did not fire rather than as weak
+  support for anything.
+
+  **What it did produce is the *other* slow mode, for the second time, at almost
+  exactly the same figure.**
+
+  | run | trial | crossing | failed initiations | `No agents to gossip with` | initiations |
+  |---|---|---|---|---|---|
+  | [`38036069009`](../../actions/runs/38036069009) | `rt60000` 4 | **429.8s** | 1 | **0** | 73 |
+  | [`38045749074`](../../actions/runs/38045749074) | `rt60000` 4 | **424.9s** | 1 | **0** | 73 |
+
+  Two occurrences **4.9 seconds apart**, each with exactly one failed initiation,
+  no blocking, and the same 73 successful initiations. §9 called the first one
+  "slow for some other reason entirely and is not explained here"; it is now a
+  *mode* rather than an oddity, and the repeated ~425s is the most specific
+  unexplained number in this section. **n is 2, so nothing is built on it** —
+  what would confirm a constant is a third at the same figure, and what would
+  kill it is one at 200s or 700s with the same signature.
+
+  **And the new modules earned themselves on a trial they were not dispatched
+  for, by ruling out the mechanism that was fresh in mind.** nodeA broadcast new
+  agent info three times — `10:49:27` to 0 peers, `10:49:28` to 0 peers,
+  `10:49:58` to 1 peer — and the crossing was at roughly `10:57:0x`, **some 430
+  seconds after the last broadcast.** So this slow crossing is **not** a URL
+  turnover. Without `core_space.rs:703` that would have been a guess; with it, it
+  is read off the log.
+
+  **The decisive thing about this mode is that nothing was stalled.** Through those
+  425 seconds nodeD ran **73 gossip initiations and 144 `NoDiff` rounds**, and its
+  fetch chain was busy from end to end — **61 dequeued, 27 sent, 27 answered, 27
+  stored**, with sends and stores spanning `10:50:33` to `10:57:07`, the whole
+  trial. Ops were crossing continuously. **The claim was simply last.**
+
+  So this is not an outage of gossip, not an outage of fetch, and not a peer
+  exclusion. It is one op waiting out twenty-seven others, which makes the
+  question **announcement timing or fetch ordering** — why this op is offered or
+  requested after everything else — and that is a different question from every
+  one this section has asked so far. Each previous mode was something failing;
+  this is everything working and one entry at the back of the queue.
+
+  *(The 34 drops in that trial — 61 dequeued against 27 sent, 56% — are the
+  background rate established above and are not offered as an explanation: a
+  trial dropping 74% crossed in 24.1s. Noted only so the figure is not read as
+  new.)*
+
+  *(One contrast worth a line, unexplained and not pursued:
+  `rt15000` trial 6 crossed in 44.8s with the fetch queue at **0/0** — it never
+  used the queue at all, where the fast trials that do that cross in under 10s.
+  A 44.8s crossing with no fetch activity does not fit either the fast
+  direct-publish shape or this 425s one.)*
+
 
 
 
