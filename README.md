@@ -974,7 +974,7 @@ rather than tidying.
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
 | ~~Why nodeA omits the op from ~60 consecutive Accepts~~ | **ANSWERED — nodeD disclaimed the op.** Its advertised `new_since` was **10:50:34.400Z** while the claim was created **≈10:50:02.7Z**, so the op was ~32s *older* than the bookmark and `retrieve_new_op_ids` was right never to return it. [#222](../../pull/222)'s `update_new_ops_bookmark`-before-`request_ops` ordering is **reinstated**; the entry retiring it tested constancy instead of ordering, and compared two different message tracks. |
-| How the delivering `Accept` carries an op the Initiate's bookmark disclaimed | **a source read, and it is the live lead.** nodeD sent `t0 +423.5s` at `08:08:29.138`, got an `Accept` 26ms later, and dequeued the op at `.167`. So `new_ops` there is either not built from the Initiate's `new_since`, or nodeA uses its own stored bookmark for nodeD. Both readable in `respond/initiate.rs`; neither read. **The silence is explained at n=2; the delivery is not.** |
+| What `retrieve_new_op_ids`'s `since` actually filters on | **a source read, and it is the live lead.** The two candidate explanations for the delivery are both read and both false — `respond/initiate.rs:110` does use `initiate.new_since`, `:105` feeds only the outgoing field, and `core_fetch.rs:195` is the sole queue producer. What remains unexamined is the retrieval predicate itself, in the op store and `kitsune2_dht`. **The silence is explained at n=2; the delivery is not.** |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3480,10 +3480,27 @@ each of these is currently exactly that.
   sharply.** In batch 8 nodeD sent its highest bookmark — `t0 +423.5s`, which
   excludes the op by a wide margin — at `08:08:29.138`, received an `Accept`
   26ms later at `.164`, and dequeued the op at `.167`. **So nodeA put the op in
-  an `Accept` answering an Initiate whose bookmark disclaimed it.** Either that
-  message's `new_ops` is not built from the Initiate's `new_since`, or nodeA uses
-  its own stored bookmark for nodeD rather than the advertised one. Both are
-  readable in `respond/initiate.rs` and neither has been read.
+  an `Accept` answering an Initiate whose bookmark disclaimed it.**
+
+  **Both explanations offered for that have now been read in the source, and both
+  are false.** `respond/initiate.rs:110` passes
+  `Timestamp::from_micros(initiate.new_since)` into `retrieve_new_op_ids` — so
+  the Accept's `new_ops` **is** built from the Initiate's bookmark, not from
+  something else. And `get_request_new_since` at `:105` — nodeA's own stored
+  bookmark for nodeD — feeds only the *outgoing* `new_since` field at `:135`,
+  never the retrieval. Nor is a fetch-level retry hiding the third dequeue:
+  `core_fetch.rs:195`, inside `request_ops`, is the **only** producer for the
+  outgoing queue, so three dequeues are three distinct announcements and the
+  queue has no memory, as recorded above.
+
+  **Which leaves one assumption standing where three used to be, and it is
+  mine.** Every step above takes `retrieve_new_op_ids(…, since, …)` to filter on
+  something close to when the op was authored or stored — on nodeA, the claim's
+  own ~t0. If that filter is instead on a value that advances for other reasons,
+  the contradiction dissolves and the arithmetic in this entry is measuring the
+  wrong clock. **That is now the open question, and it is one level below
+  anything this section has examined**: the predicate lives in the op store and
+  `kitsune2_dht`, neither of which has been read.
 
   **So the account is half closed, and the halves should not be run together.**
   The six minutes of silence is explained at n=2: nodeD disclaimed the op and
