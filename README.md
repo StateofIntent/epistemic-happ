@@ -972,7 +972,8 @@ rather than tidying.
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
 | Why nodeA's URL turns over at ~926s | **effort, and still open — the instrument is in place and the event has not recurred.** Instrumented in [#227](../../pull/227) `967a671` (`core_space.rs:703`, successful broadcast at INFO). A targeted run ([`38045749074`](../../actions/runs/38045749074)) crossed 12 for 12 with **zero** `No agents to gossip with`, so the blocking mode did not occur and there was nothing to compare. Needs the mode to happen, not more dispatches. |
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
-| ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. nodeD is the *responder* in the first and the *initiator* in the second, so the interval is nodeD's own initiation cadence toward that peer. |
+| ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
+| Why nodeA omits the op from ~60 consecutive Accepts | **an instrument, and it is the live lead.** nodeD initiated toward nodeA **73 times at a 5.5s median gap** straight through the stall, so the delay is not a cadence. `new_ops` is built from the requester's bookmark (`respond/accept.rs:86`), so either nodeD's bookmark advanced past the dropped op — #222's ordering — or the arc set excluded it. **Needs the bookmark values printed**; the filter does not carry them. |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3357,15 +3358,39 @@ each of these is currently exactly that.
   back, which is what [#222](../../pull/222)'s reading predicted and what this
   pairing now shows rather than infers.
 
-  **The asymmetry is in which side started the round, and that is what sets the
-  ~365s.** Read off the state machine: a node receiving `NoDiff` is the one that
+  **The asymmetry in which side started the round is real, and the explanation
+  first built on it was wrong — measured and discarded in the same sitting.**
+  Read off the state machine, a node receiving `NoDiff` is the one that
   *accepted* a round (`no_diff.rs` rejects an unsolicited one by checking
-  `accepted_round_states`), and a node receiving `Accept` is the one that
-  *initiated* (`initiated_round_state`, `initiate.rs:105`). So in both trials the
-  op was announced to nodeD in a round **nodeD did not start**, dropped, and not
-  seen again until **nodeD itself initiated** one with that peer. The interval is
-  therefore nodeD's own initiation cadence toward that peer, not a fetch timer
-  and not a diff schedule.
+  `accepted_round_states`) and a node receiving `Accept` is the one that
+  *initiated* (`initiated_round_state`, `initiate.rs:105`), so the op was
+  announced to nodeD in a round nodeD did not start and delivered in one it did.
+  The tempting next step was that the ~365s is therefore nodeD's initiation
+  cadence toward that peer. **It is not, and the logs say so flatly:**
+
+  | nodeD's initiations toward nodeA in the 424.9s trial | |
+  |---|---|
+  | count | **73** (against 1 toward nodeB) |
+  | median gap | **5.5s** |
+  | maximum gap | **6.0s** |
+
+  nodeD initiated with the right peer every five or six seconds, without
+  interruption, straight through the stall. **So the op sat undelivered across
+  roughly sixty rounds with the peer that had it**, and the delay cannot be a
+  cadence of anything nodeD does.
+
+  **Which moves the question onto what nodeA puts in those sixty Accepts.**
+  `retrieve_new_op_ids(&common_arc_set, since: accept.new_since, …)`
+  (`respond/accept.rs:86`) builds `new_ops` from the **requester's own bookmark**,
+  so if nodeD's stored bookmark for nodeA has advanced past the dropped op, nodeA
+  will not offer it again however often nodeD asks — which is precisely the
+  `update_new_ops_bookmark`-before-`request_ops` ordering
+  [#222](../../pull/222) flagged, now with sixty rounds of silence as its
+  evidence rather than one. The other candidate is the `common_arc_set`
+  excluding the op until arcs move. **Distinguishing them means reading the
+  bookmark values nodeD sends**, which the current filter does not print — the
+  first thing in this investigation that genuinely needs an instrument rather
+  than a re-read.
 
   **Still n=2, and one thing in the trace remains unaccounted for.** The middle
   dequeue — `08:08:21.872` and `10:57:03.404` — has no received message within a
