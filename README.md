@@ -947,15 +947,19 @@ is spent; the CI binary download retries; four browser intermittencies were
 traced to one defect and fixed — the fourth being the same defect's second half,
 which only became visible because the first fix let `main` fail again in a way
 that named it; the address-keyed ceilings hold for one machine however it
-connects; a room can ask somebody to leave; the npm republish is prepared down to
-a single command; and the `notes-ui` intermittency was closed without waiting for
-its recurrence, by forcing the race its written-up hypothesis described.
-**Exactly one open item needs a person rather than a decision**, and it is the
-only one with outside impact:
+connects; a room can ask somebody to leave; **the npm republish shipped on
+2026-09-12** and `0.1.2` of both packages is `latest` on the registry, verified
+from the registry rather than from a tarball; and the `notes-ui` intermittency
+was closed without waiting for its recurrence, by forcing the race its
+written-up hypothesis described.
 
-> `scripts/publish-packages.sh --publish`, run by somebody with publish rights on
-> the `@stateofintent` npm scope. Both published packages are broken against
-> Holochain 0.7 today. Everything else about that republish is done and checked.
+**This paragraph said the republish was "prepared down to a single command" for
+a month after it had been run**, and a blockquote under it named that command as
+the one open item needing a person. Both are corrected rather than deleted,
+because two copies of one stale claim in a single section is how a sentence stops
+being checked: the version on the registry and the version in this tree are both
+`0.1.2`, so the command the blockquote asked for would have been refused by its
+own script. The accurate figure is further down this section and always was.
 
 **Current as of 2026-10-10, restructured because the single table had grown to
 fourteen rows with eight struck through and the live items were buried inside
@@ -965,13 +969,38 @@ that for a day while [#134](../../pull/134) sat in CI — so the rows are writte
 to be checkable rather than trusted, and the split below is maintenance of that
 rather than tidying.
 
-**Two things are open, and both need a person. Everything else in this section
-is a record rather than a to-do list — see the freeze note below.**
+**One thing is open, it is optional, and it is about somebody else's
+dependency. Everything else in this section is a record rather than a to-do
+list — see the freeze note below.**
 
 | Open item | Blocked on |
 |---|---|
-| `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. Both published packages are broken against Holochain 0.7 today; everything else about that republish is done and checked. **The only item with outside impact, and unchanged across this whole session.** |
-| Post the upstream draft | **a person, and it is the only thing here that needs one besides the npm publish.** Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**; see the entry below. |
+| Post the upstream draft, or decide not to | **a person, and now the only such item.** `~/upstream-kitsune2-cursor-before-fetch-draft.md`. Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**. Optional: nothing here depends on it. |
+
+**AND THE NPM REPUBLISH ROW IS GONE BECAUSE IT WAS STALE FOR A MONTH, which is
+the failure this section exists to prevent, committed by this section.** The row
+read *"`scripts/publish-packages.sh --publish`, run by somebody with publish
+rights… both published packages are broken against Holochain 0.7 today"*. It had
+been false since **2026-09-12**, and the contradiction was sitting a few hundred
+lines below it in this same section: *"The one with real outside impact was the
+npm republish, and it happened on 2026-09-12"*, with `0.1.2` of both packages on
+the registry as `latest`, verified by installing from the registry into an empty
+project. One of the commits that followed is titled *"The republish happened, and
+one of its two reasons outlived it."*
+
+**Checked rather than assumed, since the row had been quoted often enough to
+deserve it:** the registry serves `0.1.2` for both packages and this tree is also
+at `0.1.2`, so there is no version to publish and the script refuses on exactly
+that; only three commits have touched `agent-sdk/` or `mcp-server/` since, all
+about lockfiles rather than runtime code; and `conductor.yml` runs
+`published-packages.mjs` against a real Holochain 0.7 conductor on every push, so
+the "broken against 0.7" half was not true either.
+
+**The lesson is about re-reading rather than about npm.** This table was
+restructured twice on 2026-10-10 and the row was carried through both passes
+verbatim, each time described as the one item needing a person. A status line
+does not go stale only by sitting still — it goes stale by being **copied
+forward**, which is the one operation that feels like maintenance.
 
 **THE GOSSIP INVESTIGATION IS FROZEN as of 2026-10-11, and the reason is that it
 stopped being about this project.** Every remaining question below sits in
