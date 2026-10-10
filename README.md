@@ -971,7 +971,7 @@ than trusted.
 | ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
 | ~~Which filter excludes nodeD's only peer after one failed connect~~ | **PARTLY ANSWERED, and the number is wrong.** The `set_unresponsive`/`agent_info.expires_at` reading (`core_space.rs:268`, `:498`, `:566`) predicts 1200s. Batch 8 measured the block ending at **926.4s**, 965.3s after nodeA started — before that expiry could land. The block is real and bounded; what releases it is not established. |
 | ~~What releases the peer at ~926s~~ | **ANSWERED from logs already on hand: nodeA came back under a NEW URL.** The unresponsive entry is keyed by URL (`core_space.rs:268`, `initiate.rs:269`), so a URL turnover voids it. The expiry never came into it, which is why 926.4s bore no relation to 1200s. |
-| Why nodeA's URL turns over at ~926s | **one log module, and it is the live lead.** A transport-level event — most likely a relay reconnection handing nodeA a new address. `core_bootstrap` and `core_space` carry the publication path and are silenced; neither logs a successful publish, so they add the failure and prune lines around it, not the event. |
+| Why nodeA's URL turns over at ~926s | **instrumented in this PR, and it is the live lead.** A transport-level event — most likely a relay reconnection handing nodeA a new address. `core_space.rs:703` logs the successful broadcast at INFO, which the added module directive unsilences, so the turnover is now a timestamped line rather than an inference off peer URLs. |
 | Why one failed connect escalates and another does not | **open, and narrower than it was.** `rt60000` trial 4 failed once with zero `No agents to gossip with` and recovered in 1.0s, so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | ~~A batch at ~1500s, past the 1200s unresponsive expiry~~ | **DONE — batch 8, 12 for 12.** ([`38036069009`](../../actions/runs/38036069009)) No non-crossings at a 1500s cap, and one trial shows the batch 7 signature completing at 943.0s. The historical non-crossings of that shape were truncated recoveries. |
 | ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
@@ -3196,11 +3196,19 @@ each of these is currently exactly that.
   new address — and it is the thing worth instrumenting now, where the old
   phrasing of this paragraph would have instrumented a question that had already
   been answered. `core_bootstrap` and `core_space` carry the agent-info
-  publication path and both are silenced by the current filter; neither logs a
-  *successful* publish, so what they add is the failure and prune lines around
-  it rather than the event itself. Worth having, with that limit stated, and
-  still cheaper than a ninth batch: eight have now produced distributions rather
-  than mechanism.
+  publication path and both are silenced by the current filter — and
+  **`core_space` does log the successful publish**, which a first pass at this
+  paragraph denied. `core_space.rs:703` is
+  `tracing::info!("Broadcast new agent info to {} peers", ok)`, at INFO, where
+  the base `warn` hides it and the module directive lets it through. So the
+  turnover batch 8 had to infer from peer URLs becomes a timestamped line on
+  nodeA, and lining those up against nodeD's URL change is the whole remaining
+  question rather than an inference from it. The failure and prune lines are the
+  surround rather than the substance — and that broadcast line doubles as the
+  canary for whether the three modules loaded at all, since every other new
+  counter fires only on a failure and the first run with the modules read zero
+  on all four, confirming nothing. Still cheaper than a ninth batch: eight have
+  now produced distributions rather than mechanism.
 
   **The arms still predict nothing**, for the third batch running: 6-for-6 and
   6-for-6 here, mirrored failures in batches 6 and 7. `roundTimeoutMs` has not
