@@ -974,7 +974,7 @@ rather than tidying.
 | ~~Why one op waits out 27 others — the ~425s mode~~ | **SOLVED from logs on disk.** The claim's own op is dequeued, silently dropped, and not offered again for **~365s** (+361.8s and +368.0s in the two trials), then sent and stored in milliseconds. `CoreFetchConfig` has no retry timer and the unresponsive path *removes* the op, so only gossip can bring it back. See the entry below. |
 | ~~Which gossip mechanism re-offers a dropped op after ~365s~~ | **ANSWERED, n=2.** First offer arrives on a received `NoDiff` (bookmark path, `respond.rs:187`) and is dropped; the one that works arrives on a received `Accept` (`respond/accept.rs:52`), each within 7ms of its dequeue. |
 | ~~Why nodeA omits the op from ~60 consecutive Accepts~~ | **ANSWERED — nodeD disclaimed the op.** Its advertised `new_since` was **10:50:34.400Z** while the claim was created **≈10:50:02.7Z**, so the op was ~32s *older* than the bookmark and `retrieve_new_op_ids` was right never to return it. [#222](../../pull/222)'s `update_new_ops_bookmark`-before-`request_ops` ordering is **reinstated**; the entry retiring it tested constancy instead of ordering, and compared two different message tracks. |
-| Which `since` the delivering `Accept` was built from | **effort, and it is the live lead.** The value nodeA used in `respond/initiate.rs` answering nodeD's Initiate is what would close the account. Also: the timestamp arithmetic is n=1 — the batch 8 trial should show the same relation and has not been checked. |
+| How the delivering `Accept` carries an op the Initiate's bookmark disclaimed | **a source read, and it is the live lead.** nodeD sent `t0 +423.5s` at `08:08:29.138`, got an `Accept` 26ms later, and dequeued the op at `.167`. So `new_ops` there is either not built from the Initiate's `new_since`, or nodeA uses its own stored bookmark for nodeD. Both readable in `respond/initiate.rs`; neither read. **The silence is explained at n=2; the delivery is not.** |
 | The middle dequeue in both slow traces | **open, small, and recorded rather than smoothed.** `08:08:21.872` and `10:57:03.404` have no received message within a second, where the other two couple within 7ms. Both were dropped, so neither changed the outcome; neither is explained. |
 | Why one failed connect marks the peer and another does not | **effort, and narrower than it was.** Batch 8's `rt60000` trial 4 failed one initiation, logged zero `No agents to gossip with`, and recovered in 1.0s with 73 initiations — so that failure never marked the peer at all. What distinguishes a marking connect from a non-marking one is unestablished. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -3459,14 +3459,37 @@ each of these is currently exactly that.
   dress: a figure that was genuinely constant, carrying an inference it could not
   support.
 
-  **What is still not established.** Which `since` the delivering `Accept` was
-  built from — the value nodeA used in `respond/initiate.rs` when answering
-  nodeD's Initiate — is not something this trial's logs pin down, and it is what
-  would turn the reinstatement into a closed account. Two things are now firm:
-  the op was older than the bookmark nodeD advertised, and that bookmark advanced
-  before the op was ever fetched. **n is 1 for the timestamp arithmetic**, since
-  only this trial's t0 was reconstructed; the batch 8 trial should carry the same
-  relation and has not been checked.
+  **The batch 8 trial carries the same relation, and shows the before-and-after
+  this one could not.** Its t0 is `08:01:19.367Z`, and nodeD advertised three
+  distinct bookmarks to nodeA:
+
+  | `new_since` | wall clock | vs t0 | rounds |
+  |---|---|---|---|
+  | `1791619261876925` | `08:01:01.876Z` | **t0 −17.5s** | 4 |
+  | `1791619327008021` | `08:02:07.008Z` | **t0 +47.6s** | **68** |
+  | `1791619702882175` | `08:08:22.882Z` | t0 +423.5s | 1 |
+
+  **It begins below the op's timestamp, advances above it, and stays above for
+  all 68 rounds of the stall.** That is the disclaimer happening in the record
+  rather than reconstructed from a single value, and it is why batch 8 is the
+  better of the two traces: batch 9's bookmarks were *both* above its t0
+  (+10.3s and +31.7s), so that trial can show the silence but not its onset.
+  **n is 2 for the silence.**
+
+  **What it does not explain is the delivery, and the arithmetic says so
+  sharply.** In batch 8 nodeD sent its highest bookmark — `t0 +423.5s`, which
+  excludes the op by a wide margin — at `08:08:29.138`, received an `Accept`
+  26ms later at `.164`, and dequeued the op at `.167`. **So nodeA put the op in
+  an `Accept` answering an Initiate whose bookmark disclaimed it.** Either that
+  message's `new_ops` is not built from the Initiate's `new_since`, or nodeA uses
+  its own stored bookmark for nodeD rather than the advertised one. Both are
+  readable in `respond/initiate.rs` and neither has been read.
+
+  **So the account is half closed, and the halves should not be run together.**
+  The six minutes of silence is explained at n=2: nodeD disclaimed the op and
+  nodeA correctly withheld it. The delivery is **not** explained, and the
+  obvious-looking story — "the bookmark eventually let it through" — is the one
+  thing these timestamps rule out.
 
 
   **Still n=2, and one thing in the trace remains unaccounted for.** The middle
