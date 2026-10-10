@@ -966,10 +966,11 @@ than trusted.
 | Open item | Blocked on |
 |---|---|
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
-| Closing the `NoDiff` caveat | **a recurrence.** A `NoDiff` trial with the integration check active. At ~6% that is roughly two or three more twelve-trial batches. |
+| ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
+| Make nodeD's fetch queue visible | **effort, and it is the live lead.** The `NoDiff` rounds carried non-empty `new_ops` every time, so announced ops reach a fetch queue that no tracing covers. This replaces the caveat above as what stands between this and an upstream report. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
 | Report burst exhaustion as an outcome, or widen past 600s | **a decision, deliberately deferred.** The evidence for the first option is one occurrence, and one occurrence is what this section has twice been wrong to act on. |
-| [#219](../../pull/219) | **CI at the time of writing.** Documentation only. `git log --oneline origin/main` is the answer to whether it landed — not this row. |
+| ~~[#219](../../pull/219)~~ | **Landed** as `da74ee7`, along with [#220](../../pull/220) `8742211` and [#221](../../pull/221) `a708142`. The row is kept to show what it looked like in flight. |
 
 **#218 landed** as merge commit `3018178`, and it carried two things. The
 four-batch census: 48 trials, 13 non-crossings (27%), and the `NoDiff` mode at
@@ -2760,6 +2761,90 @@ each of these is currently exactly that.
   integrations do not retroactively measure a trial that ran before the
   instrument existed. Closing it needs a `NoDiff` trial to occur with the check
   active, which at 6% means roughly another two or three batches.
+
+  **Batch 5 closed it on the first attempt, and closing it falsified the
+  mechanism this entry had been attributing the mode to.** Run
+  [`38024547790`](../../actions/runs/38024547790), twelve trials across the same
+  two arms: eleven crossed, **one did not**, and integration was measured at
+  0.0s in eleven of twelve — the twelfth being 7.7s on a trial that then crossed
+  at 33.1s.
+
+  | batch | trials | never crossed | transport | gossip |
+  |---|---|---|---|---|
+  | 5 | 12 | 1 | 0 | 1 |
+  | | **60** | **14 (23%)** | **10 (71%)** | **4 (29%)** |
+
+  *(The 48-trial totals above are superseded and kept: 13 (27%), transport 10
+  (77%), gossip 3 (23%). The `NoDiff` mode is now **4 in 60 trials, about 7%**,
+  which is the same figure the 6% was — a batch yielding one is the expected
+  outcome, and batch 4 yielding none was equally expected.)*
+
+  **The occurrence is exactly the one the caveat specified.** `rt60000` trial 6:
+  no crossing in 330s, **with the integration check active and reporting 0.0s**.
+  nodeA demonstrably held its own claim before the clock started, and nodeD never
+  saw it. The mode reproduced in full — nodeD exchanged **36 NoDiff rounds with
+  nodeA**, 35 of them received, spanning 04:47:51 to 04:53:10, which is the whole
+  window. Peer identity was established by set subtraction over the three relay
+  URLs appearing across the four conductor logs: each node's own URL is the one
+  absent from its own peer list, giving nodeA `41081e`, nodeB `aa096a`,
+  nodeD `77653e`.
+
+  **And then the thing that was supposed to be a confirmation was a refutation.
+  Not one of those 35 NoDiff messages carried an empty `new_ops`** — every one
+  carried 11 to 14 op ids, in 28 distinct sets. So the sentence this entry has
+  repeated — ~120 rounds "every one concluding that their snapshots were
+  identical, while the entry never arrived" — is **true about the message and
+  wrong about the fault**.
+
+  Verified against `kitsune2_gossip` **0.5.0**, the version the runner ran, pinned
+  and read rather than inferred from 0.5.2 (`respond/accept.rs`,
+  `respond/no_diff.rs` and `respond.rs` are byte-identical across the two, so the
+  reading transfers):
+
+  - `respond/accept.rs:111` emits `NoDiff` on `DhtSnapshotNextAction::Identical`,
+    logging "Snapshots identical, no diff needed". That part was read correctly.
+  - But `accept_response` is built at `respond/accept.rs:86` from
+    `retrieve_new_op_ids(&common_arc_set, since: accept.new_since, …)` and
+    attached to the message **regardless of the snapshot outcome**. Recent ops
+    travel by bookmark, not by DHT diff.
+  - And the receiving side — `respond/no_diff.rs` into `respond.rs:173`
+    `handle_accept_response` — calls
+    `self.fetch.request_ops(op_ids_to_publish_ops(decode_ids(accept_response.new_ops)), from_peer)`.
+    Announced ops go onto a **fetch queue**.
+
+  **So identical snapshots are the expected state for an op this recent, and a
+  NoDiff round is not a round that exchanged nothing.** This entry had taken a
+  normal condition for the defect. nodeA told nodeD about ops in all 35 rounds
+  and nodeD never obtained the claim, which moves the suspect off gossip's diff
+  and onto the fetch path.
+
+  **The pinned source also offers a sharper candidate than the one being
+  replaced, and it stays a candidate.** In `handle_accept_response` the bookmark
+  moves first and the fetch is requested second:
+  `update_new_ops_bookmark(from_peer, accept_response.updated_new_since)` at
+  `respond.rs:181`, then `fetch.request_ops(…)` at `respond.rs:187`. Nothing
+  re-offers an op whose bookmark has already advanced, because the next round's
+  `retrieve_new_op_ids(since: new_since)` will not include it — a readable path to
+  an op being **permanently skipped** rather than merely delayed, which is the
+  shape this investigation has been looking for since shape A.
+
+  Two limits keep it a hypothesis, and both are stated because the alternative is
+  the move this entry has now had to withdraw twice:
+
+  - `request_ops` returns `K2Result` and is `?`-propagated, so a call that failed
+    outright would abort the handler. The gap is a fetch **accepted onto the queue
+    and never completed**, which is a different claim and is not evidenced here.
+  - nodeA sent **28 distinct** `new_ops` sets across 35 rounds, so ops were
+    plainly still being offered. That is not what a bookmark racing permanently
+    past everything looks like, and these logs cannot reconcile it: nodeD's
+    `fetch` module has no tracing enabled, so the queue is invisible. **Making it
+    visible is the next step**, not another batch.
+
+  **Superseded by batch 5, and kept because the reasoning it records is what the
+  batch was run to settle.** The integration caveat below was "the only thing
+  between this and an upstream report" when written; it is now closed, and what
+  stands between this and an upstream report is the fetch queue being invisible
+  rather than the integration premise being unmeasured.
 
   **The integration caveat still stands and is now the only thing between this
   and an upstream report.** The harness confirms `create_claim` returned on
