@@ -968,7 +968,8 @@ than trusted.
 | `scripts/publish-packages.sh --publish` | **a person.** Publish rights on the `@stateofintent` npm scope. The only item with outside impact; everything else about the republish is done and checked. |
 | ~~Closing the `NoDiff` caveat~~ | **CLOSED by batch 5** ([`38024547790`](../../actions/runs/38024547790)), which produced the `NoDiff` trial with the check active and reporting 0.0s — and falsified the mechanism in the same stroke. See the entry below. |
 | ~~Make nodeD's fetch queue visible~~ | **DONE** in [#223](../../pull/223) `6ea451e`, and its first run ([`38026557039`](../../actions/runs/38026557039)) disproved the mechanism [#222](../../pull/222) had proposed. See the entry below. |
-| Do the ops never recover, or does the harness stop watching? | **one dispatch, and it is the live lead.** Batch 6 saw an op dropped 32 times and arrive at **213.5s** against a 330s cap — a factor of 1.5. `peering-rate.yml` takes `cap_ms`, so a batch at 600s settles it. Worth doing before more mechanism hunting: every mechanism proposed so far has been for a failure that may not exist. |
+| ~~Do the ops never recover, or does the harness stop watching?~~ | **ANSWERED BY BATCH 7, both ways.** At a 600s cap two ops arrived at **424.6s** and **360.6s** — the shutter was hiding real recoveries — and two trials still failed, for an unrelated reason. See the entry below. |
+| Which filter excludes nodeD's only peer after one failed connect | **a code question, and it is the live lead.** Both 600s failures: one `iroh connect timed out` at t+3s, then 584 consecutive `No agents to gossip with`. `select_next_target` has two filters that could do it (`initiate.rs:269` unresponsive, `:213` timeout-with-fallback) and the logs do not say which. One census signature, not another batch. |
 | ~~Why one op is never recovered, when drops are routine~~ | **SUPERSEDED by the row above**, which is the same question without the assumption that "never" has been established. |
 | ~~Why every drop was nodeB's~~ | **ANSWERED, then refined.** nodeB was 49-of-127 then 0-of-75 on `network.yml`, which read as "occasional, not positional". Batch 6 shows the **fetcher** drops in 12 of 12 at 43-78% while the publisher drops nothing: positional as to which node, variable as to rate, and predictive of nothing. |
 | Shape B's trigger | **effort, and not much is warranted.** Resource starvation versus an iroh-level defect, still undistinguished. The mechanism is known; only the trigger is not. |
@@ -2997,6 +2998,90 @@ each of these is currently exactly that.
   other had 0.0s, and the 213.5s crossing had 8.1s — but the figure needs
   measuring per trial rather than assuming, which is exactly why #217 reports it
   per trial.
+
+  **Batch 7 doubled the cap to 600s and answered the question both ways at once.**
+  Run [`38031344843`](../../actions/runs/38031344843), `cap_ms=600000`, everything
+  else unchanged:
+
+  | arm | crossed | timed out | slowest |
+  |---|---|---|---|
+  | `rt60000` | **6** | 0 | **424.6s** |
+  | `rt15000` | 4 | **2** | 39.1s |
+
+  | batch | trials | never crossed | transport | gossip |
+  |---|---|---|---|---|
+  | 7 (600s cap) | 12 | 2 | **2** | 0 |
+  | | **84** | **18 (21%)** | **12 (67%)** | **6 (33%)** |
+
+  **Part one: the cap was an artefact, for some of them.** Two crossings landed at
+  **424.6s** and **360.6s**. Both are past 330s, so both would have been recorded
+  as non-crossings in every batch before this one — and the `rt60000` arm went
+  **6 for 6** where batch 6 had it 4 of 6, the entire difference being those two
+  late arrivals. So a real share of the 18 historical non-crossings were ops that
+  recovered after the shutter closed, and the 27%/23%/22% rates in the batches
+  above are measuring the window as much as the network.
+
+  **Part two: two trials still failed at 600s, and they are a different fault with
+  a single cause.** Both `rt15000` non-crossings have an identical signature on
+  nodeD, and it is not NoDiff and not the fetch queue — **the fetch queue and the
+  gossip rounds are both at zero, because nodeD never gossiped at all:**
+
+  | nodeD | trial 04 | trial 05 | control (424.6s crossing) |
+  |---|---|---|---|
+  | `Attempting to initiate gossip with` | 1 | 1 | 76 |
+  | `Failed to initiate gossip` | **1** | **1** | 0 |
+  | `Initiated gossip with` | **0** | **0** | 76 |
+  | `All agents with overlapping arcs are on timeout` | **584** | **584** | 0 |
+  | `No agents to gossip with` | **584** | **584** | 0 |
+  | `NoDiff` | 0 | 0 | 153 |
+  | fetch dequeued / sent | 0 / 0 | 0 / 0 | 71 / 27 |
+
+  **One failed connect ended the run.** nodeD selected a target 3 seconds in,
+  attempted its first initiation, and got
+  `Failed to initiate gossip: Other { ctx: "iroh connect timed out" }`. For the
+  remaining **597 seconds** its initiate loop ran **584 more times** and found
+  nobody to gossip with on every one of them — logging
+  `All agents with overlapping arcs are on timeout, selecting from all agents`
+  and then `No agents to gossip with`, 584 times each. It never attempted a
+  second initiation. The claim could not arrive because no round was ever started
+  to carry it.
+
+  **So these two belong in the transport column, not the gossip one.** The table
+  above classifies them that way and it is a change in kind rather than a
+  recount: `iroh connect timed out` is the same transport signature §9 has been
+  tracking since shape B, and what is new is the *consequence* — a single
+  transport failure at t+3s removing nodeD's only viable target for the rest of
+  the run. Every mechanism proposed today assumed rounds were happening and
+  something inside them was wrong. In these two trials nothing was happening at
+  all.
+
+  **What this leaves, and it is a code question rather than another batch.**
+  `select_next_target` has two independent filters that can exclude a peer —
+  `get_unresponsive` at `initiate.rs:269`, and the last-gossip-timestamp timeout
+  at `:213` whose fallback is "selecting from all agents". The logs show the
+  fallback firing and still finding nobody, which means a *second* filter
+  excluded the peer, and these logs do not say which: unresponsive marking,
+  expired agent info, or a missing URL are all live possibilities at `:255-:277`.
+  Naming it needs one more census signature, not twelve more trials.
+
+  **One thing deliberately not claimed.** 424.6s against a 600s cap is a factor
+  of 1.4 — very nearly the 213.5s-against-330s ratio that prompted this batch in
+  the first place. That is a reason to distrust 600s as a ceiling too, and it is
+  *not* a reason to keep doubling: the two trials that failed here failed for a
+  reason that has nothing to do with the cap, and a 1200s batch would spend an
+  hour to re-find them. The distribution worth having now is of **recovery
+  times** among trials that do recover, which the existing per-trial lines
+  already give.
+
+  **The arms stopped meaning anything, which is worth saying since they are the
+  experiment's own independent variable.** Batch 6 had `rt60000` failing twice
+  and `rt15000` clean; batch 7 has exactly the reverse, 6-for-6 against 4-of-6.
+  Over the two batches `roundTimeoutMs` predicts neither the failures nor the
+  slow crossings, and the harness's own header already says a handful of trials
+  per arm cannot establish a rate. These batches are worth running for the
+  per-trial evidence they dump, not for the arm comparison they are nominally
+  shaped around.
+
 
 
   **Superseded by batch 5, and kept because the reasoning it records is what the
