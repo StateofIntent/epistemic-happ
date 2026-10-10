@@ -1150,6 +1150,22 @@ so no window moves on it and the options above stay as they were. What changed i
 narrower and worth the paragraphs: "arrives late" is a measurement now, and
 `initiate too soon` is no longer load-bearing for it.
 
+**Its companion measurement is 5.0s, one docs-only commit later.** Run
+[`38021587179`](../../actions/runs/38021587179) — the same branch, the same
+harness, a tree differing only in this section's prose — took **5.0s** on the
+Phase 0 baseline where the previous run took 426.0s, passed the divergence
+assertion it had had to report INCONCLUSIVE, and finished both harnesses with
+ALL CHECKS PASSED in 5m49s against 16m52s. Convergence was 20.1s and 30.1s, the
+post-heal crossing 5.0s.
+
+**426.0s then 5.0s is the same pair this intermittency has already shown once**,
+at 330s-then-6.1s two entries above, and recording the fast half matters as much
+as the slow one: without it the 426.0s reads as a network that is slow, when what
+the two runs together say is that the *same* network is either immediate or
+minutes-long with nothing in between and no change to the tree. That is a
+property of the substrate's round scheduling rather than of this harness, and it
+is why a mean over these runs would describe nothing real.
+
 **The diagnostic was the actual defect here.** For ten occurrences the workflow
 dumped these logs and nothing read them — the red tick said "nodeB never
 received it" while the answer sat forty lines down in output that looks like
