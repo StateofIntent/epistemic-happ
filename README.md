@@ -1107,6 +1107,49 @@ on it, or to widen past 600s and accept failing runs over twenty minutes long.
 for the first is one occurrence, and one occurrence is what this section has
 twice been wrong to act on.
 
+**Half of that question now has a measurement, and it came from this branch's own
+CI run rather than from a dispatch batch.** In run
+[`37719653059`](../../actions/runs/37719653059), `partition-rejoin`'s Phase 0
+baseline — both nodes up, nothing partitioned, no probe interference — **crossed
+in 426.0 seconds**. So the op arrives **late rather than never**, which is the
+half of the open question above that had no datum attached to it. The crossing is
+past `CONVERGE_WINDOW_MS`, so an identical crossing in `real-gossip` would have
+been a red tick with nothing to read; it was recorded only because
+`partition-rejoin` budgets 600s and polls all the way through.
+
+**And it does not fit the burst-exhaustion story — the census for that run shows
+`initiate too soon` at ZERO on every node.** That matters more than the figure
+does. The residue the ceiling deliberately leaves was argued from `burst.rs`:
+fifteen initiations per peer per 600s, exhausted, retries refused, nothing left
+inside 330s. Here the rate limiter never engaged at all and the crossing still
+took 426.0s. **So burst exhaustion is not the only path into the 300–600s band**,
+and the band cannot be read as that one mechanism's signature.
+
+What the census does carry for that run is a different signature in quantity:
+`No agents with overlapping arcs available` **39 times on nodeA and 29 on
+nodeB**, with nodeA's first `Initiated gossip with` landing **11.4s** after its
+initiate task started and nodeB's **23.4s** after. Both nodes were running
+rounds and finding no overlapping-arc peer to run them against. The accept-timeout
+cluster that discriminated failures from passes across the thirty dispatched runs
+is **not** what this looks like: nodeB logged one `iroh connect timed out`, one
+`Unsolicited Accept message`, one `Peer behavior error` and three `database is
+locked` — present, singular, nothing like 2-to-7 occurrences each.
+
+**The harness said this itself, in the run output, and then declined to claim a
+pass it had not earned.** It printed `THE 426.0s IS THE FINDING, not this cap`,
+capped the partition dwell at 300s because a sound 5x dwell of 2130s does not fit
+the job, and reported the divergence assertion as **INCONCLUSIVE** rather than as
+a pass — nodeB showing zero in claimA's domain cannot distinguish "the partition
+held" from "it has not arrived yet" when the dwell is shorter than the crossing
+the same network had just taken. That is the right outcome and it is why the job
+is red: the failing check is `the baseline is fast enough to measure divergence
+inside the job budget`, not any claim about partitions.
+
+**n is 1.** One occurrence is what this section has twice been wrong to act on,
+so no window moves on it and the options above stay as they were. What changed is
+narrower and worth the paragraphs: "arrives late" is a measurement now, and
+`initiate too soon` is no longer load-bearing for it.
+
 **The diagnostic was the actual defect here.** For ten occurrences the workflow
 dumped these logs and nothing read them — the red tick said "nodeB never
 received it" while the answer sat forty lines down in output that looks like
