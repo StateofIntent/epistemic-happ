@@ -1107,6 +1107,49 @@ on it, or to widen past 600s and accept failing runs over twenty minutes long.
 for the first is one occurrence, and one occurrence is what this section has
 twice been wrong to act on.
 
+**Half of that question now has a measurement, and it came from this branch's own
+CI run rather than from a dispatch batch.** In run
+[`37719653059`](../../actions/runs/37719653059), `partition-rejoin`'s Phase 0
+baseline — both nodes up, nothing partitioned, no probe interference — **crossed
+in 426.0 seconds**. So the op arrives **late rather than never**, which is the
+half of the open question above that had no datum attached to it. The crossing is
+past `CONVERGE_WINDOW_MS`, so an identical crossing in `real-gossip` would have
+been a red tick with nothing to read; it was recorded only because
+`partition-rejoin` budgets 600s and polls all the way through.
+
+**And it does not fit the burst-exhaustion story — the census for that run shows
+`initiate too soon` at ZERO on every node.** That matters more than the figure
+does. The residue the ceiling deliberately leaves was argued from `burst.rs`:
+fifteen initiations per peer per 600s, exhausted, retries refused, nothing left
+inside 330s. Here the rate limiter never engaged at all and the crossing still
+took 426.0s. **So burst exhaustion is not the only path into the 300–600s band**,
+and the band cannot be read as that one mechanism's signature.
+
+What the census does carry for that run is a different signature in quantity:
+`No agents with overlapping arcs available` **39 times on nodeA and 29 on
+nodeB**, with nodeA's first `Initiated gossip with` landing **11.4s** after its
+initiate task started and nodeB's **23.4s** after. Both nodes were running
+rounds and finding no overlapping-arc peer to run them against. The accept-timeout
+cluster that discriminated failures from passes across the thirty dispatched runs
+is **not** what this looks like: nodeB logged one `iroh connect timed out`, one
+`Unsolicited Accept message`, one `Peer behavior error` and three `database is
+locked` — present, singular, nothing like 2-to-7 occurrences each.
+
+**The harness said this itself, in the run output, and then declined to claim a
+pass it had not earned.** It printed `THE 426.0s IS THE FINDING, not this cap`,
+capped the partition dwell at 300s because a sound 5x dwell of 2130s does not fit
+the job, and reported the divergence assertion as **INCONCLUSIVE** rather than as
+a pass — nodeB showing zero in claimA's domain cannot distinguish "the partition
+held" from "it has not arrived yet" when the dwell is shorter than the crossing
+the same network had just taken. That is the right outcome and it is why the job
+is red: the failing check is `the baseline is fast enough to measure divergence
+inside the job budget`, not any claim about partitions.
+
+**n is 1.** One occurrence is what this section has twice been wrong to act on,
+so no window moves on it and the options above stay as they were. What changed is
+narrower and worth the paragraphs: "arrives late" is a measurement now, and
+`initiate too soon` is no longer load-bearing for it.
+
 **The diagnostic was the actual defect here.** For ten occurrences the workflow
 dumped these logs and nothing read them — the red tick said "nodeB never
 received it" while the answer sat forty lines down in output that looks like
@@ -2590,6 +2633,33 @@ each of these is currently exactly that.
   inside one symptom — "a node joins the DHT and exchanges nothing" — for the
   life of this entry, which is why every single-cause hypothesis tried against
   it got partial support and then collapsed.
+
+  **Four batches, forty-eight trials, and the caveat is weakened but not closed.**
+
+  | batch | trials | never crossed | transport | gossip |
+  |---|---|---|---|---|
+  | 1 | 12 | 2 | 2 | 0 |
+  | 2 | 12 | 3 | 2 | 1 |
+  | 3 | 12 | 5 | 3 | 2 |
+  | 4 | 12 | 3 | 3 | 0 |
+  | | **48** | **13 (27%)** | **10 (77%)** | **3 (23%)** |
+
+  So the `NoDiff` mode is **3 in 48 trials, about 6%** — rare enough that a
+  twelve-trial batch misses it more often than not, which batch 4 duly did.
+
+  **Batch 4 ran with the integration check active and found integration
+  instantaneous: 0.0s in 12 of 12, including all three non-crossings.** That
+  rules integration lag out as a general effect in this harness. It does **not**
+  close the specific question, because batch 4 produced no `NoDiff` trial — the
+  check was added after batch 3, and the three `NoDiff` cases predate it. So
+  "nodeA had integrated the op in those three trials" is now a strong inference
+  from twelve consecutive 0.0s measurements plus ~180 completed rounds apiece,
+  and still an inference rather than a measurement.
+
+  Stated plainly because the temptation runs the other way: twelve immediate
+  integrations do not retroactively measure a trial that ran before the
+  instrument existed. Closing it needs a `NoDiff` trial to occur with the check
+  active, which at 6% means roughly another two or three batches.
 
   **The integration caveat still stands and is now the only thing between this
   and an upstream report.** The harness confirms `create_claim` returned on
