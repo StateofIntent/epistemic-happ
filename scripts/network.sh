@@ -449,21 +449,28 @@ GOSSIP_MIN_INITIATE_INTERVAL_MS="${EPI_GOSSIP_MIN_INITIATE_INTERVAL_MS:-10000}"
 # later. What is NOT known is why the URL turns over when it does, and that is
 # a transport event in the agent-info publication path. See README.md §9.
 #
-# WHAT THESE TWO ACTUALLY BUY, AND THE LIMIT STATED UP FRONT: neither module
-# logs a SUCCESSFUL publish. `core_space` re-signs at :490-505 with no tracing
-# on the happy path, and `core_bootstrap`'s debug line at :264 is a FAILED
-# push. So what this adds is the failure and prune lines AROUND the event —
-# "Failed to push agent info to bootstrap server", "Not updating agent info
-# because we don't have a current url" (`core_space.rs:541`), "Failed to
-# broadcast agent info" (:538) — plus, from the peer store, "Pruning expired
-# agent info" and "Ignoring insert for older agent info". The turnover itself
-# stays inferred from the URL in the gossip lines, which is where batch 8 read
-# it from and which needs no filter change at all.
+# WHAT THESE BUY, AND THE ONE THAT MATTERS IS THE EVENT ITSELF.
+# `core_space.rs:703` is `tracing::info!("Broadcast new agent info to {} peers",
+# ok)` — the SUCCESSFUL publish. It sits at INFO, which the base `warn` silences
+# and `kitsune2_core::factories::core_space=debug` lets through, so adding that
+# module turns the turnover from something batch 8 had to infer off peer URLs
+# into a timestamped line on nodeA. Lining those up against nodeD's URL change
+# is the whole question.
 #
-# Added anyway because the surrounding lines bound the question: a turnover
-# with a failed bootstrap push before it reads differently from one without,
-# and the peer-store prune lines say whether the old info was expiring at the
-# same moment or not.
+# The rest are the surround, and they bound it: "Failed to push agent info to
+# bootstrap server" (`core_bootstrap.rs:264`), "Not updating agent info because
+# we don't have a current url" (`core_space.rs:541`), "Failed to broadcast agent
+# info" (:538), and from the peer store "Pruning expired agent info" and
+# "Ignoring insert for older agent info". A turnover with a failed push before
+# it reads differently from a clean one, and the prune line says whether the old
+# info was expiring at the same moment.
+#
+# AND THE BROADCAST LINE IS THE CANARY FOR ALL THREE MODULES. Every other
+# signature here fires only on a failure or a prune, so all-zero is the healthy
+# case and says nothing about whether the directive took — the same hole the
+# fetch counters would have had without a crossing to pair against. This one
+# fires on every successful broadcast, so zero on a healthy run indicts the
+# filter rather than the network.
 GOSSIP_LOG_FILTER="${EPI_GOSSIP_LOG_FILTER:-warn,kitsune2_gossip=debug,kitsune2_core::factories::core_fetch=debug,kitsune2_core::factories::core_space=debug,kitsune2_core::factories::core_bootstrap=debug,kitsune2_core::factories::mem_peer_store=debug}"
 export CUSTOM_FILTER="$GOSSIP_LOG_FILTER"
 

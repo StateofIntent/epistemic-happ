@@ -130,11 +130,19 @@ SIGNATURES=(
   # differently from a clean one, and the prune line says whether the old agent
   # info was expiring at the same moment.
   #
-  # NONE of them is the turnover itself — no module logs a successful publish,
-  # `core_space` re-signs at :490-505 with no tracing on the happy path. So a
-  # run where all four are zero and a URL still changed is the expected healthy
-  # case, NOT a missing signature. The turnover is read from the peer URL in
-  # the gossip lines, which needed no filter change at all.
+  # AND THE TURNOVER ITSELF IS LOGGED, which an earlier version of this comment
+  # denied. `core_space.rs:703` is `tracing::info!("Broadcast new agent info to
+  # {} peers", ok)` — the successful publish, at INFO, which the base `warn`
+  # silences and the module directive in `network.sh` lets through. So the event
+  # batch 8 had to infer from peer URLs in the gossip lines is directly
+  # countable, and lining nodeA's broadcast timestamps up against nodeD's URL
+  # change is now a log read rather than an inference.
+  #
+  # IT IS ALSO THE CANARY FOR THE THREE MODULES. The other four fire only on
+  # failures and prunes, so all-zero is the healthy case and proves nothing
+  # about whether the directive took. This one fires on every successful
+  # broadcast: **zero here on a healthy run means the filter, not the network.**
+  'Broadcast new agent info to'
   'Failed to push agent info to bootstrap server'
   "Not updating agent info because we don't have a current url"
   'Failed to broadcast agent info'
