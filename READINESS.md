@@ -29,6 +29,15 @@ app never vouches for where a user's citation points.
 **One conductor, three conductors, and gossip between them all work**, verified
 by twelve harnesses on every push.
 
+**And the agent-facing path is not orphaned the way the desktop app is.**
+`scripts/live-verify/published-packages.mjs` installs the **published registry
+tarballs** — `@stateofintent/agent-sdk@0.1.2` and
+`@stateofintent/mcp-server@0.1.2` — into an empty project and drives them
+against a real conductor, on every push. It has stayed green through all six
+protocol forks. So a stranger who installs the SDK or points an MCP-capable
+model at the server is driving the *current* protocol today, with no release to
+wait for. That is a smaller audience than desktop installers and a real one.
+
 ---
 
 ## What blocks a release today
@@ -133,8 +142,18 @@ Holochain's op store rather than in this repository.
 For a stress test this is survivable, but **a user who writes a claim and sees a
 peer not receive it for ten minutes will report a bug, not a latency figure.**
 The protocol's whole value is claims reaching peers, so minutes-long silence is
-a product characteristic. The cheapest mitigation is a UI that says "not yet
-propagated" rather than nothing — and that does not exist yet.
+a product characteristic.
+
+**Partly mitigated, at the one moment it costs nothing.** The publish
+confirmation read "Claim published." — true, and incomplete in the expensive
+direction, since `create_claim` returning means the entry is on the author's own
+source chain and nothing more. It now reads *"Published to your own chain. Peers
+may take minutes to see it — that is expected on this network, not a fault."*
+A statement about where the bytes are, identical for every claim, so it does not
+breach §4.4's bar on this UI inferring a credibility ordering.
+
+What does **not** exist is a per-claim indicator of whether a specific peer holds
+it, and there cannot be one without a zome surface the protocol does not have.
 
 **Nothing is code signed.** macOS quarantines the app with no UI to allow it;
 users need `xattr -r -d com.apple.quarantine` from a terminal, which most will
@@ -171,8 +190,9 @@ them.
 4. **Then invite people — on desktop.** Ten, not ten thousand: enough to find
    what three conductors on one machine cannot, few enough that the propagation
    latency can be explained to each of them by hand.
-5. **Surface "not yet propagated" in the UI** before the round after that,
-   because otherwise the feedback will be mostly this one thing.
+5. **The publish-time caveat is in** (see above). What would still help before
+   a second round is a per-claim delivery indicator, which needs a zome surface
+   that does not exist — so it is a protocol change, not a UI task.
 
 Scale beyond four nodes, a stated propagation bound, and the speed and
 scalability work all come after step 4 has produced real reports — which is the
