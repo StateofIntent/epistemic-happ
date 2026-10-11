@@ -519,7 +519,13 @@ Three things that result establishes which the green run did not. **The probe te
 
 **A predicted false green was confirmed**, and it is recorded in §5.1 because it bears on that decision rather than on these rules: the harness's read-side check on an updated claim passed while a forged update was accepted, which establishes that no client-surface read can observe an accepted app-entry update.
 
-**WHAT REMAINS UNINJECTED, stated because the numbers invite the wrong conclusion.** Five of these eighteen rules plus the update refusal have now been watched failing on their own probe. **Every author binding, and the base comparisons for eleven of the eighteen links, have not been.** Those probes remain consistent with checks that cannot fail — which is the same status the whole harness had before the first injection, now true of a smaller set rather than of all of it.
+**TWO MORE INJECTIONS CLOSED THE BASE-RULE GAP AND MEASURED A HARNESS ONE.** Run `38124976517` reverted **all seventeen author bindings** of these eighteen rules and produced **three** reds — because only three probes isolate an author binding, the ones where the base is correct and the filer is a third party. **Fourteen of the seventeen author bindings are reached by no probe at all**: every other probe is refused by a base or anchor rule first, so the author check behind it never does the work. That is a gap in the harness rather than in the rules, and the fix is new probes rather than another injection.
+
+Run `38125081165` reverted **the thirteen remaining base comparisons** — every one except `ClaimToRetraction`'s, already covered — and produced **16 reds of 60**. All thirteen probe reds landed, and three of §2b's poisoning checks went red for the first time, proving they detect poisoning rather than merely asserting it. Eight controls held, including all three author probes and the Claim/Mew discrimination, so thirteen-at-once was isolation rather than a smear.
+
+**THE PREDICTION SAID SEVENTEEN AND WAS WRONG BY ONE, in the informative direction.** "The outstanding commitment is still outstanding" was predicted red and stayed green: the forged `PreRegistrationToRevelation` link *was* accepted, and `get_foresight_record` ignored it anyway, because the coordinator-side comparison added alongside that rule caught what validation had let through. **That check needs both layers reverted to fail**, which measures the reader check as load-bearing and independent — the defence-in-depth claim §5.1 makes about courtesies, demonstrated for once rather than asserted.
+
+**So every base comparison of the eighteen is now injected**, along with the update refusal, the tag rule, the shared anchor helper and the discrimination. What is uninjected is the fourteen unprobed author bindings.
 
 ### 5.20a Every normative claim in §2 and §5, checked against validation
 

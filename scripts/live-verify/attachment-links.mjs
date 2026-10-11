@@ -169,15 +169,53 @@
 // injection commit, which is the only reason it counts as a finding rather
 // than a lucky catch.
 //
-// COVERAGE AFTER TWO INJECTIONS: five of the eighteen link rules have been
-// watched failing on their own probe, plus the update refusal. The rules NOT
-// yet injected are the remaining base comparisons (ClaimToRetraction's is
-// covered; TargetToCritique, TargetToAntibody, CritiqueToSpecies,
-// SpeciesToParent, MewToClaim, MembraneToFederationRecord,
-// ClaimToExternalCritique, RetractionToReplacement,
-// PreRegistrationToRevelation, QuestionToPreRegistration and the bridge base
-// rule are not) and every author binding. Those probes are still consistent
-// with checks that cannot fail.
+// THIRD AND FOURTH INJECTIONS, run concurrently on two throwaway refs
+// (conductor.yml's concurrency group is per-ref, so they do not cancel each
+// other).
+//
+// A — ALL SEVENTEEN AUTHOR BINDINGS, run 38124976517. THREE reds, exactly as
+// predicted, and the prediction was the finding: only three probes in this
+// file isolate an author binding — the ones where the base is CORRECT and the
+// filer is a third party. **Fourteen of the seventeen author bindings have no
+// probe at all.** Every other probe is refused by a base or anchor rule
+// first, so the author check behind it never does the work and could be
+// deleted with nothing in this suite noticing. Measured now rather than
+// suspected. The five OLDER author rules (AgentToMembrane, Reinforcement,
+// DomainToClaim, TaxonomyToSpecies, MembraneRegistry) were left intact so
+// domain-index.mjs stayed green and every red was attributable here.
+//
+// B — THE THIRTEEN REMAINING BASE COMPARISONS, run 38125081165. Sixteen reds
+// of 60. All thirteen probe reds landed, and so did THREE of part 3's
+// poisoning checks — agent 2's by-author index, the species adoption count,
+// and claim B's imported replies — each proven to detect poisoning for the
+// first time rather than merely asserting it.
+//
+// THE PREDICTION SAID SEVENTEEN AND WAS WRONG BY ONE, which is worth more
+// than the thirteen it got right. "The outstanding commitment is still
+// outstanding, not revealed" was predicted red and stayed GREEN. The forged
+// PreRegistrationToRevelation link WAS accepted — and get_foresight_record
+// ignored it anyway, because the coordinator-side check added alongside that
+// rule (`if rv.pre_registration != pr_hash { continue }`) caught what
+// validation had let through. The prediction failed to account for a fix made
+// in the same commit as the rule it was predicting about.
+//
+// So that check needs BOTH layers reverted to go red, which is what defence
+// in depth is supposed to look like and is now measured: the reader check is
+// load-bearing and independent of the link rule. Better news than the red
+// would have been.
+//
+// EIGHT CONTROLS HELD IN B — ClaimToRetraction's base rule, the three author
+// probes, the discrimination, the shared anchor helper and the update refusal
+// all stayed green, so thirteen-at-once was isolation rather than a smear.
+//
+// COVERAGE AFTER FOUR INJECTIONS. Every base comparison of the eighteen link
+// rules has now been watched failing on its own probe, as have the update
+// refusal, the tag rule, the shared anchor helper, the Claim/Mew
+// discrimination, and three author bindings. **What remains uninjected is
+// fourteen author bindings no probe reaches** — a gap in the HARNESS rather
+// than in the rules, and the fix here is new probes rather than another
+// injection: one third-party filing attempt per link type whose base rule a
+// non-author can satisfy.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
