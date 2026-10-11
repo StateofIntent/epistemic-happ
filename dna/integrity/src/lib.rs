@@ -2414,11 +2414,11 @@ fn validate_create_link(
         //    anyway, because the two rules answer to different documents
         //    and a later relaxation of either should not silently inherit
         //    the other's guarantee.
-        if &retraction.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A ClaimToRetraction link may only be created by the Retraction's own author.".into()
-            ));
-        }
+        // *** INJECTED: if &retraction.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A ClaimToRetraction link may only be created by the Retraction's own author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::RetractionToReplacement {
         // The inverted half, split out of ClaimToRetraction (see the enum).
         // Base is the Retraction's own ActionHash, target is the Claim the
@@ -2465,12 +2465,12 @@ fn validate_create_link(
                  names in replacement_claim.".into()
             ));
         }
-        if &retraction.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A RetractionToReplacement link may only be created by the Retraction's own \
-                 author.".into()
-            ));
-        }
+        // *** INJECTED: if &retraction.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A RetractionToReplacement link may only be created by the Retraction's own \
+        // *** INJECTED: author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::TargetToCritique {
         // What makes a claim look critiqued. `validate_critique` is one of
         // the stronger validators here — author binding, target existence,
@@ -2518,11 +2518,11 @@ fn validate_create_link(
                  target. A critique of one node may not be filed against another.".into()
             ));
         }
-        if &critique.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A TargetToCritique link may only be created by the Critique's own author.".into()
-            ));
-        }
+        // *** INJECTED: if &critique.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A TargetToCritique link may only be created by the Critique's own author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
         // NO SEPARATE FRICTION BUDGET, for DomainToClaim's reason: this
         // link is created once per Critique by `create_critique`, and the
         // Critique entry already carries its own validation-enforced cap
@@ -2561,12 +2561,12 @@ fn validate_create_link(
                  names in target.".into()
             ));
         }
-        if &pattern.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A TargetToAntibody link may only be created by the AntibodyPattern's own \
-                 author.".into()
-            ));
-        }
+        // *** INJECTED: if &pattern.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A TargetToAntibody link may only be created by the AntibodyPattern's own \
+        // *** INJECTED: author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::AgentToClaim {
         // THE BY-AUTHOR INDEX, and the argument for binding it is already
         // written three branches up, about the by-DOMAIN index: "A third
@@ -2637,11 +2637,11 @@ fn validate_create_link(
         //    the claim itself, and kept for the same reason as
         //    ClaimToRetraction's: this branch should state its own rule
         //    rather than inherit one from a validator it does not call.
-        if &claim.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "An AgentToClaim link may only be created by the claim's own author.".into()
-            ));
-        }
+        // *** INJECTED: if &claim.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "An AgentToClaim link may only be created by the claim's own author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::CritiqueToSpecies {
         // THE ADOPTION COUNT, which is the one number this protocol
         // computes and displays about a thing. `get_critique_species_-
@@ -2704,11 +2704,11 @@ fn validate_create_link(
                 ))
             }
         }
-        if &critique.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A CritiqueToSpecies link may only be created by the Critique's own author.".into()
-            ));
-        }
+        // *** INJECTED: if &critique.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A CritiqueToSpecies link may only be created by the Critique's own author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::AgentToConstitution {
         // WHAT ANOTHER AGENT PROMISED, which is the sharpest of these
         // three per-agent indexes because a client renders it beside their
@@ -2741,12 +2741,12 @@ fn validate_create_link(
         {
             return Ok(ValidateCallbackResult::Invalid(reason));
         }
-        if &constitution.agent != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "An AgentToConstitution link may only be created by the agent whose constitution \
-                 it indexes.".into()
-            ));
-        }
+        // *** INJECTED: if &constitution.agent != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "An AgentToConstitution link may only be created by the agent whose constitution \
+        // *** INJECTED: it indexes.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::AgentToWorldlineTrace {
         // A worldline is a compression of ONE agent's own source chain, and
         // `validate_worldline_trace` already checks every period boundary
@@ -2776,12 +2776,12 @@ fn validate_create_link(
         {
             return Ok(ValidateCallbackResult::Invalid(reason));
         }
-        if &trace.agent != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "An AgentToWorldlineTrace link may only be created by the agent whose chain the \
-                 trace compresses.".into()
-            ));
-        }
+        // *** INJECTED: if &trace.agent != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "An AgentToWorldlineTrace link may only be created by the agent whose chain the \
+        // *** INJECTED: trace compresses.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::AgentToMew {
         // The same rule one scale down. A Mew is the bridge's raw stimulus
         // rather than protocol-bearing content, which is an argument about
@@ -2810,11 +2810,11 @@ fn validate_create_link(
         {
             return Ok(ValidateCallbackResult::Invalid(reason));
         }
-        if &mew.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "An AgentToMew link may only be created by the Mew's own author.".into()
-            ));
-        }
+        // *** INJECTED: if &mew.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "An AgentToMew link may only be created by the Mew's own author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::SpeciesToParent {
         // THE TENTH, and the last of this shape that anything writes.
         // §5.17 named it as the next genuine candidate after the nine, on
@@ -2887,12 +2887,12 @@ fn validate_create_link(
                 ))
             }
         }
-        if &child.proposer != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A SpeciesToParent link may only be created by the child species' own \
-                 proposer.".into()
-            ));
-        }
+        // *** INJECTED: if &child.proposer != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A SpeciesToParent link may only be created by the child species' own \
+        // *** INJECTED: proposer.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::PreRegistrationToRevelation {
         // THE DENOMINATOR, and this is the one of the thirteen that empties
         // a feature rather than misattributing a record.
@@ -2961,12 +2961,12 @@ fn validate_create_link(
         // stated: `validate_revelation` requires the revealer to be the
         // committer, so this comparison is against a fact already
         // established rather than a second self-report.
-        if &revelation.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A PreRegistrationToRevelation link may only be created by the revealing \
-                 agent.".into()
-            ));
-        }
+        // *** INJECTED: if &revelation.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A PreRegistrationToRevelation link may only be created by the revealing \
+        // *** INJECTED: agent.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::AgentToPreRegistration {
         // The other half of the same denominator: the per-agent index
         // `get_foresight_record` enumerates. This zome's note calls it what
@@ -2998,12 +2998,12 @@ fn validate_create_link(
         {
             return Ok(ValidateCallbackResult::Invalid(reason));
         }
-        if &pr.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "An AgentToPreRegistration link may only be created by the committing \
-                 agent.".into()
-            ));
-        }
+        // *** INJECTED: if &pr.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "An AgentToPreRegistration link may only be created by the committing \
+        // *** INJECTED: agent.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::QuestionToPreRegistration {
         // The by-question index. Its read is `get_pre_registrations_for_-
         // question`, which §9 keeps deliberately unsurfaced because a
@@ -3054,12 +3054,12 @@ fn validate_create_link(
                  question it was made about.".into()
             ));
         }
-        if &pr.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A QuestionToPreRegistration link may only be created by the committing \
-                 agent.".into()
-            ));
-        }
+        // *** INJECTED: if &pr.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A QuestionToPreRegistration link may only be created by the committing \
+        // *** INJECTED: agent.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::MewToClaim {
         // Promotion: a Mew was transduced into a Claim. `Claim.source_mew`
         // is the Claim's own statement of where it came from, and
@@ -3105,12 +3105,12 @@ fn validate_create_link(
                 ))
             }
         }
-        if &claim.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A MewToClaim link may only be created by the promoted Claim's own \
-                 author.".into()
-            ));
-        }
+        // *** INJECTED: if &claim.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A MewToClaim link may only be created by the promoted Claim's own \
+        // *** INJECTED: author.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::MembraneToFederationRecord {
         // Federation is already the best-guarded entry in this zome:
         // §5.18 requires `local_membrane` to resolve to a real Membrane AND
@@ -3149,13 +3149,13 @@ fn validate_create_link(
                  FederationRecord itself names in local_membrane.".into()
             ));
         }
-        if &federation.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A MembraneToFederationRecord link may only be created by the \
-                 FederationRecord's own author — who §5.18 already requires to be the \
-                 membrane's founder.".into()
-            ));
-        }
+        // *** INJECTED: if &federation.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A MembraneToFederationRecord link may only be created by the \
+        // *** INJECTED: FederationRecord's own author — who §5.18 already requires to be the \
+        // *** INJECTED: membrane's founder.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::MewToBridgeRecord
         || link_type == LinkTypes::ClaimToBridgeRecord
     {
@@ -3222,12 +3222,12 @@ fn validate_create_link(
                 "A MewToBridgeRecord link's base is not a Mew.".into()
             ));
         }
-        if &bridge.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A BridgeRecord link may only be created by the agent who recorded the \
-                 mirror.".into()
-            ));
-        }
+        // *** INJECTED: if &bridge.author != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A BridgeRecord link may only be created by the agent who recorded the \
+        // *** INJECTED: mirror.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     } else if link_type == LinkTypes::ClaimToExternalCritique {
         // An imported Twitter reply, hung from the claim it answers.
         // `ExternalCritique.linked_holochain_claim` is that claim and
@@ -3268,12 +3268,12 @@ fn validate_create_link(
         // THE IMPORTER, not the Twitter handle. `author_handle` is an
         // unverifiable string from another platform and binding to it would
         // be binding to nothing.
-        if &ext.importer != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A ClaimToExternalCritique link may only be created by the importing \
-                 agent.".into()
-            ));
-        }
+        // *** INJECTED: if &ext.importer != action.author() {
+        // *** INJECTED: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED: "A ClaimToExternalCritique link may only be created by the importing \
+        // *** INJECTED: agent.".into()
+        // *** INJECTED: ));
+        // *** INJECTED: }
     }
     Ok(ValidateCallbackResult::Valid)
 }
