@@ -1118,8 +1118,8 @@ three reads afterwards to prove nothing was poisoned on the way through.
 
 **Run [`38110651478`](../../actions/runs/38110651478), 2026-10-11, `conductor`
 in 8m57s: all 35 checks passed in 22 seconds of harness time** — 35 as the file
-then stood; it is 41 now, after the tenth rule added two probes and two
-write-side controls. Every one of
+then stood; it is 42 now, after the tenth rule added two probes, two
+write-side controls and one exclusion check. Every one of
 the twelve refusals carried its paired *"refused by DHT validation, not a
 coordinator guard"* assertion, which is the distinction the whole exercise
 turns on — SPEC §11.1 records that a modified coordinator stays on this

@@ -23,11 +23,19 @@
 // network is refused and part 2 still goes green. Part 1 is what makes
 // part 2 mean anything.
 //
-//   1. THE HONEST PATHS STILL WORK. Ten checks. Eight are reads, one per
-//      bound link type that has a reader (AgentToClaim, ClaimToRetraction,
+//   1. THE HONEST PATHS STILL WORK. Eleven checks. Eight are one read per
+//      bound link type that HAS a reader (AgentToClaim, ClaimToRetraction,
 //      TargetToCritique, TargetToAntibody, CritiqueToSpecies,
 //      AgentToConstitution, AgentToMew, AgentToWorldlineTrace), each going
-//      through the link the rule now constrains.
+//      through the link the rule now constrains. A ninth asserts the
+//      EXCLUSION half of the by-author index — that agent 2's claim is not
+//      among agent 1's — which a bare count had been doing by accident.
+//
+//      ONE OF THOSE READS ASSERTS MEMBERSHIP RATHER THAN A COUNT, because
+//      the count version went red on its own harness: seeding a third claim
+//      for another control made `length === 1` false while every rule stayed
+//      green (run 38114646066). A count is not the property AgentToClaim
+//      carries.
 //
 //      THE OTHER TWO ARE WRITE-SIDE, because RetractionToReplacement and
 //      SpeciesToParent are read by nothing in the tree. Their honest path
@@ -107,7 +115,7 @@
 // WHAT THAT EVIDENCE DOES NOT COVER, because this file has changed since.
 // The injection above was run against the TWELVE-probe, 35-check version.
 // Protocol version 6 added SpeciesToParent's rule, and this file grew two
-// probes and two write-side controls with it — fourteen probes, 41 checks
+// probes and two write-side controls with it — fourteen probes, 42 checks
 // on a green run. The two new probes and the two new controls have NOT
 // been injected. The recorded red is evidence about ClaimToRetraction's
 // base rule and about this harness's machinery; it is not evidence that
@@ -316,8 +324,10 @@ async function main() {
   await agent1.call('create_claim', claimOf(agent1.me, DOMAIN, 'Eccentric loading beats isometrics here.'));
   await new Promise((r) => setTimeout(r, 4000));
   const mine = await agent1.call('get_claims_by_agent', agent1.me);
-  const claimC = mine.find((r) => entryHashOf(r) !== claimAHash
-    && b64(entryHashOf(r)) !== b64(claimAHash));
+  // Compared through b64: entryHashOf returns a fresh Uint8Array each time,
+  // so `!==` between two of them is always true and would have matched claim
+  // A itself.
+  const claimC = mine.find((r) => b64(entryHashOf(r)) !== b64(claimAHash));
   if (!claimC) {
     log('\n  SETUP FAILED: the third claim by agent 1 is not readable.');
     log(`  get_claims_by_agent returned ${Array.isArray(mine) ? mine.length : String(mine)} record(s).`);
@@ -350,9 +360,22 @@ async function main() {
   // every probe in part 2 green.
   log('=== 1. Every bound link still carries its own honest read ===');
 
+  // ASSERTS MEMBERSHIP, NOT A COUNT, and that is a correction rather than a
+  // style choice. This check read `length === 1` and went red the moment the
+  // harness grew a third claim to seed another control — run 38114646066,
+  // one FAIL, every rule green. The count was never the property: what
+  // AgentToClaim carries is that THIS agent's claims are reachable under
+  // THIS agent's anchor, so the check now names the two claims that must be
+  // there and tolerates a harness that seeds more later.
   const byAuthor = await agent2.call('get_claims_by_agent', agent1.me);
-  check('AgentToClaim: agent 1\'s claim is readable through its by-author index',
-    Array.isArray(byAuthor) && byAuthor.length === 1);
+  const byAuthorHashes = (Array.isArray(byAuthor) ? byAuthor : []).map((r) => b64(entryHashOf(r)));
+  check('AgentToClaim: agent 1\'s claims are readable through its by-author index',
+    byAuthorHashes.includes(b64(claimAHash)) && byAuthorHashes.includes(b64(claimCHash)));
+
+  // The exclusion half, which a count was doing by accident and is worth
+  // asserting on purpose: agent 2's claim must NOT be in agent 1's index.
+  check('AgentToClaim: and agent 2\'s claim is not among them',
+    !byAuthorHashes.includes(b64(claimBHash)));
 
   const retractions = await agent2.call('get_retractions_for_claim', claimAHash);
   check('ClaimToRetraction: the author\'s own retraction reaches their claim',
