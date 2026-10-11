@@ -3,6 +3,39 @@
 This is for someone who wants to **run** it, not build it. If you want to work
 on the code, read [README.md](README.md) §6 instead.
 
+> ## ⚠️ THE PUBLISHED RELEASE IS ON A DIFFERENT NETWORK FROM THIS REPOSITORY
+>
+> **Read this before installing anything.** The latest published release is
+> `v0.1.1`, packed on **2026-09-04**. The protocol's integrity zome has been
+> forked deliberately **six times since** — once for the Holochain 0.7
+> migration and the link-delete refusal, and five times on 2026-10-11 for
+> `protocol_version` 5 through 9 (eighteen link validation rules, two new entry
+> fields, and the refusal of entry updates).
+>
+> **On this substrate every one of those is a different network.** The DNA hash
+> is computed over the integrity zome, and only peers sharing that hash share a
+> DHT at all (README §11.1). So:
+>
+> - **What you install from `v0.1.1` works, and talks only to other `v0.1.1`
+>   installs.** It is not broken; it is a separate, older network.
+> - **It does not implement the protocol this repository now describes.** At
+>   `v0.1.1` the integrity zome had no `PROTOCOL_VERSION` constant at all — the
+>   release predates the versioning mechanism, not merely the versions. None of
+>   the link validation rules in SPEC.md §5.19 are in it, entry updates are
+>   accepted, and `BridgeRecord`/`ExternalCritique` carry no author.
+> - **So the caveats below, and README §9's, describe `main` rather than what
+>   you would download.** Where they differ, the download is the weaker one.
+>
+> **There is no newer release yet.** Cutting one needs `scripts/pack-webhapp.sh`
+> run by somebody with the Holochain toolchain, and a maintainer's decision
+> about whether to orphan the `v0.1.1` network on purpose — which is the real
+> question, not the packing. Until then, **building from source is the only way
+> to run the current protocol**, and README §6 is how.
+>
+> This notice exists because this file told readers to download `v0.1.1` and
+> then described a protocol it does not implement — exactly the kind of stale
+> instruction README §9 treats as a defect rather than a detail.
+
 ## Installing
 
 Download the build for your system from the
