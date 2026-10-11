@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// scripts/live-verify/attachment-links.mjs — SPEC §5.19's nine link rules,
+// scripts/live-verify/attachment-links.mjs — SPEC §5.19's ten link rules,
 // watched refusing real attempts.
 //
 // WHAT THESE RULES ARE. Entry validation in this protocol binds every
@@ -16,20 +16,37 @@
 // TWO HALVES, and the first is not a formality. A rule that refused
 // EVERYTHING would pass every refusal check in part 2 while breaking the
 // protocol completely — and that is not a hypothetical here: four of the
-// nine rules compare a link's base against an agent anchor derived
+// ten rules compare a link's base against an agent anchor derived
 // independently in both crates (`agent_anchor_hash`, duplicated across
 // dna/integrity and dna/coordinator because they share no library). If
 // those two derivations ever disagree, every honest by-author link on the
 // network is refused and part 2 still goes green. Part 1 is what makes
 // part 2 mean anything.
 //
-//   1. THE HONEST PATHS STILL WORK. Eight reads, one per bound link type
-//      (AgentToClaim, ClaimToRetraction, TargetToCritique,
-//      TargetToAntibody, CritiqueToSpecies, AgentToConstitution,
-//      AgentToMew, AgentToWorldlineTrace), each going through the link the
-//      rule now constrains. RetractionToReplacement has no reader in the
-//      tree — see the note at its probe.
-//   2. THEY CANNOT BE FORGED. Twelve attempts through
+//   1. THE HONEST PATHS STILL WORK. Eleven checks. Eight are one read per
+//      bound link type that HAS a reader (AgentToClaim, ClaimToRetraction,
+//      TargetToCritique, TargetToAntibody, CritiqueToSpecies,
+//      AgentToConstitution, AgentToMew, AgentToWorldlineTrace), each going
+//      through the link the rule now constrains. A ninth asserts the
+//      EXCLUSION half of the by-author index — that agent 2's claim is not
+//      among agent 1's — which a bare count had been doing by accident.
+//
+//      ONE OF THOSE READS ASSERTS MEMBERSHIP RATHER THAN A COUNT, because
+//      the count version went red on its own harness: seeding a third claim
+//      for another control made `length === 1` false while every rule stayed
+//      green (run 38114646066). A count is not the property AgentToClaim
+//      carries.
+//
+//      THE OTHER TWO ARE WRITE-SIDE, because RetractionToReplacement and
+//      SpeciesToParent are read by nothing in the tree. Their honest path
+//      can still be exercised: create_retraction and
+//      create_critique_species each write one themselves, so an
+//      over-refusing rule makes the whole create fail. Those two checks
+//      are the only thing standing between an over-refusing rule on either
+//      and a fully green run — which is exactly the hole an earlier
+//      version of this file had, retracting only with
+//      `replacement_claim: null` and never exercising the link at all.
+//   2. THEY CANNOT BE FORGED. Fourteen attempts through
 //      attempt_false_attachment_link — the negative-path prober, same
 //      pattern as attempt_false_domain_index — each observed being refused
 //      by DHT VALIDATION rather than by a coordinator guard. A coordinator
@@ -47,9 +64,9 @@
 //
 // Prereqs: scripts/sandbox.sh clean && scripts/sandbox.sh start, with a
 // freshly packed .happ (scripts/pack-webhapp.sh). THE DNA HASH CHANGED at
-// protocol_version 5 — the integrity zome gained rules and a link type —
-// so a resumed sandbox holding version-4 data is a different network and
-// will not do.
+// protocol_version 5 and AGAIN at 6 — rules and a link type at 5,
+// SpeciesToParent's rule at 6 — so a resumed sandbox holding data from
+// either is a different network and will not do.
 // ============================================================================
 // ---------------------------------------------------------------------------
 // NEGATIVE EVIDENCE — COLLECTED. This harness has been watched failing, on
@@ -94,6 +111,15 @@
 // binding below the reverted comparison still catches agent 2 filing agent
 // 1's retraction. That probe tests a different rule, and the injection
 // proves it rather than leaving it asserted.
+//
+// WHAT THAT EVIDENCE DOES NOT COVER, because this file has changed since.
+// The injection above was run against the TWELVE-probe, 35-check version.
+// Protocol version 6 added SpeciesToParent's rule, and this file grew two
+// probes and two write-side controls with it — fourteen probes, 42 checks
+// on a green run. The two new probes and the two new controls have NOT
+// been injected. The recorded red is evidence about ClaimToRetraction's
+// base rule and about this harness's machinery; it is not evidence that
+// every later-added check can fail.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
@@ -280,6 +306,42 @@ async function main() {
   const speciesOne = entryHashOf(allSpecies[0]);
   const speciesTwo = entryHashOf(allSpecies[1]);
 
+  // A CHILD species, so SpeciesToParent has an honest path to exercise and
+  // a wrong base to probe. `create_critique_species` writes the parent link
+  // itself, so this create succeeding IS the positive control: an
+  // over-refusing rule makes it fail outright, which is the only control
+  // available for a link nothing reads.
+  const childSpecies = await agent1.call('create_critique_species', {
+    name: `Species${Date.now()}Child`, parent_species: speciesOne,
+    required_evidence: [], proposer: agent1.me, created_at: nowMicros(),
+  });
+
+  // A third claim by agent 1, retracted WITH a replacement — the honest
+  // RetractionToReplacement path, which went unexercised when this harness
+  // only ever retracted with `replacement_claim: null`. Same reasoning as
+  // the child species: for a link nothing reads, the create succeeding is
+  // the control. A separate claim so claim A's retraction count stays 1.
+  await agent1.call('create_claim', claimOf(agent1.me, DOMAIN, 'Eccentric loading beats isometrics here.'));
+  await new Promise((r) => setTimeout(r, 4000));
+  const mine = await agent1.call('get_claims_by_agent', agent1.me);
+  // Compared through b64: entryHashOf returns a fresh Uint8Array each time,
+  // so `!==` between two of them is always true and would have matched claim
+  // A itself.
+  const claimC = mine.find((r) => b64(entryHashOf(r)) !== b64(claimAHash));
+  if (!claimC) {
+    log('\n  SETUP FAILED: the third claim by agent 1 is not readable.');
+    log(`  get_claims_by_agent returned ${Array.isArray(mine) ? mine.length : String(mine)} record(s).`);
+    process.exit(1);
+  }
+  const claimCHash = entryHashOf(claimC);
+  const retractionC = await agent1.call('create_retraction', {
+    target_claim: claimCHash,
+    reason: 'Replaced by a better-controlled statement.',
+    replacement_claim: claimAHash,
+    author: agent1.me,
+    timestamp: nowSecs(),
+  });
+
   // A critique that declares speciesOne. Its CritiqueToSpecies link is
   // what the adoption count counts.
   const adoptingCritique = await agent2.call('create_critique', {
@@ -298,9 +360,22 @@ async function main() {
   // every probe in part 2 green.
   log('=== 1. Every bound link still carries its own honest read ===');
 
+  // ASSERTS MEMBERSHIP, NOT A COUNT, and that is a correction rather than a
+  // style choice. This check read `length === 1` and went red the moment the
+  // harness grew a third claim to seed another control — run 38114646066,
+  // one FAIL, every rule green. The count was never the property: what
+  // AgentToClaim carries is that THIS agent's claims are reachable under
+  // THIS agent's anchor, so the check now names the two claims that must be
+  // there and tolerates a harness that seeds more later.
   const byAuthor = await agent2.call('get_claims_by_agent', agent1.me);
-  check('AgentToClaim: agent 1\'s claim is readable through its by-author index',
-    Array.isArray(byAuthor) && byAuthor.length === 1);
+  const byAuthorHashes = (Array.isArray(byAuthor) ? byAuthor : []).map((r) => b64(entryHashOf(r)));
+  check('AgentToClaim: agent 1\'s claims are readable through its by-author index',
+    byAuthorHashes.includes(b64(claimAHash)) && byAuthorHashes.includes(b64(claimCHash)));
+
+  // The exclusion half, which a count was doing by accident and is worth
+  // asserting on purpose: agent 2's claim must NOT be in agent 1's index.
+  check('AgentToClaim: and agent 2\'s claim is not among them',
+    !byAuthorHashes.includes(b64(claimBHash)));
 
   const retractions = await agent2.call('get_retractions_for_claim', claimAHash);
   check('ClaimToRetraction: the author\'s own retraction reaches their claim',
@@ -329,6 +404,17 @@ async function main() {
   const traceSeen = await agent2.call('get_agent_worldline_trace', agent1.me);
   check('AgentToWorldlineTrace: agent 1\'s trace is readable by agent 2',
     traceSeen !== null && traceSeen !== undefined);
+
+  // The two links NOTHING READS, where the honest path can only be checked
+  // from the write side: create_critique_species and create_retraction each
+  // write one themselves, so an over-refusing rule makes the whole create
+  // fail. These two checks are the only thing standing between an
+  // over-refusing SpeciesToParent or RetractionToReplacement rule and a
+  // fully green run.
+  check('SpeciesToParent: a species declaring a parent can be created at all',
+    childSpecies !== null && childSpecies !== undefined);
+  check('RetractionToReplacement: a retraction naming a replacement can be created at all',
+    retractionC !== null && retractionC !== undefined);
 
   // ---- 2. They cannot be forged ---------------------------------------
   log('\n=== 2. Each link refuses a base the entry does not name ===');
@@ -362,6 +448,17 @@ async function main() {
     'a retraction naming no replacement cannot be linked to one',
     () => agent1.call('attempt_false_attachment_link', {
       kind: 'RetractionToReplacement', base: retractionA, target: claimBHash,
+      tag: null, anchor_of: null,
+    }),
+  );
+
+  // The replacement half, now that a retraction naming one exists. The
+  // probe above covers a retraction naming NO replacement; this covers one
+  // naming a DIFFERENT claim, which is the case a reader would be misled by.
+  await expectRefusal(
+    'a replacement link cannot point at a claim the retraction does not name',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'RetractionToReplacement', base: retractionC, target: claimBHash,
       tag: null, anchor_of: null,
     }),
   );
@@ -422,6 +519,18 @@ async function main() {
     () => agent2.call('attempt_false_attachment_link', {
       kind: 'CritiqueToSpecies', base: speciesTwo, target: adoptingCritique,
       tag: null, anchor_of: null,
+    }),
+  );
+
+  // The tenth rule. Note the direction: the base is the PARENT and the
+  // target is the child, which the type name reads backwards (SPEC §4).
+  // speciesTwo is a real species and a wrong parent, which is sharper than
+  // an unresolvable hash — the same sharpening used above.
+  await expectRefusal(
+    'a parent edge cannot be hung from a species the child does not declare',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'SpeciesToParent', base: speciesTwo, target: childSpecies,
+      tag: Buffer.from('child', 'utf8'), anchor_of: null,
     }),
   );
 
