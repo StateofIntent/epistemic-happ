@@ -1,6 +1,14 @@
 # =============================================================================
-# Four protocol harnesses, against a real conductor and a real DHT, on every
+# Twelve protocol harnesses, against a real conductor and a real DHT, on every
 # push and pull request.
+#
+# THAT NUMBER SAID "Four" UNTIL IT WAS COUNTED, and it had been wrong for
+# eleven of the twelve. Nothing gates it: `check-harness-counts.mjs` gates
+# `ui.yml`'s header count and the suite index, and this file's opening line was
+# never in scope. It is corrected rather than deleted because a stale count in
+# the first sentence of a workflow is exactly the drift this repository keeps
+# finding in its own prose, and the next person to add a step here should know
+# the line needs moving.
 #
 # WHY THIS WAS SAID TO BE IMPOSSIBLE, AND WHAT ACTUALLY CHANGED. Both existing
 # workflows state that the conductor-bound harnesses stay out of CI because they
@@ -377,6 +385,19 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
+
+      # NEVER RUN BEFORE THIS WORKFLOW RUNS IT. The nine rules it probes were
+      # written on a machine with no `holochain` binary, so this step's first
+      # execution anywhere is its first execution at all — a red tick here is
+      # as likely to be a wrong payload shape in the harness as a missing rule
+      # in the zome, and the harness header says which to check first. Shipped
+      # that way on purpose: `transitive-gossip` shipped here, failed its own
+      # first CI run and was taken back out, and that is a better outcome than
+      # a harness nobody ever points at a conductor.
+      - name: attachment-links — §5.19's nine link rules refusing real forgeries
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/attachment-links.mjs
 
       # The denominator is the gate here, not the commit-reveal. A
       # commit-reveal that merely works is the dangerous version -- see

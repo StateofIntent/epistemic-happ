@@ -2158,7 +2158,7 @@ fn validate_create_link(
         }
 
     // ========================================================================
-    // THE ATTACHMENT LINKS, and why five branches arrived in one commit.
+    // THE ATTACHMENT LINKS, and why nine branches arrived in one commit.
     //
     // The three index branches above bind a link to the declared author of
     // the entry it points at, and `DomainToClaim`'s own comment states the
@@ -2195,7 +2195,7 @@ fn validate_create_link(
     // gossiped yet is not an invalid link. These branches propagate instead,
     // which is the deferring shape rather than the rejecting one. The older
     // branches are left as they are: changing them is a separate argument
-    // about those three, not part of closing these five.
+    // about those three, not part of closing these nine.
     // ========================================================================
     } else if link_type == LinkTypes::ClaimToRetraction {
         // THE RETRACTION BANNER'S GUARANTEE, which until now lived only
@@ -2490,6 +2490,219 @@ fn validate_create_link(
                 "An AgentToClaim link may only be created by the claim's own author.".into()
             ));
         }
+    } else if link_type == LinkTypes::CritiqueToSpecies {
+        // THE ADOPTION COUNT, which is the one number this protocol
+        // computes and displays about a thing. `get_critique_species_-
+        // adoption_count` counts these links, and the coordinator's own
+        // comment says the point of counting links is that it is "a real,
+        // query-time basis" rather than "the old self-declared, unenforced
+        // adoption_count field". That is a genuine improvement and it was
+        // half-finished: the field was removed from the entry, and nothing
+        // stopped an agent from writing the links directly. A count anyone
+        // can increment is the self-declared field with extra steps.
+        //
+        // The number is also the reason this one matters more than its
+        // read volume suggests. Invariant #1 forbids a canonical ranking
+        // of agents, and §9's account of the taxonomy screen records that
+        // a per-species adoption count is permissible precisely because it
+        // is "a number as a fact rather than a position". A fact anybody
+        // can write is not one.
+        let critique_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(critique_hash)?;
+        let critique = match target_record.entry().to_app_option::<Critique>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies target is not a Critique.".into()
+                ))
+            }
+        };
+        let declared_species = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies base must be a CritiqueSpecies' EntryHash.".into()
+                ))
+            }
+        };
+        // NOTE THE DIRECTION: the base is the species and the target is the
+        // critique, which is the inverse of what the type name reads like.
+        // SPEC §4 flags this row as one of the names that describes the
+        // relationship rather than the direction, so the comparison below
+        // is written against the verified direction and not the name.
+        match critique.species {
+            Some(ref species) if *species == declared_species => {}
+            Some(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique \
+                     itself declares in `species`, not a different one.".into()
+                ))
+            }
+            None => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A CritiqueToSpecies link cannot record an adoption the Critique does not \
+                     declare: its `species` field is None.".into()
+                ))
+            }
+        }
+        if &critique.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A CritiqueToSpecies link may only be created by the Critique's own author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToConstitution {
+        // WHAT ANOTHER AGENT PROMISED, which is the sharpest of these
+        // three per-agent indexes because a client renders it beside their
+        // name. `mobile-ui`'s claim card calls `renderAuthorConstitution`
+        // on the claim's author, which resolves through this link — so an
+        // unbound link lets a third party put words in another agent's
+        // constitution as displayed: a promise they never made, shown as
+        // theirs. Promise Theory's whole premise is that a promise is
+        // voluntary and made by the promiser; an index anybody can write
+        // into cannot carry that.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToConstitution target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let constitution = match target_record.entry().to_app_option::<Constitution>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToConstitution target is not a Constitution.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&constitution.agent, base_address, "AgentToConstitution")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &constitution.agent != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToConstitution link may only be created by the agent whose constitution \
+                 it indexes.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToWorldlineTrace {
+        // A worldline is a compression of ONE agent's own source chain, and
+        // `validate_worldline_trace` already checks every period boundary
+        // against real actions on it. The index into it was unbound, so a
+        // third party could file a trace under somebody else's anchor and
+        // `get_agent_worldline_trace` — which returns a single trace for an
+        // agent — would answer with it.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToWorldlineTrace target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let trace = match target_record.entry().to_app_option::<WorldlineTrace>() {
+            Ok(Some(t)) => t,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToWorldlineTrace target is not a WorldlineTrace.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&trace.agent, base_address, "AgentToWorldlineTrace")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &trace.agent != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToWorldlineTrace link may only be created by the agent whose chain the \
+                 trace compresses.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToMew {
+        // The same rule one scale down. A Mew is the bridge's raw stimulus
+        // rather than protocol-bearing content, which is an argument about
+        // how much this link matters and not about whether the rule differs
+        // — `get_mews_by_agent` answers "what did this agent post", and an
+        // unbound index answers it with whatever anybody filed.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToMew target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let mew = match target_record.entry().to_app_option::<Mew>() {
+            Ok(Some(m)) => m,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToMew target is not a Mew.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&mew.author, base_address, "AgentToMew")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &mew.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToMew link may only be created by the Mew's own author.".into()
+            ));
+        }
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// The anchor half of a per-agent index link, shared by the three links
+/// that differ only in what they point at (`AgentToConstitution`,
+/// `AgentToWorldlineTrace`, `AgentToMew`).
+///
+/// `AgentToClaim` deliberately does NOT call this and keeps its checks
+/// inline: it also validates its tag against the claim's real domain,
+/// since that tag is the only domain a by-agent reader has to go on, and
+/// folding three-of-four into a helper while the fourth reads differently
+/// is how the near-miss this file keeps recording gets built on purpose.
+///
+/// NO TAG CHECK HERE, and that is a decision rather than an omission. The
+/// three tags are fixed literals (`"constitution"`, `"worldline"`,
+/// `"mew"`) that no reader consults — these links are read by base and
+/// type alone. Pinning a literal in validation would add a byte-for-byte
+/// duplication contract across the two crates (see the anchor helpers) for
+/// no reader's benefit, and would refuse every link on the network the
+/// first time somebody renamed a tag nothing reads.
+fn agent_index_anchor_matches(
+    subject: &AgentPubKey,
+    base_address: AnyLinkableHash,
+    link_name: &str,
+) -> ExternResult<ValidateCallbackResult> {
+    let expected_anchor = agent_anchor_hash(subject)?;
+    let declared_anchor = match EntryHash::try_from(base_address) {
+        Ok(h) => h,
+        Err(_) => {
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "{link_name} base must be an EntryHash anchor."
+            )))
+        }
+    };
+    if declared_anchor != expected_anchor {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "{link_name} base anchor does not match the agent the target entry names. An entry \
+             may only be indexed under the agent it belongs to."
+        )));
     }
     Ok(ValidateCallbackResult::Valid)
 }

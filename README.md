@@ -1036,7 +1036,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Three things, and the first is the one this project's own standards demand: a live-conductor harness watching each of the five refusals actually happen, since **not one of them has been reproduced** and an unreproduced injection is a claim rather than evidence. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Three things. **The harness now exists and has never been run** — `scripts/live-verify/attachment-links.mjs`, wired into `conductor.yml`, so its first CI execution is its first execution anywhere; what it needs is one green run and one injection, because an unreproduced refusal is a claim rather than evidence. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
 
 #### What the security review found
 
@@ -1074,17 +1074,53 @@ probed are the link types nobody validated, and coverage looked complete
 because every link type anybody had **tried** to forge was refused. **A prober
 proves the rule it probes and silently flatters the rules it does not.**
 
-**What is fixed and what is merely written.** The five branches are in the
-integrity zome, both zomes compile for `wasm32-unknown-unknown`, and all 77
-unit tests pass. **No live conductor has watched a single one of them refuse
-anything** — this machine has no `holochain` or `hc` binary — so by this
-project's own rule the fix is a claim and not yet evidence. The harness that
-would change that is the `scripts/live-verify/` shape `domain-index.mjs`
-already uses, and it needs one prober extern per branch; three such probers
-exist, four do not. **`CritiqueToSpecies`, `AgentToConstitution`,
-`AgentToWorldlineTrace` and `AgentToMew` are the same shape and are still
-unbound** — named in SPEC §5.17 so the next pass has a list rather than a
-search, and left out of this fork deliberately rather than missed.
+**Nine link types are bound, not four.** The review found five defects; four
+more link types were named in the same pass as the same shape and bound in the
+same fork, on the reasoning that a fork already happening is the cheapest
+moment to take them — a second fork for four rules nobody had yet exploited
+would cost exactly what this one costs and buy less. The four are
+`CritiqueToSpecies` (what `get_critique_species_adoption_count` counts — a
+count anybody could increment was the self-declared `adoption_count` field it
+replaced, with extra steps) and the three remaining per-agent indexes,
+`AgentToConstitution`, `AgentToWorldlineTrace` and `AgentToMew`. The first of
+those is the one a client renders beside another agent's name, so an unbound
+index let a third party display a promise its supposed promiser never made.
+SPEC §5.19 carries all nine rules; §5.17 now lists what is genuinely left and
+divides it honestly rather than as one pile — `SpeciesToParent` is the next
+real candidate.
+
+**What is fixed and what is merely written.** The nine branches are in the
+integrity zome, both zomes release-build for `wasm32-unknown-unknown` with
+`--locked`, and all 77 unit tests pass. **No live conductor has watched a
+single one of them refuse anything** — the machine this was written on has no
+`holochain` or `hc` binary — so by this project's own rule the fix is a claim
+and not yet evidence.
+
+**The thing that would make it evidence now exists, and the honest status is
+that it has never executed.** `attempt_false_attachment_link` is the
+negative-path prober, one surface for all nine rules rather than nine copies of
+one `create_link` differing by a match arm, naming its link type in the
+payload. `scripts/live-verify/attachment-links.mjs` drives it: twelve forgeries
+each required to be refused **by validation rather than a coordinator guard**,
+eight honest reads to prove the rules did not simply refuse everything, and
+three reads afterwards to prove nothing was poisoned on the way through. It is
+wired into `conductor.yml`, which means **its first CI run is its first run at
+all** — a red tick there is as likely to be a wrong payload shape in the
+harness as a missing rule in the zome, and the harness header says which to
+check first and in what order. Shipped that way deliberately: `transitive-
+gossip` shipped into a workflow, failed its own first CI run and was taken back
+out, and that is a better outcome than a harness nobody ever points at a
+conductor.
+
+**Why part 1 of that harness is not a formality.** Four of the nine rules
+compare a link's base against an agent anchor derived independently in both
+crates — `agent_anchor_hash`, duplicated across `dna/integrity` and
+`dna/coordinator` because the two share no library, the same contract the
+domain and taxonomy anchors already carry. **If those derivations ever
+disagree, every honest by-author link on the network is refused and all twelve
+forgery checks still pass.** A rule that refuses everything satisfies every
+test that only looks for refusals, which is why eight positive reads sit in
+front of them.
 
 **Also worth stating once: Holochain `0.7.0` is pre-1.0**, and the API churn
 absorbed over the last month is the evidence for that rather than an argument
@@ -5253,7 +5289,7 @@ each of these is currently exactly that.
   **Two defects in the harness, both of the kind this directory keeps recording.** Its first summary line claimed the run proved "a question chosen afterwards" is refused, which it no longer tests — a label claiming more than its assertions. And a probe for "a commitment cannot be updated" called an extern that does not exist while asserting the error contained `"not"`, which `"function not found"` satisfies: a guard scoring a pass against a function that was never there. Verifying that a function is *absent* is `check-spec-drift.mjs`'s job, since it enumerates what exists; it is not something a live call can establish by being rejected.
 
   **And it runs directly at Invariant 1, which is the deeper reason to design it before building it.** "Who called it right" is a comparative standing, and this feature begs to become one. The invariant permits exactly what pre-registration would produce — raw history, open and queryable, a record of what someone committed and when — and forbids what everyone would immediately want computed from it. So the constraint is not on the record but on the arithmetic: no hit rate, no calibration score, no ranking of forecasters, however tempting a cryptographically verifiable one would be. A leaderboard arriving with a proof attached is *worse* than an obviously subjective one, because it is harder to argue with and no more legitimate. That is the trap this entry is parked in front of, not merely the absence of a stated need.
-- [ ] **Surface the epistemic state the backend already computes — now 43 of 64 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
+- [ ] **Surface the epistemic state the backend already computes — now 43 of 65 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
@@ -5265,7 +5301,7 @@ each of these is currently exactly that.
 
   **What remains of HRR is `build_neighborhood_binding` and `recall_neighborhood`, and their reason is the coordinator's own rather than one inferred here.** `query_neighborhood_resonance` "collapses the common single-shot case" into one call any peer can make about any claim, "without first fetching and re-passing back a NeighborhoodBinding they have no other use for"; the two-step pipeline is "for a caller who wants to cache a corpus and probe it repeatedly". A screen holding a `corpus_payload` it has no other use for is precisely the caller that pipeline is not for, so surfacing these two would mean building the wrong caller to justify the call — which is what the `get_claims_by_agent` entry below warns against from the opposite direction, where a real reason was missing and got borrowed from a neighbour.
 
-  **A caveat on the denominator, because the ratio invites the wrong arithmetic.** The unsurfaced functions are not that many missing screens — the table above is the live division, gated; what follows is the argument behind its categories, and the record of how they were arrived at after an earlier version of this paragraph was found wrong on all three points below. **Nine are bridge-only** (`create_mew`, `get_unbridged_claims`, `import_twitter_reply` and siblings) and belong to `bridge/`. **Two are HRR's neighborhood half** (`build_neighborhood_binding`, `recall_neighborhood`) — §2.5 calls neighborhood and worldline binding "two distinct use cases, not one", and both halves now have a screen: the worldline five, and `query_neighborhood_resonance`, which is why it is no longer the third name in this clause. **Two are `federation/`'s**, two are negative-path probers whose own doc comments say they exist to *fail* (`attempt_unaccountable_membrane` and, since the by-domain index landed, `attempt_false_domain_index`), and `export_to_n4l` is an export path. **One, `get_all_constitutions`, is chain-local by specification** (SPEC §10.0, alongside `get_critiques_by_mode` which now has a surface saying so). *(Count re-derived after the neighborhood surface landed: 38 of 58, residue 20 — `query_neighborhood_resonance` moved from the residue to the surfaced set, and `build_neighborhood_binding` and `recall_neighborhood` remain unsurfaced because the one-call wrapper is what a screen needs; the two-step local pipeline is for a caller caching a corpus.)*
+  **A caveat on the denominator, because the ratio invites the wrong arithmetic.** The unsurfaced functions are not that many missing screens — the table above is the live division, gated; what follows is the argument behind its categories, and the record of how they were arrived at after an earlier version of this paragraph was found wrong on all three points below. **Nine are bridge-only** (`create_mew`, `get_unbridged_claims`, `import_twitter_reply` and siblings) and belong to `bridge/`. **Two are HRR's neighborhood half** (`build_neighborhood_binding`, `recall_neighborhood`) — §2.5 calls neighborhood and worldline binding "two distinct use cases, not one", and both halves now have a screen: the worldline five, and `query_neighborhood_resonance`, which is why it is no longer the third name in this clause. **Two are `federation/`'s**, **four are negative-path probers** whose own doc comments say they exist to *fail* — `attempt_unaccountable_membrane`, `attempt_false_domain_index`, `attempt_false_membrane_registry`, and `attempt_false_attachment_link` since §5.19's nine link rules landed. (This clause said "two" and named two while the table listed three, which is the same drift one level down: the table is gated and the sentence describing it is not.) And `export_to_n4l` is an export path. **One, `get_all_constitutions`, is chain-local by specification** (SPEC §10.0, alongside `get_critiques_by_mode` which now has a surface saying so). *(Count re-derived after the neighborhood surface landed: 38 of 58, residue 20 — `query_neighborhood_resonance` moved from the residue to the surfaced set, and `build_neighborhood_binding` and `recall_neighborhood` remain unsurfaced because the one-call wrapper is what a screen needs; the two-step local pipeline is for a caller caching a corpus.)*
 
 Three of the four remaining were called **hash-addressed getters** which a screen that already holds the record does not need to call: `get_claim`, `get_evidence` and `get_critique_species` all take an `AnyDhtHash`. **The fourth was not, and the reasoning never held for it.** `get_claims_by_agent` takes an `AgentPubKey` and returns `Vec<Record>` — a DHT-wide query for everything a given agent has claimed, not a lookup of a record the caller already has. The paragraph had been using a true statement about its three neighbours to excuse a fourth it did not describe. That one now has a screen.
 
@@ -5321,7 +5357,8 @@ Three of the four remaining were called **hash-addressed getters** which a scree
   | `get_all_constitutions` | chain-local by specification (SPEC §10.0) — a global list it cannot honestly produce |
   | `get_critique_species` | hash-addressed getter, same reason |
   | `get_protocol_version` | its callers are the gateway and the federation bridge, which must state which protocol they speak; a screen has no such sentence to write. Covered by `scripts/live-verify/protocol-version.mjs` |
-  | `get_pre_registrations_for_question` | **deliberately unsurfaced** — a per-question list of revealed predictions is a list of people who called it right, with no sight of what any of them committed to and never revealed. See the pre-registration entry above |
+  | `attempt_false_attachment_link` | a negative-path prober for SPEC §5.19's nine link rules — one surface rather than nine, naming its link type in the payload. Watched being refused by `scripts/live-verify/attachment-links.mjs`; a screen for it would be a screen for forging links |
+| `get_pre_registrations_for_question` | **deliberately unsurfaced** — a per-question list of revealed predictions is a list of people who called it right, with no sight of what any of them committed to and never revealed. See the pre-registration entry above |
 
   *(Superseded figures kept as a record of when each recount happened, since a count that drifts silently is how the last error here went unnoticed: 41 of 64 with a residue of 23, before `get_claim` and `get_evidence` were surfaced by the grounding chain; 38 of 60 with a residue of 22, which is the recount that found `get_protocol_version` unaccounted for; before that 38 of 58, residue 20, when the neighborhood surface landed; before that 37 of 58, residue 21.)*
 
