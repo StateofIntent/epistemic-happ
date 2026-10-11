@@ -921,6 +921,46 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ## 9. Roadmap
 
+### Where to start next time
+
+**Four things, written here so none of them has to be reconstructed from a
+conversation.** Each line says where its detail lives rather than restating it:
+this section's own documented failure mode is a figure copied forward until it
+goes stale, and a fifth copy of a number is not a handover.
+
+1. **The roadmap is finished — 78 checked, one open.** Countable rather than
+   trusted: `grep -c '^- \[x\]'` and `grep -c '^- \[ \]'` over this section
+   answer 78 and 1. The open one is the surfacing item, and it is open by
+   argument rather than by queue — every unsurfaced extern has a reason in a
+   CI-gated table, so the next increment there needs a new argument, not the
+   next row on a list.
+2. **The gossip investigation is frozen as of 2026-10-11, with eight questions
+   kept as a record** under *What is frozen* below. **The reopen condition is a
+   user-visible failure, not a red tick**: an entry that never arrives at all, a
+   report from somebody running the `.webhapp`, or a CI failure whose *first*
+   occurrence is already outside everything documented here. A slow crossing, or
+   another sighting of a mode already named, is this substrate's known behaviour
+   and is not a reason to resume. The three instruments stay in place so that a
+   real failure arrives already legible.
+3. **Before mass adoption: the four items in the table under *Before mass
+   adoption* below, in that priority order.** Cross-internet propagation on two
+   consumer networks is first — cheapest, highest value, and the only one of the
+   four that **cannot** be done in CI, because it needs two physical home
+   networks rather than two datacentre VMs. Then scale beyond four nodes, then a
+   propagation bound a user can rely on (a decision to state one, not a fix),
+   then a security review.
+4. **One optional open row, and it needs a person**: post the upstream
+   `kitsune2` draft at `~/upstream-kitsune2-cursor-before-fetch-draft.md`, or
+   decide not to. Nothing in this repository depends on it either way.
+
+**And the summary of those two halves, because "done" was being read as one
+claim when it is two.** The basics are done: a release for early adopters — people
+who install a `.webhapp` and expect rough edges — can ship today on the caveats
+INSTALL.md already states in plain terms. **Mass-adoption grade needs the four
+above**, and of those the security review is the only one that needs neither a
+second machine nor a second network, so it is the one that can start without
+arranging anything.
+
 ### Where this is up to
 
 CI now covers every layer that had a harness waiting for one — `zomes` (it
@@ -936,9 +976,12 @@ somewhere other than a to-do list is exactly how they stay invisible.
 
 **Every piece of CODE blocked on nothing but effort is now done, and so is the
 one item that *was* blocked on a recurrence** — a second item blocked on a
-recurrence has since opened, the `real-gossip` forward leg recorded below, so
-that clause describes what became true of `notes-ui` rather than a property of
-this section. The qualifier is load-bearing, and
+recurrence opened after that, the `real-gossip` forward leg, and **it has since
+closed too**: the cause was found in the substrate, the check became two checks,
+and what remained of it was frozen on 2026-10-11 rather than left standing as
+work. **The clause is corrected rather than deleted, because for as long as it
+stood it named an open item that was not one** — the open-item table below has
+exactly one row and that row is optional. The qualifier is load-bearing, and
 was missing here while six documentation gaps sat at the end of this section
 blocked on nothing whatsoever. A section whose whole argument is that a gap
 written up outside a to-do list stays invisible should not open by implying
