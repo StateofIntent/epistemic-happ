@@ -1036,7 +1036,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains: **a decision on update ops**, the fifth defect, which validation still accepts for every entry type; and the conscious decision to stand behind the sybil position before inviting a crowd. Still no `SECURITY.md` and no outside audit |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains: **a decision on update ops**, the fifth defect, which validation still accepts for every entry type; and the conscious decision to stand behind the sybil position before inviting a crowd. Still no `SECURITY.md` and no outside audit |
 
 #### What the security review found
 
@@ -5661,6 +5661,18 @@ reported as the protocol working rather than as a failed request — so a loop c
 tell "wait" from "something is broken".
 
 ## Installing it (for people who just want to run it)
+
+**⚠️ THE PUBLISHED RELEASE IS A DIFFERENT NETWORK FROM THIS TREE, and
+INSTALL.md now opens with the long version.** `v0.1.1` was packed on
+2026-09-04; the integrity zome has forked deliberately six times since, five of
+them on 2026-10-11 (`protocol_version` 5–9). The DNA hash is computed over the
+integrity zome, so each fork is a separate DHT — what you download works and
+talks only to other `v0.1.1` installs, and it implements **none** of §5.19's
+eighteen link rules, accepts entry updates, and predates the
+`PROTOCOL_VERSION` constant entirely. **Running the protocol this document
+describes means building from source** (§6) until somebody cuts a release,
+which needs `scripts/pack-webhapp.sh` and a decision about orphaning the
+`v0.1.1` network on purpose.
 
 See **[INSTALL.md](INSTALL.md)**. The short version: install the
 [Holochain Launcher](https://github.com/holochain/launcher/releases), download
