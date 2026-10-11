@@ -69,10 +69,15 @@ push, and that harness has been watched failing on its own rule.
 own — only the zomes and the reads have. Dependency supply chain is unaudited
 beyond lockfiles.
 
-**Not proven:** of the harness's 73 checks, exactly one has been demonstrated
-capable of going red, by a deliberate injection. The rest are consistent with
-checks that cannot fail, and the harness says so in its own header. Treat a
-green tick there as weaker evidence than it looks.
+**Not proven, and this is the honest limit of the evidence above.** Four
+deliberate injections have established that every base comparison of the
+eighteen link rules, the update refusal, the tag rule, the shared anchor
+helper and the Claim/Mew discrimination each go red on their own probe when
+reverted — and that three of the harness's poisoning checks genuinely detect
+poisoning. **The fourteen author-binding probes added afterwards have not been
+injected**, so they are passing checks of unproven sensitivity. Of 101 checks,
+roughly a third have been shown capable of failing. The harness says so in its
+own header; treat a green tick there as weaker evidence than it looks.
 
 ## Scope
 

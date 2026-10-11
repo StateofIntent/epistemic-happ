@@ -1315,9 +1315,23 @@ Better news than the red would have been.
 **Coverage after four injections**: every base comparison of the eighteen link
 rules has been watched failing on its own probe, as have the update refusal,
 the tag rule, the shared anchor helper, the Claim/Mew discrimination and three
-author bindings. **What remains is the fourteen author bindings no probe
-reaches** — and that is a sentence about test coverage, not about enforcement:
-the rules are in the zome and compile-checked, they are simply not watched.
+author bindings.
+
+**And the gap those injections measured is now closed.** §2c of the harness
+adds **fourteen third-party filing probes**, one per author binding no probe
+reached — each with the base deliberately *correct*, so that only the author
+check can refuse. Seventeen author checks cover the eighteen rules (the two
+bridge types share one) and seventeen probes now reach all seventeen. The
+harness is 101 checks.
+
+**What that does and does not mean, because the distinction is the whole
+discipline here.** The probes exist and pass. A fifth injection reverting those
+seventeen bindings should now produce **seventeen** reds where
+[`38124976517`](../../actions/runs/38124976517) produced three — and until that
+is run, the fourteen are passing checks of unproven sensitivity, which is the
+status every check in this harness had before the first injection. **The gap
+has changed from one about coverage into one about evidence**, which is
+progress and is not the same as being finished.
 
 **What the FIRST injection did not cover, said when it was the only one.** It was run against the twelve-probe, 35-check version. The
 tenth rule brought two more probes and two more controls, so **the six checks

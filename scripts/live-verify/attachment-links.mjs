@@ -62,7 +62,7 @@
 //      and a fully green run — which is exactly the hole an earlier
 //      version of this file had, retracting only with
 //      `replacement_claim: null` and never exercising the link at all.
-//   2. THEY CANNOT BE FORGED. Twenty-four attempts through
+//   2. THEY CANNOT BE FORGED. Thirty-eight attempts through
 //      attempt_false_attachment_link — the negative-path prober, same
 //      pattern as attempt_false_domain_index — each observed being refused
 //      by DHT VALIDATION rather than by a coordinator guard. A coordinator
@@ -143,7 +143,8 @@
 // Protocol version 6 added SpeciesToParent's rule, and this file grew two
 // probes and two write-side controls with it, version 7 added three more
 // rules and version 8 the last five — twenty-three probes, 69 checks on a
-// green run — 73 with §2b's update refusal and its control. None of the checks added after the
+// green run — 101 with §2b's update refusal and §2c's fourteen
+// author-binding probes. None of the checks added after the
 // injection has itself been injected. The recorded red is evidence about
 // ClaimToRetraction's base rule and about this harness's machinery; it is
 // not evidence that every check later added to it can fail.
@@ -208,14 +209,23 @@
 // probes, the discrimination, the shared anchor helper and the update refusal
 // all stayed green, so thirteen-at-once was isolation rather than a smear.
 //
-// COVERAGE AFTER FOUR INJECTIONS. Every base comparison of the eighteen link
-// rules has now been watched failing on its own probe, as have the update
-// refusal, the tag rule, the shared anchor helper, the Claim/Mew
-// discrimination, and three author bindings. **What remains uninjected is
-// fourteen author bindings no probe reaches** — a gap in the HARNESS rather
-// than in the rules, and the fix here is new probes rather than another
-// injection: one third-party filing attempt per link type whose base rule a
-// non-author can satisfy.
+// COVERAGE AFTER FOUR INJECTIONS, AND THE GAP THEY MEASURED IS NOW CLOSED.
+// Every base comparison of the eighteen link rules has been watched failing
+// on its own probe, as have the update refusal, the tag rule, the shared
+// anchor helper and the Claim/Mew discrimination.
+//
+// The fourteen author bindings no probe reached have §2c now — fourteen
+// third-party filings, each with the base deliberately CORRECT so that only
+// the author check can refuse. Seventeen author checks cover eighteen rules
+// (the two bridge types share one) and seventeen probes now reach all
+// seventeen.
+//
+// WHAT THAT DOES AND DOES NOT MEAN. The probes exist and pass; a fifth
+// injection reverting the seventeen bindings should now produce SEVENTEEN
+// reds where run 38124976517 produced three, and until that is run these
+// fourteen are passing checks of unproven sensitivity — the same status every
+// check here had before the first injection. The difference is that the gap
+// is now a question about evidence rather than about coverage.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
@@ -920,6 +930,141 @@ async function main() {
       tag: Buffer.from('a-different-network', 'utf8'), anchor_of: null, question_anchor_of: null,
     }),
   );
+
+  // ---- 2c. The author bindings, isolated -----------------------------
+  // THE COVERAGE GAP RUN 38124976517 MEASURED. That injection reverted all
+  // seventeen author bindings of §5.19's eighteen rules and produced THREE
+  // reds, because only three probes above isolate one: the ones where the
+  // base is already correct, so nothing but the author check can refuse
+  // them. Fourteen bindings were therefore reached by no probe at all and
+  // could have been deleted with this suite staying green.
+  //
+  // EVERY PROBE HERE GETS THE BASE RIGHT ON PURPOSE. Each files a real,
+  // correctly-based link as somebody other than the entry's author — so a
+  // refusal can only come from the author binding, and a success means that
+  // binding is gone. This is the shape the other three already had; it just
+  // was never applied to the rest.
+  log('\n=== 2c. Each link refuses a filer who did not author the entry ===');
+
+  await expectRefusal(
+    'a third party cannot record somebody else\'s replacement claim',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'RetractionToReplacement', base: retractionC, target: claimAHash,
+      tag: null, anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s antibody flag',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'TargetToAntibody', base: claimAHash, target: patternOnA,
+      tag: null, anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot index somebody else\'s claim under their own anchor',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'AgentToClaim', base: claimAHash, target: actionHashOf(claimA),
+      tag: Buffer.from(DOMAIN, 'utf8'), anchor_of: agent1.me, question_anchor_of: null,
+    }),
+  );
+
+  // ROLES SWAPPED HERE, because the adopting critique is agent 2's: agent 1
+  // is the third party for this one.
+  await expectRefusal(
+    'a third party cannot record somebody else\'s species adoption',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'CritiqueToSpecies', base: speciesOne, target: adoptingCritique,
+      tag: null, anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s constitution',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'AgentToConstitution', base: claimAHash, target: constitutionA,
+      tag: null, anchor_of: agent1.me, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s worldline trace',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'AgentToWorldlineTrace', base: claimAHash, target: traceA,
+      tag: null, anchor_of: agent1.me, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s mew into their index',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'AgentToMew', base: claimAHash, target: mewA,
+      tag: null, anchor_of: agent1.me, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot record somebody else\'s parent edge',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'SpeciesToParent', base: speciesOne, target: childSpecies,
+      tag: Buffer.from('child', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot record somebody else\'s reveal',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'PreRegistrationToRevelation', base: pr1, target: revelation1,
+      tag: null, anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s commitment into their own record',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'AgentToPreRegistration', base: claimAHash, target: pr1,
+      tag: null, anchor_of: agent1.me, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot index somebody else\'s commitment under its question',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'QuestionToPreRegistration', base: claimAHash, target: pr1,
+      tag: null, anchor_of: null, question_anchor_of: questionAction,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot record somebody else\'s promotion',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'MewToClaim', base: promotionMewHash, target: promotedClaim,
+      tag: Buffer.from('promoted', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s federation record',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'MembraneToFederationRecord', base: membraneHash, target: federationRecord,
+      tag: Buffer.from('a-different-network', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a third party cannot file somebody else\'s imported reply',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'ClaimToExternalCritique', base: claimAHash, target: importedReply,
+      tag: Buffer.from('twitter', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  // THE TWO BRIDGE LINK TYPES SHARE ONE AUTHOR CHECK, which is why there is
+  // no fifteenth probe here: "a third party cannot file somebody else's
+  // mirror record" above already reaches it through MewToBridgeRecord, and
+  // ClaimToBridgeRecord's refusal comes from the same `if`. Seventeen checks
+  // for eighteen rules, and seventeen probes now reach all seventeen.
 
   // ---- 2b. And entry updates are refused outright ---------------------
   // SPEC §5.1's fifth defect, decided at protocol_version 9 rather than
