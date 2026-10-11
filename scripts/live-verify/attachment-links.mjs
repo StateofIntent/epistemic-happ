@@ -220,12 +220,36 @@
 // (the two bridge types share one) and seventeen probes now reach all
 // seventeen.
 //
-// WHAT THAT DOES AND DOES NOT MEAN. The probes exist and pass; a fifth
-// injection reverting the seventeen bindings should now produce SEVENTEEN
-// reds where run 38124976517 produced three, and until that is run these
-// fourteen are passing checks of unproven sensitivity — the same status every
-// check here had before the first injection. The difference is that the gap
-// is now a question about evidence rather than about coverage.
+// FIFTH INJECTION: THE SAME REVERT AGAIN, AND THE PROBES WORK. Run
+// 38127900644 reverted the identical seventeen author bindings with the
+// identical script, leaving the same five older rules intact — so the ONLY
+// variable between it and 38124976517 was this harness. Three reds became
+// **EIGHTEEN of 84, exactly as predicted**.
+//
+// THE CONTROLLED COMPARISON IS THE RESULT. Fourteen probes that had only ever
+// been green were the failure mode nothing could rule out: a probe whose base
+// its own link rule refuses never reaches the author check, tests nothing,
+// and is indistinguishable from a working one in a green log. None of the
+// fourteen was that. All seventeen author bindings are now reached.
+//
+// AND THE EIGHTEENTH RED CAME FROM PART 3, as reasoned beforehand: the
+// AgentToPreRegistration probe files at agent 1's OWN anchor, so with the
+// binding gone it creates a DUPLICATE link to pr1, get_foresight_record
+// iterates links, and pr1 lands twice in `revealed`. That binding guards the
+// denominator against INFLATION by a third party, not only against
+// misfiling — which the rule's own commit never said.
+//
+// COVERAGE AFTER FIVE INJECTIONS, as arithmetic rather than a fraction. All
+// 38 OF 38 PROBES have been shown to detect the absence of the rule they
+// name. Five of the six part-3 poisoning checks have gone red on a real
+// poisoning. What has NEVER been shown to fail is 58 of the 101 checks, and
+// each for a knowable reason: the 38 paired validation-source assertions,
+// which need a refusal arriving from a coordinator guard; the 18 positive
+// reads, which need an OVER-refusing injection — the exercise that would
+// catch a rule refusing everything, and the one still not done; the plumbing
+// control; and the claim-A check, which is proven INSENSITIVE rather than
+// unproven. The rules are well evidenced. A little under half the individual
+// assertions are.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.

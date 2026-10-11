@@ -525,7 +525,13 @@ Run `38125081165` reverted **the thirteen remaining base comparisons** — every
 
 **THE PREDICTION SAID SEVENTEEN AND WAS WRONG BY ONE, in the informative direction.** "The outstanding commitment is still outstanding" was predicted red and stayed green: the forged `PreRegistrationToRevelation` link *was* accepted, and `get_foresight_record` ignored it anyway, because the coordinator-side comparison added alongside that rule caught what validation had let through. **That check needs both layers reverted to fail**, which measures the reader check as load-bearing and independent — the defence-in-depth claim §5.1 makes about courtesies, demonstrated for once rather than asserted.
 
-**So every base comparison of the eighteen is now injected**, along with the update refusal, the tag rule, the shared anchor helper and the discrimination. What is uninjected is the fourteen unprobed author bindings.
+**So every base comparison of the eighteen is now injected**, along with the update refusal, the tag rule, the shared anchor helper and the discrimination.
+
+**AND A FIFTH INJECTION CLOSED THE AUTHOR HALF, by re-running the third one unchanged.** Fourteen probes were added for the bindings nothing reached, and then run `38127900644` reverted **the identical seventeen bindings with the identical script**, leaving the same five older rules intact — so the only variable between it and `38124976517` was the harness. Three reds became **eighteen of 84, exactly as predicted**. That rules out the one failure a green log cannot: a probe whose base its own link rule refuses never reaches the author check, tests nothing, and looks identical to a working one. None of the fourteen was that.
+
+**The eighteenth red came from the poisoning section and taught something the rule's own commit did not say.** The `AgentToPreRegistration` probe files at the committing agent's *own* anchor, so with the binding gone it creates a **duplicate** link; `get_foresight_record` iterates links, so the commitment appears twice in `revealed`. That binding guards the denominator against **inflation** by a third party, not only against misfiling.
+
+**Evidence now, as arithmetic rather than a fraction.** Both halves of all eighteen rules, plus the update refusal, the tag rule, the anchor helper and the discrimination, have each been watched failing on their own probe: **38 of 38 probes proven sensitive**, and five of six poisoning checks red on a real poisoning. **58 of the 101 checks have never been shown to fail** — the 38 paired validation-source assertions (which need a refusal from a coordinator guard), the 18 positive reads (which need an *over*-refusing injection, still not done), one plumbing control, and one check proven *insensitive* rather than unproven. The rules are well evidenced; a little under half the individual assertions are.
 
 ### 5.20a Every normative claim in §2 and §5, checked against validation
 

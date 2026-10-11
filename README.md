@@ -1324,14 +1324,43 @@ check can refuse. Seventeen author checks cover the eighteen rules (the two
 bridge types share one) and seventeen probes now reach all seventeen. The
 harness is 101 checks.
 
-**What that does and does not mean, because the distinction is the whole
-discipline here.** The probes exist and pass. A fifth injection reverting those
-seventeen bindings should now produce **seventeen** reds where
-[`38124976517`](../../actions/runs/38124976517) produced three — and until that
-is run, the fourteen are passing checks of unproven sensitivity, which is the
-status every check in this harness had before the first injection. **The gap
-has changed from one about coverage into one about evidence**, which is
-progress and is not the same as being finished.
+#### The fifth injection: the same revert again, and the probes work
+
+**[`38127900644`](../../actions/runs/38127900644) reverted the identical
+seventeen author bindings with the identical script**, leaving the same five
+older rules intact — so the only variable between it and
+[`38124976517`](../../actions/runs/38124976517) was the harness. **Three reds
+became eighteen of 84, exactly as predicted.**
+
+**That controlled comparison is the result, not the count.** Fourteen probes
+that had only ever been green carried a failure mode nothing could rule out
+from a green log: a probe whose base its own link rule refuses never reaches
+the author check, tests nothing, and is indistinguishable from a working one.
+**None of the fourteen was that.** All seventeen author bindings are reached.
+
+**The eighteenth red came from the poisoning section, and it taught something
+the rule's own commit never said.** The `AgentToPreRegistration` probe files at
+the committing agent's *own* anchor, so with the binding gone it creates a
+**duplicate** link; `get_foresight_record` iterates links, so the commitment
+appears twice in `revealed`. That binding guards the foresight denominator
+against **inflation** by a third party, not only against misfiling.
+
+**Where the evidence stands, as arithmetic rather than a fraction.** Both
+halves — base comparison and author binding — of all eighteen link rules, plus
+the update refusal, the tag rule, the shared anchor helper and the Claim/Mew
+discrimination, have each been watched failing on their own probe. **38 of 38
+probes are proven sensitive**, and five of the six poisoning checks have gone
+red on a real poisoning.
+
+**58 of the 101 checks have never been shown to fail**, and naming them is more
+useful than a percentage: the **38 paired validation-source assertions**, which
+would fail only if a refusal arrived from a coordinator guard rather than from
+validation; the **18 positive reads**, which need an ***over*-refusing
+injection** — the exercise that would catch a rule refusing everything, and the
+one still not done; one plumbing control; and one check proven **insensitive**
+rather than unproven. **The rules are well evidenced. A little under half the
+individual assertions are.** That is the honest shape of it, and the next
+injection worth running is the over-refusing one.
 
 **What the FIRST injection did not cover, said when it was the only one.** It was run against the twelve-probe, 35-check version. The
 tenth rule brought two more probes and two more controls, so **the six checks

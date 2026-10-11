@@ -69,15 +69,32 @@ push, and that harness has been watched failing on its own rule.
 own — only the zomes and the reads have. Dependency supply chain is unaudited
 beyond lockfiles.
 
-**Not proven, and this is the honest limit of the evidence above.** Four
-deliberate injections have established that every base comparison of the
-eighteen link rules, the update refusal, the tag rule, the shared anchor
-helper and the Claim/Mew discrimination each go red on their own probe when
-reverted — and that three of the harness's poisoning checks genuinely detect
-poisoning. **The fourteen author-binding probes added afterwards have not been
-injected**, so they are passing checks of unproven sensitivity. Of 101 checks,
-roughly a third have been shown capable of failing. The harness says so in its
-own header; treat a green tick there as weaker evidence than it looks.
+**How far the evidence actually goes, stated as arithmetic rather than as a
+fraction.** Five deliberate injections have now established that **every rule
+the harness claims to cover has been watched failing on its own probe** — both
+halves (base comparison and author binding) of all eighteen link rules, plus
+the update refusal, the tag rule, the shared anchor helper and the Claim/Mew
+discrimination. All **38 of 38 probes** have been shown to detect the absence
+of the rule they name, by reverting that rule and watching exactly that probe
+go red. Five of the six poisoning checks have gone red on a real poisoning.
+
+**What has never been shown to fail — 58 of the 101 checks, and each for a
+reason worth knowing:**
+
+- **38 paired "refused by DHT validation, not a coordinator guard" assertions.**
+  Each would fail only if a refusal arrived from a coordinator guard instead of
+  validation, which no injection has produced.
+- **18 positive reads** asserting the honest path still works. These need an
+  *over*-refusing injection rather than an under-refusing one — a different
+  exercise, and the one that would catch a rule that refuses everything.
+- **1 plumbing control** (credentials still work after the update refusal).
+- **1 check that was proven INSENSITIVE** rather than unproven: the read-side
+  check on an updated claim passed while a forged update was accepted, because
+  no client-surface read can observe one. It is relabelled, not deleted.
+
+So: the rules are well evidenced; a little under half the individual checks
+are. Treat a green tick as meaning the rules hold, not that every assertion in
+the file is load-bearing.
 
 ## Scope
 
