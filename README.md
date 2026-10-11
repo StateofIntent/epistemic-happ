@@ -1248,8 +1248,45 @@ retraction. So the two halves of that rule are independently tested rather than
 jointly asserted — the near-miss this repository keeps recording, demonstrated
 rather than argued.
 
-**What that injection does NOT cover, said here because the file has changed
-since it ran.** It was run against the twelve-probe, 35-check version. The
+#### A second injection, four families at once
+
+**7 reds of 66, exactly the seven predicted before the run** — run
+[`38124164735`](../../actions/runs/38124164735), four rules reverted at once and
+each chosen from a family the first injection left untested: the shared
+per-agent anchor helper, `AgentToClaim`'s tag rule, the Claim/Mew
+discrimination on the bridge links, and §5.1's update refusal. The helper
+fanned out to **four** probes — constitution, worldline, mew, foresight
+commitment — and the other three reverts produced one each.
+
+**Two controls held, which is what makes four-at-once isolation rather than a
+smear.** `a claim cannot be indexed under another agent's by-author anchor`
+stayed **green** while the shared helper was gutted, because `AgentToClaim`'s
+anchor check is inline — so the helper/inline split §5.19 kept deliberately is
+now measured rather than asserted. And `a mirror cannot be filed against a
+subject the BridgeRecord does not name` stayed **green** while the
+discrimination was removed, so base rule and kind check are genuinely separable.
+
+**And a predicted FALSE GREEN was confirmed, which is the most useful thing it
+produced.** Part 3's `claim A still reads as its author wrote it` was added
+with the update refusal and placed as though it guarded it. It passed **while a
+forged update was being accepted**. `update_entry` leaves the original entry
+untouched at its own hash, so `get_claim` returns the original either way — the
+check cannot detect an accepted update, and its label claimed more than its
+assertion. It is relabelled rather than deleted, because what it does establish
+(claim A is unchanged after every probe) is worth keeping.
+
+**That false green is also the sharpest confirmation of the update decision's
+third reason**: if no client-surface read can see an accepted app-entry update,
+then validating updates really would permit a capability no reader can observe.
+Predicted in the injection commit before the run, which is the only reason it
+counts as a finding rather than a lucky catch.
+
+**Coverage after two injections**: five of the eighteen link rules plus the
+update refusal have been watched failing on their own probe. **Every author
+binding, and the base comparisons for eleven of the eighteen links, remain
+uninjected** — those probes are still consistent with checks that cannot fail.
+
+**What the FIRST injection did not cover, said when it was the only one.** It was run against the twelve-probe, 35-check version. The
 tenth rule brought two more probes and two more controls, so **the six checks
 added since have not themselves been injected**: the recorded red is evidence
 about `ClaimToRetraction`'s base rule and about this harness's machinery, not

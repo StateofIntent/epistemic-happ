@@ -148,6 +148,37 @@
 // ClaimToRetraction's base rule and about this harness's machinery; it is
 // not evidence that every check later added to it can fail.
 //
+// SECOND INJECTION, FOUR FAMILIES: run 38124164735, commit on a throwaway
+// ref, four rules reverted at once — the shared per-agent anchor helper, the
+// AgentToClaim tag rule, the Claim/Mew discrimination, and the update
+// refusal. **7 reds of 66, exactly the seven predicted in the injection
+// commit before the run.** The anchor helper fanned out to four probes
+// (constitution, worldline, mew, foresight commitment); the other three
+// reverts produced one each.
+//
+// TWO CONTROLS HELD, which is what makes it isolation rather than a smear.
+// "a claim cannot be indexed under another agent's by-author anchor" stayed
+// GREEN through the helper being gutted, because AgentToClaim's anchor check
+// is inline — so the helper/inline split §5.19 kept on purpose is now
+// measured rather than asserted. And "a mirror cannot be filed against a
+// subject the BridgeRecord does not name" stayed GREEN through the
+// discrimination being removed, so base rule and kind check are separable.
+//
+// AND ONE PREDICTED **FALSE GREEN** WAS CONFIRMED — see part 3's claim A
+// check, which passed while a forged update was accepted. Predicted in the
+// injection commit, which is the only reason it counts as a finding rather
+// than a lucky catch.
+//
+// COVERAGE AFTER TWO INJECTIONS: five of the eighteen link rules have been
+// watched failing on their own probe, plus the update refusal. The rules NOT
+// yet injected are the remaining base comparisons (ClaimToRetraction's is
+// covered; TargetToCritique, TargetToAntibody, CritiqueToSpecies,
+// SpeciesToParent, MewToClaim, MembraneToFederationRecord,
+// ClaimToExternalCritique, RetractionToReplacement,
+// PreRegistrationToRevelation, QuestionToPreRegistration and the bridge base
+// rule are not) and every author binding. Those probes are still consistent
+// with checks that cannot fail.
+//
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
 // ---------------------------------------------------------------------------
@@ -920,11 +951,28 @@ async function main() {
     foresightAfter?.revealed?.length === 1
     && (foresightAfter.pending?.length ?? 0) + (foresightAfter.expired?.length ?? 0) === 1);
 
-  // The update refusal's own read-side check: claim A still says what its
-  // author wrote. A refusal that let the new entry through anyway would
-  // show up here and nowhere else, since nothing walks update chains.
+  // THIS CHECK CANNOT DETECT AN ACCEPTED UPDATE, AND IT IS KEPT ANYWAY —
+  // relabelled, because what it actually establishes turned out to be the
+  // more interesting thing.
+  //
+  // It was added with the update refusal and placed as though it guarded it.
+  // Run 38124164735 reverted that refusal and this check STAYED GREEN while
+  // a forged update was being accepted, which was predicted in the injection
+  // commit and is the whole reason to predict before running. `update_entry`
+  // leaves the ORIGINAL entry untouched at its own hash — it writes a new
+  // entry plus a relation — so `get_claim` on claim A's entry hash returns
+  // the original either way.
+  //
+  // WHAT IT DOES ESTABLISH, which is why it is not deleted: that claim A is
+  // unchanged after every probe in this file, including the thirteen that
+  // target it. And what the injection established is sharper than the check
+  // ever was — NO CLIENT-SURFACE READ CAN SEE AN ACCEPTED APP-ENTRY UPDATE,
+  // because every index, link and getter is anchored on the original hash
+  // and nothing walks update chains. That is reason 3 of SPEC §5.1's
+  // decision, demonstrated rather than argued: the refusal's only observable
+  // is the refusal itself, which §2b asserts directly.
   const claimAStill = await agent2.call('get_claim', claimAHash);
-  check('claim A still reads as its author wrote it, with its author intact',
+  check('claim A is unchanged after every probe (NOT a test of the update refusal — see above)',
     claimAStill?.content === 'Loaded carries reduce recurrence.'
     && b64(claimAStill.author) === b64(agent1.me));
 
