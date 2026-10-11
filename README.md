@@ -1281,10 +1281,43 @@ then validating updates really would permit a capability no reader can observe.
 Predicted in the injection commit before the run, which is the only reason it
 counts as a finding rather than a lucky catch.
 
-**Coverage after two injections**: five of the eighteen link rules plus the
-update refusal have been watched failing on their own probe. **Every author
-binding, and the base comparisons for eleven of the eighteen links, remain
-uninjected** — those probes are still consistent with checks that cannot fail.
+#### Two more injections: the base-rule gap closed, a harness gap measured
+
+**Run [`38124976517`](../../actions/runs/38124976517) reverted all seventeen
+author bindings and produced three reds** — exactly as predicted, and the
+prediction was the finding. Only three probes isolate an author binding: the
+ones where the base is correct and the filer is a third party. **Fourteen of
+the seventeen author bindings are reached by no probe at all.** Every other
+probe is refused by a base or anchor rule first, so the author check behind it
+never does the work and could be deleted with nothing in the suite noticing.
+That is a gap in the **harness**, not in the rules, and the fix is three new
+probes rather than another injection.
+
+**Run [`38125081165`](../../actions/runs/38125081165) reverted the thirteen
+remaining base comparisons and produced 16 reds of 60.** All thirteen probe
+reds landed, and **three of part 3's poisoning checks went red for the first
+time** — agent 2's by-author index, the species adoption count, claim B's
+imported replies — so those now detect poisoning rather than merely asserting
+it. Eight controls held, including all three author probes, the Claim/Mew
+discrimination and the shared anchor helper.
+
+**The prediction said seventeen and was wrong by one, in the direction worth
+having.** "The outstanding commitment is still outstanding" was predicted red
+and stayed **green**. The forged `PreRegistrationToRevelation` link *was*
+accepted — and `get_foresight_record` ignored it anyway, because the
+coordinator-side comparison added in the same commit as that rule caught what
+validation let through. **I failed to account for my own fix when predicting.**
+That check needs *both* layers reverted to fail, which measures the reader
+check as load-bearing and independent — the defence-in-depth claim this file
+makes about coordinator courtesies, demonstrated for once instead of asserted.
+Better news than the red would have been.
+
+**Coverage after four injections**: every base comparison of the eighteen link
+rules has been watched failing on its own probe, as have the update refusal,
+the tag rule, the shared anchor helper, the Claim/Mew discrimination and three
+author bindings. **What remains is the fourteen author bindings no probe
+reaches** — and that is a sentence about test coverage, not about enforcement:
+the rules are in the zome and compile-checked, they are simply not watched.
 
 **What the FIRST injection did not cover, said when it was the only one.** It was run against the twelve-probe, 35-check version. The
 tenth rule brought two more probes and two more controls, so **the six checks
