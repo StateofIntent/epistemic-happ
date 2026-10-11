@@ -447,9 +447,20 @@ async function main() {
     imported_at: nowSecs(),
   });
 
+  // ALL SEVEN FIELDS. An earlier version of this call passed five and the
+  // conductor refused it with a bare `Deserialize([133, 166, ...])` naming
+  // neither the field nor the struct — run 38117426177. The shape was
+  // inferred from a fragment of another harness rather than read off
+  // `Membrane` in the integrity zome, which is the only place it is
+  // actually stated.
   const membraneAction = await agent1.call('create_membrane', {
-    domain: DOMAIN, required_promises: ['distinguish_observation_from_inference'],
-    creator: agent1.me, created_at: nowSecs(), constitution: constitutionA,
+    domain: DOMAIN,
+    description: 'Seeded membrane for §5.19 federation-link verification.',
+    required_promises: ['distinguish_observation_from_inference'],
+    validation_rules_hash: null,
+    creator: agent1.me,
+    created_at: nowSecs(),
+    constitution: constitutionA,
   });
   await new Promise((r) => setTimeout(r, 3000));
   const membranes = await agent1.call('get_membranes', null);
