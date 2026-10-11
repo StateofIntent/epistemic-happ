@@ -1036,7 +1036,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Two things, down from three. **The harness ran and was green on its first execution anywhere** — `scripts/live-verify/attachment-links.mjs`, all 35 checks, run [`38110651478`](../../actions/runs/38110651478) — so the nine rules are measured rather than argued. **What it still owes is its injection**: no rule has been reverted and its own probe watched going red, so the greens remain consistent with a harness that cannot go red. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains: **a decision on update ops**, the fifth defect, which validation still accepts for every entry type; and the conscious decision to stand behind the sybil position before inviting a crowd. Still no `SECURITY.md` and no outside audit |
 
 #### What the security review found
 
@@ -1117,19 +1117,51 @@ nothing. It was shipped into CI never having run, on the precedent of
 and was taken back out; that is a better outcome than a harness nobody ever
 points at a conductor, and this time the first run passed.
 
-**What the green run does NOT establish, and this is the part worth keeping
-after the celebration: that any check in that harness can fail.** A harness
-asserting refusals passes trivially if its calls fail for an unrelated reason,
-and a positive half going green narrows that without closing it. No rule has
-been reverted and its own probe watched going red, so **the 35 greens are
-consistent with a harness incapable of going red** — which is exactly the
-defect this repository keeps finding in its own harnesses: `pre-registration`'s
-probe scoring a pass against a function that was never there, a label claiming
-more than its assertions, a hit-rate injection recorded as going red that never
-had. The harness header names the one rule to revert and says how many checks
-must go red when it is: exactly two, and part 1 must stay green. **An injection
-result that is not reproduced is a claim rather than evidence, and that applies
-to a green run as much as to a red one.**
+**Then it was watched failing, which is what makes the green run mean
+anything.** A harness asserting refusals passes trivially if its calls fail for
+an unrelated reason, and a green positive half narrows that without closing it
+— so until one rule was reverted and its own probe observed going red, 35
+greens were consistent with a harness incapable of going red. That is the
+defect this repository keeps finding in itself: `pre-registration`'s probe
+scoring a pass against a function that was never there, a label claiming more
+than its assertions, a hit-rate injection recorded as red that never had been.
+
+**Run [`38111598258`](../../actions/runs/38111598258), commit `3f90244` on a
+throwaway ref** — `conductor` only runs on PRs, `main` and dispatch, so the
+injection went on its own ref and `#238`'s history stayed green, the same
+throwaway-ref pattern this section already used to measure the `network` flake.
+The `retraction.target_claim != declared_claim` comparison was deleted and
+nothing else touched. **2 checks failed of 34:**
+
+```
+FAIL: a retraction cannot be filed against a claim it does not name
+      — it SUCCEEDED, which means the link is forgeable
+FAIL: claim B still carries no retraction
+```
+
+**The prediction was written into the injection commit before the run**, so
+getting it wrong would have been visible rather than retrofitted. It held, and
+three things follow that the green run could not establish.
+
+**The probe tests its own rule** — one rule reverted, one probe red, and the
+other eleven unmoved. **The count drops 35 → 34, and that correction matters
+more than it looks:** an earlier note in this section said to expect "exactly
+two reds, that probe and its validation-source pair", which is wrong about the
+mechanism — `expectRefusal`'s success path emits a *single* FAIL and never
+reaches the paired assertion, so a forgeable link produces one red line, not
+two. The second red comes from somewhere else entirely. **And that somewhere
+else is part 3, which earned its place:** "claim B still carries no retraction"
+went red without being aimed at the injection, because the forged link
+succeeded and `get_retractions_for_claim` answered with it. The defect was
+caught twice — once from the write side, once from the read side — and a
+harness with only parts 1 and 2 would have caught it once.
+
+**The control held too.** "A third party cannot file somebody else's retraction
+at all" stayed **green** through the injection, because the author binding
+below the reverted comparison still refuses agent 2 filing agent 1's
+retraction. So the two halves of that rule are independently tested rather than
+jointly asserted — the near-miss this repository keeps recording, demonstrated
+rather than argued.
 
 **Why part 1 of that harness is not a formality.** Four of the nine rules
 compare a link's base against an agent anchor derived independently in both

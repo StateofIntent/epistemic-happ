@@ -52,37 +52,51 @@
 // will not do.
 // ============================================================================
 // ---------------------------------------------------------------------------
-// FIRST RUN: GREEN. NEGATIVE EVIDENCE: STILL NOT COLLECTED. Both halves of
-// that sentence matter, and the second is why this block stays.
+// NEGATIVE EVIDENCE — COLLECTED. This harness has been watched failing, on
+// the rule it was written for, with the prediction recorded before the run.
 //
-// Run 38110651478 on 2026-10-11, conductor.yml, this harness's first
-// execution anywhere: ALL 35 CHECKS PASSED in 22 seconds of harness time —
-// the 8 honest reads, 12 refusals with their 12 paired
-// "refused by DHT validation, not a coordinator guard" assertions, and the
-// 3 unpoisoned reads afterwards. Part 1 is the result worth naming: the
-// four per-agent rules compare a base against an agent anchor derived
-// independently in both crates, which share no library, and the two
-// derivations agreed byte for byte on a real conductor at the first
+// FIRST RUN, GREEN: run 38110651478, 2026-10-11, its first execution
+// anywhere. ALL 35 CHECKS PASSED in 22 seconds — 8 honest reads, 12
+// refusals with their 12 paired "refused by DHT validation, not a
+// coordinator guard" assertions, and 3 unpoisoned reads. Part 1 is the
+// result worth naming on its own: the four per-agent rules compare a base
+// against an agent anchor derived independently in both crates, which share
+// no library, and the two derivations agreed byte for byte at the first
 // attempt.
 //
-// WHAT THAT DOES NOT ESTABLISH, which is this directory's whole discipline:
-// that any check here CAN fail. A harness asserting refusals passes
-// trivially if the calls fail for an unrelated reason, and a harness whose
-// positive half is also green only narrows that — it does not close it.
-// Until one rule has been reverted and exactly its own probe watched going
-// red, these 35 greens are consistent with a harness that cannot go red.
+// INJECTION, RED: run 38111598258, commit 3f90244 on a throwaway ref, the
+// `retraction.target_claim != declared_claim` comparison deleted from the
+// ClaimToRetraction branch and nothing else touched. **2 CHECK(S) FAILED,
+// 34 checks total**, and WHICH two is the whole result:
 //
-// THE INJECTION STILL TO DO, unchanged from before the first run:
-//   1. Delete the `retraction.target_claim != declared_claim` comparison in
-//      dna/integrity/src/lib.rs's ClaimToRetraction branch.
-//   2. Rebuild and repack (scripts/pack-webhapp.sh — hc dna pack compiles
-//      nothing, so packing without building verifies the old wasm).
-//   3. Expect EXACTLY ONE probe red — "a retraction cannot be filed against
-//      a claim it does not name" — and its paired validation-source check
-//      with it. Every other check, part 1 included, must stay green. More
-//      than two reds means the revert broke something else; fewer means
-//      this probe is not testing what it says.
-//   4. Restore, re-run, watch it return. Then record it here.
+//     FAIL: a retraction cannot be filed against a claim it does not name
+//           — it SUCCEEDED, which means the link is forgeable
+//     FAIL: claim B still carries no retraction
+//
+// Three things that result establishes, none of which the green run did.
+//
+//   THE PROBE TESTS ITS OWN RULE. One rule reverted, one probe red.
+//
+//   THE COUNT DROPS 35 -> 34, which is not cosmetic: expectRefusal's
+//   success path emits a single FAIL and never reaches the paired
+//   validation-source assertion, so a forgeable link produces ONE red line
+//   and not two. Anyone reading this file for how many reds to expect
+//   should take 34 and two, not 35 and two.
+//
+//   PART 3 EARNED ITS PLACE. "claim B still carries no retraction" went red
+//   on its own, without being pointed at the injection — the forged link
+//   succeeded, so get_retractions_for_claim answered with it. A harness
+//   with only parts 1 and 2 would have caught this defect once; this one
+//   caught it twice, from the write side and the read side.
+//
+// AND THE CONTROL HELD: "a third party cannot file somebody else's
+// retraction at all" stayed GREEN through the injection, because the author
+// binding below the reverted comparison still catches agent 2 filing agent
+// 1's retraction. That probe tests a different rule, and the injection
+// proves it rather than leaving it asserted.
+//
+// Re-check the same way if you change what this file asserts: revert one
+// rule, watch exactly its own probe go red, restore, watch it return.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
