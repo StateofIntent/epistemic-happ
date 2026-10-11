@@ -29,7 +29,13 @@
 //      AgentToConstitution, AgentToMew, AgentToWorldlineTrace), each going
 //      through the link the rule now constrains. A ninth asserts the
 //      EXCLUSION half of the by-author index — that agent 2's claim is not
-//      among agent 1's — which a bare count had been doing by accident. Two
+//      among agent 1's — which a bare count had been doing by accident.
+//
+//      EVERY POSITIVE READ HERE ASSERTS REACHABILITY OF A NAMED ENTRY, not a
+//      count. Two runs went red on counts that had been true when written
+//      (38114646066, 38118156527) while every rule stayed green; see
+//      `contains` for why that keeps happening and why absence checks still
+//      use counts. Two
 //      more cover the foresight trio: one call to get_foresight_record
 //      reads AgentToPreRegistration and PreRegistrationToRevelation
 //      together (one commitment revealed with the text actually committed
@@ -196,6 +202,21 @@ const nowSecs = () => Math.floor(Date.now() / 1000);
 const entryHashOf = (record) => record.signed_action.hashed.content.data.entry_hash;
 /** Entries come back msgpack-encoded; same accessor mew-lifecycle.mjs uses. */
 const entryOf = (record) => decode(record.entry.Present.entry);
+const actionHashOf = (record) => record.signed_action.hashed.hash;
+
+/** Does this list of Records contain the one created by `actionHash`?
+ *
+ * EVERY POSITIVE READ IN PART 1 USES THIS, and the reason is two identical
+ * failures. `AgentToClaim` asserted `length === 1` and went red when a later
+ * commit seeded a third claim (run 38114646066); that was fixed in place, the
+ * CLASS was not, and `AgentToMew` then went red for exactly the same reason
+ * when this commit seeded a second mew (run 38118156527). A count is not the
+ * property any of these links carries — reachability of a specific entry is —
+ * and a count also rots every time the harness grows, which it does on every
+ * protocol version. Absence checks still use counts, because there zero IS
+ * the property. */
+const contains = (records, actionHash) =>
+  Array.isArray(records) && records.some((r) => b64(actionHashOf(r)) === b64(actionHash));
 
 /** Runs `fn`, expecting it to be REFUSED, and asserts the refusal came from
  * validation rather than a coordinator guard — the distinction the whole
@@ -504,15 +525,15 @@ async function main() {
 
   const retractions = await agent2.call('get_retractions_for_claim', claimAHash);
   check('ClaimToRetraction: the author\'s own retraction reaches their claim',
-    Array.isArray(retractions) && retractions.length === 1);
+    contains(retractions, retractionA));
 
   const critiquesOfB = await agent2.call('get_critiques_for', claimBHash);
   check('TargetToCritique: a critique of claim B is found under claim B',
-    Array.isArray(critiquesOfB) && critiquesOfB.length === 1);
+    contains(critiquesOfB, critiqueOfB));
 
   const flagsOnA = await agent2.call('get_antibody_patterns_for', claimAHash);
   check('TargetToAntibody: the flag on claim A is found under claim A',
-    Array.isArray(flagsOnA) && flagsOnA.length === 1);
+    contains(flagsOnA, patternOnA));
 
   const adoption = await agent1.call('get_critique_species_adoption_count', speciesOne);
   check('CritiqueToSpecies: the adopting critique counts toward its declared species',
@@ -523,8 +544,8 @@ async function main() {
     constitutionSeen !== null && constitutionSeen !== undefined);
 
   const mewsSeen = await agent2.call('get_mews_by_agent', agent1.me);
-  check('AgentToMew: agent 1\'s mew is readable through its by-author index',
-    Array.isArray(mewsSeen) && mewsSeen.length === 1);
+  check('AgentToMew: agent 1\'s mews are readable through its by-author index',
+    contains(mewsSeen, mewA) && contains(mewsSeen, mewForPromotion));
 
   const traceSeen = await agent2.call('get_agent_worldline_trace', agent1.me);
   check('AgentToWorldlineTrace: agent 1\'s trace is readable by agent 2',
@@ -545,7 +566,7 @@ async function main() {
 
   const byQuestion = await agent2.call('get_pre_registrations_for_question', questionAction);
   check('QuestionToPreRegistration: both commitments are indexed under their question',
-    Array.isArray(byQuestion) && byQuestion.length === 2);
+    contains(byQuestion, pr1) && contains(byQuestion, pr2));
 
   // The bridge group. get_unbridged_claims and get_unbridged_mews are the
   // reads that consult ClaimToBridgeRecord and MewToBridgeRecord, and they
@@ -564,11 +585,11 @@ async function main() {
 
   const replies = await agent2.call('get_twitter_replies_for_claim', claimAHash);
   check('ClaimToExternalCritique: the imported reply is found under the claim it answers',
-    Array.isArray(replies) && replies.length === 1);
+    contains(replies, importedReply));
 
   const federations = await agent2.call('get_federation_records_for', membraneHash);
   check('MembraneToFederationRecord: the federation record is found under its membrane',
-    Array.isArray(federations) && federations.length === 1);
+    contains(federations, federationRecord));
 
   // MewToClaim is read by nothing, so this is the write-side control:
   // promote_mew_to_claim writes the link itself, and an over-refusing rule
@@ -831,6 +852,8 @@ async function main() {
   check('claim B still carries no retraction',
     Array.isArray(retractionsAfter) && retractionsAfter.length === 0);
 
+  // A COUNT ON PURPOSE, unlike part 1's reads: the property here is that
+  // nothing was ADDED to agent 2's index, and agent 2 seeds exactly one claim.
   const byAuthor2After = await agent1.call('get_claims_by_agent', agent2.me);
   check('agent 2\'s by-author index still holds only its own claim',
     Array.isArray(byAuthor2After) && byAuthor2After.length === 1);
