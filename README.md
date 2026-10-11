@@ -1074,32 +1074,66 @@ probed are the link types nobody validated, and coverage looked complete
 because every link type anybody had **tried** to forge was refused. **A prober
 proves the rule it probes and silently flatters the rules it does not.**
 
-**Ten link types are bound, not four.** The review found five defects; four
-more were named in the same pass as the same shape and bound in the same fork,
-and a tenth — `SpeciesToParent` — followed one fork later at
-`protocol_version: 6`, taken off the "next pass" list §5.17 had put it on. It
-is the taxonomy's parent edge: written by `create_critique_species` from parent
-to child (the name reads backwards, which SPEC §4 flags), **read by nothing
-today**, and bound before it acquires a reader rather than after — a taxonomy
-whose parent edges anybody can write is one whose first reader inherits a
-structure nobody authored, with no way to tell. The second fork cost what the
-first did, which is nothing, because nobody holds data yet; §5.1 already makes
-that argument for paying the price while it is free.
+**Thirteen link types are bound, not four.** The review found five defects;
+four more were named in the same pass as the same shape and bound in the same
+fork; a tenth — `SpeciesToParent` — followed at `protocol_version: 6`; and
+**the three pre-registration links at `7`, where the sharpest finding of the
+whole review turned up.** Both were taken off the "next pass" list §5.17 had
+put them on, which is what that list is for.
 
-The original nine: on the reasoning that a fork already happening is the cheapest
-moment to take them — a second fork for four rules nobody had yet exploited
-would cost exactly what this one costs and buy less. The four are
+**The foresight denominator was forgeable, and it emptied a feature rather
+than misattributing a record.** §9 records that commit-reveal was withheld for
+a long time because the naive version is worse than nothing: *commit ten,
+reveal the two that came true, stay silent on the eight that did not, and the
+track record is a fabrication wearing a cryptographic proof.* The answer was to
+make the denominator structural — an unrevealed commitment expires **visibly**,
+its deadline and question public from the moment it is made. `validate_-
+revelation` is airtight about that: the revealer must be the committer, the
+content must hash to the sealed commitment, a late reveal is refused.
+
+**All of which is about one `Revelation` and the commitment it names.** What
+decides whether a commitment counts as *revealed* is the
+`PreRegistrationToRevelation` link, and `get_foresight_record` treated any
+`Revelation` reachable from a commitment as that commitment's reveal. So:
+commit twice, reveal the first honestly, let the second lapse, then hang the
+first reveal off the second commitment. Both entries valid, signature real,
+commitment hash checks out — and an expired commitment reports as revealed,
+carrying the other prediction's text. **No victim needed**: it launders the
+author's own record, which is the exact fabrication the primitive was withheld
+to avoid. The reveal path was closed and the accounting path was open.
+
+**The reader is fixed as well as the rule**, and the distinction is the one
+this file keeps making: `get_foresight_record` now requires a `Revelation` to
+name the commitment it is read under. That is a courtesy — the link rule is the
+layer a custom client cannot skip — but a reader counting any reachable
+`Revelation` as this commitment's reveal is wrong on its own terms, and it was
+the half of the defect that turned a forged link into a laundered record.
+
+**`SpeciesToParent`, the tenth, is the quieter case and the one with the
+clearest timing argument.** It is the taxonomy's parent edge, written by
+`create_critique_species` from parent to child (the name reads backwards, which
+SPEC §4 flags), and **read by nothing today** — which is why it was bound
+before it acquires a reader rather than after. A taxonomy whose parent edges
+anybody can write is one whose first reader inherits a structure nobody
+authored, with no way to tell it happened.
+
+**And the original nine were nine rather than five** on the reasoning that a
+fork already happening is the cheapest moment to take them — a second fork for
+four rules nobody had yet exploited would have cost exactly what the first cost
+and bought less. The four are
 `CritiqueToSpecies` (what `get_critique_species_adoption_count` counts — a
 count anybody could increment was the self-declared `adoption_count` field it
 replaced, with extra steps) and the three remaining per-agent indexes,
 `AgentToConstitution`, `AgentToWorldlineTrace` and `AgentToMew`. The first of
 those is the one a client renders beside another agent's name, so an unbound
 index let a third party display a promise its supposed promiser never made.
-SPEC §5.19 carries all nine rules; §5.17 now lists what is genuinely left and
-divides it honestly rather than as one pile — `SpeciesToParent` is the next
-real candidate.
+SPEC §5.19 carries all thirteen rules; §5.17 now lists what is genuinely left
+and divides it honestly rather than as one pile — **the five bridge and
+promotion links**, waiting on an argument about what a `BridgeRecord`'s base
+may be, which is a question about the Twitter surface rather than about link
+validation, plus the four types nothing writes.
 
-**What is fixed and what is merely written.** The nine branches are in the
+**What is fixed and what is merely written.** The thirteen branches are in the
 integrity zome, both zomes release-build for `wasm32-unknown-unknown` with
 `--locked`, and all 77 unit tests pass. **No live conductor has watched a
 single one of them refuse anything** — the machine this was written on has no
@@ -1118,8 +1152,9 @@ three reads afterwards to prove nothing was poisoned on the way through.
 
 **Run [`38110651478`](../../actions/runs/38110651478), 2026-10-11, `conductor`
 in 8m57s: all 35 checks passed in 22 seconds of harness time** — 35 as the file
-then stood; it is 42 now, after the tenth rule added two probes, two
-write-side controls and one exclusion check. Every one of
+then stood; it is 51 now — the tenth rule added two probes, two write-side
+controls and one exclusion check, and the pre-registration three added three
+probes and three more checks, including the foresight denominator read. Every one of
 the twelve refusals carried its paired *"refused by DHT validation, not a
 coordinator guard"* assertion, which is the distinction the whole exercise
 turns on — SPEC §11.1 records that a modified coordinator stays on this
@@ -1202,6 +1237,16 @@ disagree, every honest by-author link on the network is refused and all twelve
 forgery checks still pass.** A rule that refuses everything satisfies every
 test that only looks for refusals, which is why eight positive reads sit in
 front of them.
+
+**Three forks, and the price is the same each time, which is why they were
+paid now.** `protocol_version` went 4 → 5 → 6 → 7 in a day. Each bump changes
+the DNA hash and orphans every entry written under the old one — a cost borne
+entirely by whoever holds data at the moment of the fork, and **before the
+first user there is nobody to bear it.** §5.1 made that argument for the
+version-4 fork and it holds three times over: the alternative was carrying nine
+forgeable link types into a release and charging real users for the fix later.
+A fourth fork for the five bridge links would cost the same nothing, and is
+waiting on an argument rather than on a budget.
 
 **Also worth stating once: Holochain `0.7.0` is pre-1.0**, and the API churn
 absorbed over the last month is the evidence for that rather than an argument
