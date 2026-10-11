@@ -52,26 +52,37 @@
 // will not do.
 // ============================================================================
 // ---------------------------------------------------------------------------
-// NEGATIVE EVIDENCE — NOT YET COLLECTED, and said here rather than in a
-// commit message, because this directory's rule is that a harness which has
-// only ever been green has not been shown to test anything.
+// FIRST RUN: GREEN. NEGATIVE EVIDENCE: STILL NOT COLLECTED. Both halves of
+// that sentence matter, and the second is why this block stays.
 //
-// This file has not been run. The machine the rules were written on has no
-// `holochain` or `hc` binary, so neither the nine refusals nor the eight
-// honest reads has been observed even once. Both halves are therefore
-// claims about code, not measurements — exactly the status §9 records for
-// the fix itself.
+// Run 38110651478 on 2026-10-11, conductor.yml, this harness's first
+// execution anywhere: ALL 35 CHECKS PASSED in 22 seconds of harness time —
+// the 8 honest reads, 12 refusals with their 12 paired
+// "refused by DHT validation, not a coordinator guard" assertions, and the
+// 3 unpoisoned reads afterwards. Part 1 is the result worth naming: the
+// four per-agent rules compare a base against an agent anchor derived
+// independently in both crates, which share no library, and the two
+// derivations agreed byte for byte on a real conductor at the first
+// attempt.
 //
-// WHAT TO DO ON THE FIRST REAL RUN, in this order:
-//   1. Run it unmodified. Part 1 failing means the anchor derivations
-//      disagree across the two crates, or a payload shape here is wrong;
-//      part 2 failing means a rule is not enforced.
-//   2. Then inject, because a green run proves less than it looks. Revert
-//      ONE rule in dna/integrity/src/lib.rs — deleting the
-//      `retraction.target_claim != declared_claim` comparison is the
-//      cheapest — rebuild, repack, and watch exactly that probe go red
-//      while every other check stays green. Restore and watch it return.
-//   3. Record the result HERE, replacing this block with what was seen.
+// WHAT THAT DOES NOT ESTABLISH, which is this directory's whole discipline:
+// that any check here CAN fail. A harness asserting refusals passes
+// trivially if the calls fail for an unrelated reason, and a harness whose
+// positive half is also green only narrows that — it does not close it.
+// Until one rule has been reverted and exactly its own probe watched going
+// red, these 35 greens are consistent with a harness that cannot go red.
+//
+// THE INJECTION STILL TO DO, unchanged from before the first run:
+//   1. Delete the `retraction.target_claim != declared_claim` comparison in
+//      dna/integrity/src/lib.rs's ClaimToRetraction branch.
+//   2. Rebuild and repack (scripts/pack-webhapp.sh — hc dna pack compiles
+//      nothing, so packing without building verifies the old wasm).
+//   3. Expect EXACTLY ONE probe red — "a retraction cannot be filed against
+//      a claim it does not name" — and its paired validation-source check
+//      with it. Every other check, part 1 included, must stay green. More
+//      than two reds means the revert broke something else; fewer means
+//      this probe is not testing what it says.
+//   4. Restore, re-run, watch it return. Then record it here.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';

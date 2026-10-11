@@ -1036,7 +1036,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Three things. **The harness now exists and has never been run** — `scripts/live-verify/attachment-links.mjs`, wired into `conductor.yml`, so its first CI execution is its first execution anywhere; what it needs is one green run and one injection, because an unreproduced refusal is a claim rather than evidence. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Two things, down from three. **The harness ran and was green on its first execution anywhere** — `scripts/live-verify/attachment-links.mjs`, all 35 checks, run [`38110651478`](../../actions/runs/38110651478) — so the nine rules are measured rather than argued. **What it still owes is its injection**: no rule has been reverted and its own probe watched going red, so the greens remain consistent with a harness that cannot go red. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
 
 #### What the security review found
 
@@ -1096,21 +1096,40 @@ single one of them refuse anything** — the machine this was written on has no
 `holochain` or `hc` binary — so by this project's own rule the fix is a claim
 and not yet evidence.
 
-**The thing that would make it evidence now exists, and the honest status is
-that it has never executed.** `attempt_false_attachment_link` is the
+**And then it ran, green, on its first execution anywhere — so the paragraph
+above is the status of the fix for about four hours and is kept as the record
+of what it cost to find out.** `attempt_false_attachment_link` is the
 negative-path prober, one surface for all nine rules rather than nine copies of
 one `create_link` differing by a match arm, naming its link type in the
 payload. `scripts/live-verify/attachment-links.mjs` drives it: twelve forgeries
 each required to be refused **by validation rather than a coordinator guard**,
 eight honest reads to prove the rules did not simply refuse everything, and
-three reads afterwards to prove nothing was poisoned on the way through. It is
-wired into `conductor.yml`, which means **its first CI run is its first run at
-all** — a red tick there is as likely to be a wrong payload shape in the
-harness as a missing rule in the zome, and the harness header says which to
-check first and in what order. Shipped that way deliberately: `transitive-
-gossip` shipped into a workflow, failed its own first CI run and was taken back
-out, and that is a better outcome than a harness nobody ever points at a
-conductor.
+three reads afterwards to prove nothing was poisoned on the way through.
+
+**Run [`38110651478`](../../actions/runs/38110651478), 2026-10-11, `conductor`
+in 8m57s: all 35 checks passed in 22 seconds of harness time.** Every one of
+the twelve refusals carried its paired *"refused by DHT validation, not a
+coordinator guard"* assertion, which is the distinction the whole exercise
+turns on — SPEC §11.1 records that a modified coordinator stays on this
+network, so a refusal that cannot be shown to come from validation has shown
+nothing. It was shipped into CI never having run, on the precedent of
+`transitive-gossip`, which shipped into a workflow, failed its own first run
+and was taken back out; that is a better outcome than a harness nobody ever
+points at a conductor, and this time the first run passed.
+
+**What the green run does NOT establish, and this is the part worth keeping
+after the celebration: that any check in that harness can fail.** A harness
+asserting refusals passes trivially if its calls fail for an unrelated reason,
+and a positive half going green narrows that without closing it. No rule has
+been reverted and its own probe watched going red, so **the 35 greens are
+consistent with a harness incapable of going red** — which is exactly the
+defect this repository keeps finding in its own harnesses: `pre-registration`'s
+probe scoring a pass against a function that was never there, a label claiming
+more than its assertions, a hit-rate injection recorded as going red that never
+had. The harness header names the one rule to revert and says how many checks
+must go red when it is: exactly two, and part 1 must stay green. **An injection
+result that is not reproduced is a claim rather than evidence, and that applies
+to a green run as much as to a red one.**
 
 **Why part 1 of that harness is not a formality.** Four of the nine rules
 compare a link's base against an agent anchor derived independently in both

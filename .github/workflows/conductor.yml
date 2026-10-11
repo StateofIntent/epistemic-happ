@@ -386,14 +386,17 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
 
-      # NEVER RUN BEFORE THIS WORKFLOW RUNS IT. The nine rules it probes were
-      # written on a machine with no `holochain` binary, so this step's first
-      # execution anywhere is its first execution at all — a red tick here is
-      # as likely to be a wrong payload shape in the harness as a missing rule
-      # in the zome, and the harness header says which to check first. Shipped
-      # that way on purpose: `transitive-gossip` shipped here, failed its own
-      # first CI run and was taken back out, and that is a better outcome than
-      # a harness nobody ever points at a conductor.
+      # First executed by this workflow, and green on that first run: all 35
+      # checks, 22s of harness time, run 38110651478. It was written on a
+      # machine with no `holochain` binary, so CI was its first execution
+      # anywhere — shipped that way deliberately, on the precedent of
+      # `transitive-gossip`, which shipped here, failed its own first run and
+      # was taken back out. That is a better outcome than a harness nobody
+      # ever points at a conductor, and this time the first run passed.
+      #
+      # ITS INJECTION IS STILL OUTSTANDING, which is the part a green tick
+      # here does not cover: see the harness header for the one rule to
+      # revert and exactly how many checks must go red when it is.
       - name: attachment-links — §5.19's nine link rules refusing real forgeries
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
