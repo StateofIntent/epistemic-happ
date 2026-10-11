@@ -62,13 +62,21 @@
 //      and a fully green run — which is exactly the hole an earlier
 //      version of this file had, retracting only with
 //      `replacement_claim: null` and never exercising the link at all.
-//   2. THEY CANNOT BE FORGED. Twenty-three attempts through
+//   2. THEY CANNOT BE FORGED. Twenty-four attempts through
 //      attempt_false_attachment_link — the negative-path prober, same
 //      pattern as attempt_false_domain_index — each observed being refused
 //      by DHT VALIDATION rather than by a coordinator guard. A coordinator
 //      check is a courtesy any custom client skips, and SPEC §11.1 records
 //      that a modified coordinator stays on this network, so a refusal
 //      that cannot be shown to come from validation has shown nothing.
+//
+// AND §2b CARRIES SPEC §5.1's UPDATE REFUSAL, which is not a link rule but
+// has the same shape of cause: an Update's new entry reached validation as
+// OpEntry::UpdateEntry and fell through a catch-all, so every entry
+// validator was bypassable by a modified coordinator. Probed with a forged
+// author, because that is what it bought. Its control is the scoped half —
+// FlatOp::Update also covers Agent, CapClaim and CapGrant, and refusing
+// those would leave a network nothing can call.
 //
 // WHY A PROBER IS NEEDED AT ALL, which is this file's real subject. The
 // three link types that were bound BEFORE §5.19 are exactly the three that
@@ -135,7 +143,7 @@
 // Protocol version 6 added SpeciesToParent's rule, and this file grew two
 // probes and two write-side controls with it, version 7 added three more
 // rules and version 8 the last five — twenty-three probes, 69 checks on a
-// green run. None of the checks added after the
+// green run — 73 with §2b's update refusal and its control. None of the checks added after the
 // injection has itself been injected. The recorded red is evidence about
 // ClaimToRetraction's base rule and about this harness's machinery; it is
 // not evidence that every check later added to it can fail.
@@ -194,7 +202,9 @@ async function connectApp(admin, appId) {
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
   const call = (fn, payload) =>
     app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
-  return { me: cellIds[0][1], call };
+  // cellIds is returned so §2b can re-authorize and prove the update refusal
+  // did not take the conductor's own plumbing with it.
+  return { me: cellIds[0][1], call, cellIds };
 }
 
 const nowMicros = () => Date.now() * 1000;
@@ -842,6 +852,47 @@ async function main() {
     }),
   );
 
+  // ---- 2b. And entry updates are refused outright ---------------------
+  // SPEC §5.1's fifth defect, decided at protocol_version 9 rather than
+  // fixed: an Update's new entry reached validation as OpEntry::UpdateEntry
+  // and fell through the catch-all, so every entry validator was bypassable
+  // by a modified coordinator. The forged author below is what that bought —
+  // a Claim attributed to agent 2, written by agent 1, readable by hash
+  // through get_claim without any reader touching an update chain.
+  log('\n=== 2b. An entry update is refused, forged author and all ===');
+
+  await expectRefusal(
+    'a claim cannot be updated, and especially not into another agent\'s name',
+    () => agent1.call('attempt_entry_update', {
+      original_action: actionHashOf(claimA),
+      claim: claimOf(agent2.me, DOMAIN, 'Rewritten, and attributed to someone else.'),
+    }),
+  );
+
+  // THE CONTROL THAT MATTERS FOR THIS ONE, because the refusal is scoped and
+  // the scope is the whole care in it. FlatOp::Update also covers Agent,
+  // CapClaim and CapGrant; a blanket refusal would break
+  // authorizeSigningCredentials and leave a network nothing can call — the
+  // exact failure the protocol-version gate already hit and recorded. So:
+  // the conductor's plumbing still works after the refusal.
+  //
+  // WHAT THIS DOES AND DOES NOT ESTABLISH. It proves cap-grant issuance and
+  // ordinary zome calls survive. It does NOT exercise OpUpdate::CapGrant
+  // specifically — nothing in this harness can force a grant to be UPDATED
+  // rather than created — so that arm is reasoned about from the hdi enum
+  // rather than measured. Said plainly instead of letting a passing control
+  // imply more than it tests.
+  let plumbingSurvives = true;
+  try {
+    for (const cellId of agent1.cellIds) await admin.authorizeSigningCredentials(cellId);
+    await agent1.call('get_claims_by_domain', DOMAIN);
+  } catch (e) {
+    log(`  (plumbing control failed: ${e?.message ?? e})`);
+    plumbingSurvives = false;
+  }
+  check('CONTROL: signing credentials and zome calls still work after the refusal',
+    plumbingSurvives);
+
   // ---- 3. Nothing was poisoned on the way through ---------------------
   // Twelve refused writes should leave every read exactly as part 1 found
   // it. A rule that refused the write and let the link through anyway
@@ -868,6 +919,14 @@ async function main() {
   check('the outstanding commitment is still outstanding, not revealed',
     foresightAfter?.revealed?.length === 1
     && (foresightAfter.pending?.length ?? 0) + (foresightAfter.expired?.length ?? 0) === 1);
+
+  // The update refusal's own read-side check: claim A still says what its
+  // author wrote. A refusal that let the new entry through anyway would
+  // show up here and nowhere else, since nothing walks update chains.
+  const claimAStill = await agent2.call('get_claim', claimAHash);
+  check('claim A still reads as its author wrote it, with its author intact',
+    claimAStill?.content === 'Loaded carries reduce recurrence.'
+    && b64(claimAStill.author) === b64(agent1.me));
 
   // And claim B, which three of the probes tried to attach things to, still
   // has none of them.

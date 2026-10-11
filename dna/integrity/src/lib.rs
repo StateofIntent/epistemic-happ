@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 8;
+pub const PROTOCOL_VERSION: u16 = 9;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -873,7 +873,83 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
             }
             validate_create_entry(create_entry)
         }
-        FlatOp::Update(_) => Ok(ValidateCallbackResult::Valid),
+        // APP-ENTRY UPDATES ARE REFUSED AS OF PROTOCOL VERSION 9. This arm
+        // returned Valid for versions 1-8, which made every entry validator
+        // in this file bypassable: an Update's new entry reaches validation
+        // as OpEntry::UpdateEntry, which fell through validate_create_entry's
+        // catch-all, so an agent running a modified coordinator could write
+        // an entry of any type with any content — a forged author included —
+        // and have it integrated network-wide.
+        //
+        // THE DECISION, because this was a decision and not a bug fix.
+        // SPEC.md §5.1 recorded the gap for four versions and deliberately
+        // did not close it, on the grounds that refusing updates "would
+        // change what the network accepts for every entry type, which is a
+        // far larger decision than closing a link-delete hole, and no
+        // evidence has been offered that it should be made". Four things
+        // decide it, and the third is the one that settles it:
+        //
+        //   1. NOTHING READS UPDATE CHAINS. Re-measured at version 9: zero
+        //      get_details, zero Details::, zero .updates across the
+        //      coordinator, the UI, the SDK and the MCP server. Refusing
+        //      updates breaks no feature because no feature uses them.
+        //   2. NO EXTERN CALLS update_entry, so no client can author one
+        //      through the shipped API. The capability existed only for a
+        //      modified coordinator — which §11.1 confirms stays on this
+        //      network — so it was reachable only by the party it should
+        //      have been guarded against.
+        //   3. A VALIDATED UPDATE WOULD STILL BE INVISIBLE, which is why
+        //      "validate updates properly" is not the better option it
+        //      looks like. Every index, link, critique and conductance in
+        //      this protocol is anchored on the ORIGINAL entry's hash. An
+        //      update creates a new entry plus a RegisterUpdate relation;
+        //      links keep pointing at the original and get() on its hash
+        //      keeps returning it. Only a reader walking update chains sees
+        //      the new content, and nothing walks them. So validating
+        //      updates would permit a capability no reader can observe:
+        //      checked, stored, and unreachable. That is worse than either
+        //      refusing it or building it properly.
+        //   4. IT IS IN TENSION WITH THE PROTOCOL'S OWN REMEDIES. §487's
+        //      account of Invariant 6 is that erasure is structurally
+        //      impossible and the remedies are ADDITIVE: a Retraction by
+        //      the author, an AntibodyPattern by anyone, each leaving the
+        //      original readable with the objection attached. Mutation is
+        //      the non-additive remedy. If a Claim could be edited, "the
+        //      record" becomes "the current version of the record", and a
+        //      critique could be answered by editing the thing critiqued
+        //      rather than by replying to it. Invariant #3 is that every
+        //      claim carries its own history.
+        //
+        // IF MUTATION IS EVER WANTED, it arrives as an explicit additive
+        // mechanism with a reader — a revision entry type and a link,
+        // validated like everything else — not as a latent capability
+        // nobody can see. That is a feature with a design, not a hole that
+        // happens to be open.
+        //
+        // AND NOT EVERY UPDATE, WHICH IS THE WHOLE CARE IN THIS ARM.
+        // FlatOp::Update covers Agent, CapClaim and CapGrant as well as
+        // Entry. A capability grant is itself a source-chain write, so a
+        // blanket refusal here makes authorizeSigningCredentials fail and
+        // turns the network into one nothing can call — the exact failure
+        // the protocol-version gate above already hit and recorded. Refuse
+        // the protocol's own entries; leave the conductor's plumbing alone.
+        FlatOp::Update(update) => match update {
+            OpUpdate::Entry { .. } | OpUpdate::PrivateEntry { .. } => {
+                Ok(ValidateCallbackResult::Invalid(
+                    "Entry updates are not permitted. Nothing written here is mutated: the \
+                     additive remedies are a Retraction by the author and an AntibodyPattern \
+                     by anyone, both of which leave the original readable with the objection \
+                     attached. See SPEC.md §5.1.".into()
+                ))
+            }
+            // Agent key updates and capability updates are the conductor's
+            // own plumbing, not protocol data. Left permitted deliberately
+            // and unchanged — whether agent key rotation should be allowed
+            // is its own question and is not decided here.
+            OpUpdate::Agent { .. } | OpUpdate::CapClaim { .. } | OpUpdate::CapGrant { .. } => {
+                Ok(ValidateCallbackResult::Valid)
+            }
+        },
         FlatOp::Delete(_) => Ok(ValidateCallbackResult::Invalid(
             "Deletion is not permitted. Nothing written here is ever removed; \
 entries may still be updated.".into()
@@ -930,6 +1006,23 @@ fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCal
                 EntryTypes::FederationRecord(record) => validate_federation_record(&record, &action),
             }
         }
+        // THE OTHER HALF OF VERSION 9'S REFUSAL, and the half that was
+        // actually doing the damage. An Update action stores its NEW ENTRY,
+        // which arrives here as OpEntry::UpdateEntry — and this function
+        // matched only CreateEntry, so every entry validator above was
+        // bypassed by the catch-all below. The entry body was never checked,
+        // and it is addressable by its own EntryHash through get_claim,
+        // get_evidence and must_get_entry without any reader touching an
+        // update chain. SPEC §5.1's "nothing reads update chains, so the gap
+        // is latent" was true of the RELATION and not of the ENTRY.
+        OpEntry::UpdateEntry { .. } => Ok(ValidateCallbackResult::Invalid(
+            "Entry updates are not permitted; see SPEC.md §5.1. This refusal is on the \
+             update's own new entry, which would otherwise be stored unvalidated and \
+             readable by hash.".into()
+        )),
+        // CreateAgent, UpdateAgent, CreateCapGrant and CreateCapClaim: the
+        // conductor's plumbing, deliberately untouched for the reason the
+        // Update arm above states at length.
         _ => Ok(ValidateCallbackResult::Valid),
     }
 }

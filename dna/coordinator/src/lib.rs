@@ -1428,6 +1428,33 @@ pub fn attempt_false_membrane_registry(
     )
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AttemptEntryUpdatePayload {
+    pub original_action: ActionHash,
+    pub claim: Claim,
+}
+
+/// Negative-path prober for SPEC §5.1's update refusal, on the same terms as
+/// the four link and membrane probers: it does what a modified coordinator
+/// would do, so validation can be WATCHED refusing it.
+///
+/// WHY THIS ONE MATTERS MORE THAN IT LOOKS. No extern called `update_entry`
+/// for the first eight protocol versions, which is exactly why the gap
+/// survived: the capability was reachable only by a peer running its own
+/// coordinator, and §11.1 confirms such a peer stays on this network. A hole
+/// nothing in the tree can reach is a hole nothing in the tree can test, so
+/// the fix needed a caller built on purpose.
+///
+/// The new entry inherits its entry type from the original action, which is
+/// how `update_entry` works — so this probes a Claim update by being handed a
+/// Claim's own ActionHash. Pass a `claim` whose `author` is somebody else to
+/// probe the forgery the refusal exists to prevent: before version 9 that was
+/// accepted, stored, and readable by hash through `get_claim`.
+#[hdk_extern]
+pub fn attempt_entry_update(payload: AttemptEntryUpdatePayload) -> ExternResult<ActionHash> {
+    update_entry(payload.original_action, payload.claim)
+}
+
 /// Which of the eighteen bound attachment/index links to attempt. Named
 /// rather than numbered so a harness's intent is readable in its own
 /// payload — `kind: "ClaimToRetraction"` says what is being probed.
