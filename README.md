@@ -5253,7 +5253,28 @@ each of these is currently exactly that.
 
 - [x] **The dwell fix moved `network` from 83.1% to ~86%, and the round timeout was raised to 60s with the knob proven real before it was trusted.** `scripts/network.sh`. **The "93.3%" this heading first claimed was a six-run artefact and is corrected below, as is "the one surviving failure mode" — there are two, and the better-evidenced one is not the round timeout.**
 
-  **The measurement first, because the exclusion asks for it.** `network` is kept out of `main`'s required checks on the grounds that it is genuinely flaky, with a standing instruction to re-measure rather than assume before revisiting that. Re-measured across 91 completed runs: **83.1% before the dwell fix (64/77), 93.3% after it (14/15)**. Four of the five failures in the days around it were the wasm crash the entry above fixed, and they stop at the commit that fixed it. One is left, and it is a different animal.
+  **THE EXCLUSION THIS PARAGRAPH ARGUES ABOUT NO LONGER EXISTS, and nothing
+  here noticed.** `network` IS a required check on `main` today, along with
+  `zomes`, `no-conductor`, `conductor` and `ui` — read from the branch
+  protection itself rather than inferred:
+  `gh api repos/StateofIntent/epistemic-happ/branches/main/protection` returns
+  `contexts: ["zomes","no-conductor","conductor","ui","network"]`. The standing
+  instruction below was to re-measure before revisiting the exclusion; the
+  measurement happened, the setting was evidently changed on the strength of
+  it, and **the prose was never edited**. That is this section's own failure
+  mode, committed by the entry that exists to record the measurement.
+
+  **Two things "required" does NOT mean here, since a reader will assume
+  both.** `enforce_admins` is `false`, so an admin can still merge past a red
+  tick — required describes the default path, not a hard gate. And `strict` is
+  `false`, so a branch need not be up to date with `main` before merging,
+  which is why a green PR can still break `main` when something lands
+  underneath it.
+
+  **The measurement, kept because it is what the change was made on.**
+  `network` was kept out of `main`'s required checks on the grounds that it is
+  genuinely flaky, with a standing instruction to re-measure rather than assume
+  before revisiting that. Re-measured across 91 completed runs: **83.1% before the dwell fix (64/77), 93.3% after it (14/15)**. Four of the five failures in the days around it were the wasm crash the entry above fixed, and they stop at the commit that fixed it. One is left, and it is a different animal.
 
   **The survivor is a BASELINE crossing that never happens** — nodeA writes, nodeB never sees it, and `partition-rejoin` reports SETUP FAILED having watched 900s. The instrumentation that harness and `real-gossip` both carry for exactly this question answered it: *"more time would NOT have helped, so the window is not the thing to change. That points at the 15s round timeout being too tight for this machine."*
 
