@@ -5,6 +5,10 @@ on the code, read [README.md](README.md) §6 instead.
 
 > ## ⚠️ THE PUBLISHED RELEASE IS ON A DIFFERENT NETWORK FROM THIS REPOSITORY
 >
+> *(If you are deciding whether to hand this to other people rather than to
+> install it yourself, read [READINESS.md](READINESS.md) instead — it is one
+> page and it answers that question directly.)*
+>
 > **Read this before installing anything.** The latest published release is
 > `v0.1.1`, packed on **2026-09-04**. The protocol's integrity zome has been
 > forked deliberately **six times since** — once for the Holochain 0.7

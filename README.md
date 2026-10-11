@@ -5808,7 +5808,12 @@ tell "wait" from "something is broken".
 
 ## Installing it (for people who just want to run it)
 
-**⚠️ THE PUBLISHED RELEASE IS A DIFFERENT NETWORK FROM THIS TREE, and
+**⚠️ READ [READINESS.md](READINESS.md) BEFORE HANDING THIS TO ANYONE.** One
+page on what is ready, what blocks a release, what will generate false bug
+reports, and what is deliberate rather than broken — including the fact that
+**there are no phone builds and that is upstream, not scheduling**.
+
+**THE PUBLISHED RELEASE IS A DIFFERENT NETWORK FROM THIS TREE, and
 INSTALL.md now opens with the long version.** `v0.1.1` was packed on
 2026-09-04; the integrity zome has forked deliberately six times since, five of
 them on 2026-10-11 (`protocol_version` 5–9). The DNA hash is computed over the
