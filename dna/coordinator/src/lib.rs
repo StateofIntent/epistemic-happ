@@ -1428,6 +1428,104 @@ pub fn attempt_false_membrane_registry(
     )
 }
 
+/// Which of the nine bound attachment/index links to attempt. Named
+/// rather than numbered so a harness's intent is readable in its own
+/// payload — `kind: "ClaimToRetraction"` says what is being probed.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum AttachmentLinkKind {
+    ClaimToRetraction,
+    RetractionToReplacement,
+    TargetToCritique,
+    TargetToAntibody,
+    AgentToClaim,
+    CritiqueToSpecies,
+    AgentToConstitution,
+    AgentToWorldlineTrace,
+    AgentToMew,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FalseAttachmentLinkPayload {
+    pub kind: AttachmentLinkKind,
+    pub base: AnyLinkableHash,
+    pub target: AnyLinkableHash,
+    /// Raw tag bytes. Only `AgentToClaim` has a tag validation reads (the
+    /// claim's domain); for everything else this is cosmetic and `None`
+    /// writes an empty tag.
+    pub tag: Option<Vec<u8>>,
+    /// When set, `base` is ignored and the base becomes this agent's own
+    /// index anchor.
+    ///
+    /// EXISTS FOR THE SAME REASON `anchor_override` DOES on
+    /// `FalseMembraneRegistryPayload`: an agent anchor is
+    /// `path_entry_hash()` over `Path::from("agent_{pubkey}")`, which a
+    /// harness cannot compute client-side without reimplementing Holochain's
+    /// path hashing — so proving the anchor is checked needs a way to ask
+    /// for somebody else's. The four per-agent links are unreachable as
+    /// probes without it, which is to say their rules would be the
+    /// unprobed-and-therefore-unexamined kind this whole exercise was about.
+    pub anchor_of: Option<AgentPubKey>,
+}
+
+/// Negative-path prober for SPEC §5.19's nine link rules, in exactly the
+/// terms `attempt_false_domain_index` and `attempt_false_membrane_registry`
+/// already set: it does what a hostile or buggy client would do, so that
+/// DHT validation can be WATCHED refusing it rather than assumed to.
+///
+/// WHY ONE EXTERN FOR NINE RULES rather than nine. The three probers above
+/// are one-per-index because each builds its own base from a different
+/// anchor function. These nine take base, target and tag from the caller
+/// unchanged, so nine externs would be nine copies of one `create_link`
+/// differing only in a match arm — and every copy is a protocol surface
+/// §9's accounting has to carry a reason for. One extern naming its link
+/// type in the payload probes the same nine rules with one surface.
+///
+/// WHY THESE RULES NEEDED A PROBER AT ALL, which is the lesson rather than
+/// the mechanism. The three link types that were bound before §5.19 are
+/// exactly the three that had probers. The ones nobody probed were the ones
+/// nobody validated, and coverage looked complete because every link type
+/// anybody had *tried* to forge was refused. A prober proves the rule it
+/// probes and silently flatters the rules it does not — so a rule arriving
+/// without one is a rule nobody will notice losing.
+///
+/// NOT AN ATTACK SURFACE, on the same reasoning as its three predecessors:
+/// every call that would gain anything is refused by `validate_create_link`,
+/// which is the point. A call passing a base and target that are already
+/// consistent succeeds and has achieved what the ordinary coordinator path
+/// would have achieved anyway.
+///
+/// If any of the nine ever SUCCEEDS at a mismatched base, the read it feeds
+/// has become a list of whatever anyone chose to file there: a claim showing
+/// a retraction its author never wrote, a flag naming an agent who never
+/// flagged it, a by-author index answering for an agent who never spoke, or
+/// an adoption count anybody can increment.
+#[hdk_extern]
+pub fn attempt_false_attachment_link(
+    payload: FalseAttachmentLinkPayload,
+) -> ExternResult<ActionHash> {
+    let link_type = match payload.kind {
+        AttachmentLinkKind::ClaimToRetraction => LinkTypes::ClaimToRetraction,
+        AttachmentLinkKind::RetractionToReplacement => LinkTypes::RetractionToReplacement,
+        AttachmentLinkKind::TargetToCritique => LinkTypes::TargetToCritique,
+        AttachmentLinkKind::TargetToAntibody => LinkTypes::TargetToAntibody,
+        AttachmentLinkKind::AgentToClaim => LinkTypes::AgentToClaim,
+        AttachmentLinkKind::CritiqueToSpecies => LinkTypes::CritiqueToSpecies,
+        AttachmentLinkKind::AgentToConstitution => LinkTypes::AgentToConstitution,
+        AttachmentLinkKind::AgentToWorldlineTrace => LinkTypes::AgentToWorldlineTrace,
+        AttachmentLinkKind::AgentToMew => LinkTypes::AgentToMew,
+    };
+    let base: AnyLinkableHash = match payload.anchor_of {
+        Some(ref agent) => agent_anchor_hash(agent)?.into(),
+        None => payload.base,
+    };
+    create_link(
+        base,
+        payload.target,
+        link_type,
+        LinkTag::new(payload.tag.unwrap_or_default()),
+    )
+}
+
 #[hdk_extern]
 pub fn get_membranes() -> ExternResult<Vec<Record>> {
     // LINK-ONLY, WITH NO CHAIN-QUERY FALLBACK, and that is normative
@@ -3656,11 +3754,23 @@ pub fn create_retraction(retraction: Retraction) -> ExternResult<ActionHash> {
     )?;
 
     // If there's a replacement claim, link retraction to it.
+    //
+    // ITS OWN LINK TYPE AS OF PROTOCOL VERSION 5. This used to be a second
+    // `ClaimToRetraction` with base and target inverted and the tag
+    // ("replacement" rather than "retracted") as the only thing telling the
+    // two apart. SPEC §4 recorded that and told a reader to work out which
+    // case applied "from the base's real type, not the link type name
+    // alone" — an instruction validation could not follow, since the two
+    // cases have mutually exclusive rules and one branch cannot enforce
+    // both. Dispatching on the tag would have been worse: a LinkTag is
+    // chosen by its author, so the protocol would be branching on a field
+    // with no guarantee behind it. See the integrity zome's
+    // `RetractionToReplacement` branch.
     if let Some(replacement) = &retraction.replacement_claim {
         create_link(
             action_hash.clone(),
             replacement.clone(),
-            LinkTypes::ClaimToRetraction,
+            LinkTypes::RetractionToReplacement,
             LinkTag::new("replacement"),
         )?;
     }

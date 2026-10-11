@@ -1,6 +1,14 @@
 # =============================================================================
-# Four protocol harnesses, against a real conductor and a real DHT, on every
+# Twelve protocol harnesses, against a real conductor and a real DHT, on every
 # push and pull request.
+#
+# THAT NUMBER SAID "Four" UNTIL IT WAS COUNTED, and it had been wrong for
+# eleven of the twelve. Nothing gates it: `check-harness-counts.mjs` gates
+# `ui.yml`'s header count and the suite index, and this file's opening line was
+# never in scope. It is corrected rather than deleted because a stale count in
+# the first sentence of a workflow is exactly the drift this repository keeps
+# finding in its own prose, and the next person to add a step here should know
+# the line needs moving.
 #
 # WHY THIS WAS SAID TO BE IMPOSSIBLE, AND WHAT ACTUALLY CHANGED. Both existing
 # workflows state that the conductor-bound harnesses stay out of CI because they
@@ -377,6 +385,22 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
+
+      # First executed by this workflow, and green on that first run: all 35
+      # checks, 22s of harness time, run 38110651478. It was written on a
+      # machine with no `holochain` binary, so CI was its first execution
+      # anywhere — shipped that way deliberately, on the precedent of
+      # `transitive-gossip`, which shipped here, failed its own first run and
+      # was taken back out. That is a better outcome than a harness nobody
+      # ever points at a conductor, and this time the first run passed.
+      #
+      # ITS INJECTION IS STILL OUTSTANDING, which is the part a green tick
+      # here does not cover: see the harness header for the one rule to
+      # revert and exactly how many checks must go red when it is.
+      - name: attachment-links — §5.19's nine link rules refusing real forgeries
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/attachment-links.mjs
 
       # The denominator is the gate here, not the commit-reveal. A
       # commit-reveal that merely works is the dangerous version -- see

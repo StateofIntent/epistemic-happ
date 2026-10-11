@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 5;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -644,6 +644,22 @@ pub enum LinkTypes {
                                 // ones are reachable without the author
                                 // having to surface them.
     PreRegistrationToRevelation, // a commitment -> its reveal, if it came
+
+    // Retraction's second, inverted use, split out of ClaimToRetraction and
+    // appended for the same position-indexing reason as everything above.
+    //
+    // WHY A SECOND TYPE RATHER THAN A TAG. ClaimToRetraction carried two
+    // semantics at once: a claim -> a Retraction of it (tag "retracted"), and
+    // a Retraction -> the claim replacing it (tag "replacement"), with base
+    // and target inverted between them. SPEC §4 recorded that and told a
+    // reader to "verify which case applies from the base's real type, not the
+    // link type name alone" — which is exactly the instruction validation
+    // could not follow, because the two cases have mutually exclusive rules
+    // and one branch cannot enforce both. A validator dispatching on a
+    // LinkTag would be enforcing the protocol off a field whose only
+    // guarantee is that its author chose it. Two types, two branches, each
+    // with one rule.
+    RetractionToReplacement,
 }
 
 // ============================================================================
@@ -1772,6 +1788,25 @@ fn membrane_registry_anchor_hash() -> ExternResult<EntryHash> {
     Path::from("membranes".to_string()).path_entry_hash()
 }
 
+/// The anchor every `AgentToClaim` link hangs from — one per agent,
+/// derived from that agent's own public key.
+///
+/// Same duplication contract as the three above: the coordinator carries
+/// an identical copy in its own `agent_anchor_hash` and the two must not
+/// diverge, because the coordinator derives the anchor it writes to and
+/// validation recomputes the one it compares against. A divergence here
+/// refuses every by-author index link on the network.
+///
+/// NOTE THAT THIS ANCHOR IS PUBLIC-DERIVABLE, which is the whole reason
+/// the branch below needs to exist: anyone holding a victim's public key
+/// can compute their anchor, so the anchor is a namespace with no lock on
+/// it. What keeps the by-author index honest is not the anchor being hard
+/// to find but validation refusing a link into it from anyone other than
+/// the claim's own author.
+fn agent_anchor_hash(agent: &AgentPubKey) -> ExternResult<EntryHash> {
+    Path::from(format!("agent_{}", agent)).path_entry_hash()
+}
+
 fn validate_create_link(
     link_type: LinkTypes,
     action: TypedAction<CreateLinkData>,
@@ -2121,6 +2156,553 @@ fn validate_create_link(
                 "A MembraneRegistry link may only be created by the membrane's own creator.".into()
             ));
         }
+
+    // ========================================================================
+    // THE ATTACHMENT LINKS, and why nine branches arrived in one commit.
+    //
+    // The three index branches above bind a link to the declared author of
+    // the entry it points at, and `DomainToClaim`'s own comment states the
+    // general rule: "an index is only worth reading if a false entry cannot
+    // be written into it". That rule was enforced for the three links that
+    // answer "what exists" and for none of the links that answer "what is
+    // true OF THIS NODE" — the ones a claim's own screen traverses to decide
+    // what to display about it. Entry validation was thorough on all four
+    // entry types involved; the links carrying those entries onto somebody
+    // else's claim were accepted unconditionally.
+    //
+    // THE SHAPE OF THE DEFECT, stated once because it is identical five
+    // times. Every one of these entry types already binds its author
+    // (§5.2) and already names its own subject in a field — `target_claim`,
+    // `target`, `replacement_claim`, `author`. Validation checked the entry
+    // against itself and never checked the LINK against the entry, so an
+    // agent could author a perfectly valid entry about their own claim and
+    // then file it against anybody's. The displayed attribution came from
+    // the entry; the choice of what it was displayed ON came from the link.
+    // Reading the two as one claim is what these branches do.
+    //
+    // WHY IT WENT UNSEEN, worth recording with the fix: the three branches
+    // above are exactly the three with adversarial prober externs
+    // (`attempt_false_domain_index`, `attempt_false_membrane_registry`,
+    // `attempt_unaccountable_membrane`). The link types nobody probed are
+    // the link types nobody validated, and the coverage looked complete
+    // because every link type anybody had tried to forge was refused.
+    //
+    // `must_get_*` ERRORS ARE PROPAGATED WITH `?` HERE, NOT MAPPED. A
+    // missing dependency inside validation is how the conductor is told to
+    // HOLD the op and retry once the target arrives. The three index
+    // branches above convert that into a guest error (`map_err(|_| ...)`),
+    // which discards the retry signal; a link whose target has simply not
+    // gossiped yet is not an invalid link. These branches propagate instead,
+    // which is the deferring shape rather than the rejecting one. The older
+    // branches are left as they are: changing them is a separate argument
+    // about those three, not part of closing these nine.
+    // ========================================================================
+    } else if link_type == LinkTypes::ClaimToRetraction {
+        // THE RETRACTION BANNER'S GUARANTEE, which until now lived only
+        // half in validation. `validate_retraction` refuses a Retraction
+        // authored by anybody but the target claim's own author, and its
+        // comment says why in full: a third party making someone else's
+        // claim appear withdrawn "while its author still stood by it" is
+        // "misrepresenting another agent's epistemic position on a shared
+        // graph, which is what Invariant #2 exists to prevent". The client
+        // renders `Retracted by its author` on the strength of that check.
+        //
+        // IT WAS REACHABLE AROUND, AND THE WAY ROUND WAS THIS LINK. An
+        // agent authors a Retraction of their OWN claim — valid, every
+        // check passes — and then creates a ClaimToRetraction link whose
+        // base is somebody else's claim. `get_retractions_for_claim` reads
+        // by base, so that record is returned to every reader of the
+        // victim's claim, and the banner states as guaranteed a withdrawal
+        // its author never made. The entry rule was about the entry; the
+        // false statement was produced by the link.
+        let retraction_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToRetraction target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(retraction_hash)?;
+        let retraction = match target_record.entry().to_app_option::<Retraction>() {
+            Ok(Some(r)) => r,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToRetraction target is not a Retraction.".into()
+                ))
+            }
+        };
+        let declared_claim = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToRetraction base must be a Claim's EntryHash.".into()
+                ))
+            }
+        };
+
+        // 1. The retraction must be about the claim it is filed against.
+        //    `target_claim` is the Retraction's own statement of what it
+        //    withdraws, and `validate_retraction` has already proven that
+        //    field names a real Claim authored by this same agent — so
+        //    comparing the base to it is comparing the link to a fact
+        //    already established rather than to a second self-report.
+        if retraction.target_claim != declared_claim {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A ClaimToRetraction link must hang from the Claim the Retraction itself names \
+                 in target_claim. A retraction of one claim may not be filed against another.".into()
+            ));
+        }
+
+        // 2. Author binding (§5.2), the same voluntary-act rule
+        //    AgentToMembrane and DomainToClaim already apply: the agent
+        //    withdrawing is the agent who files the withdrawal. Redundant
+        //    with check 1 today, since `validate_retraction` requires the
+        //    retraction's author to be the claim's author — and kept
+        //    anyway, because the two rules answer to different documents
+        //    and a later relaxation of either should not silently inherit
+        //    the other's guarantee.
+        if &retraction.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A ClaimToRetraction link may only be created by the Retraction's own author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::RetractionToReplacement {
+        // The inverted half, split out of ClaimToRetraction (see the enum).
+        // Base is the Retraction's own ActionHash, target is the Claim the
+        // author now stands behind instead. Nothing in the tree reads this
+        // link yet — it is written by `create_retraction` and read by
+        // nobody — which is precisely why it is worth binding now rather
+        // than when a reader arrives: an unvalidated link type acquires its
+        // first reader long after the commit that could have constrained
+        // it, and that reader has no way to tell the difference.
+        let retraction_hash = match ActionHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "RetractionToReplacement base must be the Retraction's ActionHash.".into()
+                ))
+            }
+        };
+        let base_record = must_get_valid_record(retraction_hash)?;
+        let retraction = match base_record.entry().to_app_option::<Retraction>() {
+            Ok(Some(r)) => r,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "RetractionToReplacement base is not a Retraction.".into()
+                ))
+            }
+        };
+        let Some(replacement) = retraction.replacement_claim.clone() else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "RetractionToReplacement base Retraction names no replacement_claim, so there \
+                 is no replacement for this link to record.".into()
+            ));
+        };
+        let declared_replacement = match EntryHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "RetractionToReplacement target must be a Claim's EntryHash.".into()
+                ))
+            }
+        };
+        if replacement != declared_replacement {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A RetractionToReplacement link must point at the Claim the Retraction itself \
+                 names in replacement_claim.".into()
+            ));
+        }
+        if &retraction.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A RetractionToReplacement link may only be created by the Retraction's own \
+                 author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::TargetToCritique {
+        // What makes a claim look critiqued. `validate_critique` is one of
+        // the stronger validators here — author binding, target existence,
+        // and a DHT-derived cross-check that the declared `target_type`
+        // matches what the target actually IS (§5.4) — and none of it
+        // constrains which node the critique gets hung off, because that is
+        // this link.
+        //
+        // TWO CONSEQUENCES, and the second is the one that does not look
+        // like a security property. A critique that never named a claim is
+        // returned by `get_critiques_for` as that claim's own critique list.
+        // And `get_discourse_health` COUNTS these links per claim to report
+        // a membrane's discourse health, so the metric was writable by
+        // anybody without authoring a single critique — the per-hour
+        // critique budget bounds entries, and this attack creates only
+        // links. A budget on the generative act does not bound an
+        // attachment nobody validated.
+        let critique_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "TargetToCritique target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(critique_hash)?;
+        let critique = match target_record.entry().to_app_option::<Critique>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "TargetToCritique target is not a Critique.".into()
+                ))
+            }
+        };
+
+        // `Critique.target` is itself an AnyLinkableHash, so this compares
+        // like with like and needs no downcast — the link's base must be
+        // the node the critique says it is about. This is what makes §5.4's
+        // target cross-check load-bearing on what gets displayed: that rule
+        // proves `target_type` describes `target`, and this one proves
+        // `target` is where the critique was filed.
+        if critique.target != base_address {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToCritique link must hang from the node the Critique itself names in \
+                 target. A critique of one node may not be filed against another.".into()
+            ));
+        }
+        if &critique.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToCritique link may only be created by the Critique's own author.".into()
+            ));
+        }
+        // NO SEPARATE FRICTION BUDGET, for DomainToClaim's reason: this
+        // link is created once per Critique by `create_critique`, and the
+        // Critique entry already carries its own validation-enforced cap
+        // (§5.15). A second budget would bound one act twice at two
+        // thresholds, and only the one that bound first would ever speak.
+    } else if link_type == LinkTypes::TargetToAntibody {
+        // The same defect as TargetToCritique with a sharper display: the
+        // flag names its author on screen. `validate_antibody_pattern`
+        // binds `pattern.author` and cross-checks `target_type` against the
+        // target's real type (§5.5), and nothing bound the attachment — so
+        // one legitimately-authored pattern could be relinked onto any
+        // number of other claims, each rendering `flagged by <author>` for
+        // an author who never flagged that claim. The forgery needed no
+        // forged signature: the signature on the pattern is real, and the
+        // lie is which node it was filed against.
+        let pattern_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "TargetToAntibody target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(pattern_hash)?;
+        let pattern = match target_record.entry().to_app_option::<AntibodyPattern>() {
+            Ok(Some(p)) => p,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "TargetToAntibody target is not an AntibodyPattern.".into()
+                ))
+            }
+        };
+        if pattern.target != base_address {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToAntibody link must hang from the node the AntibodyPattern itself \
+                 names in target.".into()
+            ));
+        }
+        if &pattern.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToAntibody link may only be created by the AntibodyPattern's own \
+                 author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToClaim {
+        // THE BY-AUTHOR INDEX, and the argument for binding it is already
+        // written three branches up, about the by-DOMAIN index: "A third
+        // party filing someone else's claim into a domain index is
+        // unbounded by that claim's author's own friction budget, which
+        // would make the index a flooding surface answerable to nobody."
+        // Every word of that applies here. The two links are created side
+        // by side in `create_claim` — same function, same four lines apart
+        // — and only one of them was enforced, which is how the near-miss
+        // this file's audit note warns about looks in practice: not a
+        // subtle rule misread, but the same rule applied to one of two
+        // neighbours.
+        //
+        // WHAT IT COSTS IF LEFT OPEN is the By Author tab, which README §9
+        // describes as showing "a record, not a ranking". A record anybody
+        // can write into is not a record of anything. Three properties,
+        // matching DomainToClaim's three.
+        let claim_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToClaim target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(claim_hash)?;
+        let claim = match target_record.entry().to_app_option::<Claim>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToClaim target is not a Claim.".into()
+                ))
+            }
+        };
+
+        // 1. The anchor must be the one this claim's own author derives.
+        let expected_anchor = agent_anchor_hash(&claim.author)?;
+        let declared_anchor = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToClaim base must be an EntryHash anchor.".into()
+                ))
+            }
+        };
+        if declared_anchor != expected_anchor {
+            return Ok(ValidateCallbackResult::Invalid(
+                "AgentToClaim base anchor does not match the claim's own author. A claim may \
+                 only be indexed under the agent who wrote it.".into()
+            ));
+        }
+
+        // 2. The tag must be the claim's real domain. Unlike DomainToClaim,
+        //    where the domain IS the anchor and a tag would be a second
+        //    copy, here the tag is the ONLY way a by-agent reader knows
+        //    which domain each claim belongs to — `create_claim` says so
+        //    where it writes it. An unchecked tag is a free text field
+        //    about somebody else's claim, read as that claim's domain.
+        if tag.0.as_slice() != claim.domain.as_bytes() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "AgentToClaim tag must be the claim's own domain, which is the only domain a \
+                 by-agent reader has to go on.".into()
+            ));
+        }
+
+        // 3. Author binding (§5.2). Redundant with check 1 while
+        //    `validate_claim` holds `claim.author == action.author()` for
+        //    the claim itself, and kept for the same reason as
+        //    ClaimToRetraction's: this branch should state its own rule
+        //    rather than inherit one from a validator it does not call.
+        if &claim.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToClaim link may only be created by the claim's own author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::CritiqueToSpecies {
+        // THE ADOPTION COUNT, which is the one number this protocol
+        // computes and displays about a thing. `get_critique_species_-
+        // adoption_count` counts these links, and the coordinator's own
+        // comment says the point of counting links is that it is "a real,
+        // query-time basis" rather than "the old self-declared, unenforced
+        // adoption_count field". That is a genuine improvement and it was
+        // half-finished: the field was removed from the entry, and nothing
+        // stopped an agent from writing the links directly. A count anyone
+        // can increment is the self-declared field with extra steps.
+        //
+        // The number is also the reason this one matters more than its
+        // read volume suggests. Invariant #1 forbids a canonical ranking
+        // of agents, and §9's account of the taxonomy screen records that
+        // a per-species adoption count is permissible precisely because it
+        // is "a number as a fact rather than a position". A fact anybody
+        // can write is not one.
+        let critique_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(critique_hash)?;
+        let critique = match target_record.entry().to_app_option::<Critique>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies target is not a Critique.".into()
+                ))
+            }
+        };
+        let declared_species = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "CritiqueToSpecies base must be a CritiqueSpecies' EntryHash.".into()
+                ))
+            }
+        };
+        // NOTE THE DIRECTION: the base is the species and the target is the
+        // critique, which is the inverse of what the type name reads like.
+        // SPEC §4 flags this row as one of the names that describes the
+        // relationship rather than the direction, so the comparison below
+        // is written against the verified direction and not the name.
+        match critique.species {
+            Some(ref species) if *species == declared_species => {}
+            Some(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique \
+                     itself declares in `species`, not a different one.".into()
+                ))
+            }
+            None => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A CritiqueToSpecies link cannot record an adoption the Critique does not \
+                     declare: its `species` field is None.".into()
+                ))
+            }
+        }
+        if &critique.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A CritiqueToSpecies link may only be created by the Critique's own author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToConstitution {
+        // WHAT ANOTHER AGENT PROMISED, which is the sharpest of these
+        // three per-agent indexes because a client renders it beside their
+        // name. `mobile-ui`'s claim card calls `renderAuthorConstitution`
+        // on the claim's author, which resolves through this link — so an
+        // unbound link lets a third party put words in another agent's
+        // constitution as displayed: a promise they never made, shown as
+        // theirs. Promise Theory's whole premise is that a promise is
+        // voluntary and made by the promiser; an index anybody can write
+        // into cannot carry that.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToConstitution target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let constitution = match target_record.entry().to_app_option::<Constitution>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToConstitution target is not a Constitution.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&constitution.agent, base_address, "AgentToConstitution")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &constitution.agent != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToConstitution link may only be created by the agent whose constitution \
+                 it indexes.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToWorldlineTrace {
+        // A worldline is a compression of ONE agent's own source chain, and
+        // `validate_worldline_trace` already checks every period boundary
+        // against real actions on it. The index into it was unbound, so a
+        // third party could file a trace under somebody else's anchor and
+        // `get_agent_worldline_trace` — which returns a single trace for an
+        // agent — would answer with it.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToWorldlineTrace target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let trace = match target_record.entry().to_app_option::<WorldlineTrace>() {
+            Ok(Some(t)) => t,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToWorldlineTrace target is not a WorldlineTrace.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&trace.agent, base_address, "AgentToWorldlineTrace")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &trace.agent != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToWorldlineTrace link may only be created by the agent whose chain the \
+                 trace compresses.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToMew {
+        // The same rule one scale down. A Mew is the bridge's raw stimulus
+        // rather than protocol-bearing content, which is an argument about
+        // how much this link matters and not about whether the rule differs
+        // — `get_mews_by_agent` answers "what did this agent post", and an
+        // unbound index answers it with whatever anybody filed.
+        let target_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToMew target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(target_hash)?;
+        let mew = match target_record.entry().to_app_option::<Mew>() {
+            Ok(Some(m)) => m,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToMew target is not a Mew.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&mew.author, base_address, "AgentToMew")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &mew.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToMew link may only be created by the Mew's own author.".into()
+            ));
+        }
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// The anchor half of a per-agent index link, shared by the three links
+/// that differ only in what they point at (`AgentToConstitution`,
+/// `AgentToWorldlineTrace`, `AgentToMew`).
+///
+/// `AgentToClaim` deliberately does NOT call this and keeps its checks
+/// inline: it also validates its tag against the claim's real domain,
+/// since that tag is the only domain a by-agent reader has to go on, and
+/// folding three-of-four into a helper while the fourth reads differently
+/// is how the near-miss this file keeps recording gets built on purpose.
+///
+/// NO TAG CHECK HERE, and that is a decision rather than an omission. The
+/// three tags are fixed literals (`"constitution"`, `"worldline"`,
+/// `"mew"`) that no reader consults — these links are read by base and
+/// type alone. Pinning a literal in validation would add a byte-for-byte
+/// duplication contract across the two crates (see the anchor helpers) for
+/// no reader's benefit, and would refuse every link on the network the
+/// first time somebody renamed a tag nothing reads.
+fn agent_index_anchor_matches(
+    subject: &AgentPubKey,
+    base_address: AnyLinkableHash,
+    link_name: &str,
+) -> ExternResult<ValidateCallbackResult> {
+    let expected_anchor = agent_anchor_hash(subject)?;
+    let declared_anchor = match EntryHash::try_from(base_address) {
+        Ok(h) => h,
+        Err(_) => {
+            return Ok(ValidateCallbackResult::Invalid(format!(
+                "{link_name} base must be an EntryHash anchor."
+            )))
+        }
+    };
+    if declared_anchor != expected_anchor {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "{link_name} base anchor does not match the agent the target entry names. An entry \
+             may only be indexed under the agent it belongs to."
+        )));
     }
     Ok(ValidateCallbackResult::Valid)
 }
