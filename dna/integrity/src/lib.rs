@@ -2247,12 +2247,12 @@ fn validate_create_link(
         //    field names a real Claim authored by this same agent — so
         //    comparing the base to it is comparing the link to a fact
         //    already established rather than to a second self-report.
-        if retraction.target_claim != declared_claim {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A ClaimToRetraction link must hang from the Claim the Retraction itself names \
-                 in target_claim. A retraction of one claim may not be filed against another.".into()
-            ));
-        }
+        // *** INJECTED DEFECT — DO NOT MERGE. The rule that belongs here is
+        // *** reverted on purpose, so that attachment-links.mjs can be watched
+        // *** going red on exactly the probe written to catch it. Restore from
+        // *** the parent commit. The `let` below only exists to keep the
+        // *** binding used while the comparison is gone.
+        let _ = &declared_claim;
 
         // 2. Author binding (§5.2), the same voluntary-act rule
         //    AgentToMembrane and DomainToClaim already apply: the agent
