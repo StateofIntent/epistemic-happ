@@ -1428,7 +1428,7 @@ pub fn attempt_false_membrane_registry(
     )
 }
 
-/// Which of the thirteen bound attachment/index links to attempt. Named
+/// Which of the eighteen bound attachment/index links to attempt. Named
 /// rather than numbered so a harness's intent is readable in its own
 /// payload — `kind: "ClaimToRetraction"` says what is being probed.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1446,6 +1446,11 @@ pub enum AttachmentLinkKind {
     PreRegistrationToRevelation,
     AgentToPreRegistration,
     QuestionToPreRegistration,
+    MewToClaim,
+    MembraneToFederationRecord,
+    MewToBridgeRecord,
+    ClaimToBridgeRecord,
+    ClaimToExternalCritique,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1484,12 +1489,12 @@ pub struct FalseAttachmentLinkPayload {
     pub anchor_of: Option<AgentPubKey>,
 }
 
-/// Negative-path prober for SPEC §5.19's thirteen link rules, in exactly the
+/// Negative-path prober for SPEC §5.19's eighteen link rules, in exactly the
 /// terms `attempt_false_domain_index` and `attempt_false_membrane_registry`
 /// already set: it does what a hostile or buggy client would do, so that
 /// DHT validation can be WATCHED refusing it rather than assumed to.
 ///
-/// WHY ONE EXTERN FOR THIRTEEN RULES rather than thirteen. The three probers above
+/// WHY ONE EXTERN FOR EIGHTEEN RULES rather than eighteen. The three probers above
 /// are one-per-index because each builds its own base from a different
 /// anchor function. These nine take base, target and tag from the caller
 /// unchanged, so nine externs would be nine copies of one `create_link`
@@ -1511,7 +1516,7 @@ pub struct FalseAttachmentLinkPayload {
 /// consistent succeeds and has achieved what the ordinary coordinator path
 /// would have achieved anyway.
 ///
-/// If any of the thirteen ever SUCCEEDS at a mismatched base, the read it feeds
+/// If any of the eighteen ever SUCCEEDS at a mismatched base, the read it feeds
 /// has become a list of whatever anyone chose to file there: a claim showing
 /// a retraction its author never wrote, a flag naming an agent who never
 /// flagged it, a by-author index answering for an agent who never spoke, or
@@ -1536,6 +1541,13 @@ pub fn attempt_false_attachment_link(
         }
         AttachmentLinkKind::AgentToPreRegistration => LinkTypes::AgentToPreRegistration,
         AttachmentLinkKind::QuestionToPreRegistration => LinkTypes::QuestionToPreRegistration,
+        AttachmentLinkKind::MewToClaim => LinkTypes::MewToClaim,
+        AttachmentLinkKind::MembraneToFederationRecord => {
+            LinkTypes::MembraneToFederationRecord
+        }
+        AttachmentLinkKind::MewToBridgeRecord => LinkTypes::MewToBridgeRecord,
+        AttachmentLinkKind::ClaimToBridgeRecord => LinkTypes::ClaimToBridgeRecord,
+        AttachmentLinkKind::ClaimToExternalCritique => LinkTypes::ClaimToExternalCritique,
     };
     let base: AnyLinkableHash = match (&payload.anchor_of, &payload.question_anchor_of) {
         (Some(agent), _) => agent_anchor_hash(agent)?.into(),
@@ -2744,6 +2756,37 @@ pub struct UnbridgedRecord {
 /// it's directly unit-testable without mocking the HDK, unlike
 /// record_twitter_mirror as a whole. See the "bridge_link_type_for"
 /// tests below.
+/// `BridgeRecord` minus its `author`, which the zome fills from
+/// `agent_info()`. Shaped so the bridge service's existing payload
+/// deserializes unchanged — adding a required field to the wire format would
+/// have broken `bridge/` and `mew-lifecycle.mjs` at runtime rather than at
+/// compile time, for no gain over filling it here.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RecordTwitterMirrorInput {
+    pub mew_hash: EntryHash,
+    pub twitter_id: String,
+    pub platform: String,
+    pub mirrored_at: u64,
+    pub carried_fields: Vec<String>,
+    pub dropped_fields: Vec<String>,
+    pub original_length: u32,
+    pub excerpt_length: u32,
+}
+
+/// `ExternalCritique` minus its `importer`, filled from `agent_info()` for
+/// the same reason as `RecordTwitterMirrorInput` above. Note the name of the
+/// field it does NOT carry: `author_handle` is the Twitter handle and stays
+/// caller-supplied, because this DHT cannot verify it and does not pretend
+/// to; `importer` is the agent who chose to bring it in, which it can.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImportTwitterReplyInput {
+    pub twitter_id: String,
+    pub author_handle: String,
+    pub content: String,
+    pub linked_holochain_claim: EntryHash,
+    pub imported_at: u64,
+}
+
 fn bridge_link_type_for(entry: &RecordEntry) -> ExternResult<Option<LinkTypes>> {
     // Deliberately `.ok().flatten()`, not `?`: this probes "is it a
     // Claim? if not, is it a Mew?" — a deserialize failure here means
@@ -2765,7 +2808,30 @@ fn bridge_link_type_for(entry: &RecordEntry) -> ExternResult<Option<LinkTypes>> 
 }
 
 #[hdk_extern]
-pub fn record_twitter_mirror(payload: BridgeRecord) -> ExternResult<ActionHash> {
+pub fn record_twitter_mirror(payload: RecordTwitterMirrorInput) -> ExternResult<ActionHash> {
+    // THE AUTHOR IS WHO CALLED, NOT WHO SAYS SO. `BridgeRecord` gained an
+    // `author` field at protocol_version 8 — until then the instrument was
+    // unsigned, which made §5.2's author binding inexpressible for it and
+    // any rule about who may file it into an index along with it.
+    //
+    // It is filled here rather than accepted from the payload, the way
+    // `generate_worldline_trace` and `pre_register` already do. That keeps
+    // the field honest at this layer AND leaves the bridge's existing wire
+    // payload unchanged: `RecordTwitterMirrorInput` is `BridgeRecord` minus
+    // `author`, so every caller that worked before works now. Validation
+    // binds it regardless, because this function is a convenience and the
+    // integrity zome is the authority.
+    let payload = BridgeRecord {
+        author: agent_info()?.agent_initial_pubkey,
+        mew_hash: payload.mew_hash,
+        twitter_id: payload.twitter_id,
+        platform: payload.platform,
+        mirrored_at: payload.mirrored_at,
+        carried_fields: payload.carried_fields,
+        dropped_fields: payload.dropped_fields,
+        original_length: payload.original_length,
+        excerpt_length: payload.excerpt_length,
+    };
     let action_hash = create_entry(EntryTypes::BridgeRecord(payload.clone()))?;
 
     if let Some(record) = get(payload.mew_hash.clone(), GetOptions::default())? {
@@ -2831,7 +2897,19 @@ pub fn get_unbridged_mews() -> ExternResult<Vec<UnbridgedRecord>> {
 }
 
 #[hdk_extern]
-pub fn import_twitter_reply(payload: ExternalCritique) -> ExternResult<ActionHash> {
+pub fn import_twitter_reply(payload: ImportTwitterReplyInput) -> ExternResult<ActionHash> {
+    // `importer` from agent_info, `author_handle` from the caller — the
+    // split is the point, and see the entry type for why they are not both
+    // called author. One is an agent this DHT can hold accountable; the
+    // other is a string from a platform it cannot.
+    let payload = ExternalCritique {
+        importer: agent_info()?.agent_initial_pubkey,
+        twitter_id: payload.twitter_id,
+        author_handle: payload.author_handle,
+        content: payload.content,
+        linked_holochain_claim: payload.linked_holochain_claim,
+        imported_at: payload.imported_at,
+    };
     let action_hash = create_entry(EntryTypes::ExternalCritique(payload.clone()))?;
 
     // Link from the original claim.

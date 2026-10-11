@@ -838,7 +838,7 @@ function authorBinding() {
   const structs = [...src.matchAll(/#\[hdk_entry_helper\][\s\S]*?pub struct (\w+) \{([\s\S]*?)\n\}/g)];
   if (structs.length === 0) return null;
 
-  const AUTHORISH = ['author', 'agent', 'creator', 'proposer'];
+  const AUTHORISH = ['author', 'agent', 'creator', 'proposer', 'importer'];
   const snake = (n) => n.replace(/(?<!^)(?=[A-Z])/g, '_').toLowerCase();
   const out = [];
 
