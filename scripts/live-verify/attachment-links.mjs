@@ -13,15 +13,24 @@
 // link it from somebody else's, and every reader of theirs is shown
 // "Retracted by its author" for a withdrawal its author never made.
 //
-// TWO HALVES, and the first is not a formality. A rule that refused
-// EVERYTHING would pass every refusal check in part 2 while breaking the
-// protocol completely — and that is not a hypothetical here: four of the
-// eighteen rules compare a link's base against an agent anchor derived
-// independently in both crates (`agent_anchor_hash`, duplicated across
-// dna/integrity and dna/coordinator because they share no library). If
-// those two derivations ever disagree, every honest by-author link on the
-// network is refused and part 2 still goes green. Part 1 is what makes
-// part 2 mean anything.
+// TWO HALVES, and the first is not a formality — though NOT for the reason
+// this comment gave for most of its life. A rule that refused EVERYTHING
+// would pass every refusal check in part 2 while breaking the protocol
+// completely, and four of the eighteen rules compare a link's base against
+// an agent anchor derived independently in both crates (`agent_anchor_hash`,
+// duplicated across dna/integrity and dna/coordinator because they share no
+// library) — so a disagreement between those derivations refuses every
+// honest by-author link on the network.
+//
+// WHAT PART 1 ACTUALLY CATCHES, corrected after run 38129574846 made a rule
+// over-refuse on purpose. **Part 1 does not catch a rule that refuses
+// everything.** Link creation happens inside the same zome call as entry
+// creation, so such a rule makes SETUP fail and part 1 never executes — this
+// comment claimed otherwise, and the injection falsified it. What part 1
+// does is stop this file being a suite of refusal checks that would all pass
+// against a protocol where nothing works, and catch the narrower case of a
+// rule that breaks a legitimate READ while leaving writes intact. The `seed`
+// helper below is what reports the over-refusing case by name.
 //
 //   1. THE HONEST PATHS STILL WORK. Eighteen checks. Eight are one read per
 //      bound link type that HAS a reader (AgentToClaim, ClaimToRetraction,
@@ -310,6 +319,45 @@ async function connectApp(admin, appId) {
   return { me: cellIds[0][1], call, cellIds };
 }
 
+/** Runs a SETUP call that must succeed, turning a refusal into a NAMED failing
+ * check rather than an unhandled throw.
+ *
+ * WHY THIS EXISTS, measured rather than imagined. Run 38129574846 made one
+ * rule — TargetToCritique — refuse EVERY link, correct ones included, which is
+ * the failure this file's part 1 claimed to exist for. Three results, all
+ * worth having:
+ *
+ *   1. PART 1 NEVER RAN. Link creation happens inside the same zome call as
+ *      entry creation, so an over-refusing rule makes `create_critique` itself
+ *      fail — during setup, long before any read. Part 1's positive reads
+ *      cannot be what catches this, and this file said they were.
+ *   2. DETECTION WAS BY CRASH: `internal_error: Source chain error:
+ *      InvalidCommit ...` plus a stack trace into node_modules. CI went red,
+ *      which is real detection, but a crash says the zome broke without saying
+ *      WHICH PROPERTY broke — and naming the property was the whole argument
+ *      for part 1.
+ *   3. A DIFFERENT HARNESS CAUGHT IT. domain-index.mjs died first, being an
+ *      earlier conductor.yml step that also calls create_critique. Which
+ *      harness reports an over-refusing rule is an accident of step ordering.
+ *
+ * This fixes (2) for this file. It does NOT fix (1): an over-refusing rule
+ * still stops the run before part 1, which is a property of the substrate
+ * rather than of the harness. */
+async function seed(label, promise) {
+  try {
+    return await promise;
+  } catch (e) {
+    const msg = String(e?.message ?? e).split('\n')[0];
+    log(`  FAIL: setup — ${label} was refused`);
+    log(`    ${msg}`);
+    log('    A seeding call that validation REFUSES means a rule is over-refusing:');
+    log('    rejecting correct writes, not merely incorrect ones. Every refusal probe');
+    log('    below would still pass against such a rule, which is why this is a named');
+    log('    failure here rather than a stack trace from an unhandled rejection.');
+    process.exit(1);
+  }
+}
+
 const nowMicros = () => Date.now() * 1000;
 const nowSecs = () => Math.floor(Date.now() / 1000);
 const entryHashOf = (record) => record.signed_action.hashed.content.data.entry_hash;
@@ -396,44 +444,44 @@ async function main() {
 
   // Agent 1 retracts its OWN claim. This is the valid act the forgery
   // re-points: validate_retraction requires exactly this and nothing more.
-  const retractionA = await agent1.call('create_retraction', {
+  const retractionA = await seed('create_retraction (ClaimToRetraction)', agent1.call('create_retraction', {
     target_claim: claimAHash,
     reason: 'Superseded by a larger cohort.',
     replacement_claim: null,
     author: agent1.me,
     timestamp: nowSecs(),
-  });
+  }));
 
   // Agent 1 critiques agent 2's claim — the ordinary case, one agent
   // cross-checking another.
-  const critiqueOfB = await agent1.call('create_critique', {
+  const critiqueOfB = await seed('create_critique (TargetToCritique + SynapticLink)', agent1.call('create_critique', {
     target: claimBHash, target_type: 'Claim', critique_mode: 'Methodological',
     content: 'No control arm is reported.', author: agent1.me,
     timestamp: nowMicros(), replication_attempted: false,
     evidence_hashes: [], species: null,
-  });
+  }));
 
-  const patternOnA = await agent1.call('publish_antibody_pattern', {
+  const patternOnA = await seed('publish_antibody_pattern (TargetToAntibody)', agent1.call('publish_antibody_pattern', {
     target: claimAHash, target_type: 'Claim', kind: 'SpamFlood',
     rationale: 'Seeded flag, re-pointed by the probe below.',
     author: agent1.me, timestamp: nowSecs(),
-  });
+  }));
 
-  const constitutionA = await agent1.call('publish_constitution', {
+  const constitutionA = await seed('publish_constitution (AgentToConstitution)', agent1.call('publish_constitution', {
     agent: agent1.me,
     promises: [{ action: 'distinguish_observation_from_inference', domain: DOMAIN, modality: 'Methodological' }],
     conditions: [], published_at: nowMicros(), expires_at: null,
-  });
+  }));
 
-  const mewA = await agent1.call('create_mew', {
+  const mewA = await seed('create_mew (AgentToMew)', agent1.call('create_mew', {
     content: 'Raw stimulus, pre-transduction.',
     author: agent1.me, timestamp: nowSecs(),
     reply_to: null, semantic_tags: [], linked_claim: null,
-  });
+  }));
 
-  const traceA = await agent1.call('generate_worldline_trace', {
+  const traceA = await seed('generate_worldline_trace (AgentToWorldlineTrace)', agent1.call('generate_worldline_trace', {
     period_granularity_secs: 3600, expertise_tags: [], expires_at: null,
-  });
+  }));
 
   // Two species, so the CritiqueToSpecies probe has a real wrong base
   // rather than an unresolvable hash — the same sharpening domain-index
@@ -461,10 +509,10 @@ async function main() {
   // itself, so this create succeeding IS the positive control: an
   // over-refusing rule makes it fail outright, which is the only control
   // available for a link nothing reads.
-  const childSpecies = await agent1.call('create_critique_species', {
+  const childSpecies = await seed('create_critique_species with a parent (SpeciesToParent)', agent1.call('create_critique_species', {
     name: `Species${Date.now()}Child`, parent_species: speciesOne,
     required_evidence: [], proposer: agent1.me, created_at: nowMicros(),
-  });
+  }));
 
   // A third claim by agent 1, retracted WITH a replacement — the honest
   // RetractionToReplacement path, which went unexercised when this harness
@@ -555,10 +603,10 @@ async function main() {
     process.exit(1);
   }
   const promotionMewHash = entryHashOf(promotionMew);
-  const promotedClaim = await agent1.call('promote_mew_to_claim', {
+  const promotedClaim = await seed('promote_mew_to_claim (MewToClaim)', agent1.call('promote_mew_to_claim', {
     mew_hash: promotionMewHash, domain: DOMAIN,
     evidence_hashes: [], confidence: 'Tentative',
-  });
+  }));
 
   // `mew_hash` takes the CLAIM's hash here, which is not a mistake — see the
   // entry type: the field holds whatever was mirrored, and the zome picks
@@ -575,11 +623,11 @@ async function main() {
     carried_fields: ['content'], dropped_fields: [],
     original_length: 32, excerpt_length: 32,
   });
-  const importedReply = await agent1.call('import_twitter_reply', {
+  const importedReply = await seed('import_twitter_reply (ClaimToExternalCritique)', agent1.call('import_twitter_reply', {
     twitter_id: `attachlinks-${Date.now()}-reply`, author_handle: '@a_stranger',
     content: 'The control arm is missing.', linked_holochain_claim: claimAHash,
     imported_at: nowSecs(),
-  });
+  }));
 
   // ALL SEVEN FIELDS. An earlier version of this call passed five and the
   // conductor refused it with a bare `Deserialize([133, 166, ...])` naming
@@ -605,10 +653,10 @@ async function main() {
     process.exit(1);
   }
   const membraneHash = entryHashOf(seededMembrane);
-  const federationRecord = await agent1.call('record_federation', {
+  const federationRecord = await seed('record_federation (MembraneToFederationRecord)', agent1.call('record_federation', {
     local_membrane: membraneHash, remote_network_label: 'a-different-network',
     remote_membrane_ref: 'remote-ref-1', author: agent1.me, created_at: nowSecs(),
-  });
+  }));
 
   log('Waiting for gossip ...\n');
   await new Promise((r) => setTimeout(r, 8000));

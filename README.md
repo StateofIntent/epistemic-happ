@@ -1345,6 +1345,39 @@ the committing agent's *own* anchor, so with the binding gone it creates a
 appears twice in `revealed`. That binding guards the foresight denominator
 against **inflation** by a third party, not only against misfiling.
 
+#### The sixth injection tested the opposite direction, and I was wrong
+
+Every injection above removes a check, testing **under**-refusal. Run
+[`38129574846`](../../actions/runs/38129574846) made one rule —
+`TargetToCritique` — refuse **every** link, correct ones included. That is the
+failure the harness's part 1 claimed to exist for. Three results, and the
+headline is that the claim was wrong:
+
+**Part 1 cannot catch a rule that refuses everything.** Link creation happens
+inside the same zome call as entry creation, so such a rule fails
+`create_critique` itself — during setup, before any read runs. The harness
+header said part 1 was "the only thing standing between an over-refusing rule
+and a fully green run"; it is not, and the injection is how that was found
+rather than argued.
+
+**Detection was by crash rather than by a named check:** `internal_error:
+Source chain error: InvalidCommit …` plus a stack trace into `node_modules`. CI
+went red, so detection is real — but a crash says the zome broke without saying
+*which property* broke, and naming the property was part 1's whole
+justification.
+
+**And the harness that caught it was a different one.** `domain-index.mjs` died
+first, because it is an earlier `conductor.yml` step that also calls
+`create_critique`. **Which harness reports an over-refusing rule is an accident
+of step ordering**, not of design — which means no harness owns that failure
+mode today.
+
+**Fixed rather than reworded.** A `seed()` wrapper now guards all ten seeding
+calls in `attachment-links.mjs`: a refused seeding call prints a named failure
+identifying the call and stating what it implies — *a rule is over-refusing,
+rejecting correct writes, and every refusal probe below would still pass
+against it*. The falsified claim is corrected in place rather than deleted.
+
 **Where the evidence stands, as arithmetic rather than a fraction.** Both
 halves — base comparison and author binding — of all eighteen link rules, plus
 the update refusal, the tag rule, the shared anchor helper and the Claim/Mew
