@@ -388,7 +388,8 @@ jobs:
 
       # First executed by this workflow, and green on that first run: all 35
       # checks as it then stood, 22s of harness time, run 38110651478. It is
-      # 69 checks now, after versions 6, 7 and 8 added nine more rules. It was written on a
+      # 73 checks now, after versions 6-9 added nine link rules and the update
+      # refusal. It was written on a
       # machine with no `holochain` binary, so CI was its first execution
       # anywhere — shipped that way deliberately, on the precedent of
       # `transitive-gossip`, which shipped here, failed its own first run and

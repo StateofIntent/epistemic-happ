@@ -1056,7 +1056,7 @@ it was displayed on came from the link.**
 | `TargetToAntibody` | Relink one legitimately-signed `AntibodyPattern` onto any number of other claims, each rendering `flagged by <author>` for an author who never flagged it. No forged signature anywhere — the signature is real, and the lie is which node it was filed against | **Fixed** |
 | `TargetToCritique` | Hang any critique off any node, and — less visibly — move `get_discourse_health`, which **counts these links per claim**. A budget on the generative act does not bound an attachment nobody validated | **Fixed** |
 | `AgentToClaim` | Write into any agent's by-author index. The argument against it was already written four lines away in `create_claim`, about the by-*domain* index, and only one of the two links was enforced | **Fixed** |
-| Update ops | `FlatOp::Update(_)` returns `Valid`, and an update's **new entry** falls through `validate_create_entry`'s catch-all as `OpEntry::UpdateEntry` — so the entry body is unvalidated too, and is hash-addressable by `get_claim`/`get_evidence` without reading any update chain | **Open, by decision** — SPEC §5.1 recorded this; the review's contribution is that "nothing reads update chains" does not bound it |
+| Update ops | `FlatOp::Update(_)` returned `Valid`, and an update's **new entry** fell through `validate_create_entry`'s catch-all as `OpEntry::UpdateEntry` — so the entry body was unvalidated too, and hash-addressable by `get_claim`/`get_evidence` without reading any update chain | **Decided and closed at `protocol_version: 9`** — app-entry updates are refused; agent key and capability updates are not. See *The update decision* below |
 
 **The threat model is this repository's own, not an imported one.** SPEC §11.1
 records that a coordinator-zome edit leaves the DNA hash unchanged and is
@@ -1276,9 +1276,78 @@ forgery checks still pass.** A rule that refuses everything satisfies every
 test that only looks for refusals, which is why eight positive reads sit in
 front of them.
 
-**Four forks, and the price is the same each time, which is why they were
-paid now.** `protocol_version` went 4 → 5 → 6 → 7 → 8 in a day, the last one
-carrying two entry-type changes as well as five rules. Each bump changes
+#### The update decision
+
+**The fifth finding was a decision, and it took four protocol versions to
+make.** SPEC §5.1 had recorded the gap since version 4 and deliberately left
+it: refusing updates "would change what the network accepts for every entry
+type, which is a far larger decision than closing a link-delete hole, and no
+evidence has been offered that it should be made". That was a defensible
+deferral, and its reasoning was measuring the wrong thing.
+
+**"Nothing reads update chains" was true of the relation and false of the
+entry.** An Update stores its new entry, which arrives at validation as
+`OpEntry::UpdateEntry` — a variant `validate_create_entry` never matched, so it
+fell through the catch-all and **no entry validator ran on it at all**. The
+body is then addressable by its own hash through `get_claim`, `get_evidence`
+and `must_get_entry`, none of which touches an update chain. The capability was
+not "stored and surfaced by no reader"; it was an unvalidated write of any
+entry type, any content, any claimed author, readable by hash.
+
+**Decided: refuse app-entry updates.** Four reasons, and the third settles it.
+
+1. **Nothing reads update chains** — re-measured across the coordinator, the
+   UI, the SDK and the MCP server: zero `get_details`, zero `Details::`, zero
+   `.updates`. Refusing breaks no feature because no feature uses them.
+2. **No extern called `update_entry`**, so no client could author one through
+   the shipped API. The capability was reachable only by a peer running a
+   modified coordinator — which stays on this network — so it was available
+   only to the party it should have been guarded against.
+3. **A validated update would still be invisible**, which is why "validate
+   updates properly" is not the better option it looks like. Every index, link,
+   critique and conductance here is anchored on the **original** entry's hash.
+   An update creates a new entry plus a relation; links keep pointing at the
+   original and `get()` on its hash keeps returning it. Only a reader walking
+   update chains sees the new content, and nothing walks them. Validating them
+   would permit a capability no reader can observe — checked, stored, and
+   unreachable, which is worse than either refusing it or building it properly.
+4. **It is in tension with the protocol's own remedies.** Erasure is
+   structurally impossible here and the remedies are **additive**: a
+   `Retraction` by the author, an `AntibodyPattern` by anyone, each leaving the
+   original readable with the objection attached. Mutation is the non-additive
+   remedy. If a `Claim` could be edited, "the record" becomes "the current
+   version of the record", and a critique could be answered by editing the
+   thing critiqued rather than by replying to it — against Invariant #3, that
+   every claim carries its own history.
+
+**If mutation is ever wanted it arrives as a feature with a design** — an
+explicit additive mechanism with a reader, a revision entry type and a link,
+validated like everything else — not as a latent capability nobody can see.
+That is the form in which to reopen this.
+
+**And the refusal is scoped, which is where it could have gone badly wrong.**
+`FlatOp::Update` covers `Agent`, `CapClaim` and `CapGrant` as well as `Entry`.
+A capability grant is itself a source-chain write, so a blanket refusal makes
+`authorizeSigningCredentials` fail and leaves **a network nothing can call** —
+the exact failure the protocol-version gate already hit and recorded, which is
+why that gate is scoped to two op kinds rather than the whole callback. Same
+scoping here: refuse the protocol's own entries, leave the conductor's plumbing
+alone. Whether agent key rotation *should* be permitted is a separate question
+and is not decided by this change.
+
+**Watched being refused, with the forgery it bought.** `attempt_entry_update`
+is the prober — needed because nothing else in the tree calls `update_entry`,
+which is precisely why the gap was untestable from the tree — and §2b of the
+harness attempts a Claim update **into another agent's name**, requiring DHT
+validation to refuse it. Its control is the scoped half: credentials and zome
+calls still work afterwards. **That control proves cap-grant issuance survives
+and does not exercise `OpUpdate::CapGrant` itself**, since nothing in the
+harness can force a grant to be updated rather than created — said plainly
+rather than letting a passing control imply more than it tests.
+
+**Five forks, and the price is the same each time, which is why they were
+paid now.** `protocol_version` went 4 → 5 → 6 → 7 → 8 → 9 in a day — five
+rules and two entry-type changes at 8, the update refusal at 9. Each bump changes
 the DNA hash and orphans every entry written under the old one — a cost borne
 entirely by whoever holds data at the moment of the fork, and **before the
 first user there is nobody to bear it.** §5.1 made that argument for the
@@ -5476,7 +5545,7 @@ each of these is currently exactly that.
   **Two defects in the harness, both of the kind this directory keeps recording.** Its first summary line claimed the run proved "a question chosen afterwards" is refused, which it no longer tests — a label claiming more than its assertions. And a probe for "a commitment cannot be updated" called an extern that does not exist while asserting the error contained `"not"`, which `"function not found"` satisfies: a guard scoring a pass against a function that was never there. Verifying that a function is *absent* is `check-spec-drift.mjs`'s job, since it enumerates what exists; it is not something a live call can establish by being rejected.
 
   **And it runs directly at Invariant 1, which is the deeper reason to design it before building it.** "Who called it right" is a comparative standing, and this feature begs to become one. The invariant permits exactly what pre-registration would produce — raw history, open and queryable, a record of what someone committed and when — and forbids what everyone would immediately want computed from it. So the constraint is not on the record but on the arithmetic: no hit rate, no calibration score, no ranking of forecasters, however tempting a cryptographically verifiable one would be. A leaderboard arriving with a proof attached is *worse* than an obviously subjective one, because it is harder to argue with and no more legitimate. That is the trap this entry is parked in front of, not merely the absence of a stated need.
-- [ ] **Surface the epistemic state the backend already computes — now 43 of 65 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
+- [ ] **Surface the epistemic state the backend already computes — now 43 of 66 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
@@ -5544,7 +5613,8 @@ Three of the four remaining were called **hash-addressed getters** which a scree
   | `get_all_constitutions` | chain-local by specification (SPEC §10.0) — a global list it cannot honestly produce |
   | `get_critique_species` | hash-addressed getter, same reason |
   | `get_protocol_version` | its callers are the gateway and the federation bridge, which must state which protocol they speak; a screen has no such sentence to write. Covered by `scripts/live-verify/protocol-version.mjs` |
-  | `attempt_false_attachment_link` | a negative-path prober for SPEC §5.19's nine link rules — one surface rather than nine, naming its link type in the payload. Watched being refused by `scripts/live-verify/attachment-links.mjs`; a screen for it would be a screen for forging links |
+  | `attempt_entry_update` | a negative-path prober for SPEC §5.1's update refusal — the only caller of `update_entry` in the tree, which is why the gap it probes was untestable before it existed. Watched being refused by `scripts/live-verify/attachment-links.mjs` §2b, with a forged author |
+| `attempt_false_attachment_link` | a negative-path prober for SPEC §5.19's nine link rules — one surface rather than nine, naming its link type in the payload. Watched being refused by `scripts/live-verify/attachment-links.mjs`; a screen for it would be a screen for forging links |
 | `get_pre_registrations_for_question` | **deliberately unsurfaced** — a per-question list of revealed predictions is a list of people who called it right, with no sight of what any of them committed to and never revealed. See the pre-registration entry above |
 
   *(Superseded figures kept as a record of when each recount happened, since a count that drifts silently is how the last error here went unnoticed: 41 of 64 with a residue of 23, before `get_claim` and `get_evidence` were surfaced by the grounding chain; 38 of 60 with a residue of 22, which is the recount that found `get_protocol_version` unaccounted for; before that 38 of 58, residue 20, when the neighborhood surface landed; before that 37 of 58, residue 21.)*
