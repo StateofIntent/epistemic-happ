@@ -107,7 +107,7 @@ Doing it by hand needs all four steps: `cargo build --release --target wasm32-un
 |---|---|---|---|
 | `read-scope` | — | **2** | Which reads see the DHT and which see only the caller's own chain |
 | `domain-index` | — | **2** | The by-domain and taxonomy indexes work across agents and cannot be poisoned |
-| `attachment-links` | — | **2** | SPEC §5.19's nine link rules — every bound link's honest read still works, and twelve forgeries are refused by validation rather than by a coordinator guard. **35 checks, green on its first run** (38110651478, 22s) **and watched failing on its own rule** (38111598258: one rule reverted, 2 reds, 34 checks) |
+| `attachment-links` | — | **2** | SPEC §5.19's ten link rules — every bound link's honest path still works, and fourteen forgeries are refused by validation rather than by a coordinator guard. **41 checks.** Green on its first run at 35 checks (38110651478, 22s) **and watched failing on its own rule** (38111598258: one rule reverted, 2 reds, 34 checks); the six checks added since that injection have not themselves been injected |
 | `friction-limits` | — | 1 | SWO temporal friction is enforced by validation, not coordinator courtesy |
 | `agent-sdk` | — | 1 | The agent SDK's surface against a live conductor |
 | `hud-layer` | browser | 1 | Discourse health, conductance, antibody flags rendered from real state |

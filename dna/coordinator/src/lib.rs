@@ -1428,7 +1428,7 @@ pub fn attempt_false_membrane_registry(
     )
 }
 
-/// Which of the nine bound attachment/index links to attempt. Named
+/// Which of the ten bound attachment/index links to attempt. Named
 /// rather than numbered so a harness's intent is readable in its own
 /// payload — `kind: "ClaimToRetraction"` says what is being probed.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1442,6 +1442,7 @@ pub enum AttachmentLinkKind {
     AgentToConstitution,
     AgentToWorldlineTrace,
     AgentToMew,
+    SpeciesToParent,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1467,12 +1468,12 @@ pub struct FalseAttachmentLinkPayload {
     pub anchor_of: Option<AgentPubKey>,
 }
 
-/// Negative-path prober for SPEC §5.19's nine link rules, in exactly the
+/// Negative-path prober for SPEC §5.19's ten link rules, in exactly the
 /// terms `attempt_false_domain_index` and `attempt_false_membrane_registry`
 /// already set: it does what a hostile or buggy client would do, so that
 /// DHT validation can be WATCHED refusing it rather than assumed to.
 ///
-/// WHY ONE EXTERN FOR NINE RULES rather than nine. The three probers above
+/// WHY ONE EXTERN FOR TEN RULES rather than ten. The three probers above
 /// are one-per-index because each builds its own base from a different
 /// anchor function. These nine take base, target and tag from the caller
 /// unchanged, so nine externs would be nine copies of one `create_link`
@@ -1494,7 +1495,7 @@ pub struct FalseAttachmentLinkPayload {
 /// consistent succeeds and has achieved what the ordinary coordinator path
 /// would have achieved anyway.
 ///
-/// If any of the nine ever SUCCEEDS at a mismatched base, the read it feeds
+/// If any of the ten ever SUCCEEDS at a mismatched base, the read it feeds
 /// has become a list of whatever anyone chose to file there: a claim showing
 /// a retraction its author never wrote, a flag naming an agent who never
 /// flagged it, a by-author index answering for an agent who never spoke, or
@@ -1513,6 +1514,7 @@ pub fn attempt_false_attachment_link(
         AttachmentLinkKind::AgentToConstitution => LinkTypes::AgentToConstitution,
         AttachmentLinkKind::AgentToWorldlineTrace => LinkTypes::AgentToWorldlineTrace,
         AttachmentLinkKind::AgentToMew => LinkTypes::AgentToMew,
+        AttachmentLinkKind::SpeciesToParent => LinkTypes::SpeciesToParent,
     };
     let base: AnyLinkableHash = match payload.anchor_of {
         Some(ref agent) => agent_anchor_hash(agent)?.into(),

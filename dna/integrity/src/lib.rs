@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -2158,7 +2158,8 @@ fn validate_create_link(
         }
 
     // ========================================================================
-    // THE ATTACHMENT LINKS, and why nine branches arrived in one commit.
+    // THE ATTACHMENT LINKS, and why nine branches arrived in one commit
+    // (ten now — SpeciesToParent followed one fork later, at the bottom).
     //
     // The three index branches above bind a link to the declared author of
     // the entry it points at, and `DomainToClaim`'s own comment states the
@@ -2661,6 +2662,84 @@ fn validate_create_link(
         if &mew.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "An AgentToMew link may only be created by the Mew's own author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::SpeciesToParent {
+        // THE TENTH, and the last of this shape that anything writes.
+        // §5.17 named it as the next genuine candidate after the nine, on
+        // the same reasoning as the rest: the entry declares its own
+        // subject in a field (`parent_species`), validation checked the
+        // entry against itself, and nothing checked the link against the
+        // entry.
+        //
+        // NOTE THE DIRECTION, which the name actively misleads about. The
+        // base is the PARENT and the target is the newly created child,
+        // despite "SpeciesToParent" reading the other way — SPEC §4 flags
+        // this row as one of the names describing a relationship rather
+        // than a direction. Written against the verified direction in
+        // `create_critique_species`, not against the name.
+        //
+        // READ BY NOTHING TODAY, same as RetractionToReplacement: the UI
+        // resolves the parent hierarchy from `get_all_critique_species`'s
+        // full records rather than by walking these links. That is the
+        // argument for binding it now rather than later — a taxonomy whose
+        // parent edges anybody can write is one whose first reader
+        // inherits a structure nobody authored, and that reader has no way
+        // to tell.
+        let child_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "SpeciesToParent target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(child_hash)?;
+        let child = match target_record.entry().to_app_option::<CritiqueSpecies>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "SpeciesToParent target is not a CritiqueSpecies.".into()
+                ))
+            }
+        };
+        let declared_parent = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "SpeciesToParent base must be the parent CritiqueSpecies' EntryHash.".into()
+                ))
+            }
+        };
+        // `validate_critique_species` has already required `parent_species`
+        // to resolve to a real entry, so comparing the base against it
+        // compares the link to an established fact rather than to a second
+        // self-report — the same inheritance ClaimToRetraction gets from
+        // `validate_retraction`. That entry-level check is deliberately
+        // weak in the same way `Claim.evidence_hashes` is (some entry, not
+        // necessarily this type), and this branch does not widen it:
+        // whether the parent is itself a species is the entry rule's
+        // business, and this one's business is that the edge goes where the
+        // child says it goes.
+        match child.parent_species {
+            Some(ref parent) if *parent == declared_parent => {}
+            Some(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A SpeciesToParent link must hang from the CritiqueSpecies the child itself \
+                     declares in parent_species, not a different one.".into()
+                ))
+            }
+            None => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A SpeciesToParent link cannot record a parent the child does not declare: \
+                     its parent_species field is None.".into()
+                ))
+            }
+        }
+        if &child.proposer != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A SpeciesToParent link may only be created by the child species' own \
+                 proposer.".into()
             ));
         }
     }

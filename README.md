@@ -1074,9 +1074,19 @@ probed are the link types nobody validated, and coverage looked complete
 because every link type anybody had **tried** to forge was refused. **A prober
 proves the rule it probes and silently flatters the rules it does not.**
 
-**Nine link types are bound, not four.** The review found five defects; four
-more link types were named in the same pass as the same shape and bound in the
-same fork, on the reasoning that a fork already happening is the cheapest
+**Ten link types are bound, not four.** The review found five defects; four
+more were named in the same pass as the same shape and bound in the same fork,
+and a tenth — `SpeciesToParent` — followed one fork later at
+`protocol_version: 6`, taken off the "next pass" list §5.17 had put it on. It
+is the taxonomy's parent edge: written by `create_critique_species` from parent
+to child (the name reads backwards, which SPEC §4 flags), **read by nothing
+today**, and bound before it acquires a reader rather than after — a taxonomy
+whose parent edges anybody can write is one whose first reader inherits a
+structure nobody authored, with no way to tell. The second fork cost what the
+first did, which is nothing, because nobody holds data yet; §5.1 already makes
+that argument for paying the price while it is free.
+
+The original nine: on the reasoning that a fork already happening is the cheapest
 moment to take them — a second fork for four rules nobody had yet exploited
 would cost exactly what this one costs and buy less. The four are
 `CritiqueToSpecies` (what `get_critique_species_adoption_count` counts — a
@@ -1107,7 +1117,9 @@ eight honest reads to prove the rules did not simply refuse everything, and
 three reads afterwards to prove nothing was poisoned on the way through.
 
 **Run [`38110651478`](../../actions/runs/38110651478), 2026-10-11, `conductor`
-in 8m57s: all 35 checks passed in 22 seconds of harness time.** Every one of
+in 8m57s: all 35 checks passed in 22 seconds of harness time** — 35 as the file
+then stood; it is 41 now, after the tenth rule added two probes and two
+write-side controls. Every one of
 the twelve refusals carried its paired *"refused by DHT validation, not a
 coordinator guard"* assertion, which is the distinction the whole exercise
 turns on — SPEC §11.1 records that a modified coordinator stays on this
@@ -1162,6 +1174,24 @@ below the reverted comparison still refuses agent 2 filing agent 1's
 retraction. So the two halves of that rule are independently tested rather than
 jointly asserted — the near-miss this repository keeps recording, demonstrated
 rather than argued.
+
+**What that injection does NOT cover, said here because the file has changed
+since it ran.** It was run against the twelve-probe, 35-check version. The
+tenth rule brought two more probes and two more controls, so **the six checks
+added since have not themselves been injected**: the recorded red is evidence
+about `ClaimToRetraction`'s base rule and about this harness's machinery, not
+about every check later added to it.
+
+**The two new controls close a hole the first version had**, and it was found
+by adding the tenth rule and looking for its control rather than by anything
+failing. `RetractionToReplacement` and `SpeciesToParent` are read by nothing,
+so part 1's eight reads could not touch them — and an over-refusing rule on
+either would have left the whole run green, since every check in part 2 only
+looks for refusals. Their honest path is exercised from the write side instead:
+`create_retraction` and `create_critique_species` each write one of those links
+themselves, so an over-refusing rule makes the whole create fail. **The first
+version of this harness retracted only with `replacement_claim: null` and
+therefore never exercised that link at all.**
 
 **Why part 1 of that harness is not a formality.** Four of the nine rules
 compare a link's base against an agent anchor derived independently in both

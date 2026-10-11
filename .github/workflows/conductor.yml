@@ -387,7 +387,8 @@ jobs:
           node scripts/live-verify/read-scope.mjs
 
       # First executed by this workflow, and green on that first run: all 35
-      # checks, 22s of harness time, run 38110651478. It was written on a
+      # checks as it then stood, 22s of harness time, run 38110651478. It is
+      # 41 checks now, after protocol_version 6 added SpeciesToParent's rule. It was written on a
       # machine with no `holochain` binary, so CI was its first execution
       # anywhere — shipped that way deliberately, on the precedent of
       # `transitive-gossip`, which shipped here, failed its own first run and
