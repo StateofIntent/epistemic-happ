@@ -531,6 +531,12 @@ Run `38125081165` reverted **the thirteen remaining base comparisons** — every
 
 **The eighteenth red came from the poisoning section and taught something the rule's own commit did not say.** The `AgentToPreRegistration` probe files at the committing agent's *own* anchor, so with the binding gone it creates a **duplicate** link; `get_foresight_record` iterates links, so the commitment appears twice in `revealed`. That binding guards the denominator against **inflation** by a third party, not only against misfiling.
 
+**A SIXTH INJECTION TESTED THE OPPOSITE DIRECTION AND FALSIFIED A DOCUMENTED CLAIM.** Every injection above removed a check, testing *under*-refusal. Run `38129574846` made one rule — `TargetToCritique` — refuse **every** link, correct ones included. Three results:
+
+1. **The harness that caught it was a different one**, `domain-index.mjs`, simply because it is an earlier `conductor.yml` step that also calls `create_critique`. Which harness reports an over-refusing rule is an accident of step ordering rather than of design.
+2. **Detection was by crash, not by a named check** — `internal_error: Source chain error: InvalidCommit ...` with a stack trace into `node_modules`. CI went red, so detection is real, but a crash says the zome broke without saying which property broke.
+3. **`attachment-links.mjs`'s positive reads cannot catch this, and its own header said they could.** Link creation happens inside the same zome call as entry creation, so an over-refusing rule fails `create_critique` itself during setup and the read phase never runs. The claim was corrected and a `seed()` wrapper added, so a refused seeding call now reports as a named failure identifying the call and saying what it implies.
+
 **Evidence now, as arithmetic rather than a fraction.** Both halves of all eighteen rules, plus the update refusal, the tag rule, the anchor helper and the discrimination, have each been watched failing on their own probe: **38 of 38 probes proven sensitive**, and five of six poisoning checks red on a real poisoning. **58 of the 101 checks have never been shown to fail** — the 38 paired validation-source assertions (which need a refusal from a coordinator guard), the 18 positive reads (which need an *over*-refusing injection, still not done), one plumbing control, and one check proven *insensitive* rather than unproven. The rules are well evidenced; a little under half the individual assertions are.
 
 ### 5.20a Every normative claim in §2 and §5, checked against validation
