@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// scripts/live-verify/attachment-links.mjs — SPEC §5.19's ten link rules,
+// scripts/live-verify/attachment-links.mjs — SPEC §5.19's thirteen link rules,
 // watched refusing real attempts.
 //
 // WHAT THESE RULES ARE. Entry validation in this protocol binds every
@@ -16,20 +16,25 @@
 // TWO HALVES, and the first is not a formality. A rule that refused
 // EVERYTHING would pass every refusal check in part 2 while breaking the
 // protocol completely — and that is not a hypothetical here: four of the
-// ten rules compare a link's base against an agent anchor derived
+// thirteen rules compare a link's base against an agent anchor derived
 // independently in both crates (`agent_anchor_hash`, duplicated across
 // dna/integrity and dna/coordinator because they share no library). If
 // those two derivations ever disagree, every honest by-author link on the
 // network is refused and part 2 still goes green. Part 1 is what makes
 // part 2 mean anything.
 //
-//   1. THE HONEST PATHS STILL WORK. Eleven checks. Eight are one read per
+//   1. THE HONEST PATHS STILL WORK. Thirteen checks. Eight are one read per
 //      bound link type that HAS a reader (AgentToClaim, ClaimToRetraction,
 //      TargetToCritique, TargetToAntibody, CritiqueToSpecies,
 //      AgentToConstitution, AgentToMew, AgentToWorldlineTrace), each going
 //      through the link the rule now constrains. A ninth asserts the
 //      EXCLUSION half of the by-author index — that agent 2's claim is not
-//      among agent 1's — which a bare count had been doing by accident.
+//      among agent 1's — which a bare count had been doing by accident. Two
+//      more cover the foresight trio: one call to get_foresight_record
+//      reads AgentToPreRegistration and PreRegistrationToRevelation
+//      together (one commitment revealed with the text actually committed
+//      to, one still outstanding), and get_pre_registrations_for_question
+//      reads QuestionToPreRegistration.
 //
 //      ONE OF THOSE READS ASSERTS MEMBERSHIP RATHER THAN A COUNT, because
 //      the count version went red on its own harness: seeding a third claim
@@ -46,7 +51,7 @@
 //      and a fully green run — which is exactly the hole an earlier
 //      version of this file had, retracting only with
 //      `replacement_claim: null` and never exercising the link at all.
-//   2. THEY CANNOT BE FORGED. Fourteen attempts through
+//   2. THEY CANNOT BE FORGED. Seventeen attempts through
 //      attempt_false_attachment_link — the negative-path prober, same
 //      pattern as attempt_false_domain_index — each observed being refused
 //      by DHT VALIDATION rather than by a coordinator guard. A coordinator
@@ -64,9 +69,10 @@
 //
 // Prereqs: scripts/sandbox.sh clean && scripts/sandbox.sh start, with a
 // freshly packed .happ (scripts/pack-webhapp.sh). THE DNA HASH CHANGED at
-// protocol_version 5 and AGAIN at 6 — rules and a link type at 5,
-// SpeciesToParent's rule at 6 — so a resumed sandbox holding data from
-// either is a different network and will not do.
+// protocol_version 5, AGAIN at 6 and AGAIN at 7 — rules and a link type at
+// 5, SpeciesToParent's rule at 6, the three pre-registration rules at 7 —
+// so a resumed sandbox holding data from any of them is a different network
+// and will not do.
 // ============================================================================
 // ---------------------------------------------------------------------------
 // NEGATIVE EVIDENCE — COLLECTED. This harness has been watched failing, on
@@ -115,11 +121,12 @@
 // WHAT THAT EVIDENCE DOES NOT COVER, because this file has changed since.
 // The injection above was run against the TWELVE-probe, 35-check version.
 // Protocol version 6 added SpeciesToParent's rule, and this file grew two
-// probes and two write-side controls with it — fourteen probes, 42 checks
-// on a green run. The two new probes and the two new controls have NOT
-// been injected. The recorded red is evidence about ClaimToRetraction's
-// base rule and about this harness's machinery; it is not evidence that
-// every later-added check can fail.
+// probes and two write-side controls with it, and protocol version 7 added
+// three more rules, three more probes and three more checks — seventeen
+// probes, 51 checks on a green run. None of the checks added after the
+// injection has itself been injected. The recorded red is evidence about
+// ClaimToRetraction's base rule and about this harness's machinery; it is
+// not evidence that every check later added to it can fail.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
@@ -351,6 +358,28 @@ async function main() {
     evidence_hashes: [], species: speciesOne,
   });
 
+  // THE FORESIGHT TRIO. A question that predates the commitments (validation
+  // checks requirement 3 against the question's own action timestamp, not a
+  // self-reported field), two commitments against it, and ONE honest reveal.
+  // The second commitment stays unrevealed — pending now, expired later —
+  // and it is the thing the forgery below tries to launder into "revealed".
+  const questionAction = (await agent1.call('create_claim',
+    claimOf(agent1.me, DOMAIN, 'Will loaded carries beat rest at twelve weeks?')));
+  await new Promise((r) => setTimeout(r, 3000));
+  const FAR = (Date.now() + 3600_000) * 1000;
+  const PREDICTION = 'Loaded carries, by a margin outside the error bars.';
+  const pr1 = await agent1.call('pre_register', {
+    question: questionAction, prediction: PREDICTION,
+    salt: 'salt-one-attachlinks', reveal_deadline: FAR,
+  });
+  const revelation1 = await agent1.call('reveal_pre_registration', {
+    pre_registration: pr1, prediction: PREDICTION, salt: 'salt-one-attachlinks',
+  });
+  const pr2 = await agent1.call('pre_register', {
+    question: questionAction, prediction: 'Rest, and it will not be close.',
+    salt: 'salt-two-attachlinks', reveal_deadline: FAR,
+  });
+
   log('Waiting for gossip ...\n');
   await new Promise((r) => setTimeout(r, 8000));
 
@@ -404,6 +433,23 @@ async function main() {
   const traceSeen = await agent2.call('get_agent_worldline_trace', agent1.me);
   check('AgentToWorldlineTrace: agent 1\'s trace is readable by agent 2',
     traceSeen !== null && traceSeen !== undefined);
+
+  // The foresight trio's two readable links in one call: AgentToPreRegistration
+  // is the index get_foresight_record enumerates, and
+  // PreRegistrationToRevelation is what decides which of those count as
+  // revealed. This is the DENOMINATOR the primitive's honesty rests on — one
+  // revealed, one still outstanding, and the revealed one carrying the text
+  // actually committed to.
+  const foresight = await agent2.call('get_foresight_record', agent1.me);
+  check('AgentToPreRegistration + PreRegistrationToRevelation: the foresight record '
+    + 'reads one revealed and one outstanding, with the committed text',
+    foresight?.revealed?.length === 1
+    && foresight.revealed[0].revealed_prediction === PREDICTION
+    && (foresight.pending?.length ?? 0) + (foresight.expired?.length ?? 0) === 1);
+
+  const byQuestion = await agent2.call('get_pre_registrations_for_question', questionAction);
+  check('QuestionToPreRegistration: both commitments are indexed under their question',
+    Array.isArray(byQuestion) && byQuestion.length === 2);
 
   // The two links NOTHING READS, where the honest path can only be checked
   // from the write side: create_critique_species and create_retraction each
@@ -534,6 +580,42 @@ async function main() {
     }),
   );
 
+  // THE LAUNDERING PROBE, and the one with the most behind it. Both entries
+  // here are valid and both signatures are real: agent 1's reveal of
+  // commitment 1 is honest, and commitment 2 is its own. Hanging the first
+  // reveal off the second commitment makes an outstanding commitment read as
+  // revealed, carrying the other prediction's text — "a track record that is
+  // a fabrication wearing a cryptographic proof", in the integrity zome's own
+  // words, reached without forging anything.
+  await expectRefusal(
+    'one commitment\'s reveal cannot be recorded against another',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'PreRegistrationToRevelation', base: pr2, target: revelation1,
+      tag: null, anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a commitment cannot be filed into another agent\'s foresight record',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'AgentToPreRegistration', base: claimAHash, target: pr1,
+      tag: null, anchor_of: agent2.me, question_anchor_of: null,
+    }),
+  );
+
+  // Requirement 3 at the link layer: the entry rule checks the question
+  // predates the commitment, and this stops the commitment being re-filed
+  // under a different question afterwards. claim B's action is a real
+  // ActionHash and a wrong question, which is sharper than a random hash.
+  await expectRefusal(
+    'a commitment cannot be indexed under a question it does not name',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'QuestionToPreRegistration', base: claimAHash, target: pr1,
+      tag: null, anchor_of: null,
+      question_anchor_of: claimB.signed_action.hashed.hash,
+    }),
+  );
+
   await expectRefusal(
     'a constitution cannot be filed under another agent\'s anchor',
     () => agent1.call('attempt_false_attachment_link', {
@@ -574,6 +656,14 @@ async function main() {
 
   const adoptionAfter = await agent1.call('get_critique_species_adoption_count', speciesTwo);
   check('the second species still has an adoption count of zero', adoptionAfter === 0);
+
+  // The one that would have mattered most if any of it had gone through: the
+  // outstanding commitment must still be outstanding. A forged reveal link
+  // that validation accepted would show up here as a second revealed entry.
+  const foresightAfter = await agent2.call('get_foresight_record', agent1.me);
+  check('the outstanding commitment is still outstanding, not revealed',
+    foresightAfter?.revealed?.length === 1
+    && (foresightAfter.pending?.length ?? 0) + (foresightAfter.expired?.length ?? 0) === 1);
 
   log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);

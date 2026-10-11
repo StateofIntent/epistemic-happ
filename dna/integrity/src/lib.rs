@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -1807,6 +1807,16 @@ fn agent_anchor_hash(agent: &AgentPubKey) -> ExternResult<EntryHash> {
     Path::from(format!("agent_{}", agent)).path_entry_hash()
 }
 
+/// The anchor every `QuestionToPreRegistration` link hangs from — one per
+/// question, derived from that question's own `ActionHash`.
+///
+/// Same byte-for-byte duplication contract as the four anchors above: the
+/// coordinator carries an identical copy and a divergence refuses every
+/// commitment link on the network.
+fn question_anchor_hash(question: &ActionHash) -> ExternResult<EntryHash> {
+    Path::from(format!("question_{}", question)).path_entry_hash()
+}
+
 fn validate_create_link(
     link_type: LinkTypes,
     action: TypedAction<CreateLinkData>,
@@ -2740,6 +2750,173 @@ fn validate_create_link(
             return Ok(ValidateCallbackResult::Invalid(
                 "A SpeciesToParent link may only be created by the child species' own \
                  proposer.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::PreRegistrationToRevelation {
+        // THE DENOMINATOR, and this is the one of the thirteen that empties
+        // a feature rather than misattributing a record.
+        //
+        // WHAT THE FEATURE IS FOR. This zome's own pre-registration note
+        // states the attack the design exists to refuse: "Commit ten
+        // predictions, reveal the two that came true, stay silent on the
+        // eight that did not: every reveal verifies, and the track record
+        // is a fabrication wearing a cryptographic proof." The answer was
+        // to make the denominator structural — an unrevealed commitment
+        // expires VISIBLY, because its deadline and its question are
+        // public from the moment it is made.
+        //
+        // AND THE DENOMINATOR WAS FORGEABLE THROUGH THIS LINK.
+        // `validate_revelation` is airtight about the Revelation ENTRY: the
+        // author must be the committer, the content must hash to the sealed
+        // commitment, and a late reveal is refused. All of it is about one
+        // Revelation and the PreRegistration IT names. What decides whether
+        // a commitment counts as revealed is this LINK, and
+        // `get_foresight_record` treats any Revelation reachable from a
+        // PreRegistration as that commitment's reveal.
+        //
+        // So: commit twice, reveal the first honestly, let the second
+        // lapse, then hang the first reveal off the second commitment. Both
+        // entries are valid, the signature is real, the commitment hash
+        // checks out — and an expired commitment is reported as revealed,
+        // carrying the other prediction's text. No victim required: the
+        // laundering is of the author's own record, which is exactly the
+        // fabrication the primitive was withheld for years to avoid. The
+        // reveal path was closed and the accounting path was open.
+        let revelation_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "PreRegistrationToRevelation target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(revelation_hash)?;
+        let revelation = match target_record.entry().to_app_option::<Revelation>() {
+            Ok(Some(r)) => r,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "PreRegistrationToRevelation target is not a Revelation.".into()
+                ))
+            }
+        };
+        let declared_pr = match ActionHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "PreRegistrationToRevelation base must be the PreRegistration's \
+                     ActionHash.".into()
+                ))
+            }
+        };
+        if revelation.pre_registration != declared_pr {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A PreRegistrationToRevelation link must hang from the PreRegistration the \
+                 Revelation itself names. A reveal of one commitment may not be recorded \
+                 against another — that is how an expired commitment is made to look \
+                 revealed.".into()
+            ));
+        }
+        // Author binding comes free of the entry rule here and is still
+        // stated: `validate_revelation` requires the revealer to be the
+        // committer, so this comparison is against a fact already
+        // established rather than a second self-report.
+        if &revelation.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A PreRegistrationToRevelation link may only be created by the revealing \
+                 agent.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::AgentToPreRegistration {
+        // The other half of the same denominator: the per-agent index
+        // `get_foresight_record` enumerates. This zome's note calls it what
+        // "makes the DENOMINATOR countable: expired ones are reachable
+        // without the author having to surface them" — a property that
+        // needs the index to hold exactly that agent's commitments and no
+        // others. Unbound, a third party could file commitments into
+        // somebody else's foresight record, and every reader of it would
+        // count predictions that agent never made.
+        let pr_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToPreRegistration target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(pr_hash)?;
+        let pr = match target_record.entry().to_app_option::<PreRegistration>() {
+            Ok(Some(p)) => p,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "AgentToPreRegistration target is not a PreRegistration.".into()
+                ))
+            }
+        };
+        if let ValidateCallbackResult::Invalid(reason) =
+            agent_index_anchor_matches(&pr.author, base_address, "AgentToPreRegistration")?
+        {
+            return Ok(ValidateCallbackResult::Invalid(reason));
+        }
+        if &pr.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "An AgentToPreRegistration link may only be created by the committing \
+                 agent.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::QuestionToPreRegistration {
+        // The by-question index. Its read is `get_pre_registrations_for_-
+        // question`, which §9 keeps deliberately unsurfaced because a
+        // per-question list of revealed predictions is a list of people who
+        // called it right. That is an argument about what to put on a
+        // screen; it is not an argument for leaving the index writable by
+        // anyone, since the list still exists and the gateway and SDK can
+        // read it.
+        //
+        // The anchor is derived from the question's own ActionHash, so
+        // requirement 3 — the question must predate the commitment, checked
+        // by `validate_pre_registration` against the question's real action
+        // timestamp — is what gives this index its meaning. An unbound
+        // index lets a commitment be filed under a question it does not
+        // name, which re-points a prediction at a question chosen
+        // afterwards: requirement 3 defeated at the link layer rather than
+        // at the entry layer where it is enforced.
+        let pr_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "QuestionToPreRegistration target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(pr_hash)?;
+        let pr = match target_record.entry().to_app_option::<PreRegistration>() {
+            Ok(Some(p)) => p,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "QuestionToPreRegistration target is not a PreRegistration.".into()
+                ))
+            }
+        };
+        let expected_anchor = question_anchor_hash(&pr.question)?;
+        let declared_anchor = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "QuestionToPreRegistration base must be an EntryHash anchor.".into()
+                ))
+            }
+        };
+        if declared_anchor != expected_anchor {
+            return Ok(ValidateCallbackResult::Invalid(
+                "QuestionToPreRegistration base anchor does not match the question the \
+                 PreRegistration itself names. A commitment may only be indexed under the \
+                 question it was made about.".into()
+            ));
+        }
+        if &pr.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A QuestionToPreRegistration link may only be created by the committing \
+                 agent.".into()
             ));
         }
     }

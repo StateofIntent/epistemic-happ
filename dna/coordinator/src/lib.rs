@@ -1428,7 +1428,7 @@ pub fn attempt_false_membrane_registry(
     )
 }
 
-/// Which of the ten bound attachment/index links to attempt. Named
+/// Which of the thirteen bound attachment/index links to attempt. Named
 /// rather than numbered so a harness's intent is readable in its own
 /// payload — `kind: "ClaimToRetraction"` says what is being probed.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -1443,6 +1443,9 @@ pub enum AttachmentLinkKind {
     AgentToWorldlineTrace,
     AgentToMew,
     SpeciesToParent,
+    PreRegistrationToRevelation,
+    AgentToPreRegistration,
+    QuestionToPreRegistration,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1454,6 +1457,19 @@ pub struct FalseAttachmentLinkPayload {
     /// claim's domain); for everything else this is cosmetic and `None`
     /// writes an empty tag.
     pub tag: Option<Vec<u8>>,
+    /// When set, `base` is ignored and the base becomes this question's own
+    /// index anchor. Same reason as `anchor_of` below, for
+    /// `QuestionToPreRegistration`: the question anchor is
+    /// `path_entry_hash()` over `Path::from("question_{action_hash}")`, which
+    /// a harness cannot compute client-side either.
+    ///
+    /// `#[serde(default)]` so the fourteen payloads written before this field
+    /// existed still deserialize — rmp-serde requires an absent field to have
+    /// a default even when its type is `Option`, so adding a field to a
+    /// prober payload otherwise breaks every existing call site at the wire
+    /// rather than at compile time.
+    #[serde(default)]
+    pub question_anchor_of: Option<ActionHash>,
     /// When set, `base` is ignored and the base becomes this agent's own
     /// index anchor.
     ///
@@ -1468,12 +1484,12 @@ pub struct FalseAttachmentLinkPayload {
     pub anchor_of: Option<AgentPubKey>,
 }
 
-/// Negative-path prober for SPEC §5.19's ten link rules, in exactly the
+/// Negative-path prober for SPEC §5.19's thirteen link rules, in exactly the
 /// terms `attempt_false_domain_index` and `attempt_false_membrane_registry`
 /// already set: it does what a hostile or buggy client would do, so that
 /// DHT validation can be WATCHED refusing it rather than assumed to.
 ///
-/// WHY ONE EXTERN FOR TEN RULES rather than ten. The three probers above
+/// WHY ONE EXTERN FOR THIRTEEN RULES rather than thirteen. The three probers above
 /// are one-per-index because each builds its own base from a different
 /// anchor function. These nine take base, target and tag from the caller
 /// unchanged, so nine externs would be nine copies of one `create_link`
@@ -1495,7 +1511,7 @@ pub struct FalseAttachmentLinkPayload {
 /// consistent succeeds and has achieved what the ordinary coordinator path
 /// would have achieved anyway.
 ///
-/// If any of the ten ever SUCCEEDS at a mismatched base, the read it feeds
+/// If any of the thirteen ever SUCCEEDS at a mismatched base, the read it feeds
 /// has become a list of whatever anyone chose to file there: a claim showing
 /// a retraction its author never wrote, a flag naming an agent who never
 /// flagged it, a by-author index answering for an agent who never spoke, or
@@ -1515,10 +1531,16 @@ pub fn attempt_false_attachment_link(
         AttachmentLinkKind::AgentToWorldlineTrace => LinkTypes::AgentToWorldlineTrace,
         AttachmentLinkKind::AgentToMew => LinkTypes::AgentToMew,
         AttachmentLinkKind::SpeciesToParent => LinkTypes::SpeciesToParent,
+        AttachmentLinkKind::PreRegistrationToRevelation => {
+            LinkTypes::PreRegistrationToRevelation
+        }
+        AttachmentLinkKind::AgentToPreRegistration => LinkTypes::AgentToPreRegistration,
+        AttachmentLinkKind::QuestionToPreRegistration => LinkTypes::QuestionToPreRegistration,
     };
-    let base: AnyLinkableHash = match payload.anchor_of {
-        Some(ref agent) => agent_anchor_hash(agent)?.into(),
-        None => payload.base,
+    let base: AnyLinkableHash = match (&payload.anchor_of, &payload.question_anchor_of) {
+        (Some(agent), _) => agent_anchor_hash(agent)?.into(),
+        (None, Some(question)) => question_anchor_hash(question)?.into(),
+        (None, None) => payload.base,
     };
     create_link(
         base,
@@ -5255,6 +5277,20 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
             if let Ok(rh) = ActionHash::try_from(r.target) {
                 if let Some(rec) = get(rh, GetOptions::default())? {
                     if let Ok(Some(rv)) = rec.entry().to_app_option::<Revelation>() {
+                        // THE REVELATION MUST NAME THIS COMMITMENT, and this
+                        // comparison was missing. It is a courtesy rather
+                        // than the enforcement — SPEC §5.19 binds the link
+                        // itself now, which is the layer a custom client
+                        // cannot skip — but a reader that counts any
+                        // reachable Revelation as this commitment's reveal
+                        // is wrong on its own terms, and was the half of
+                        // the defect that turned a forged link into a
+                        // laundered record. Without the link rule above it,
+                        // this check is also the only thing standing
+                        // between an expired commitment and a revealed one.
+                        if rv.pre_registration != pr_hash {
+                            continue;
+                        }
                         revealed_prediction = Some(rv.prediction);
                         break;
                     }
