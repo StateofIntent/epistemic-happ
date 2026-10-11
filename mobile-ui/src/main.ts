@@ -365,8 +365,12 @@ const emptyClaimDraft = (): NewClaimDraft => ({
 });
 let newClaimDraft: NewClaimDraft = emptyClaimDraft();
 
-/** The "Claim published." confirmation, which also lived only in the DOM and
- * was therefore destroyed by the very re-render that publishing triggers. */
+/** The post-publish confirmation, which also lived only in the DOM and was
+ * therefore destroyed by the very re-render that publishing triggers.
+ *
+ * Its wording says what happened LOCALLY and what has not happened yet — see
+ * the comment at the `create_claim` call for why "Claim published." was true,
+ * incomplete, and the most expensive kind of silence this app can produce. */
 let newClaimNotice: string | null = null;
 
 /** What a successful publish resets, and what it deliberately keeps.
@@ -4115,7 +4119,29 @@ function renderNewClaimTab(): HTMLElement {
     };
     try {
       await connection.callZome('create_claim', claim);
-      newClaimNotice = 'Claim published.';
+      // SAYS WHAT HAPPENED LOCALLY, AND WHAT HAS NOT HAPPENED YET.
+      //
+      // "Claim published." was true and incomplete, and the gap between those
+      // two is the most expensive kind of silence this app can produce.
+      // create_claim returning means the entry is on this agent's own source
+      // chain — nothing more. Whether a peer can see it depends on gossip, and
+      // README §9 records crossings measured at 415s, 424.9s, 929.1s and
+      // 943.0s against non-crossings inside 330s, with the investigation
+      // deliberately frozen because every remaining question sits in kitsune2
+      // rather than here.
+      //
+      // So a user who publishes, asks a peer, and hears nothing concludes the
+      // app is broken. It is not: it is slow in a way nobody can predict yet.
+      // Saying so at the moment of publishing costs one sentence and converts
+      // the single most likely false bug report into a known characteristic.
+      //
+      // THIS IS NOT A JUDGEMENT ABOUT THE CLAIM, which matters because §4.4
+      // forbids this UI inferring a credibility ordering and presenting it as
+      // neutral. Delivery state is not credibility: the sentence is about
+      // where the bytes are, is identical for every claim, and would read the
+      // same if the content were the opposite.
+      newClaimNotice = 'Published to your own chain. Peers may take '
+        + 'minutes to see it — that is expected on this network, not a fault.';
       successBox.hidden = false;
       successBox.textContent = newClaimNotice;
       clearAfterPublish();
