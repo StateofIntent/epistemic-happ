@@ -1074,7 +1074,10 @@ probed are the link types nobody validated, and coverage looked complete
 because every link type anybody had **tried** to forge was refused. **A prober
 proves the rule it probes and silently flatters the rules it does not.**
 
-**Thirteen link types are bound, not four.** The review found five defects;
+**Eighteen link types are bound, not four — which is every link type
+anything writes.** The four that remain unconditional are types nothing
+creates, and a link type nothing creates cannot be forged. The review found
+five defects;
 four more were named in the same pass as the same shape and bound in the same
 fork; a tenth — `SpeciesToParent` — followed at `protocol_version: 6`; and
 **the three pre-registration links at `7`, where the sharpest finding of the
@@ -1127,11 +1130,47 @@ replaced, with extra steps) and the three remaining per-agent indexes,
 `AgentToConstitution`, `AgentToWorldlineTrace` and `AgentToMew`. The first of
 those is the one a client renders beside another agent's name, so an unbound
 index let a third party display a promise its supposed promiser never made.
-SPEC §5.19 carries all thirteen rules; §5.17 now lists what is genuinely left
-and divides it honestly rather than as one pile — **the five bridge and
-promotion links**, waiting on an argument about what a `BridgeRecord`'s base
-may be, which is a question about the Twitter surface rather than about link
-validation, plus the four types nothing writes.
+**And the last five — the bridge and promotion links — came with two findings
+of their own.**
+
+**The argument this had been waiting on was not true.** §5.17 recorded that the
+bridge five needed "an argument about what a `BridgeRecord`'s base may be,
+which is a question about the Twitter surface rather than about link
+validation". It is not: `record_twitter_mirror` already bases the link on
+`BridgeRecord.mew_hash`, so the base rule was sitting in the entry the whole
+time. **A deferral with a plausible reason attached is the hardest kind to
+re-examine**, and this one survived two passes over that section before anybody
+checked whether the reason was true.
+
+**What was actually missing was a field, not an argument.** `BridgeRecord` and
+`ExternalCritique` carried no `AgentPubKey` at all — for seven protocol
+versions — so §5.2's author binding was inexpressible for them and nothing
+could be said about who may file their links. Binding the base and leaving the
+filer unconstrained would have been a rule that prevents misattribution while
+letting anyone write the index entry, and calling that "bound" would have
+overclaimed. **So the entry types gained the fields** at `protocol_version: 8`:
+`BridgeRecord.author`, and `ExternalCritique.importer` — deliberately *not*
+`author`, because that entry has two different people in it and `author_handle`
+is the other one, a Twitter string this DHT cannot verify. Both are filled from
+`agent_info()` by their coordinator function rather than accepted from the
+caller, which left the bridge service's existing wire payload working
+unchanged. `check-spec-drift.mjs`'s author-binding gate was extended to
+recognise `importer`, so the clearer name cost nothing — it now reads **15 of
+15 entry types**.
+
+**And the two bridge links needed a type discrimination nothing else did.**
+Both base on `BridgeRecord.mew_hash` — a field whose name is narrower than its
+contents, holding either a Mew's or a Claim's hash — so the base rule is
+identical and only the *kind* of subject differs. Validation re-derives that
+from the DHT rather than trusting the link type, the same shape as §5.4's
+`Critique.target_type` cross-check. Without it, a mirror of a Mew filed as a
+claim's would make `get_unbridged_claims` report a claim as bridged on the
+strength of a record about something else. The harness probes exactly that:
+right base, wrong kind.
+
+SPEC §5.19 carries all eighteen rules; §5.17 is down to the four types nothing
+writes, and now states as a rule rather than an aspiration that each acquires
+its rule with its first writer.
 
 **What is fixed and what is merely written.** The thirteen branches are in the
 integrity zome, both zomes release-build for `wasm32-unknown-unknown` with
@@ -1152,9 +1191,8 @@ three reads afterwards to prove nothing was poisoned on the way through.
 
 **Run [`38110651478`](../../actions/runs/38110651478), 2026-10-11, `conductor`
 in 8m57s: all 35 checks passed in 22 seconds of harness time** — 35 as the file
-then stood; it is 51 now — the tenth rule added two probes, two write-side
-controls and one exclusion check, and the pre-registration three added three
-probes and three more checks, including the foresight denominator read. Every one of
+then stood; it is 69 now, across four forks' worth of rules — the foresight
+denominator read and the Claim/Mew discrimination among them. Every one of
 the twelve refusals carried its paired *"refused by DHT validation, not a
 coordinator guard"* assertion, which is the distinction the whole exercise
 turns on — SPEC §11.1 records that a modified coordinator stays on this
@@ -1238,15 +1276,17 @@ forgery checks still pass.** A rule that refuses everything satisfies every
 test that only looks for refusals, which is why eight positive reads sit in
 front of them.
 
-**Three forks, and the price is the same each time, which is why they were
-paid now.** `protocol_version` went 4 → 5 → 6 → 7 in a day. Each bump changes
+**Four forks, and the price is the same each time, which is why they were
+paid now.** `protocol_version` went 4 → 5 → 6 → 7 → 8 in a day, the last one
+carrying two entry-type changes as well as five rules. Each bump changes
 the DNA hash and orphans every entry written under the old one — a cost borne
 entirely by whoever holds data at the moment of the fork, and **before the
 first user there is nobody to bear it.** §5.1 made that argument for the
 version-4 fork and it holds three times over: the alternative was carrying nine
 forgeable link types into a release and charging real users for the fix later.
-A fourth fork for the five bridge links would cost the same nothing, and is
-waiting on an argument rather than on a budget.
+The fourth fork took the bridge five and the two entry fields together, since
+adding a field to an entry type forks exactly as violently as removing one
+(§11.1) and there was no reason to pay twice.
 
 **Also worth stating once: Holochain `0.7.0` is pre-1.0**, and the API churn
 absorbed over the last month is the evidence for that rather than an argument

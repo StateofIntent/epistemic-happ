@@ -162,7 +162,8 @@ A durable, one-sided correlative witness between a Holochain entry and a Twitter
 
 | Field | Type | Notes |
 |---|---|---|
-| `mew_hash` | `EntryHash` | MUST resolve to a real entry (the mirrored `Mew` or `Claim` — the field name is historical) |
+| `author` | `AgentPubKey` | **Added at `protocol_version: 8`.** MUST equal the authoring action's author (§5.2). Filled by `record_twitter_mirror` from `agent_info()` rather than accepted from the caller, so the field states who called. Until version 8 this entry carried no agent at all, which made §5.2 inexpressible for it and, with it, any rule about who may file it into an index — an instrument nobody signs is one nobody is accountable for |
+| `mew_hash` | `EntryHash` | MUST resolve to a real entry — the mirrored `Mew` **or `Claim`**; the field name is narrower than its contents and §5.19's two bridge rules re-derive which it is from the DHT rather than from the name or the link type |
 | `twitter_id` | `String` | |
 | `platform` | `String` | |
 | `mirrored_at` | `u64` | |
@@ -178,11 +179,14 @@ A Twitter reply imported into the critique graph as a typed entry.
 
 | Field | Type | Notes |
 |---|---|---|
+| `importer` | `AgentPubKey` | **Added at `protocol_version: 8`.** The Holochain agent who imported this; MUST equal the authoring action's author (§5.2), and filled from `agent_info()` by `import_twitter_reply`. **Deliberately not called `author`**: this entry has two different people in it, and `author_handle` below is the other one |
 | `twitter_id` | `String` | |
-| `author_handle` | `String` | |
+| `author_handle` | `String` | The **Twitter** handle — an unverifiable string from another platform, and the reason `importer` carries the name it does. Binding a rule to this field would be binding to nothing |
 | `content` | `String` | MUST be non-empty |
 | `linked_holochain_claim` | `EntryHash` | MUST resolve to a real entry |
 | `imported_at` | `u64` | |
+
+**Two people in one entry, stated once because conflating them would be worse than omitting the second.** `author_handle` is who wrote the reply on Twitter; `importer` is who chose to bring it into this DHT. Only the second is something this network can hold anyone to, and it is the one §5.19's `ClaimToExternalCritique` rule binds. `check-spec-drift.mjs`'s author-binding gate was extended to recognise `importer` so that choosing the clearer name did not cost the check.
 
 ### 2.13 `SynapticLink` (a link, not an entry)
 Not an entry type — a `TargetToCritique`-paired link (§4) from a `Critique`'s target to the critique's own `ActionHash`, carrying a 4-byte little-endian `f32` initial conductance in its `LinkTag`. Immutable once written (Holochain `LinkTag`s cannot be mutated) — see §5.11 and §5.12 for how its *effective* conductance is instead computed fresh at read time from decay and `Reinforcement` links.
@@ -416,15 +420,17 @@ In addition to §5.5's target cross-check and the non-empty `rationale` requirem
 ### 5.17 All other link types
 Every link type not named in §5.11–§5.14 or §5.19 has no dedicated `validate_create_link` branch and is accepted unconditionally at the link-creation layer — whatever constraints apply come from the entry-level validation of what the link connects.
 
-**This section used to name `TargetToCritique` and `TargetToAntibody` among them, and the pairing it offered as reassurance was the defect.** It said their "real constraint is `Critique`'s own validation (§5.4/§5.15)" — true of the entry and silent about the attachment, which is the half a reader sees. §5.19 records what that cost and closes it for thirteen link types. What remains unconditional after §5.19 is: `MewToClaim`, `MembraneToFederationRecord`, `ClaimToBridgeRecord`, `ClaimToExternalCritique`, `MewToBridgeRecord`, and the four declared-but-unused types (`CritiqueToEvidence`, `ClaimToEvidence`, `MembraneToClaim`, `SpeciesToCritique` — a link type nothing writes cannot be forged, and each acquires a rule with its first writer).
+**This section used to name `TargetToCritique` and `TargetToAntibody` among them, and the pairing it offered as reassurance was the defect.** It said their "real constraint is `Critique`'s own validation (§5.4/§5.15)" — true of the entry and silent about the attachment, which is the half a reader sees. §5.19 records what that cost and closes it for thirteen link types. **What remains unconditional after §5.19 is four link types, and nothing writes any of them**: `CritiqueToEvidence`, `ClaimToEvidence`, `MembraneToClaim`, `SpeciesToCritique`. A link type nothing creates cannot be forged, and each acquires a rule with its first writer — which is now a rule of this specification rather than an aspiration, since every link type that *is* written is bound.
 
-**An earlier revision of this list named `CritiqueToSpecies` and the three per-agent-anchor links as the obvious next pass, and that pass happened in the same fork** — nine link types are bound in §5.19, not five. What is left here divides into three honest categories rather than one: the four unused types above; the five bridge and promotion links, whose base and target are both bridge-owned records (`bridge/` is a trusted service holding its own keys, which is an argument for a rule rather than against one, and it has not been made yet); and the three pre-registration links. **Both of those named candidates have since been taken** — `SpeciesToParent` at `protocol_version: 6` and the pre-registration three at `7`, which is what this list is for: named candidates that get acted on rather than a pile that gets re-described. **What is left is the five bridge and promotion links** (`MewToClaim`, `ClaimToBridgeRecord`, `ClaimToExternalCritique`, `MewToBridgeRecord`, `MembraneToFederationRecord`) and the four unused types. The bridge five still want the argument nobody has made: `bridge/` is a trusted service holding its own keys, which is a reason for a rule rather than against one, but the rule would have to say what a `BridgeRecord`'s base may be, and that is a question about the Twitter surface rather than about link validation.
+**An earlier revision of this list named `CritiqueToSpecies` and the three per-agent-anchor links as the obvious next pass, and that pass happened in the same fork** — nine link types are bound in §5.19, not five. What is left here divides into three honest categories rather than one: the four unused types above; the five bridge and promotion links, whose base and target are both bridge-owned records (`bridge/` is a trusted service holding its own keys, which is an argument for a rule rather than against one, and it has not been made yet); and the three pre-registration links. **Every candidate this list has ever named has since been taken** — `SpeciesToParent` at `protocol_version: 6`, the pre-registration three at `7`, the bridge and promotion five at `8` — which is what the list was for.
+
+**And the argument this section said the bridge five were waiting on turned out to be answerable, after it had been recorded here as a reason to wait.** The claim was that a rule "would have to say what a `BridgeRecord`'s base may be, and that is a question about the Twitter surface rather than about link validation". It is not: `record_twitter_mirror` already bases the link on `BridgeRecord.mew_hash`, so the base rule was sitting in the entry the whole time, and the only genuinely missing piece was an author — which was a missing FIELD, not a missing argument. Recorded at this length because a deferral with a plausible reason attached is the hardest kind to re-examine, and this one survived two passes over this section before anybody checked whether the reason was true.
 
 ### 5.18 `FederationRecord` creation
 In addition to the non-empty `remote_network_label`/`remote_membrane_ref` requirements (§2.14): `local_membrane` MUST resolve to a real `Membrane` entry, and the creating agent MUST equal that `Membrane`'s own `creator` field — only a membrane's own founder may declare federation on its behalf, the same governance principle that already gates who can found the membrane at all (§5's `Membrane` author-binding rule, §5.2). No SWO temporal friction — see §10.14 for why.
 
 ### 5.19 Attachment and index links — base/target binding
-As of `protocol_version: 5`, a tenth at `6` and three more at `7` — **thirteen** link types MUST bind the link to the entry it points at. Each rule has the same two parts: the link's base MUST be the node the target entry itself names as its subject, and the link's author MUST equal that entry's own author (§5.2).
+As of `protocol_version: 5`, a tenth at `6`, three more at `7` and five more at `8` — **eighteen** link types MUST bind the link to the entry it points at. That is **every link type anything writes**; what remains unconditional (§5.17) is four types nothing creates. Each rule has the same two parts: the link's base MUST be the node the target entry itself names as its subject, and the link's author MUST equal that entry's own author (§5.2).
 
 | Link type | Base MUST equal | Author MUST equal | Also |
 |---|---|---|---|
@@ -441,6 +447,15 @@ As of `protocol_version: 5`, a tenth at `6` and three more at `7` — **thirteen
 | `PreRegistrationToRevelation` | `Revelation.pre_registration` | `Revelation.author` | Added at `protocol_version: 7`. See the denominator note below |
 | `AgentToPreRegistration` | the agent anchor over `PreRegistration.author` | `PreRegistration.author` | Added at `protocol_version: 7` |
 | `QuestionToPreRegistration` | `path_entry_hash()` of `Path::from("question_{pr.question}")` | `PreRegistration.author` | Added at `protocol_version: 7` |
+| `MewToClaim` | `Claim.source_mew`, which MUST be `Some` | `Claim.author` | Added at `8`. Read by nothing |
+| `MembraneToFederationRecord` | `FederationRecord.local_membrane` | `FederationRecord.author` | Added at `8`. §5.18 already requires that author to be the membrane's founder |
+| `MewToBridgeRecord` | `BridgeRecord.mew_hash`, **and the base MUST resolve to a `Mew`** | `BridgeRecord.author` | Added at `8` |
+| `ClaimToBridgeRecord` | `BridgeRecord.mew_hash`, **and the base MUST resolve to a `Claim`** | `BridgeRecord.author` | Added at `8` |
+| `ClaimToExternalCritique` | `ExternalCritique.linked_holochain_claim` | `ExternalCritique.importer` — **not** `author_handle` (§2.12) | Added at `8` |
+
+**The two bridge rules are one rule plus a type discrimination, and the discrimination is not decoration.** `record_twitter_mirror` bases both on `BridgeRecord.mew_hash` and picks the link type from what that hash actually resolves to, so the base comparison is identical and the only difference is which kind of entry the base must be. Validation **re-derives** that from the DHT rather than trusting the link type — the same shape as §5.4's `Critique.target_type` cross-check, and for the same reason: a caller must not be able to say what kind of thing its subject is. Without it, a mirror of a `Mew` filed as a claim's would make `get_unbridged_claims` report a claim as bridged on the strength of a record about something else.
+
+**Three of these five had no author rule until the entry types changed, which is why the entry types changed.** `BridgeRecord` and `ExternalCritique` carried no `AgentPubKey` at all for seven protocol versions, so §5.2 was inexpressible for them and nothing could be said about who may file their links. The fields were added at `protocol_version: 8` (§2.11, §2.12) rather than leaving three rules permanently half-stated. The alternative — binding the base and leaving the filer unconstrained — would have been a rule that prevents misattribution while letting anyone write the index entry, and recording that as "bound" would have overclaimed.
 
 **The denominator, and this is the one of the thirteen that emptied a feature rather than misattributing a record.** §2's pre-registration note states the attack the design exists to refuse: *"Commit ten predictions, reveal the two that came true, stay silent on the eight that did not: every reveal verifies, and the track record is a fabrication wearing a cryptographic proof."* The answer was to make the denominator structural — an unrevealed commitment expires **visibly**, because its deadline and its question are public from the moment it is made.
 
@@ -755,10 +770,10 @@ A *graded* companion to this (`get_attestation_weight`/`WeightedAttestationPolic
 ### 10.12 Bridge Integration
 | Function | Payload | Returns |
 |---|---|---|
-| `record_twitter_mirror` | `BridgeRecord` | `ActionHash` |
+| `record_twitter_mirror` | `RecordTwitterMirrorInput` (`BridgeRecord` minus `author`) | `ActionHash` — the author is filled from `agent_info()`, so the wire payload is unchanged from before `protocol_version: 8` |
 | `get_unbridged_claims` | — | `Vec<UnbridgedRecord { entry_hash: EntryHash, record: Record }>` |
 | `get_unbridged_mews` | — | `Vec<UnbridgedRecord>` |
-| `import_twitter_reply` | `ExternalCritique` | `ActionHash` |
+| `import_twitter_reply` | `ImportTwitterReplyInput` (`ExternalCritique` minus `importer`) | `ActionHash` — same arrangement; `author_handle` stays caller-supplied because it cannot be verified, `importer` does not because it can |
 | `get_twitter_replies_for_claim` | `claim_hash: EntryHash` | `Vec<Record>` |
 
 ### 10.13 Signals

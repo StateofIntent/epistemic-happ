@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// scripts/live-verify/attachment-links.mjs — SPEC §5.19's thirteen link rules,
+// scripts/live-verify/attachment-links.mjs — SPEC §5.19's eighteen link rules,
 // watched refusing real attempts.
 //
 // WHAT THESE RULES ARE. Entry validation in this protocol binds every
@@ -16,25 +16,36 @@
 // TWO HALVES, and the first is not a formality. A rule that refused
 // EVERYTHING would pass every refusal check in part 2 while breaking the
 // protocol completely — and that is not a hypothetical here: four of the
-// thirteen rules compare a link's base against an agent anchor derived
+// eighteen rules compare a link's base against an agent anchor derived
 // independently in both crates (`agent_anchor_hash`, duplicated across
 // dna/integrity and dna/coordinator because they share no library). If
 // those two derivations ever disagree, every honest by-author link on the
 // network is refused and part 2 still goes green. Part 1 is what makes
 // part 2 mean anything.
 //
-//   1. THE HONEST PATHS STILL WORK. Thirteen checks. Eight are one read per
+//   1. THE HONEST PATHS STILL WORK. Eighteen checks. Eight are one read per
 //      bound link type that HAS a reader (AgentToClaim, ClaimToRetraction,
 //      TargetToCritique, TargetToAntibody, CritiqueToSpecies,
 //      AgentToConstitution, AgentToMew, AgentToWorldlineTrace), each going
 //      through the link the rule now constrains. A ninth asserts the
 //      EXCLUSION half of the by-author index — that agent 2's claim is not
-//      among agent 1's — which a bare count had been doing by accident. Two
+//      among agent 1's — which a bare count had been doing by accident.
+//
+//      EVERY POSITIVE READ HERE ASSERTS REACHABILITY OF A NAMED ENTRY, not a
+//      count. Two runs went red on counts that had been true when written
+//      (38114646066, 38118156527) while every rule stayed green; see
+//      `contains` for why that keeps happening and why absence checks still
+//      use counts. Two
 //      more cover the foresight trio: one call to get_foresight_record
 //      reads AgentToPreRegistration and PreRegistrationToRevelation
 //      together (one commitment revealed with the text actually committed
 //      to, one still outstanding), and get_pre_registrations_for_question
-//      reads QuestionToPreRegistration.
+//      reads QuestionToPreRegistration. Four more cover the bridge and
+//      federation group — get_unbridged_claims and get_unbridged_mews
+//      answer by ABSENCE, so each direction is checked separately,
+//      get_twitter_replies_for_claim covers the imported reply, and
+//      get_federation_records_for the federation record. MewToClaim's is
+//      write-side like the two above it.
 //
 //      ONE OF THOSE READS ASSERTS MEMBERSHIP RATHER THAN A COUNT, because
 //      the count version went red on its own harness: seeding a third claim
@@ -51,7 +62,7 @@
 //      and a fully green run — which is exactly the hole an earlier
 //      version of this file had, retracting only with
 //      `replacement_claim: null` and never exercising the link at all.
-//   2. THEY CANNOT BE FORGED. Seventeen attempts through
+//   2. THEY CANNOT BE FORGED. Twenty-three attempts through
 //      attempt_false_attachment_link — the negative-path prober, same
 //      pattern as attempt_false_domain_index — each observed being refused
 //      by DHT VALIDATION rather than by a coordinator guard. A coordinator
@@ -69,10 +80,11 @@
 //
 // Prereqs: scripts/sandbox.sh clean && scripts/sandbox.sh start, with a
 // freshly packed .happ (scripts/pack-webhapp.sh). THE DNA HASH CHANGED at
-// protocol_version 5, AGAIN at 6 and AGAIN at 7 — rules and a link type at
-// 5, SpeciesToParent's rule at 6, the three pre-registration rules at 7 —
-// so a resumed sandbox holding data from any of them is a different network
-// and will not do.
+// protocol_version 5, 6, 7 and 8 — rules and a link type at 5,
+// SpeciesToParent at 6, the pre-registration three at 7, and at 8 the
+// bridge and promotion five PLUS an author field on two entry types — so a
+// resumed sandbox holding data from any of them is a different network and
+// will not do.
 // ============================================================================
 // ---------------------------------------------------------------------------
 // NEGATIVE EVIDENCE — COLLECTED. This harness has been watched failing, on
@@ -121,9 +133,9 @@
 // WHAT THAT EVIDENCE DOES NOT COVER, because this file has changed since.
 // The injection above was run against the TWELVE-probe, 35-check version.
 // Protocol version 6 added SpeciesToParent's rule, and this file grew two
-// probes and two write-side controls with it, and protocol version 7 added
-// three more rules, three more probes and three more checks — seventeen
-// probes, 51 checks on a green run. None of the checks added after the
+// probes and two write-side controls with it, version 7 added three more
+// rules and version 8 the last five — twenty-three probes, 69 checks on a
+// green run. None of the checks added after the
 // injection has itself been injected. The recorded red is evidence about
 // ClaimToRetraction's base rule and about this harness's machinery; it is
 // not evidence that every check later added to it can fail.
@@ -133,6 +145,7 @@
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
+import { decode } from '@msgpack/msgpack';
 
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
@@ -187,6 +200,23 @@ async function connectApp(admin, appId) {
 const nowMicros = () => Date.now() * 1000;
 const nowSecs = () => Math.floor(Date.now() / 1000);
 const entryHashOf = (record) => record.signed_action.hashed.content.data.entry_hash;
+/** Entries come back msgpack-encoded; same accessor mew-lifecycle.mjs uses. */
+const entryOf = (record) => decode(record.entry.Present.entry);
+const actionHashOf = (record) => record.signed_action.hashed.hash;
+
+/** Does this list of Records contain the one created by `actionHash`?
+ *
+ * EVERY POSITIVE READ IN PART 1 USES THIS, and the reason is two identical
+ * failures. `AgentToClaim` asserted `length === 1` and went red when a later
+ * commit seeded a third claim (run 38114646066); that was fixed in place, the
+ * CLASS was not, and `AgentToMew` then went red for exactly the same reason
+ * when this commit seeded a second mew (run 38118156527). A count is not the
+ * property any of these links carries — reachability of a specific entry is —
+ * and a count also rots every time the harness grows, which it does on every
+ * protocol version. Absence checks still use counts, because there zero IS
+ * the property. */
+const contains = (records, actionHash) =>
+  Array.isArray(records) && records.some((r) => b64(actionHashOf(r)) === b64(actionHash));
 
 /** Runs `fn`, expecting it to be REFUSED, and asserts the refusal came from
  * validation rather than a coordinator guard — the distinction the whole
@@ -380,6 +410,93 @@ async function main() {
     salt: 'salt-two-attachlinks', reveal_deadline: FAR,
   });
 
+  // THE BRIDGE AND FEDERATION ENTITIES. A second mew promoted into a claim
+  // (MewToClaim), one mirror record per subject kind so the Claim/Mew
+  // discrimination can be probed in both directions (ClaimToBridgeRecord and
+  // MewToBridgeRecord both base on BridgeRecord.mew_hash — a field whose name
+  // is narrower than its contents), an imported reply
+  // (ClaimToExternalCritique), and a membrane with a federation record
+  // (MembraneToFederationRecord).
+  // mewA was created above for the AgentToMew read; the mirror needs its
+  // ENTRY hash, which only a read gives back.
+  const mewsForHash = await agent1.call('get_mews_by_agent', agent1.me);
+  const mewARecord = mewsForHash.find((r) =>
+    entryOf(r)?.content === 'Raw stimulus, pre-transduction.');
+  if (!mewARecord) {
+    log('\n  SETUP FAILED: the first mew is not readable, so its mirror cannot be seeded.');
+    process.exit(1);
+  }
+  const mewAHash = entryHashOf(mewARecord);
+
+  const mewForPromotion = await agent1.call('create_mew', {
+    content: 'A raw observation, about to be transduced.',
+    author: agent1.me, timestamp: nowSecs(),
+    reply_to: null, semantic_tags: [], linked_claim: null,
+  });
+  await new Promise((r) => setTimeout(r, 2000));
+  const myMews = await agent1.call('get_mews_by_agent', agent1.me);
+  const promotionMew = myMews.find((r) =>
+    entryOf(r)?.content === 'A raw observation, about to be transduced.');
+  if (!promotionMew) {
+    log('\n  SETUP FAILED: the mew seeded for promotion is not readable.');
+    process.exit(1);
+  }
+  const promotionMewHash = entryHashOf(promotionMew);
+  const promotedClaim = await agent1.call('promote_mew_to_claim', {
+    mew_hash: promotionMewHash, domain: DOMAIN,
+    evidence_hashes: [], confidence: 'Tentative',
+  });
+
+  // `mew_hash` takes the CLAIM's hash here, which is not a mistake — see the
+  // entry type: the field holds whatever was mirrored, and the zome picks
+  // ClaimToBridgeRecord or MewToBridgeRecord from what it resolves to.
+  const claimMirror = await agent1.call('record_twitter_mirror', {
+    mew_hash: claimAHash, twitter_id: `attachlinks-${Date.now()}-claim`,
+    platform: 'twitter', mirrored_at: nowSecs(),
+    carried_fields: ['content'], dropped_fields: ['confidence'],
+    original_length: 64, excerpt_length: 32,
+  });
+  const mewMirror = await agent1.call('record_twitter_mirror', {
+    mew_hash: mewAHash, twitter_id: `attachlinks-${Date.now()}-mew`,
+    platform: 'twitter', mirrored_at: nowSecs(),
+    carried_fields: ['content'], dropped_fields: [],
+    original_length: 32, excerpt_length: 32,
+  });
+  const importedReply = await agent1.call('import_twitter_reply', {
+    twitter_id: `attachlinks-${Date.now()}-reply`, author_handle: '@a_stranger',
+    content: 'The control arm is missing.', linked_holochain_claim: claimAHash,
+    imported_at: nowSecs(),
+  });
+
+  // ALL SEVEN FIELDS. An earlier version of this call passed five and the
+  // conductor refused it with a bare `Deserialize([133, 166, ...])` naming
+  // neither the field nor the struct — run 38117426177. The shape was
+  // inferred from a fragment of another harness rather than read off
+  // `Membrane` in the integrity zome, which is the only place it is
+  // actually stated.
+  const membraneAction = await agent1.call('create_membrane', {
+    domain: DOMAIN,
+    description: 'Seeded membrane for §5.19 federation-link verification.',
+    required_promises: ['distinguish_observation_from_inference'],
+    validation_rules_hash: null,
+    creator: agent1.me,
+    created_at: nowSecs(),
+    constitution: constitutionA,
+  });
+  await new Promise((r) => setTimeout(r, 3000));
+  const membranes = await agent1.call('get_membranes', null);
+  const seededMembrane = membranes.find((r) => entryOf(r)?.domain === DOMAIN);
+  if (!seededMembrane) {
+    log('\n  SETUP FAILED: the membrane seeded for federation is not readable.');
+    log(`  get_membranes returned ${Array.isArray(membranes) ? membranes.length : String(membranes)}.`);
+    process.exit(1);
+  }
+  const membraneHash = entryHashOf(seededMembrane);
+  const federationRecord = await agent1.call('record_federation', {
+    local_membrane: membraneHash, remote_network_label: 'a-different-network',
+    remote_membrane_ref: 'remote-ref-1', author: agent1.me, created_at: nowSecs(),
+  });
+
   log('Waiting for gossip ...\n');
   await new Promise((r) => setTimeout(r, 8000));
 
@@ -408,15 +525,15 @@ async function main() {
 
   const retractions = await agent2.call('get_retractions_for_claim', claimAHash);
   check('ClaimToRetraction: the author\'s own retraction reaches their claim',
-    Array.isArray(retractions) && retractions.length === 1);
+    contains(retractions, retractionA));
 
   const critiquesOfB = await agent2.call('get_critiques_for', claimBHash);
   check('TargetToCritique: a critique of claim B is found under claim B',
-    Array.isArray(critiquesOfB) && critiquesOfB.length === 1);
+    contains(critiquesOfB, critiqueOfB));
 
   const flagsOnA = await agent2.call('get_antibody_patterns_for', claimAHash);
   check('TargetToAntibody: the flag on claim A is found under claim A',
-    Array.isArray(flagsOnA) && flagsOnA.length === 1);
+    contains(flagsOnA, patternOnA));
 
   const adoption = await agent1.call('get_critique_species_adoption_count', speciesOne);
   check('CritiqueToSpecies: the adopting critique counts toward its declared species',
@@ -427,8 +544,8 @@ async function main() {
     constitutionSeen !== null && constitutionSeen !== undefined);
 
   const mewsSeen = await agent2.call('get_mews_by_agent', agent1.me);
-  check('AgentToMew: agent 1\'s mew is readable through its by-author index',
-    Array.isArray(mewsSeen) && mewsSeen.length === 1);
+  check('AgentToMew: agent 1\'s mews are readable through its by-author index',
+    contains(mewsSeen, mewA) && contains(mewsSeen, mewForPromotion));
 
   const traceSeen = await agent2.call('get_agent_worldline_trace', agent1.me);
   check('AgentToWorldlineTrace: agent 1\'s trace is readable by agent 2',
@@ -449,7 +566,36 @@ async function main() {
 
   const byQuestion = await agent2.call('get_pre_registrations_for_question', questionAction);
   check('QuestionToPreRegistration: both commitments are indexed under their question',
-    Array.isArray(byQuestion) && byQuestion.length === 2);
+    contains(byQuestion, pr1) && contains(byQuestion, pr2));
+
+  // The bridge group. get_unbridged_claims and get_unbridged_mews are the
+  // reads that consult ClaimToBridgeRecord and MewToBridgeRecord, and they
+  // answer by ABSENCE — a mirrored subject leaves the queue — so each needs
+  // its own direction checked. The discrimination between the two link types
+  // is what keeps these two answers from contaminating each other.
+  const unbridgedClaims = await agent1.call('get_unbridged_claims', null);
+  check('ClaimToBridgeRecord: the mirrored claim has left the unbridged queue',
+    Array.isArray(unbridgedClaims)
+    && !unbridgedClaims.some((u) => b64(entryHashOf(u.record ?? u)) === b64(claimAHash)));
+
+  const unbridgedMews = await agent1.call('get_unbridged_mews', null);
+  check('MewToBridgeRecord: the mirrored mew has left the unbridged queue',
+    Array.isArray(unbridgedMews)
+    && !unbridgedMews.some((u) => b64(entryHashOf(u.record ?? u)) === b64(mewAHash)));
+
+  const replies = await agent2.call('get_twitter_replies_for_claim', claimAHash);
+  check('ClaimToExternalCritique: the imported reply is found under the claim it answers',
+    contains(replies, importedReply));
+
+  const federations = await agent2.call('get_federation_records_for', membraneHash);
+  check('MembraneToFederationRecord: the federation record is found under its membrane',
+    contains(federations, federationRecord));
+
+  // MewToClaim is read by nothing, so this is the write-side control:
+  // promote_mew_to_claim writes the link itself, and an over-refusing rule
+  // would have failed the whole promotion above.
+  check('MewToClaim: a mew can still be promoted into a claim at all',
+    promotedClaim !== null && promotedClaim !== undefined);
 
   // The two links NOTHING READS, where the honest path can only be checked
   // from the write side: create_critique_species and create_retraction each
@@ -640,6 +786,62 @@ async function main() {
     }),
   );
 
+  // THE DISCRIMINATION PROBE, and it is the one with no analogue among the
+  // other seventeen. Both bridge link types base on BridgeRecord.mew_hash,
+  // so this attempt gets the base RIGHT — mewMirror genuinely names mewA —
+  // and lies only about what kind of thing that subject is, by filing it as
+  // a claim's mirror. If it succeeded, get_unbridged_claims would answer
+  // about a mew.
+  await expectRefusal(
+    'a mew\'s mirror cannot be filed as a claim\'s, even with the right base',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'ClaimToBridgeRecord', base: mewAHash, target: mewMirror,
+      tag: Buffer.from('bridged', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a mirror cannot be filed against a subject the BridgeRecord does not name',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'ClaimToBridgeRecord', base: claimBHash, target: claimMirror,
+      tag: Buffer.from('bridged', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  // The author rule these two could not have before protocol_version 8:
+  // BridgeRecord carried no agent at all, so there was nothing to bind.
+  await expectRefusal(
+    'a third party cannot file somebody else\'s mirror record',
+    () => agent2.call('attempt_false_attachment_link', {
+      kind: 'MewToBridgeRecord', base: mewAHash, target: mewMirror,
+      tag: Buffer.from('bridged', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'an imported reply cannot be filed under a claim it does not answer',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'ClaimToExternalCritique', base: claimBHash, target: importedReply,
+      tag: Buffer.from('twitter', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a promotion cannot be recorded from a mew the claim does not name',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'MewToClaim', base: mewAHash, target: promotedClaim,
+      tag: Buffer.from('promoted', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
+  await expectRefusal(
+    'a federation record cannot be filed against a membrane it does not name',
+    () => agent1.call('attempt_false_attachment_link', {
+      kind: 'MembraneToFederationRecord', base: claimAHash, target: federationRecord,
+      tag: Buffer.from('a-different-network', 'utf8'), anchor_of: null, question_anchor_of: null,
+    }),
+  );
+
   // ---- 3. Nothing was poisoned on the way through ---------------------
   // Twelve refused writes should leave every read exactly as part 1 found
   // it. A rule that refused the write and let the link through anyway
@@ -650,6 +852,8 @@ async function main() {
   check('claim B still carries no retraction',
     Array.isArray(retractionsAfter) && retractionsAfter.length === 0);
 
+  // A COUNT ON PURPOSE, unlike part 1's reads: the property here is that
+  // nothing was ADDED to agent 2's index, and agent 2 seeds exactly one claim.
   const byAuthor2After = await agent1.call('get_claims_by_agent', agent2.me);
   check('agent 2\'s by-author index still holds only its own claim',
     Array.isArray(byAuthor2After) && byAuthor2After.length === 1);
@@ -664,6 +868,12 @@ async function main() {
   check('the outstanding commitment is still outstanding, not revealed',
     foresightAfter?.revealed?.length === 1
     && (foresightAfter.pending?.length ?? 0) + (foresightAfter.expired?.length ?? 0) === 1);
+
+  // And claim B, which three of the probes tried to attach things to, still
+  // has none of them.
+  const repliesB = await agent2.call('get_twitter_replies_for_claim', claimBHash);
+  check('claim B still has no imported replies and no mirror of its own',
+    Array.isArray(repliesB) && repliesB.length === 0);
 
   log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
   process.exit(failures === 0 ? 0 : 1);

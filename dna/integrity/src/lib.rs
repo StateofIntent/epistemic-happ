@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -401,6 +401,29 @@ pub struct PeriodBoundary {
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct BridgeRecord {
+    /// WHO RECORDED THIS MIRROR, added at `protocol_version: 8`.
+    ///
+    /// A `BridgeRecord` is a unilateral Ricardian instrument — the DHT-side
+    /// record that a correlation with an external platform happened — and for
+    /// seven protocol versions it carried no statement of who asserted it.
+    /// That made §5.2's author binding inexpressible for this type and, with
+    /// it, any rule about who may file the record into a claim's or mew's
+    /// index. An instrument nobody signs is one nobody is accountable for.
+    ///
+    /// NOT SUPPLIED BY THE CALLER. `record_twitter_mirror` fills this from
+    /// `agent_info()`, the way `generate_worldline_trace` and `pre_register`
+    /// already do, so the field states who called rather than who claims to
+    /// have. Validation binds it anyway (§5.2): the coordinator is a
+    /// convenience and the integrity zome is the authority.
+    pub author: AgentPubKey,
+    /// THE NAME IS NARROWER THAN THE FIELD, and that is load-bearing enough
+    /// to state here. This holds the `EntryHash` of whatever was mirrored —
+    /// a `Mew` OR a `Claim`. `record_twitter_mirror` resolves it and picks
+    /// `MewToBridgeRecord` or `ClaimToBridgeRecord` from what it actually
+    /// finds (`bridge_link_type_for`), so a reader must not infer from the
+    /// name that the target is a Mew. §5.19's two rules for those links
+    /// re-derive the type the same way rather than trusting either the name
+    /// or the link.
     pub mew_hash: EntryHash,
     pub twitter_id: String,
     pub platform: String,
@@ -415,7 +438,23 @@ pub struct BridgeRecord {
 #[hdk_entry_helper]
 #[derive(Clone, PartialEq)]
 pub struct ExternalCritique {
+    /// WHO IMPORTED THIS, added at `protocol_version: 8`, and deliberately
+    /// NOT called `author`.
+    ///
+    /// This entry has two different people in it and conflating them would be
+    /// worse than leaving the second one out. `author_handle` below is who
+    /// wrote the reply on Twitter — an unverifiable string from another
+    /// platform. This field is the Holochain agent who chose to import it,
+    /// which is the only accountability this DHT can actually enforce.
+    /// Naming both `author` would invite exactly the wrong reading.
+    ///
+    /// Filled from `agent_info()` by `import_twitter_reply` rather than
+    /// supplied, and bound by validation (§5.2) regardless.
+    /// `check-spec-drift.mjs`'s author-binding gate was extended to recognise
+    /// `importer` so that choosing the clearer name does not cost the check.
+    pub importer: AgentPubKey,
     pub twitter_id: String,
+    /// The TWITTER handle, not an agent — see `importer` above.
     pub author_handle: String,
     pub content: String,
     pub linked_holochain_claim: EntryHash,
@@ -1554,7 +1593,10 @@ fn bridge_record_loss_fields_consistent(record: &BridgeRecord) -> Result<(), &'s
     Ok(())
 }
 
-fn validate_bridge_record(record: &BridgeRecord, _action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+fn validate_bridge_record(record: &BridgeRecord, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &record.author != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("BridgeRecord author must match action author.".into()));
+    }
     if must_get_entry(record.mew_hash.clone()).is_err() {
         return Ok(ValidateCallbackResult::Invalid("BridgeRecord target not found.".into()));
     }
@@ -1565,7 +1607,13 @@ fn validate_bridge_record(record: &BridgeRecord, _action: &TypedAction<CreateDat
 }
 
 // --- ExternalCritique Validation ---
-fn validate_external_critique(ext: &ExternalCritique, _action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+fn validate_external_critique(ext: &ExternalCritique, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &ext.importer != action.author() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "ExternalCritique importer must match action author. Note this is the importing \
+             agent, not the Twitter handle in author_handle — see the entry type.".into()
+        ));
+    }
     if ext.content.is_empty() {
         return Ok(ValidateCallbackResult::Invalid("ExternalCritique content cannot be empty.".into()));
     }
@@ -2919,6 +2967,220 @@ fn validate_create_link(
                  agent.".into()
             ));
         }
+    } else if link_type == LinkTypes::MewToClaim {
+        // Promotion: a Mew was transduced into a Claim. `Claim.source_mew`
+        // is the Claim's own statement of where it came from, and
+        // `validate_claim` already requires that hash to resolve — so the
+        // base is compared against an established fact.
+        let claim_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MewToClaim target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(claim_hash)?;
+        let claim = match target_record.entry().to_app_option::<Claim>() {
+            Ok(Some(c)) => c,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MewToClaim target is not a Claim.".into()
+                ))
+            }
+        };
+        let declared_mew = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MewToClaim base must be a Mew's EntryHash.".into()
+                ))
+            }
+        };
+        match claim.source_mew {
+            Some(ref mew) if *mew == declared_mew => {}
+            Some(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A MewToClaim link must hang from the Mew the Claim itself names in \
+                     source_mew.".into()
+                ))
+            }
+            None => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A MewToClaim link cannot record a promotion the Claim does not claim: \
+                     its source_mew is None.".into()
+                ))
+            }
+        }
+        if &claim.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A MewToClaim link may only be created by the promoted Claim's own \
+                 author.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::MembraneToFederationRecord {
+        // Federation is already the best-guarded entry in this zome:
+        // §5.18 requires `local_membrane` to resolve to a real Membrane AND
+        // the creating agent to be that Membrane's own creator. The link
+        // carrying it onto a membrane was unguarded, so a federation
+        // declaration could be filed against a membrane it does not name —
+        // a one-sided claim about a network, hung off the wrong network.
+        let record_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MembraneToFederationRecord target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(record_hash)?;
+        let federation = match target_record.entry().to_app_option::<FederationRecord>() {
+            Ok(Some(f)) => f,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MembraneToFederationRecord target is not a FederationRecord.".into()
+                ))
+            }
+        };
+        let declared_membrane = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "MembraneToFederationRecord base must be a Membrane's EntryHash.".into()
+                ))
+            }
+        };
+        if federation.local_membrane != declared_membrane {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A MembraneToFederationRecord link must hang from the Membrane the \
+                 FederationRecord itself names in local_membrane.".into()
+            ));
+        }
+        if &federation.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A MembraneToFederationRecord link may only be created by the \
+                 FederationRecord's own author — who §5.18 already requires to be the \
+                 membrane's founder.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::MewToBridgeRecord
+        || link_type == LinkTypes::ClaimToBridgeRecord
+    {
+        // ONE BRANCH FOR TWO LINK TYPES, because they are one rule plus a
+        // type discrimination. `record_twitter_mirror` bases BOTH on
+        // `BridgeRecord.mew_hash` — a field whose name is narrower than its
+        // contents, holding either a Mew's or a Claim's EntryHash — and
+        // picks the link type from what that hash actually resolves to
+        // (`bridge_link_type_for`). So the base rule is identical and the
+        // only difference is which kind of thing the base must be.
+        //
+        // THE DISCRIMINATION IS NOT DECORATION. Without it a mirror of a Mew
+        // could be filed as a ClaimToBridgeRecord, and
+        // `get_unbridged_claims` would report a claim as bridged on the
+        // strength of a record about something else — the same shape as
+        // §5.4's `Critique.target_type` cross-check, which exists because a
+        // caller must not be able to say what kind of thing its target is.
+        let record_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A BridgeRecord link's target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(record_hash)?;
+        let bridge = match target_record.entry().to_app_option::<BridgeRecord>() {
+            Ok(Some(b)) => b,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A BridgeRecord link's target is not a BridgeRecord.".into()
+                ))
+            }
+        };
+        let declared_subject = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "A BridgeRecord link's base must be an EntryHash.".into()
+                ))
+            }
+        };
+        if bridge.mew_hash != declared_subject {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A BridgeRecord link must hang from the entry the BridgeRecord itself names \
+                 in mew_hash.".into()
+            ));
+        }
+        // Re-derived from the DHT, never trusted from the link type.
+        let subject = must_get_entry(declared_subject)?;
+        let subject_entry = RecordEntry::Present(subject.into_content());
+        let is_claim = subject_entry.to_app_option::<Claim>().ok().flatten().is_some();
+        let is_mew = subject_entry.to_app_option::<Mew>().ok().flatten().is_some();
+        let wanted_claim = link_type == LinkTypes::ClaimToBridgeRecord;
+        if wanted_claim && !is_claim {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A ClaimToBridgeRecord link's base is not a Claim. A mirror of a Mew filed \
+                 as a claim's would make get_unbridged_claims answer about the wrong \
+                 entry.".into()
+            ));
+        }
+        if !wanted_claim && !is_mew {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A MewToBridgeRecord link's base is not a Mew.".into()
+            ));
+        }
+        if &bridge.author != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A BridgeRecord link may only be created by the agent who recorded the \
+                 mirror.".into()
+            ));
+        }
+    } else if link_type == LinkTypes::ClaimToExternalCritique {
+        // An imported Twitter reply, hung from the claim it answers.
+        // `ExternalCritique.linked_holochain_claim` is that claim and
+        // validation already requires it to resolve; the link was free to
+        // point somewhere else entirely, which would show one claim's
+        // external replies under another.
+        let ext_hash = match ActionHash::try_from(target_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToExternalCritique target must be an ActionHash.".into()
+                ))
+            }
+        };
+        let target_record = must_get_valid_record(ext_hash)?;
+        let ext = match target_record.entry().to_app_option::<ExternalCritique>() {
+            Ok(Some(e)) => e,
+            _ => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToExternalCritique target is not an ExternalCritique.".into()
+                ))
+            }
+        };
+        let declared_claim = match EntryHash::try_from(base_address) {
+            Ok(h) => h,
+            Err(_) => {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "ClaimToExternalCritique base must be a Claim's EntryHash.".into()
+                ))
+            }
+        };
+        if ext.linked_holochain_claim != declared_claim {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A ClaimToExternalCritique link must hang from the Claim the \
+                 ExternalCritique itself names in linked_holochain_claim.".into()
+            ));
+        }
+        // THE IMPORTER, not the Twitter handle. `author_handle` is an
+        // unverifiable string from another platform and binding to it would
+        // be binding to nothing.
+        if &ext.importer != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A ClaimToExternalCritique link may only be created by the importing \
+                 agent.".into()
+            ));
+        }
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -2989,6 +3251,15 @@ mod tests {
         EntryHash::from_raw_36(vec![seed; 36])
     }
 
+    /// Reintroduced at protocol_version 8, when `BridgeRecord` gained an
+    /// `author`. The 0.7 upgrade deleted the previous agent fixture along
+    /// with the `Create`-action fixture that was its only caller — see the
+    /// REMOVED note above. This one is needed again, and only for a field
+    /// `bridge_record_loss_fields_consistent` never reads.
+    fn fixture_agent(seed: u8) -> AgentPubKey {
+        AgentPubKey::from_raw_36(vec![seed; 36])
+    }
+
     // REMOVED with the 0.7 upgrade: `fixture_create`, and the
     // `fixture_agent_pubkey`/`fixture_action_hash` helpers that existed
     // only to feed it. It built a `Create` action struct — a type 0.7
@@ -3010,6 +3281,11 @@ mod tests {
         excerpt_length: u32,
     ) -> BridgeRecord {
         BridgeRecord {
+            // Not read by the function under test: these cases are about
+            // carried/dropped field consistency, and the author is checked
+            // in validate_bridge_record against the action, which needs a
+            // host call and so is not testable here.
+            author: fixture_agent(7),
             mew_hash: fixture_entry_hash(1),
             twitter_id: "123456789".into(),
             platform: "twitter".into(),
