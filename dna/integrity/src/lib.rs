@@ -933,23 +933,8 @@ pub fn validate(op: Op) -> ExternResult<ValidateCallbackResult> {
         // turns the network into one nothing can call — the exact failure
         // the protocol-version gate above already hit and recorded. Refuse
         // the protocol's own entries; leave the conductor's plumbing alone.
-        FlatOp::Update(update) => match update {
-            OpUpdate::Entry { .. } | OpUpdate::PrivateEntry { .. } => {
-                Ok(ValidateCallbackResult::Invalid(
-                    "Entry updates are not permitted. Nothing written here is mutated: the \
-                     additive remedies are a Retraction by the author and an AntibodyPattern \
-                     by anyone, both of which leave the original readable with the objection \
-                     attached. See SPEC.md §5.1.".into()
-                ))
-            }
-            // Agent key updates and capability updates are the conductor's
-            // own plumbing, not protocol data. Left permitted deliberately
-            // and unchanged — whether agent key rotation should be allowed
-            // is its own question and is not decided here.
-            OpUpdate::Agent { .. } | OpUpdate::CapClaim { .. } | OpUpdate::CapGrant { .. } => {
-                Ok(ValidateCallbackResult::Valid)
-            }
-        },
+        // *** INJECTED R4a — DO NOT MERGE: the update-relation refusal.
+        FlatOp::Update(_) => Ok(ValidateCallbackResult::Valid),
         FlatOp::Delete(_) => Ok(ValidateCallbackResult::Invalid(
             "Deletion is not permitted. Nothing written here is ever removed; \
 entries may still be updated.".into()
@@ -1015,11 +1000,7 @@ fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCal
         // get_evidence and must_get_entry without any reader touching an
         // update chain. SPEC §5.1's "nothing reads update chains, so the gap
         // is latent" was true of the RELATION and not of the ENTRY.
-        OpEntry::UpdateEntry { .. } => Ok(ValidateCallbackResult::Invalid(
-            "Entry updates are not permitted; see SPEC.md §5.1. This refusal is on the \
-             update's own new entry, which would otherwise be stored unvalidated and \
-             readable by hash.".into()
-        )),
+        // *** INJECTED R4b — DO NOT MERGE: the new entry's refusal.
         // CreateAgent, UpdateAgent, CreateCapGrant and CreateCapClaim: the
         // conductor's plumbing, deliberately untouched for the reason the
         // Update arm above states at length.
@@ -2625,12 +2606,7 @@ fn validate_create_link(
         //    which domain each claim belongs to — `create_claim` says so
         //    where it writes it. An unchecked tag is a free text field
         //    about somebody else's claim, read as that claim's domain.
-        if tag.0.as_slice() != claim.domain.as_bytes() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "AgentToClaim tag must be the claim's own domain, which is the only domain a \
-                 by-agent reader has to go on.".into()
-            ));
-        }
+        // *** INJECTED R2 — DO NOT MERGE: AgentToClaim's tag rule.
 
         // 3. Author binding (§5.2). Redundant with check 1 while
         //    `validate_claim` holds `claim.author == action.author()` for
@@ -3209,19 +3185,8 @@ fn validate_create_link(
         let subject_entry = RecordEntry::Present(subject.into_content());
         let is_claim = subject_entry.to_app_option::<Claim>().ok().flatten().is_some();
         let is_mew = subject_entry.to_app_option::<Mew>().ok().flatten().is_some();
-        let wanted_claim = link_type == LinkTypes::ClaimToBridgeRecord;
-        if wanted_claim && !is_claim {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A ClaimToBridgeRecord link's base is not a Claim. A mirror of a Mew filed \
-                 as a claim's would make get_unbridged_claims answer about the wrong \
-                 entry.".into()
-            ));
-        }
-        if !wanted_claim && !is_mew {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A MewToBridgeRecord link's base is not a Mew.".into()
-            ));
-        }
+        // *** INJECTED R3 — DO NOT MERGE: the Claim/Mew discrimination.
+        let _ = (is_claim, is_mew);
         if &bridge.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A BridgeRecord link may only be created by the agent who recorded the \
@@ -3309,12 +3274,8 @@ fn agent_index_anchor_matches(
             )))
         }
     };
-    if declared_anchor != expected_anchor {
-        return Ok(ValidateCallbackResult::Invalid(format!(
-            "{link_name} base anchor does not match the agent the target entry names. An entry \
-             may only be indexed under the agent it belongs to."
-        )));
-    }
+    // *** INJECTED R1 — DO NOT MERGE: the shared per-agent anchor comparison.
+    let _ = (&declared_anchor, &expected_anchor, link_name);
     Ok(ValidateCallbackResult::Valid)
 }
 
