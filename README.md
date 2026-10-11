@@ -947,8 +947,10 @@ goes stale, and a fifth copy of a number is not a handover.
    consumer networks is first — cheapest, highest value, and the only one of the
    four that **cannot** be done in CI, because it needs two physical home
    networks rather than two datacentre VMs. Then scale beyond four nodes, then a
-   propagation bound a user can rely on (a decision to state one, not a fix),
-   then a security review.
+   propagation bound a user can rely on (a decision to state one, not a fix).
+   **The fourth, the security review, has been run** — it found five defects
+   and four are fixed; what it leaves is in its own row and in *What the
+   security review found* below.
 4. **One optional open row, and it needs a person**: post the upstream
    `kitsune2` draft at `~/upstream-kitsune2-cursor-before-fetch-draft.md`, or
    decide not to. Nothing in this repository depends on it either way.
@@ -957,9 +959,10 @@ goes stale, and a fifth copy of a number is not a handover.
 claim when it is two.** The basics are done: a release for early adopters — people
 who install a `.webhapp` and expect rough edges — can ship today on the caveats
 INSTALL.md already states in plain terms. **Mass-adoption grade needs the four
-above**, and of those the security review is the only one that needs neither a
-second machine nor a second network, so it is the one that can start without
-arranging anything.
+above** — three of them still, since the security review was the one needing
+neither a second machine nor a second network and has now been run. What it
+replaced itself with is smaller and still real: a harness that watches its own
+fixes refuse the writes they were written to refuse.
 
 ### Where this is up to
 
@@ -1033,7 +1036,55 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | None exists — no `SECURITY.md`, no audit. And this file states plainly that **nothing resists sybil creation**; containment is topological, claims unreachable rather than refused | A review of the zomes and the validation path, plus a conscious decision to stand behind the sybil position before inviting a crowd |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. Still no `SECURITY.md`, no outside audit, and this file still states plainly that **nothing resists sybil creation** | Three things, and the first is the one this project's own standards demand: a live-conductor harness watching each of the five refusals actually happen, since **not one of them has been reproduced** and an unreproduced injection is a claim rather than evidence. Then a decision on update ops, and the conscious decision to stand behind the sybil position before inviting a crowd |
+
+#### What the security review found
+
+**Five defects, one shape, and the shape is the part worth carrying forward.**
+Entry validation in this protocol is thorough — all thirteen entry types bind
+their declared author to the authoring action, and `check-spec-drift.mjs` gates
+that rule so a fourteenth cannot ship forgeable. What nothing checked was the
+**link** carrying an entry onto a node: four link types and one op kind
+accepted writes that bound nothing to the entry they carried. So an agent could
+author a perfectly valid entry about their own claim and then file it against
+anybody's. **The displayed attribution came from the entry; the choice of what
+it was displayed on came from the link.**
+
+| Where | What it allowed | State |
+|---|---|---|
+| `ClaimToRetraction` | Author a `Retraction` of **your own** claim — valid, every check passes — then link it from somebody else's. `get_retractions_for_claim` reads by base, so every reader of the victim's claim got it, and the UI renders **"Retracted by its author"** on the strength of a validator that only ever bound the entry | **Fixed** |
+| `TargetToAntibody` | Relink one legitimately-signed `AntibodyPattern` onto any number of other claims, each rendering `flagged by <author>` for an author who never flagged it. No forged signature anywhere — the signature is real, and the lie is which node it was filed against | **Fixed** |
+| `TargetToCritique` | Hang any critique off any node, and — less visibly — move `get_discourse_health`, which **counts these links per claim**. A budget on the generative act does not bound an attachment nobody validated | **Fixed** |
+| `AgentToClaim` | Write into any agent's by-author index. The argument against it was already written four lines away in `create_claim`, about the by-*domain* index, and only one of the two links was enforced | **Fixed** |
+| Update ops | `FlatOp::Update(_)` returns `Valid`, and an update's **new entry** falls through `validate_create_entry`'s catch-all as `OpEntry::UpdateEntry` — so the entry body is unvalidated too, and is hash-addressable by `get_claim`/`get_evidence` without reading any update chain | **Open, by decision** — SPEC §5.1 recorded this; the review's contribution is that "nothing reads update chains" does not bound it |
+
+**The threat model is this repository's own, not an imported one.** SPEC §11.1
+records that a coordinator-zome edit leaves the DNA hash unchanged and is
+hot-swappable via `update_coordinators`, so a peer running a modified
+coordinator stays on this network and can author any op validation accepts.
+None of the five needs a sybil, a network position or a second agent — only the
+attacker's own key. The integrity zome is the only part the hash covers and
+therefore the only place a guarantee can live, which is the sentence SPEC §5.1
+already had and §5.19 now applies to links.
+
+**Why it went unseen, which generalises past these five.** The three link types
+that *were* bound — `DomainToClaim`, `TaxonomyToSpecies`, `MembraneRegistry` —
+are exactly the three with adversarial prober externs. The link types nobody
+probed are the link types nobody validated, and coverage looked complete
+because every link type anybody had **tried** to forge was refused. **A prober
+proves the rule it probes and silently flatters the rules it does not.**
+
+**What is fixed and what is merely written.** The five branches are in the
+integrity zome, both zomes compile for `wasm32-unknown-unknown`, and all 77
+unit tests pass. **No live conductor has watched a single one of them refuse
+anything** — this machine has no `holochain` or `hc` binary — so by this
+project's own rule the fix is a claim and not yet evidence. The harness that
+would change that is the `scripts/live-verify/` shape `domain-index.mjs`
+already uses, and it needs one prober extern per branch; three such probers
+exist, four do not. **`CritiqueToSpecies`, `AgentToConstitution`,
+`AgentToWorldlineTrace` and `AgentToMew` are the same shape and are still
+unbound** — named in SPEC §5.17 so the next pass has a list rather than a
+search, and left out of this fork deliberately rather than missed.
 
 **Also worth stating once: Holochain `0.7.0` is pre-1.0**, and the API churn
 absorbed over the last month is the evidence for that rather than an argument

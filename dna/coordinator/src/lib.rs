@@ -3656,11 +3656,23 @@ pub fn create_retraction(retraction: Retraction) -> ExternResult<ActionHash> {
     )?;
 
     // If there's a replacement claim, link retraction to it.
+    //
+    // ITS OWN LINK TYPE AS OF PROTOCOL VERSION 5. This used to be a second
+    // `ClaimToRetraction` with base and target inverted and the tag
+    // ("replacement" rather than "retracted") as the only thing telling the
+    // two apart. SPEC §4 recorded that and told a reader to work out which
+    // case applied "from the base's real type, not the link type name
+    // alone" — an instruction validation could not follow, since the two
+    // cases have mutually exclusive rules and one branch cannot enforce
+    // both. Dispatching on the tag would have been worse: a LinkTag is
+    // chosen by its author, so the protocol would be branching on a field
+    // with no guarantee behind it. See the integrity zome's
+    // `RetractionToReplacement` branch.
     if let Some(replacement) = &retraction.replacement_claim {
         create_link(
             action_hash.clone(),
             replacement.clone(),
-            LinkTypes::ClaimToRetraction,
+            LinkTypes::RetractionToReplacement,
             LinkTag::new("replacement"),
         )?;
     }
