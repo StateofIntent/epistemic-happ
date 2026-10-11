@@ -54,8 +54,20 @@ only to other `v0.1.1` installs, and implements **none** of the protocol this
 repository describes. At that tag the zome has no `PROTOCOL_VERSION` constant at
 all — the release predates the versioning mechanism, not just the versions.
 
-**Fixing it needs a machine with the Holochain toolchain**, which is a `hc` and
-`holochain` binary. The procedure is already written and correct:
+**The packing is done.** `epistemic-resonance-happ.webhapp` and
+`epistemic-resonance-happ.happ` were built from `protocol_version: 9` on
+2026-10-11, and the resulting DNA hash is
+`uhC0kUHSiD5aAt7BH6XJ3j7XGfdaxLL3oFUj6f-2OPU29caU0ZkxF`. **The artifact was
+then verified against a real local conductor**: all 101 checks of
+`attachment-links.mjs` pass on it, which is the first time a release candidate
+has been tested as the thing that ships rather than as the tree it came from.
+
+The toolchain needed for this is `hc` and `holochain` 0.7.0, installed by
+`scripts/ci/install-holochain.sh` into `~/.cargo/bin` — **which is where they
+already were**, absent from `PATH` rather than from the machine. One line fixes
+it: `export PATH="$HOME/.cargo/bin:$PATH"`.
+
+The procedure, for the next time:
 
 ```bash
 # in epistemic-happ

@@ -390,7 +390,8 @@ jobs:
       # checks as it then stood, 22s of harness time, run 38110651478. It is
       # 101 checks now: versions 6-9 added nine link rules and the update
       # refusal, and §2c added fourteen author-binding probes. It was written on a
-      # machine with no `holochain` binary, so CI was its first execution
+      # machine whose PATH lacked the `holochain` binary — which was taken for
+      # absence and was not; see README §9 — so CI was its first execution
       # anywhere — shipped that way deliberately, on the precedent of
       # `transitive-gossip`, which shipped here, failed its own first run and
       # was taken back out. That is a better outcome than a harness nobody
