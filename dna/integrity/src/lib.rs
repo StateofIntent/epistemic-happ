@@ -2445,32 +2445,32 @@ fn validate_create_link(
                 ))
             }
         };
-        let Some(replacement) = retraction.replacement_claim.clone() else {
-            return Ok(ValidateCallbackResult::Invalid(
-                "RetractionToReplacement base Retraction names no replacement_claim, so there \
-                 is no replacement for this link to record.".into()
-            ));
-        };
-        let declared_replacement = match EntryHash::try_from(target_address) {
-            Ok(h) => h,
-            Err(_) => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "RetractionToReplacement target must be a Claim's EntryHash.".into()
-                ))
-            }
-        };
-        if replacement != declared_replacement {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A RetractionToReplacement link must point at the Claim the Retraction itself \
-                 names in replacement_claim.".into()
-            ));
-        }
-        if &retraction.author != action.author() {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A RetractionToReplacement link may only be created by the Retraction's own \
-                 author.".into()
-            ));
-        }
+        // *** INJECTED B: let Some(replacement) = retraction.replacement_claim.clone() else {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "RetractionToReplacement base Retraction names no replacement_claim, so there \
+        // *** INJECTED B: is no replacement for this link to record.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: };
+        // *** INJECTED B: let declared_replacement = match EntryHash::try_from(target_address) {
+        // *** INJECTED B: Ok(h) => h,
+        // *** INJECTED B: Err(_) => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "RetractionToReplacement target must be a Claim's EntryHash.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: };
+        // *** INJECTED B: // *** INJECTED B: if replacement != declared_replacement {
+        // *** INJECTED B: // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: // *** INJECTED B: "A RetractionToReplacement link must point at the Claim the Retraction itself \
+        // *** INJECTED B: // *** INJECTED B: names in replacement_claim.".into()
+        // *** INJECTED B: // *** INJECTED B: ));
+        // *** INJECTED B: // *** INJECTED B: }
+        // *** INJECTED B: if &retraction.author != action.author() {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A RetractionToReplacement link may only be created by the Retraction's own \
+        // *** INJECTED B: author.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
     } else if link_type == LinkTypes::TargetToCritique {
         // What makes a claim look critiqued. `validate_critique` is one of
         // the stronger validators here — author binding, target existence,
@@ -2512,12 +2512,12 @@ fn validate_create_link(
         // target cross-check load-bearing on what gets displayed: that rule
         // proves `target_type` describes `target`, and this one proves
         // `target` is where the critique was filed.
-        if critique.target != base_address {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A TargetToCritique link must hang from the node the Critique itself names in \
-                 target. A critique of one node may not be filed against another.".into()
-            ));
-        }
+        // *** INJECTED B: if critique.target != base_address {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A TargetToCritique link must hang from the node the Critique itself names in \
+        // *** INJECTED B: target. A critique of one node may not be filed against another.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         if &critique.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A TargetToCritique link may only be created by the Critique's own author.".into()
@@ -2555,12 +2555,12 @@ fn validate_create_link(
                 ))
             }
         };
-        if pattern.target != base_address {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A TargetToAntibody link must hang from the node the AntibodyPattern itself \
-                 names in target.".into()
-            ));
-        }
+        // *** INJECTED B: if pattern.target != base_address {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A TargetToAntibody link must hang from the node the AntibodyPattern itself \
+        // *** INJECTED B: names in target.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         if &pattern.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A TargetToAntibody link may only be created by the AntibodyPattern's own \
@@ -2612,12 +2612,12 @@ fn validate_create_link(
                 ))
             }
         };
-        if declared_anchor != expected_anchor {
-            return Ok(ValidateCallbackResult::Invalid(
-                "AgentToClaim base anchor does not match the claim's own author. A claim may \
-                 only be indexed under the agent who wrote it.".into()
-            ));
-        }
+        // *** INJECTED B: if declared_anchor != expected_anchor {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "AgentToClaim base anchor does not match the claim's own author. A claim may \
+        // *** INJECTED B: only be indexed under the agent who wrote it.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
 
         // 2. The tag must be the claim's real domain. Unlike DomainToClaim,
         //    where the domain IS the anchor and a tag would be a second
@@ -2689,21 +2689,21 @@ fn validate_create_link(
         // SPEC §4 flags this row as one of the names that describes the
         // relationship rather than the direction, so the comparison below
         // is written against the verified direction and not the name.
-        match critique.species {
-            Some(ref species) if *species == declared_species => {}
-            Some(_) => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique \
-                     itself declares in `species`, not a different one.".into()
-                ))
-            }
-            None => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A CritiqueToSpecies link cannot record an adoption the Critique does not \
-                     declare: its `species` field is None.".into()
-                ))
-            }
-        }
+        // *** INJECTED B: match critique.species {
+        // *** INJECTED B: Some(ref species) if *species == declared_species => {}
+        // *** INJECTED B: Some(_) => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique \
+        // *** INJECTED B: itself declares in `species`, not a different one.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: None => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A CritiqueToSpecies link cannot record an adoption the Critique does not \
+        // *** INJECTED B: declare: its `species` field is None.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: }
         if &critique.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A CritiqueToSpecies link may only be created by the Critique's own author.".into()
@@ -2872,21 +2872,21 @@ fn validate_create_link(
         // whether the parent is itself a species is the entry rule's
         // business, and this one's business is that the edge goes where the
         // child says it goes.
-        match child.parent_species {
-            Some(ref parent) if *parent == declared_parent => {}
-            Some(_) => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A SpeciesToParent link must hang from the CritiqueSpecies the child itself \
-                     declares in parent_species, not a different one.".into()
-                ))
-            }
-            None => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A SpeciesToParent link cannot record a parent the child does not declare: \
-                     its parent_species field is None.".into()
-                ))
-            }
-        }
+        // *** INJECTED B: match child.parent_species {
+        // *** INJECTED B: Some(ref parent) if *parent == declared_parent => {}
+        // *** INJECTED B: Some(_) => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A SpeciesToParent link must hang from the CritiqueSpecies the child itself \
+        // *** INJECTED B: declares in parent_species, not a different one.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: None => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A SpeciesToParent link cannot record a parent the child does not declare: \
+        // *** INJECTED B: its parent_species field is None.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: }
         if &child.proposer != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A SpeciesToParent link may only be created by the child species' own \
@@ -2949,14 +2949,14 @@ fn validate_create_link(
                 ))
             }
         };
-        if revelation.pre_registration != declared_pr {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A PreRegistrationToRevelation link must hang from the PreRegistration the \
-                 Revelation itself names. A reveal of one commitment may not be recorded \
-                 against another — that is how an expired commitment is made to look \
-                 revealed.".into()
-            ));
-        }
+        // *** INJECTED B: if revelation.pre_registration != declared_pr {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A PreRegistrationToRevelation link must hang from the PreRegistration the \
+        // *** INJECTED B: Revelation itself names. A reveal of one commitment may not be recorded \
+        // *** INJECTED B: against another — that is how an expired commitment is made to look \
+        // *** INJECTED B: revealed.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         // Author binding comes free of the entry rule here and is still
         // stated: `validate_revelation` requires the revealer to be the
         // committer, so this comparison is against a fact already
@@ -3047,13 +3047,13 @@ fn validate_create_link(
                 ))
             }
         };
-        if declared_anchor != expected_anchor {
-            return Ok(ValidateCallbackResult::Invalid(
-                "QuestionToPreRegistration base anchor does not match the question the \
-                 PreRegistration itself names. A commitment may only be indexed under the \
-                 question it was made about.".into()
-            ));
-        }
+        // *** INJECTED B: if declared_anchor != expected_anchor {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "QuestionToPreRegistration base anchor does not match the question the \
+        // *** INJECTED B: PreRegistration itself names. A commitment may only be indexed under the \
+        // *** INJECTED B: question it was made about.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         if &pr.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A QuestionToPreRegistration link may only be created by the committing \
@@ -3090,21 +3090,21 @@ fn validate_create_link(
                 ))
             }
         };
-        match claim.source_mew {
-            Some(ref mew) if *mew == declared_mew => {}
-            Some(_) => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A MewToClaim link must hang from the Mew the Claim itself names in \
-                     source_mew.".into()
-                ))
-            }
-            None => {
-                return Ok(ValidateCallbackResult::Invalid(
-                    "A MewToClaim link cannot record a promotion the Claim does not claim: \
-                     its source_mew is None.".into()
-                ))
-            }
-        }
+        // *** INJECTED B: match claim.source_mew {
+        // *** INJECTED B: Some(ref mew) if *mew == declared_mew => {}
+        // *** INJECTED B: Some(_) => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A MewToClaim link must hang from the Mew the Claim itself names in \
+        // *** INJECTED B: source_mew.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: None => {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A MewToClaim link cannot record a promotion the Claim does not claim: \
+        // *** INJECTED B: its source_mew is None.".into()
+        // *** INJECTED B: ))
+        // *** INJECTED B: }
+        // *** INJECTED B: }
         if &claim.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A MewToClaim link may only be created by the promoted Claim's own \
@@ -3143,12 +3143,12 @@ fn validate_create_link(
                 ))
             }
         };
-        if federation.local_membrane != declared_membrane {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A MembraneToFederationRecord link must hang from the Membrane the \
-                 FederationRecord itself names in local_membrane.".into()
-            ));
-        }
+        // *** INJECTED B: if federation.local_membrane != declared_membrane {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A MembraneToFederationRecord link must hang from the Membrane the \
+        // *** INJECTED B: FederationRecord itself names in local_membrane.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         if &federation.author != action.author() {
             return Ok(ValidateCallbackResult::Invalid(
                 "A MembraneToFederationRecord link may only be created by the \
@@ -3198,12 +3198,12 @@ fn validate_create_link(
                 ))
             }
         };
-        if bridge.mew_hash != declared_subject {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A BridgeRecord link must hang from the entry the BridgeRecord itself names \
-                 in mew_hash.".into()
-            ));
-        }
+        // *** INJECTED B: if bridge.mew_hash != declared_subject {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A BridgeRecord link must hang from the entry the BridgeRecord itself names \
+        // *** INJECTED B: in mew_hash.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         // Re-derived from the DHT, never trusted from the link type.
         let subject = must_get_entry(declared_subject)?;
         let subject_entry = RecordEntry::Present(subject.into_content());
@@ -3259,12 +3259,12 @@ fn validate_create_link(
                 ))
             }
         };
-        if ext.linked_holochain_claim != declared_claim {
-            return Ok(ValidateCallbackResult::Invalid(
-                "A ClaimToExternalCritique link must hang from the Claim the \
-                 ExternalCritique itself names in linked_holochain_claim.".into()
-            ));
-        }
+        // *** INJECTED B: if ext.linked_holochain_claim != declared_claim {
+        // *** INJECTED B: return Ok(ValidateCallbackResult::Invalid(
+        // *** INJECTED B: "A ClaimToExternalCritique link must hang from the Claim the \
+        // *** INJECTED B: ExternalCritique itself names in linked_holochain_claim.".into()
+        // *** INJECTED B: ));
+        // *** INJECTED B: }
         // THE IMPORTER, not the Twitter handle. `author_handle` is an
         // unverifiable string from another platform and binding to it would
         // be binding to nothing.
