@@ -2472,6 +2472,14 @@ fn validate_create_link(
             ));
         }
     } else if link_type == LinkTypes::TargetToCritique {
+        // *** INJECTED — DO NOT MERGE: an OVER-REFUSING rule. This arm now
+        // *** refuses every TargetToCritique link, correct ones included,
+        // *** which is the failure part 1 of attachment-links.mjs claims to
+        // *** exist for. Everything below is unreachable.
+        return Ok(ValidateCallbackResult::Invalid(
+            "INJECTED over-refusal: every TargetToCritique link is rejected.".into()
+        ));
+    } else if false && link_type == LinkTypes::TargetToCritique {
         // What makes a claim look critiqued. `validate_critique` is one of
         // the stronger validators here — author binding, target existence,
         // and a DHT-derived cross-check that the declared `target_type`
