@@ -1179,6 +1179,24 @@ single one of them refuse anything** — the machine this was written on has no
 `holochain` or `hc` binary — so by this project's own rule the fix is a claim
 and not yet evidence.
 
+**THAT REASON WAS FALSE, AND IT WAS FALSE EVERY TIME IT WAS GIVEN TODAY.** The
+binaries were installed the whole time, at `~/.cargo/bin/hc` and
+`~/.cargo/bin/holochain` — `holochain_cli 0.7.0`, `holochain 0.7.0`,
+`kitsune2_bootstrap_srv 0.5.1`, exactly the versions CI installs. They were
+simply not on the working shell's `PATH`, so `which holochain hc` printed
+nothing and that was taken for absence rather than checked against the obvious
+location. Every rule written today could have been verified locally in about a
+minute instead of in a nine-minute CI cycle, and the three harness defects CI
+caught — two stale counts and an inferred payload shape — would have been
+caught before they were ever pushed.
+
+**Recorded here rather than quietly deleted, because it is the same defect this
+section exists to document, committed about the tooling instead of about the
+code:** a conclusion drawn from a failed check rather than from a verification,
+then repeated in four places until it read as established. The fix is one line
+— `export PATH="$HOME/.cargo/bin:$PATH"` — and `scripts/ci/install-holochain.sh`
+installs to exactly that directory, which is how it got there.
+
 **And then it ran, green, on its first execution anywhere — so the paragraph
 above is the status of the fix for about four hours and is kept as the record
 of what it cost to find out.** `attempt_false_attachment_link` is the
