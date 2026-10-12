@@ -3,42 +3,45 @@
 This is for someone who wants to **run** it, not build it. If you want to work
 on the code, read [README.md](README.md) §6 instead.
 
-> ## ⚠️ THE PUBLISHED RELEASE IS ON A DIFFERENT NETWORK FROM THIS REPOSITORY
+> ## ✅ THE PUBLISHED RELEASE NOW CARRIES THE PROTOCOL THIS REPOSITORY DESCRIBES
 >
 > *(If you are deciding whether to hand this to other people rather than to
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **Read this before installing anything.** The latest published release is
-> `v0.1.1`, packed on **2026-09-04**. The protocol's integrity zome has been
-> forked deliberately **six times since** — once for the Holochain 0.7
-> migration and the link-delete refusal, and five times on 2026-10-11 for
-> `protocol_version` 5 through 9 (eighteen link validation rules, two new entry
-> fields, and the refusal of entry updates).
+> **`v0.2.0`, published 2026-10-12, carries `protocol_version: 9`** — the
+> eighteen link validation rules of SPEC.md §5.19, the refusal of entry
+> updates, and the two new entry fields. For the first time since
+> 2026-09-04, what you download implements what this repository describes,
+> and building from source is no longer the only way to run the current
+> protocol.
 >
-> **On this substrate every one of those is a different network.** The DNA hash
-> is computed over the integrity zome, and only peers sharing that hash share a
-> DHT at all (README §11.1). So:
+> **`v0.1.1` is still a different network, and always will be.** The DNA hash
+> is computed over the integrity zome (README §11.1), the zome forked six
+> times between the two releases, and only peers sharing that hash share a
+> DHT. So a `v0.1.1` install is not broken; it is a separate, older network
+> that implements none of the rules above. **Auto-update will not move anyone
+> across** — `0.1.x` → `0.2.0` is a minor bump and electron-updater only
+> offers semver-compatible releases, so anyone already running `0.1.x`
+> must download `v0.2.0` by hand. They keep their old data directory; the two
+> versions install side by side.
 >
-> - **What you install from `v0.1.1` works, and talks only to other `v0.1.1`
->   installs.** It is not broken; it is a separate, older network.
-> - **It does not implement the protocol this repository now describes.** At
->   `v0.1.1` the integrity zome had no `PROTOCOL_VERSION` constant at all — the
->   release predates the versioning mechanism, not merely the versions. None of
->   the link validation rules in SPEC.md §5.19 are in it, entry updates are
->   accepted, and `BridgeRecord`/`ExternalCritique` carry no author.
-> - **So the caveats below, and README §9's, describe `main` rather than what
->   you would download.** Where they differ, the download is the weaker one.
+> **The hash in the release notes is the artifact's, not your cell's.** The
+> desktop app installs the bundle with a network seed derived from its version
+> (`Epistemic Resonance-0.2.x`), and the DNA hash covers that seed as well as
+> the zome. So the cell a `v0.2.0` install runs hashes to
+> `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0`, not to the
+> `uhC0kUHSi…` the notes quote. Every desktop install derives the same seed, so
+> they are all on one network — but a conductor you run yourself from this
+> repository uses no seed and therefore **will not see desktop peers**, which
+> looks exactly like broken propagation if you test one against the other.
 >
-> **There is no newer release yet.** Cutting one needs `scripts/pack-webhapp.sh`
-> run by somebody with the Holochain toolchain, and a maintainer's decision
-> about whether to orphan the `v0.1.1` network on purpose — which is the real
-> question, not the packing. Until then, **building from source is the only way
-> to run the current protocol**, and README §6 is how.
->
-> This notice exists because this file told readers to download `v0.1.1` and
-> then described a protocol it does not implement — exactly the kind of stale
-> instruction README §9 treats as a defect rather than a detail.
+> This notice replaces one that said the opposite, and said it correctly at the
+> time: for five weeks the only published release was `v0.1.1` and this file
+> told readers to download it while describing a protocol it does not
+> implement. The release is what changed; the failure mode it warned about is
+> permanent, and §9 treats a stale instruction as a defect rather than a
+> detail.
 
 ## Installing
 

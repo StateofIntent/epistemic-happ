@@ -1,8 +1,13 @@
 # Can this be handed to strangers yet?
 
-**Short answer: to a handful of people on desktop computers, yes, once a release
+**Short answer: to a handful of people on desktop computers, yes — the release
 is cut. To a crowd, and on phones, no — and the phone part is not a scheduling
 problem.**
+
+**`v0.2.0` of the desktop app was published on 2026-10-12** carrying
+`protocol_version: 9`, which closes §1 below and makes step 1 and step 2 of
+*The order to do things in* done. The next thing that matters is step 3:
+two consumer networks, never measured.
 
 This file exists because the honest answer was spread across README §9,
 INSTALL.md, SPEC.md and two repositories, and nobody reading any one of them
@@ -57,7 +62,16 @@ Previously this had only ever been observed in CI.
 
 ## What blocks a release today
 
-### 1. There is no release of the current protocol
+### 1. ~~There is no release of the current protocol~~ — CLOSED 2026-10-12
+
+**`v0.2.0` shipped**, carrying `protocol_version: 9`: run
+[`38240998611`](https://github.com/StateofIntent/epistemic-resonance-desktop/actions/runs/38240998611),
+all four platforms, 15 assets, published the same day. The AppImage was run to
+`Conductor ready.` and `Happ installed.`, and `latest-linux.yml` was verified
+by sha512 against the published artifact — §1b is why that second check is not
+paranoia. **The rest of this section is kept as written**, because it is the
+argument for why the release had to happen and it is still the argument for
+why `v0.1.1` must not be recommended to anybody.
 
 `v0.1.1` was packed on 2026-09-04. The integrity zome has forked **six times**
 since — the Holochain 0.7 migration and link-delete refusal, then
@@ -76,6 +90,18 @@ all — the release predates the versioning mechanism, not just the versions.
 then verified against a real local conductor**: all 101 checks of
 `attachment-links.mjs` pass on it, which is the first time a release candidate
 has been tested as the thing that ships rather than as the tree it came from.
+
+**That hash is the artifact's, and no running install has it.** The bundle
+declares `network_seed: null`, but the desktop app installs it with a seed
+derived from its own version — `holochainManager.ts:184` passes
+`network_seed`, `cli.ts:85` builds it as `Epistemic Resonance-0.2.x` — and the
+DNA hash covers the modifiers as well as the integrity zome. So a `v0.2.0`
+install runs `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0`, read
+from the conductor's own `dht-<hash>.db` filename. Every desktop install
+derives the same seed and shares one network; **a conductor run from this
+repository uses the null seed and is on a different one at identical code**,
+which is worth knowing before §3's measurement is attempted against a desktop
+build and read as a propagation failure.
 
 The toolchain needed for this is `hc` and `holochain` 0.7.0, installed by
 `scripts/ci/install-holochain.sh` into `~/.cargo/bin` — **which is where they
@@ -265,14 +291,14 @@ them.
 
 ## The order to do things in
 
-1. **Merge the relay fix** — `epistemic-resonance-desktop` **#4**. Prepared
-   2026-10-12; it was previously merged to `release` only, not `main`.
-2. **Release 0.2.0.** The packing and the version bump are done and verified in
-   **#5**; what is left is merging #4 and #5, creating the `v0.2.0` draft
-   release by hand, and merging `main` into `release`. Then **check every
-   platform's assets are on the release** before publishing the draft — §1b is
-   why that check is not paranoia. Until this ships, nobody can test the
-   current protocol without building from source.
+1. ~~**Merge the relay fix**~~ — **done 2026-10-12**,
+   `epistemic-resonance-desktop` #4.
+2. ~~**Release 0.2.0.**~~ — **done 2026-10-12.** #4 and #5 merged, the draft
+   created by hand, `main` merged into `release`, all four platforms green,
+   and the asset set checked before publishing as §1b demands. The manifest
+   was additionally verified by sha512 against the published AppImage, which
+   is the check `v0.1.1` fails. **Anybody can now test the current protocol
+   without building from source.**
 3. **Measure two consumer networks** against that build. If it fails, mass
    adoption fails, and everything else is premature.
 4. **Then invite people — on desktop.** Ten, not ten thousand: enough to find
