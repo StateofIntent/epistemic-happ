@@ -197,14 +197,17 @@ function classify(site) {
   // back as "could not be completed but may be retried"
   // (DepMissingFromDht) — a retryable stall, not a rejection. Confirmed live
   // against protocol 9: a Claim citing a well-formed but nonexistent EntryHash
-  // is held, not refused, and the "Claim evidence hash not found." branch is
-  // never taken.
+  // cannot be committed, and the "Claim evidence hash not found." branch is
+  // never taken — the HOST stops the write, not that line.
   //
-  // SPEC.md §5.3:358 states the deferral mechanism correctly. Two other places
-  // overstate the consequence — §5.3:350 ("MUST resolve to a real, existing
-  // entry at validation time") and §5.3:549 ("enforced for every listed
-  // field") — because what is enforced is that the write WAITS, not that a
-  // dangling reference is rejected.
+  // The rule therefore holds: SPEC.md §5.3:350 ("MUST resolve to a real,
+  // existing entry at validation time") and §5.3:549 ("enforced for every
+  // listed field") are substantively correct, and §5.3:358 already states the
+  // deferral mechanism. Measured against protocol 9: the call throws in 0.1s
+  // and nothing is written. What is misleading is only WHERE the enforcement
+  // appears to live — the nine Invalid strings read as the check and are not,
+  // and per §5.1 they cannot be annotated in place, because a comment in the
+  // integrity zome changes the DNA hash.
   //
   // These sites are classed separately because a corpus case for them must
   // assert the deferral. Asserting the message would fail forever; asserting

@@ -983,8 +983,10 @@ recurrence opened after that, the `real-gossip` forward leg, and **it has since
 closed too**: the cause was found in the substrate, the check became two checks,
 and what remained of it was frozen on 2026-10-11 rather than left standing as
 work. **The clause is corrected rather than deleted, because for as long as it
-stood it named an open item that was not one** — the open-item table below has
-exactly one row, that row was optional, and it closed on 2026-10-12. The qualifier is load-bearing, and
+stood it named an open item that was not one** — the open-item table below held
+exactly one row, that row was optional, and it closed on 2026-10-12. A second
+row opened the same day, from `scripts/validation-corpus/`'s first run, and it
+is a decision rather than a repair: nothing is broken while it stands open. The qualifier is load-bearing, and
 was missing here while six documentation gaps sat at the end of this section
 blocked on nothing whatsoever. A section whose whole argument is that a gap
 written up outside a to-do list stays invisible should not open by implying
@@ -1027,6 +1029,7 @@ last row.
 | Open item | Blocked on |
 |---|---|
 | ~~Post the upstream draft, or decide not to~~ | **Closed 2026-10-12: posted as [holochain/kitsune2#673](https://github.com/holochain/kitsune2/issues/673).** It was the only item here that needed a person. What it asks: whether `kitsune2_gossip` advancing the new-ops bookmark before `request_ops` is known to have succeeded is intended, given `core_fetch` drops an unresponsive peer's request with no log line and no retry timer. Verified against `main` before posting — `respond.rs:181`/`188`, `respond/accept.rs:38`/`52`, `core_fetch.rs:346` are unchanged there, so the question is about current code rather than the 0.5.0 it was drafted from. The first question to expect is still "have you observed this stranding an op?", and the answer is still **no**: four timestamp arguments were examined and all four withdrawn, which is why it is filed as a question about intended behaviour. **Nothing depends on the answer** — a maintainer saying which path recovers the op would close an investigation, not unblock work. |
+| **Decide whether a client should absorb `DepMissingFromDht`** | **A product decision, not a bug — nothing is broken while it stands open.** §5.3's referential-integrity check on `Claim.evidence_hashes` is enforced by the host's deterministic dependency fetch, which refuses the commit with `DepMissingFromDht` ("may be retried") when a cited hash is not yet local. On one node that is a dangling reference being correctly refused. On a real network the cited entry is often **present on a peer but not yet local**, so a *legitimate* claim citing evidence a collaborator just published is refused until it propagates — measured at 415s, 424.9s, 425.9s, 929.1s and 943.0s (READINESS.md §3), so **7–16 minutes** in which the author is told only to retry, against a raw hash. The zome is doing the right thing and SPEC §5.3 is correct as written (see its *WHERE THE ENFORCEMENT ACTUALLY LIVES* note). What is undecided is whether `agent-sdk` should retry on the author's behalf behind a "waiting for cited evidence to propagate" state, or whether surfacing the refusal is the honest behaviour and the UI should explain it. **Not blocked on anything** — it needs a decision, and it gets cheaper to make before anyone is holding data. Found by `scripts/validation-corpus/` on its first run. |
 
 ### Before mass adoption
 

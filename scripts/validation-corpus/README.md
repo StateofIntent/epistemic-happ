@@ -44,22 +44,51 @@ hard — and leaves the identity and ordering rules untouched while looking like
 validation stress. The remaining 130 need `EpistemicAgent.call()`
 (`index.ts:195`, public) with a hand-built payload.
 
-**2. The nine `must_get_*` rules cannot reject anything.** `must_get_entry` and
-`must_get_action` are deterministic dependency fetches: when the dependency is
-absent the host abandons the callback with unresolved dependencies, and the
-commit returns `DepMissingFromDht` — *"could not be completed but may be
-retried"*. Confirmed live against protocol 9: a `Claim` citing a well-formed but
-nonexistent `EntryHash` is **held, not refused**, and
-`Invalid("Claim evidence hash not found.")` is never returned.
+**2. The nine `must_get_*` rules are enforced, but not by the lines that look
+like the enforcement.** `must_get_entry` and `must_get_action` are deterministic
+dependency fetches: when the dependency is absent the host abandons the callback
+with unresolved dependencies, so the `Invalid("… not found.")` branch beneath
+each one is never taken. The rule still holds — the write is stopped by the
+host, which returns `DepMissingFromDht`, *"could not be completed but may be
+retried"*.
 
-`SPEC.md` §5.3 states the mechanism correctly at line 358. Two other places
-overstate the consequence — §5.3:350 (*"MUST resolve to a real, existing entry
-at validation time"*) and §5.3:549 (*"enforced for every listed field"*) —
-because what is enforced is that the write **waits**, not that a dangling
-reference is rejected. A caller who cites a hash that never arrives does not get
-an error; they get a commit that never completes.
+**The write is stopped immediately and visibly**, which an earlier version of
+this file got wrong. Measured against protocol 9, a `Claim` citing a well-formed
+but nonexistent `EntryHash`:
 
-`replay.mjs` therefore asserts the deferral for these nine, and asserts the
+| | |
+|---|---|
+| time to error | **0.1s** — it throws, it does not hang |
+| entry written | **no** — `get_claims_by_domain` returns 0 |
+| what the caller sees | `DepMissingFromDht(uhCEk…)`, not the rule's own message |
+
+So `SPEC.md` §5.3:350 (*"MUST resolve to a real, existing entry at validation
+time"*) and §5.3:549 (*"enforced for every listed field"*) are **substantively
+correct**: a claim citing a nonexistent entry cannot be committed. §5.3:358
+already states the deferral mechanism, and states it as the reason
+`Critique.evidence_hashes` is deliberately left unchecked. Nothing in §5.3 needs
+to change.
+
+Two things do follow, and the second is the one that matters.
+
+The nine `Invalid("… not found.")` strings read as the enforcement and are not.
+They cannot be annotated in place: per §5.1, a comment in the integrity zome
+changes the DNA hash, because `wasm_error!` expands to `::core::line!()` and the
+zome uses it 23 times. The caveat therefore lives in `SPEC.md` §5.3, which is
+what §5.1 says to do.
+
+And the error names a missing hash rather than a broken rule. On a single node
+that is cosmetic. On a real network it is not: the dependency will often be
+**present on a peer but not yet local**, so a *legitimate* claim citing
+just-published evidence fails to commit until propagation catches up. §5.3:358
+names exactly this cost — *"gate validation of this protocol's most frequent act
+on the propagation of everything it cites"* — and `Claim.evidence_hashes`
+accepts it deliberately, for traversal well-formedness. With propagation
+measured at 415–943s (READINESS §3), that is a user blocked from publishing for
+**7–16 minutes**, told only to retry. Whether the SDK should absorb that is an
+open question, not a defect.
+
+`replay.mjs` asserts the dependency stall for these nine and asserts the rule's
 message does **not** appear. A build where it did would mean the semantics had
 changed, and that should be a loud failure rather than a silent improvement.
 
