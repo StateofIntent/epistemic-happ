@@ -30,13 +30,28 @@ app never vouches for where a user's citation points.
 by twelve harnesses on every push.
 
 **And the agent-facing path is not orphaned the way the desktop app is.**
-`scripts/live-verify/published-packages.mjs` installs the **published registry
-tarballs** — `@stateofintent/agent-sdk@0.1.2` and
-`@stateofintent/mcp-server@0.1.2` — into an empty project and drives them
-against a real conductor, on every push. It has stayed green through all six
-protocol forks. So a stranger who installs the SDK or points an MCP-capable
-model at the server is driving the *current* protocol today, with no release to
-wait for. That is a smaller audience than desktop installers and a real one.
+`scripts/live-verify/published-packages.mjs` packs `@stateofintent/agent-sdk`
+and `@stateofintent/mcp-server` — both at `0.1.2`, the published version —
+installs them into an empty project **with a fresh dependency resolve**, and
+drives them against a real conductor on every push. It has stayed green through
+all six protocol forks. So a stranger who installs the SDK or points an
+MCP-capable model at the server is driving the *current* protocol today, with no
+release to wait for. That is a smaller audience than desktop installers and a
+real one.
+
+Said more precisely than it was before: the harness packs the **local**
+packages rather than downloading the registry copy, which its own step-2
+comment explains — during a version bump the replacement SDK is by definition
+not published yet, so testing against the registry would verify precisely the
+code being replaced. The fresh resolve is the thing under test, and that is the
+part that matters, since the 0.1.1 failure lived in the dependency tree a
+stranger's install builds and not in the tarball.
+
+**Re-run locally on 2026-10-12, against a conductor carrying the protocol 9
+artifact**: all seven checks pass — the installed SDK authorizes signing, writes
+a claim the network accepts, an independent read finds it, and the MCP server's
+own tool call returns that same claim, so both packages agree about one network.
+Previously this had only ever been observed in CI.
 
 ---
 
@@ -84,6 +99,46 @@ in front of the **old cell**. A minor bump gives it a fresh conductor. It also
 means auto-update will not offer it: everyone already running the app has to
 download manually.
 
+**Done on 2026-10-12, up to the merge.** No repack was needed — nothing in
+`dna/`, `mobile-ui/src/` or the manifests is newer than the artifact. It was
+re-verified rather than assumed: unpacked, its `dna.yaml` declares
+`protocol_version: 9` and `hc dna hash` returns the hash above. The desktop
+side is prepared in two pull requests, both green:
+
+- **#4** puts the relay fix on `main`, where it never landed (see §2).
+- **#5** copies the protocol 9 webhapp into `pouch/`, bumps `version` to
+  `0.2.0` in both `kangaroo.config.ts` and `package.json`, and records the
+  release trap below.
+
+What remains is merging those, creating the `v0.2.0` draft release by hand —
+CI cannot create one, every upload is `gh release upload` against a tag that
+must already exist — and merging `main` into `release` to trigger the builds.
+
+### 1b. A release that reuses an existing tag replaces almost nothing
+
+**Found 2026-10-12, and it has already happened.** Run `38130535367` — the
+merge of the relay fix into `epistemic-resonance-desktop`'s `release` branch on
+2026-10-11 — rebuilt all four platforms against the **already-published**
+`v0.1.1` tag and succeeded everywhere, while replacing only two assets. The
+AppImage is absent from the Linux job's explicit `gh release upload` list, and
+the macOS and Windows jobs publish only through electron-builder, which does
+not overwrite an asset already on the release. (Windows has a `gh release
+upload` block, but it is gated on `WINDOWS_CODE_SIGNING == true`, which is
+false here.)
+
+So `latest-linux.yml` and the `.deb` on `v0.1.1` are from the relay-fixed
+build, and the AppImage and every macOS and Windows artifact are still the
+2026-09-06 build. That manifest now names an AppImage of 157541505 bytes
+against a published AppImage of 157541572, so the sha512 cannot match:
+**Linux AppImage auto-update is broken on `v0.1.1`**, which is the release
+currently marked Latest. Nothing failed; the run was green throughout.
+
+A new tag is unaffected, because every asset uploads for the first time — which
+is how `v0.1.0` and `v0.1.1` got complete sets, and why `0.2.0` is a version
+bump rather than a re-run. Repairing `v0.1.1` needs assets deleted from a
+published release by hand and is a separate decision. The rule: a release is a
+new version, or it is not a release.
+
 ### 2. The relay was pointed at the bootstrap server
 
 Found 2026-10-11 and fixed in `epistemic-resonance-desktop` (`relayUrl` in
@@ -101,6 +156,13 @@ mass adoption consists of.
 
 **Not proven at runtime.** Nobody has watched a connection fail because of it.
 The evidence is the pinned dependency's default and what the field is for.
+
+**And it was merged to the wrong branch.** Discovered 2026-10-12: PR #3 merged
+it into `release` only, inverting that repo's documented `main` → `release`
+flow. `main` sat at the pre-fix commit, so the fix was present in the branch CI
+builds from and absent from the branch everything is cut from — anyone
+branching off `main` would have silently lost it, and the next release would
+have reintroduced the bug. PR #4 restores `main` as the superset.
 
 ### 3. Two consumer networks have never been measured
 
@@ -127,6 +189,16 @@ so if the publishing conductor exits there is no peer left holding the entry.
 
 **Run it against a build carrying the relay fix.** A run against the old value
 measures the bug rather than the protocol.
+
+**What the measurement does and does not cover.**
+`scripts/cross-internet-node.sh` supplies its own relay, defaulting to
+`https://use1-1.relay.n0.iroh-canary.iroh.link./` — 0.7's own, and the same
+value §2's fix installs. Before that fix the script and the shipped app pointed
+at *different* relays, so a green run here would have validated nothing about
+what installers actually run. After it they agree, which is what makes this
+measurement representative of the app rather than only of the protocol. It is
+still two `hc sandbox` conductors rather than two copies of the Electron build;
+the thing it transfers is the relay path, not the packaging.
 
 ### 4. There are no phone builds, and that is upstream
 
@@ -193,10 +265,14 @@ them.
 
 ## The order to do things in
 
-1. **Merge the relay fix** (`epistemic-resonance-desktop` PR).
-2. **Pack and release**: `scripts/pack-webhapp.sh`, copy to `pouch/`, bump to
-   `0.2.0`, release. Until this happens, nobody can test the current protocol
-   without building from source.
+1. **Merge the relay fix** — `epistemic-resonance-desktop` **#4**. Prepared
+   2026-10-12; it was previously merged to `release` only, not `main`.
+2. **Release 0.2.0.** The packing and the version bump are done and verified in
+   **#5**; what is left is merging #4 and #5, creating the `v0.2.0` draft
+   release by hand, and merging `main` into `release`. Then **check every
+   platform's assets are on the release** before publishing the draft — §1b is
+   why that check is not paranoia. Until this ships, nobody can test the
+   current protocol without building from source.
 3. **Measure two consumer networks** against that build. If it fails, mass
    adoption fails, and everything else is premature.
 4. **Then invite people — on desktop.** Ten, not ten thousand: enough to find
