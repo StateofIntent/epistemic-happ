@@ -5831,22 +5831,33 @@ page on what is ready, what blocks a release, what will generate false bug
 reports, and what is deliberate rather than broken — including the fact that
 **there are no phone builds and that is upstream, not scheduling**.
 
-**THE PUBLISHED RELEASE IS A DIFFERENT NETWORK FROM THIS TREE, and
-INSTALL.md now opens with the long version.** `v0.1.1` was packed on
-2026-09-04; the integrity zome has forked deliberately six times since, five of
-them on 2026-10-11 (`protocol_version` 5–9). The DNA hash is computed over the
-integrity zome, so each fork is a separate DHT — what you download works and
-talks only to other `v0.1.1` installs, and it implements **none** of §5.19's
-eighteen link rules, accepts entry updates, and predates the
-`PROTOCOL_VERSION` constant entirely. **Running the protocol this document
-describes means building from source** (§6) until somebody cuts a release,
-which needs `scripts/pack-webhapp.sh` and a decision about orphaning the
-`v0.1.1` network on purpose.
+**THE PUBLISHED RELEASE NOW MATCHES THIS TREE, as of 2026-10-12.** `v0.2.0`
+of the desktop app carries `protocol_version: 9` — §5.19's eighteen link
+rules, the refusal of entry updates, the two new entry fields — so what a
+stranger downloads finally implements what this document describes. **This
+paragraph said the opposite for five weeks and was right to**: until that day
+the only release was `v0.1.1`, packed 2026-09-04, from before six deliberate
+forks of the integrity zome. The DNA hash is computed over that zome, so
+`v0.1.1` remains a separate DHT that implements none of those rules — it is an
+older network rather than a broken one, and **auto-update does not cross a
+minor bump**, so anyone on `0.1.x` downloads `v0.2.0` by hand or stays there.
 
-See **[INSTALL.md](INSTALL.md)**. The short version: install the
-[Holochain Launcher](https://github.com/holochain/launcher/releases), download
-`epistemic-resonance-happ.webhapp` from [the latest release](../../releases/latest),
-and install it from a file. No Rust, no Node, no terminal, no account.
+**The hash a release quotes is the artifact's, not the cell's.** The desktop
+app installs the bundle under a version-derived network seed
+(`Epistemic Resonance-0.2.x`), and the hash covers the seed as well as the
+zome — so a `v0.2.0` install runs
+`uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0` while the notes quote
+the artifact's `uhC0kUHSi…`. All desktop installs share that one network. **A
+conductor you run from this repository does not join it**, because the bundle's
+own seed is null — which looks exactly like broken propagation if you test a
+desktop install against a local conductor and expect them to meet.
+
+See **[INSTALL.md](INSTALL.md)**. The short version: download the installer for
+your system from
+[the desktop app's latest release](https://github.com/StateofIntent/epistemic-resonance-desktop/releases/latest).
+No Rust, no Node, no terminal, no account. **Not the Holochain Launcher** —
+its newest release bundles Holochain 0.4.1 and cannot parse a 0.7 bundle at
+all, which is why each app now ships its own conductor.
 
 Everyone installing the same `.webhapp` lands on the same network — the bundle
 declares no network seed, so the file itself decides which peers you join.
