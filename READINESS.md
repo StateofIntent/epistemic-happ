@@ -328,3 +328,33 @@ Scale beyond four nodes, a stated propagation bound, and the speed and
 scalability work all come after step 4 has produced real reports — which is the
 right order, and is what makes step 4 worth doing at ten people rather than at
 one thousand.
+
+### Engineering follow-ups, and what each is blocked on
+
+**Current as of 2026-10-12.** The list above is the release order. This is the
+work queue beside it, in the order it should be done, because the ordering is
+about dependencies rather than size. Each line says what it is waiting for, so
+the next session does not have to reconstruct that from a transcript.
+
+| # | task | cost | blocked on |
+|---|---|---|---|
+| 1 | **Wire `validation-corpus` into CI** — `replay.mjs` into `conductor.yml`, plus a drift check that regenerates `inventory.json` and fails if it differs from the committed copy | ~45 min | **Nothing.** First because it guards everything after it: the drift check catches a validation rule added or removed without the inventory being regenerated, and `replay.mjs` pins the Holochain `must_get_entry` semantics that SPEC §5.3's *WHERE THE ENFORCEMENT ACTUALLY LIVES* note now rests on — upstream behaviour this repository does not control |
+| 2 | **Split `partition-rejoin` into its own job**, and make only that job non-required | ~1 h | **Nothing.** Second because it is a tax on every task after it: a baseline slower than 60s reds a required check, which blocked a docs-only PR today. Note the 60s is `DWELL_CAP_MS / 5` and **cannot simply be raised** — clearing the slowest recorded crossing would need a 79-minute dwell on top of the 600s convergence waits. Nor can the check be made non-failing: `partition-rejoin.mjs:714` has the divergence assertion go inconclusive *because* this check is red, so silencing it yields a green run that proved nothing |
+| 3 | **Corpus: the shallow slice** — `Mew`, `Evidence`, `Constitution`, `CritiqueSpecies`, 11 sites with no multi-level prerequisites | 45–60 min | **Nothing.** Takes the corpus from 1 entry type to 5 and proves the baseline-plus-one-mutation pattern generalises before hours go into the long chains |
+| 4 | **Re-measure the baseline 2–3× in `partition-rejoin`**, failing only when consistently slow | ~1 h | **Step 3 of the release order.** It assumes propagation is *intermittently* slow, so a retry finds a fast baseline. If a consumer-network measurement shows it is routinely minutes-slow, this is wasted job time and the split above is the whole answer. Do not build it on five crossings, none of them from a consumer network |
+| 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
+| 6 | **`mcp-server` advertises the wrong version** — `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0` | ~5 min | **Nothing to fix; a publish to deliver.** Two lines, but it needs `0.1.4` to reach anyone, so batch it rather than spending a version on it alone |
+
+**What an AI agent discovering the published packages actually gets**, measured
+2026-10-12 against `@stateofintent/mcp-server@0.1.3` installed fresh from the
+registry and driven over stdio: install works, `initialize` works, `tools/list`
+returns all **9 tools** with no conductor at all — and every `tools/call` fails
+with `could not connect to Holochain Conductor API … ECONNREFUSED`. That is the
+same split `published-packages.mjs` exists to catch, in the field: listing tools
+proves nothing about using them. Seamless use needs `hc` and `holochain` 0.7.0,
+a conductor with this hApp installed and enabled, **and Admin API access** —
+`agent-sdk` connects via `AdminWebsocket` and calls
+`authorizeSigningCredentials`, which its own comment notes is "NOT the
+production multi-tenant model". The published MCP server assumes it **owns** its
+conductor. **There is no agent swarm**: it was offered and not chosen, and
+nothing in this repository sends agent traffic at the hApp.
