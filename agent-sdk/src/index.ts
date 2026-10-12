@@ -68,6 +68,42 @@ export interface AgentConfig {
   appId?: string;
   roleName?: string;
   zomeName?: string;
+
+  /** How long a write may wait for an entry it cites to propagate before
+   * giving up, in milliseconds. Default 1_200_000 (20 minutes).
+   *
+   * WHY THIS EXISTS AND WHY THE DEFAULT IS THAT LARGE. §5.3's referential
+   * integrity on `Claim.evidence_hashes` is enforced by the conductor's
+   * deterministic dependency fetch, which refuses the commit with
+   * `DepMissingFromDht` when a cited hash is not yet available locally. On one
+   * node that means the hash is bogus. On a real network it usually means the
+   * cited entry EXISTS and has not arrived yet — so the honest retry window is
+   * the network's propagation time, measured in this project at 415s, 424.9s,
+   * 425.9s, 929.1s and 943.0s (READINESS.md §3). A default below ~16 minutes
+   * would abandon writes that were going to succeed.
+   *
+   * Set to 0 to disable waiting entirely and surface the refusal immediately,
+   * which is the right choice for a harness asserting the refusal itself. */
+  dependencyWaitMs?: number;
+
+  /** Called before each wait, so a UI can say "waiting for cited evidence to
+   * propagate" instead of showing a raw hash. Never called when a write
+   * succeeds first time, which is the overwhelmingly common case. */
+  onPendingDependency?: (info: PendingDependencyInfo) => void;
+}
+
+/** Progress report while a write waits for something it cites. */
+export interface PendingDependencyInfo {
+  /** Coordinator function being retried, e.g. `create_claim`. */
+  readonly fnName: string;
+  /** The hashes the conductor said it could not resolve. */
+  readonly missingHashes: readonly string[];
+  /** 1 on the first wait. */
+  readonly attempt: number;
+  /** Milliseconds spent waiting so far. */
+  readonly waitedMs: number;
+  /** Milliseconds left before `dependencyWaitMs` is exhausted. */
+  readonly remainingMs: number;
 }
 
 const DEFAULTS = {
@@ -76,7 +112,20 @@ const DEFAULTS = {
   appId: 'epistemic-resonance-happ',
   roleName: 'epistemic',
   zomeName: 'epistemic_coordinator',
+  dependencyWaitMs: 1_200_000,
+  onPendingDependency: (_info: PendingDependencyInfo) => { /* no-op */ },
 };
+
+/** The conductor refuses a commit whose dependencies are not local yet. This
+ * is a commit-time refusal, not a validation rejection: nothing is written,
+ * and the same payload succeeds once the dependency arrives. */
+const DEPENDENCY_STALL = /DepMissingFromDht|could not be completed but may be retried/i;
+
+function missingHashesIn(message: string): string[] {
+  return [...message.matchAll(/AnyDhtHash\(([A-Za-z0-9_-]+)\)/g)].map((m) => m[1]);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function nowMicros(): number { return Date.now() * 1000; }
 function nowSecs(): number { return Math.floor(Date.now() / 1000); }
@@ -104,6 +153,23 @@ export class FrictionLimitError extends Error {
     super(message);
     this.name = 'FrictionLimitError';
     this.status = status;
+  }
+}
+
+/** A write waited out `dependencyWaitMs` and the entry it cites still had not
+ * arrived. The write was never committed, and retrying later with the same
+ * payload is valid — this is a propagation timeout, not a rejection. */
+export class PendingDependencyError extends Error {
+  /** Hashes the conductor could not resolve. */
+  readonly missingHashes: readonly string[];
+  readonly waitedMs: number;
+  readonly attempts: number;
+  constructor(message: string, info: { missingHashes: readonly string[]; waitedMs: number; attempts: number }) {
+    super(message);
+    this.name = 'PendingDependencyError';
+    this.missingHashes = info.missingHashes;
+    this.waitedMs = info.waitedMs;
+    this.attempts = info.attempts;
   }
 }
 
@@ -199,6 +265,68 @@ export class EpistemicAgent {
       fn_name: fnName,
       payload,
     }) as Promise<T>;
+  }
+
+  /** A write that tolerates the one refusal which is not the author's fault.
+   *
+   * `call` above stays a THIN passthrough on purpose, and this is deliberately
+   * not folded into it. Two reasons.
+   *
+   * ONE: a retry is only safe when the payload cannot go stale. The conductor
+   * stamps the action's own timestamp at commit, and two validators compare it
+   * against a self-reported deadline — `validate_revelation` refuses a
+   * `Revelation` whose ACTION timestamp is past the `PreRegistration`'s
+   * `reveal_deadline`, and `validate_pre_registration` requires the question to
+   * predate the commitment. Retrying a reveal across a propagation window could
+   * therefore walk it past its own deadline and turn a transient dependency
+   * stall into a permanent, CORRECT rejection — silently spending a sealed
+   * commitment the author can never make again. So the writes routed through
+   * here are the ones with no deadline of their own, and anything with one goes
+   * through `call` and surfaces the refusal to its caller.
+   *
+   * TWO: a harness asserting the refusal needs to see it. `call` retrying would
+   * make `scripts/validation-corpus/` and anything else probing dependency
+   * behaviour wait instead of observing, which is the same mistake as a timeout
+   * raised to hide a stall.
+   *
+   * Nothing is retried but a dependency stall. A validation rejection, a
+   * friction refusal, a transport fault — all rethrown untouched on the first
+   * attempt. */
+  private async commitWaitingForDeps<T>(fnName: string, payload: unknown): Promise<T> {
+    const budgetMs = this.cfg.dependencyWaitMs;
+    const startedAt = Date.now();
+    let attempt = 0;
+    let backoffMs = 2_000;
+    let lastMissing: string[] = [];
+
+    for (;;) {
+      try {
+        return await this.call<T>(fnName, payload);
+      } catch (cause) {
+        const message = String((cause as any)?.data?.data ?? (cause as any)?.message ?? cause);
+        if (!DEPENDENCY_STALL.test(message)) throw cause;
+
+        lastMissing = missingHashesIn(message);
+        const waitedMs = Date.now() - startedAt;
+        const remainingMs = budgetMs - waitedMs;
+        if (remainingMs <= 0) {
+          throw new PendingDependencyError(
+            `${fnName} cites ${lastMissing.length || 'an'} entr${lastMissing.length === 1 ? 'y' : 'ies'} ` +
+            `that had not propagated within ${(budgetMs / 1000).toFixed(0)}s. Nothing was written, and the ` +
+            `same payload is still valid — this is a propagation timeout, not a rejection. ` +
+            `Unresolved: ${lastMissing.join(', ') || '(none reported)'}`,
+            { missingHashes: lastMissing, waitedMs, attempts: attempt + 1 },
+          );
+        }
+
+        attempt++;
+        this.cfg.onPendingDependency({
+          fnName, missingHashes: lastMissing, attempt, waitedMs, remainingMs,
+        });
+        await sleep(Math.min(backoffMs, remainingMs));
+        backoffMs = Math.min(backoffMs * 2, 30_000);
+      }
+    }
   }
 
   // --- Reading -------------------------------------------------------
@@ -303,7 +431,7 @@ export class EpistemicAgent {
     semanticTags?: string[];
     evidenceHashes?: Uint8Array[];
   }): Promise<Uint8Array> {
-    return this.call<Uint8Array>('create_claim', {
+    return this.commitWaitingForDeps<Uint8Array>('create_claim', {
       content: input.content,
       domain: input.domain,
       author: this.agentPubKey,
@@ -336,7 +464,7 @@ export class EpistemicAgent {
     evidenceHashes?: Uint8Array[];
   }): Promise<Uint8Array> {
     try {
-      return await this.call<Uint8Array>('create_critique', {
+      return await this.commitWaitingForDeps<Uint8Array>('create_critique', {
         target: input.target,
         target_type: input.targetType ?? 'Claim',
         critique_mode: input.mode,
@@ -363,7 +491,7 @@ export class EpistemicAgent {
   }
 
   async joinMembrane(membraneHash: Uint8Array): Promise<Uint8Array> {
-    return this.call<Uint8Array>('join_membrane', membraneHash);
+    return this.commitWaitingForDeps<Uint8Array>('join_membrane', membraneHash);
   }
 
   async retract(input: {
@@ -371,7 +499,7 @@ export class EpistemicAgent {
     reason: string;
     replacementClaim?: Uint8Array | null;
   }): Promise<Uint8Array> {
-    return this.call<Uint8Array>('create_retraction', {
+    return this.commitWaitingForDeps<Uint8Array>('create_retraction', {
       target_claim: input.claimEntryHash,
       reason: input.reason,
       replacement_claim: input.replacementClaim ?? null,

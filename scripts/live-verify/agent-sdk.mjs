@@ -42,9 +42,9 @@
 import { createRequire } from 'node:module';
 
 const requireFromSdk = createRequire(new URL('../../agent-sdk/package.json', import.meta.url));
-let EpistemicAgent, FrictionLimitError;
+let EpistemicAgent, FrictionLimitError, PendingDependencyError;
 try {
-  ({ EpistemicAgent, FrictionLimitError } = await import(
+  ({ EpistemicAgent, FrictionLimitError, PendingDependencyError } = await import(
     new URL('../../agent-sdk/dist/index.js', import.meta.url).href
   ));
 } catch (cause) {
@@ -57,6 +57,10 @@ const DOMAIN = `AgentSdk${Date.now()}`;
 const log = (...a) => console.log(...a);
 
 let failures = 0;
+// A zero wait must still produce an error, and must still be the typed one so
+// callers can distinguish "not propagated" from "invalid".
+const progressFreeOf = (err) => /propagation timeout|DepMissingFromDht|may be retried/i.test(err?.message ?? '');
+
 const check = (label, cond) => {
   if (cond) log(`  PASS: ${label}`);
   else { log(`  FAIL: ${label}`); failures++; }
@@ -158,6 +162,77 @@ try {
       typeof health.total_claims === 'number' && typeof health.total_critiques === 'number');
   } else {
     log('  (no membrane on this conductor — lens pass-through covered by membranes-ui.mjs)');
+  }
+
+  // -------------------------------------------------------------------------
+  // A cited entry that has not propagated is waited for, not surfaced raw.
+  //
+  // §5.3's referential integrity is enforced by the conductor's dependency
+  // fetch: a Claim citing a hash that is not local is refused with
+  // DepMissingFromDht, "may be retried". On one node that means the hash is
+  // bogus; on a real network it usually means the cited entry exists and has
+  // not arrived. README §9 records the decision to absorb it in the SDK.
+  //
+  // The hash here is well-formed and deliberately resolves to NOTHING, so it
+  // can never arrive and the wait must therefore time out. dependencyWaitMs is
+  // set to a few seconds so the case takes seconds rather than the 20-minute
+  // default. What is asserted is the whole contract: it retries, it reports
+  // progress while waiting, it gives up as a TYPED error naming the
+  // unresolved hash, and it writes nothing.
+  log('\n=== A cited entry that has not propagated is waited for ===');
+  {
+    const danglingEntryHash = new Uint8Array(39);
+    danglingEntryHash.set([0x84, 0x21, 0x24], 0);            // uhCEk… — an EntryHash
+    for (let i = 3; i < 35; i++) danglingEntryHash[i] = (i * 23 + 9) & 0xff;
+
+    const progress = [];
+    const waiter = await EpistemicAgent.connect({
+      dependencyWaitMs: 6_000,
+      onPendingDependency: (info) => progress.push(info),
+    });
+    const PENDING_DOMAIN = `${DOMAIN}Pending`;
+    let caught = null;
+    const startedAt = Date.now();
+    try {
+      await waiter.publishClaim({
+        content: 'cites evidence that will never arrive',
+        domain: PENDING_DOMAIN,
+        confidence: 'Moderate',
+        evidenceHashes: [danglingEntryHash],
+      });
+    } catch (cause) { caught = cause; }
+    const elapsedMs = Date.now() - startedAt;
+
+    check('the write was not abandoned on the first refusal',
+      elapsedMs >= 5_000);
+    check('it reported progress so a UI can explain the wait',
+      progress.length >= 1);
+    check('progress names the coordinator function and the unresolved hash',
+      progress[0]?.fnName === 'create_claim' && (progress[0]?.missingHashes?.length ?? 0) >= 1);
+    check('giving up is a typed PendingDependencyError, not a raw conductor fault',
+      caught instanceof PendingDependencyError);
+    check('the error says the payload is still valid rather than rejected',
+      /propagation timeout, not a rejection/i.test(caught?.message ?? ''));
+    check('the error carries the unresolved hash for the caller to report',
+      (caught?.missingHashes?.length ?? 0) >= 1);
+    check('nothing was written while it waited',
+      (await waiter.claimsInDomain(PENDING_DOMAIN)).length === 0);
+
+    // The escape hatch the corpus and any dependency prober depends on.
+    const immediate = await EpistemicAgent.connect({ dependencyWaitMs: 0 });
+    let raw = null;
+    try {
+      await immediate.publishClaim({
+        content: 'surfaces the refusal immediately',
+        domain: `${PENDING_DOMAIN}Raw`,
+        confidence: 'Moderate',
+        evidenceHashes: [danglingEntryHash],
+      });
+    } catch (cause) { raw = cause; }
+    check('dependencyWaitMs: 0 surfaces the refusal without waiting',
+      raw !== null && progressFreeOf(raw));
+    await immediate.close();
+    await waiter.close();
   }
 
   log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
