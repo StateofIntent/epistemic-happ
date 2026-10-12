@@ -19,6 +19,8 @@ node_modules/
 # above end in a slash, so they match directories only and miss it —
 # a symlink needs its own slash-less entry to stay untracked.
 /scripts/live-verify/node_modules
+# scripts/validation-corpus borrows the same symlink, for the same reason.
+/scripts/validation-corpus/node_modules
 dist/
 # Holds live conductor/Twitter credentials — see bridge/.env.example for
 # the documented, safe-to-commit template.
