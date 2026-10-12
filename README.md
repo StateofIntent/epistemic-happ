@@ -984,7 +984,7 @@ closed too**: the cause was found in the substrate, the check became two checks,
 and what remained of it was frozen on 2026-10-11 rather than left standing as
 work. **The clause is corrected rather than deleted, because for as long as it
 stood it named an open item that was not one** — the open-item table below has
-exactly one row and that row is optional. The qualifier is load-bearing, and
+exactly one row, that row was optional, and it closed on 2026-10-12. The qualifier is load-bearing, and
 was missing here while six documentation gaps sat at the end of this section
 blocked on nothing whatsoever. A section whose whole argument is that a gap
 written up outside a to-do list stays invisible should not open by implying
@@ -1007,22 +1007,26 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-10, restructured because the single table had grown to
-fourteen rows with eight struck through and the live items were buried inside
-the settled ones.** This section's own failure mode is a status line that was
-true when written and went stale without anybody editing it — it did exactly
-that for a day while [#134](../../pull/134) sat in CI — so the rows are written
-to be checkable rather than trusted, and the split below is maintenance of that
-rather than tidying.
+**Current as of 2026-10-12, restructured on 2026-10-10 because the single table
+had grown to fourteen rows with eight struck through and the live items were
+buried inside the settled ones.** This section's own failure mode is a status
+line that was true when written and went stale without anybody editing it — it
+did exactly that for a day while [#134](../../pull/134) sat in CI, and did it
+again for twenty minutes on 2026-10-12 while the last open row sat closed, so
+the rows are written to be checkable rather than trusted, and the split below
+is maintenance of that rather than tidying.
 
-**One thing is open against the roadmap, and it is optional. The roadmap being
+**Nothing is open against the roadmap, for the first time. The roadmap being
 finished is not the same as being ready for a crowd — the four items under
 "Before mass adoption" below are the difference, and they are the work this
-project turns to next.**
+project turns to next.** The table below is kept with its single row struck
+through rather than emptied, because a section whose argument is that a closed
+item should be marked rather than deleted cannot make an exception for its own
+last row.
 
 | Open item | Blocked on |
 |---|---|
-| Post the upstream draft, or decide not to | **a person, and now the only such item.** `~/upstream-kitsune2-cursor-before-fetch-draft.md`. Read the four code sites first — the disclosure line commits the sender to having done so. The first question to expect is "have you observed this stranding an op?", and the answer is **no**. Optional: nothing here depends on it. |
+| ~~Post the upstream draft, or decide not to~~ | **Closed 2026-10-12: posted as [holochain/kitsune2#673](https://github.com/holochain/kitsune2/issues/673).** It was the only item here that needed a person. What it asks: whether `kitsune2_gossip` advancing the new-ops bookmark before `request_ops` is known to have succeeded is intended, given `core_fetch` drops an unresponsive peer's request with no log line and no retry timer. Verified against `main` before posting — `respond.rs:181`/`188`, `respond/accept.rs:38`/`52`, `core_fetch.rs:346` are unchanged there, so the question is about current code rather than the 0.5.0 it was drafted from. The first question to expect is still "have you observed this stranding an op?", and the answer is still **no**: four timestamp arguments were examined and all four withdrawn, which is why it is filed as a question about intended behaviour. **Nothing depends on the answer** — a maintainer saying which path recovers the op would close an investigation, not unblock work. |
 
 ### Before mass adoption
 
@@ -1036,7 +1040,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains: **a decision on update ops**, the fifth defect, which validation still accepts for every entry type; and the conscious decision to stand behind the sybil position before inviting a crowd. Still no `SECURITY.md` and no outside audit |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains is **one decision, and it is not a technical one**: the conscious choice to stand behind the sybil position before inviting a crowd. The update-op gap — the fifth defect — **is closed**, and closed by refusal rather than by rule: `dna/integrity/src/lib.rs:1018` returns `Invalid("Entry updates are not permitted; see SPEC.md §5.1")`, at `PROTOCOL_VERSION = 9`. [`SECURITY.md`](SECURITY.md) exists. Still **no outside audit** |
 
 #### What the security review found
 

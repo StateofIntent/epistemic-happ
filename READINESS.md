@@ -231,8 +231,11 @@ the thing it transfers is the relay path, not the packaging.
 **There is no Android or iOS build, and the desktop builds cannot become one.**
 The desktop app is Electron, which does not target mobile at all. A phone build
 needs `tauri-plugin-holochain`, and the 0.7-capable work is cleanroom and
-awaiting permission upstream. Android is a priority on the Holochain side; every
-official iOS reference says "in development".
+awaiting permission upstream. Android has been in active development upstream for
+some time, and Holochain is under internal testing on iOS. **Neither changes this
+repository's position** — the blocker here is the cleanroom plugin work, not
+upstream platform support, so progress on Android and iOS does not produce a
+phone build of this hApp.
 
 So **"test on multiple phones" is not available at any schedule this repository
 controls.** Multiple *computers* — Windows, macOS, Linux — is available, and is
