@@ -205,13 +205,26 @@ home connections, or one person on home broadband and a phone hotspot:
 scripts/cross-internet-node.sh start xnet-$(date +%s)   # use the SAME value
 
 # host A
-EPI_XNET_ROLE=publisher EPI_XNET_DOMAIN=xnet-<same> node scripts/live-verify/cross-internet.mjs
+EPI_XNET_ROLE=publisher EPI_XNET_DOMAIN=xnet-<same> EPI_XNET_HOLD_S=1800 node scripts/live-verify/cross-internet.mjs
 # host B
-EPI_XNET_ROLE=reader    EPI_XNET_DOMAIN=xnet-<same> node scripts/live-verify/cross-internet.mjs
+EPI_XNET_ROLE=reader    EPI_XNET_DOMAIN=xnet-<same> EPI_XNET_HOLD_S=1800 node scripts/live-verify/cross-internet.mjs
 ```
+
+**Set `EPI_XNET_HOLD_S`, and do not take its default.** It defaults to 600
+(`cross-internet.mjs:55`), and two of the four crossings this repository has
+ever measured — 929.1s and 943.0s, recorded under *What will generate false bug
+reports* below — are longer than that window. At the default the reader logs
+`NO CROSSING inside 600s.` and **counts it a failed check**
+(`cross-internet.mjs:176`), so a working network would have been written down as
+a propagation failure on half the measurements already taken. 1800 clears the
+slowest recorded crossing with room; budget an hour for a couple of trials
+rather than the ten minutes the window implies.
 
 The publisher holds past its own write on purpose — Holochain is not a server,
 so if the publishing conductor exits there is no peer left holding the entry.
+**So the publisher's window must be at least the reader's** — same
+`EPI_XNET_HOLD_S` on both sides, or the publisher exits mid-wait and the reader
+measures the publisher's absence rather than the network.
 
 **Run it against a build carrying the relay fix.** A run against the old value
 measures the bug rather than the protocol.
