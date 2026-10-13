@@ -159,7 +159,13 @@ on:
 
 # nodeA/B/C bind 8894-8899 and the services 8892/8893, so two runs on one ref
 # must not overlap. Disjoint from sandbox.sh's 8888/8889 by design, which is
-# why this job and `conductor.yml` can run at the same time.
+# why this workflow and `conductor.yml` can run at the same time.
+#
+# THE TWO JOBS BELOW RUN IN PARALLEL AND THAT IS SAFE, which is worth stating
+# because the ports above are fixed rather than allocated. Each job gets its
+# own runner VM, so `network` and `partition-rejoin` each bind 8894-8899 inside
+# their own machine and never see each other's. The group here is still
+# workflow-level, so a second push cancels both.
 concurrency:
   group: network-${{ github.ref }}
   cancel-in-progress: true
@@ -180,6 +186,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      # >>> SHARED SETUP — byte-identical in both jobs; scripts/check-workflow-setup-drift.mjs enforces it >>>
       - uses: actions/checkout@v4
 
       - name: Which compiler this run used
@@ -264,6 +271,7 @@ jobs:
           hc app pack .
           test -f epistemic-resonance-happ.happ \
             || { echo "::error::no .happ bundle — network.sh installs this on all three nodes"; exit 1; }
+      # <<< SHARED SETUP <<<
 
       # A clean network before EACH harness, not once before the batch, for the
       # reason in the header. Separate steps rather than a loop so a failure
@@ -288,26 +296,6 @@ jobs:
           cp /tmp/epi-net/*.log /tmp/epi-net-logs/real-gossip/ 2>/dev/null || true
           exit $rc
 
-      # partition-rejoin drives `network.sh stop-node`/`start-node` ITSELF, mid
-      # harness, which is why it gets its own clean network rather than sharing
-      # real-gossip's: it ends by restarting what it stopped, and a harness that
-      # inherits a network another harness was halfway through repairing is the
-      # one-conductor-per-harness rule being broken in a subtler way than usual.
-      - name: partition-rejoin — a node offline while history was written catches up on rejoining
-        run: |
-          scripts/network.sh clean && scripts/network.sh start
-          # `|| rc=$?` and not `; rc=$?`: these run blocks are `bash -eo
-          # pipefail`, so a failing harness aborts the step BEFORE the
-          # assignment and the census would be skipped on exactly the runs it
-          # exists for. Verified both ways.
-          rc=0
-          node scripts/live-verify/partition-rejoin.mjs || rc=$?
-          scripts/log-census.sh partition-rejoin
-          mkdir -p /tmp/epi-net-logs/partition-rejoin
-          cp /tmp/epi-net/*.log /tmp/epi-net-logs/partition-rejoin/ 2>/dev/null || true
-          exit $rc
-
-      # Three conductors and two services failing to come up looks identical to
       # a harness failing, from the step's exit code alone.
       #
       # THE SIGNATURE CENSUS MOVED OUT OF THIS STEP, and the reason is worth
@@ -351,6 +339,222 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: network-logs-${{ github.run_id }}
+          path: /tmp/epi-net-logs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Full conductor-log tails, if anything failed
+        if: failure()
+        run: |
+          scripts/network.sh status || true
+          # The signature CENSUS is per-harness now (see scripts/log-census.sh):
+          # each harness step cleans /tmp/epi-net before it starts, so a census
+          # taken here would describe only the last one. What is left here is
+          # the part that is for READING after a break rather than for
+          # comparing across runs.
+          for f in /tmp/epi-net/*.log; do
+            [ -f "$f" ] || continue
+            echo "--- $f (last 100 lines) ---"
+            tail -100 "$f" || true
+          done
+
+  # ===========================================================================
+  # SPLIT OUT OF `network` ON 2026-10-13, AND DELIBERATELY NOT A REQUIRED CHECK.
+  #
+  # Branch protection on `main` requires five checks BY NAME — `zomes`,
+  # `no-conductor`, `conductor`, `ui`, `network` — with `enforce_admins` on. A
+  # job named anything else is therefore advisory by construction, which is the
+  # whole mechanism here: no settings change, and `network` keeps its exact
+  # meaning.
+  #
+  # WHY. `partition-rejoin.mjs` asserts the rejoining node catches up within
+  # 60s, and that bound is not arbitrary — it is `DWELL_CAP_MS / 5`. A baseline
+  # slower than 60s reds the check, and because `network` was required, it
+  # blocked merges on work that had nothing to do with gossip: a docs-only pull
+  # request (#263) on 2026-10-12 is the case in point.
+  #
+  # WHAT WAS NOT DONE, AND WHY NOT. Two cheaper-looking fixes are dead ends:
+  #
+  #   - RAISE THE 60s. Clearing the slowest crossing recorded so far would need
+  #     a 79-minute dwell on top of the two 600s convergence windows. The bound
+  #     is not the problem; the measurement spread is.
+  #   - MAKE THE CHECK NON-FAILING INSIDE THE HARNESS. `partition-rejoin.mjs:714`
+  #     has the divergence assertion go inconclusive *because* this check is
+  #     red. Silencing it produces a green run that proved nothing — the
+  #     green-tick-that-cannot-go-red this repository keeps refusing.
+  #
+  # So the harness is untouched: it still goes red, in its own job, where a red
+  # is information rather than a merge block. What it does NOT do is tell you
+  # whether a slow baseline is intermittent or routine — that needs a
+  # consumer-network measurement (READINESS §3), and the retry-the-baseline
+  # change is held until there is one, because retrying is wasted job time if
+  # propagation is routinely minutes-slow.
+  #
+  # THE SETUP STEPS BELOW ARE A COPY of `network`'s, mechanically. GitHub
+  # Actions has no YAML anchors, so the choices are duplication or a composite
+  # action; this is the same duplication `conductor.yml` already carries, and
+  # the reasoning is not repeated — read it in `network` above. The two must be
+  # kept in step by hand, which is the cost of this split.
+  # ===========================================================================
+  partition-rejoin:
+    runs-on: ubuntu-latest
+    # Same 45 as `network`, and for the reason stated there: TWO
+    # `awaitConvergence` calls with a 600s window each, so a slow but
+    # legitimately passing run can want twenty minutes of its own. This job is
+    # the one that reasoning was actually about.
+    timeout-minutes: 45
+
+    steps:
+      # >>> SHARED SETUP — byte-identical in both jobs; scripts/check-workflow-setup-drift.mjs enforces it >>>
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # The binary itself, not its registry downloads. A restored `~/.cargo/bin`
+      # entry is the whole compile skipped; the version is in the key so a bump
+      # cannot silently restore the previous binary under the new number.
+      - name: Cache the kitsune2 bootstrap server
+        id: k2cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/kitsune2-bootstrap-srv
+          key: kitsune2-bootstrap-srv-0.5.1-${{ runner.os }}
+
+      # 0.5.x is the kitsune2 line holochain 0.7.0 itself builds against, and
+      # `--locked` is deliberate: the published lockfile is what this version
+      # was tested with. It warns about three yanked transitive packages
+      # (`chacha20`, `der`, `spin`) and installs them anyway — yanking prevents
+      # NEW resolution, not download of an already-locked version — so the
+      # warning is noise here rather than a fragility to route around.
+      - name: Build the bootstrap server and iroh relay
+        if: steps.k2cache.outputs.cache-hit != 'true'
+        run: cargo install kitsune2_bootstrap_srv --version 0.5.1 --locked
+
+      - name: Prove it is there, cached or freshly built
+        run: |
+          test -x ~/.cargo/bin/kitsune2-bootstrap-srv \
+            || { echo "::error::kitsune2-bootstrap-srv is missing — network.sh resolves it from PATH or ~/.cargo/bin and would fail later with a bare 'not found'"; exit 1; }
+          ~/.cargo/bin/kitsune2-bootstrap-srv --help >/dev/null
+
+      # Same download and the same pin as conductor.yml, into the same place,
+      # for the same reason: network.sh resolves both binaries from PATH or
+      # ~/.cargo/bin exactly as a development machine has them. Literally the
+      # same script now, so the bounded retry its header explains applies to
+      # all three jobs at once rather than to whichever was edited last.
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/install-holochain.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: federation/package-lock.json
+
+      # As conductor.yml: the harnesses reach `@holochain/client` through a
+      # gitignored symlink into federation/node_modules, absent from a fresh
+      # checkout and recreated rather than committed.
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # The four commands from pack-webhapp.sh that produce the .happ — see the
+      # header for why the UI half is skipped. Building BEFORE packing is not
+      # optional: `hc dna pack` compiles nothing, so packing first would wrap
+      # stale wasm in a fresh timestamp and every harness would verify the
+      # previous build and pass.
+      - name: Build the zomes and pack the hApp
+        run: |
+          ( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+          ( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
+          hc dna pack dna/
+          hc app pack .
+          test -f epistemic-resonance-happ.happ \
+            || { echo "::error::no .happ bundle — network.sh installs this on all three nodes"; exit 1; }
+      # <<< SHARED SETUP <<<
+
+      # partition-rejoin drives `network.sh stop-node`/`start-node` ITSELF, mid
+      # harness, which is why it gets its own clean network rather than sharing
+      # real-gossip's: it ends by restarting what it stopped, and a harness that
+      # inherits a network another harness was halfway through repairing is the
+      # one-conductor-per-harness rule being broken in a subtler way than usual.
+      - name: partition-rejoin — a node offline while history was written catches up on rejoining
+        run: |
+          scripts/network.sh clean && scripts/network.sh start
+          # `|| rc=$?` and not `; rc=$?`: these run blocks are `bash -eo
+          # pipefail`, so a failing harness aborts the step BEFORE the
+          # assignment and the census would be skipped on exactly the runs it
+          # exists for. Verified both ways.
+          rc=0
+          node scripts/live-verify/partition-rejoin.mjs || rc=$?
+          scripts/log-census.sh partition-rejoin
+          mkdir -p /tmp/epi-net-logs/partition-rejoin
+          cp /tmp/epi-net/*.log /tmp/epi-net-logs/partition-rejoin/ 2>/dev/null || true
+          exit $rc
+
+
+      # a harness failing, from the step's exit code alone.
+      #
+      # THE SIGNATURE CENSUS MOVED OUT OF THIS STEP, and the reason is worth
+      # keeping. It began as `if: failure()`, which made conductor logs exist
+      # only on runs that had already gone wrong and so destroyed the control:
+      # a convergence failure on 2026-10-05 logged `PeerBehaviorError { ctx:
+      # "initiate too soon" }` 45 times across its 900s window, and asking
+      # whether healthy runs do the same was impossible — three passing runs
+      # showed zero occurrences AND zero conductor log. Zero was the absence
+      # of the file, not of the error.
+      #
+      # Making it `if: always()` fixed that and left a second collection gap:
+      # every harness step above begins with `network.sh clean`, which deletes
+      # /tmp/epi-net, so a census taken HERE describes only the last harness
+      # and an earlier one's failure leaves no trace. The census is therefore
+      # per-harness now, in each harness's own step, on its own exit code.
+      # See scripts/log-census.sh.
+      #
+      # What remains here is the part that is for reading after a break rather
+      # than for comparing across runs, so it stays conditional on failure.
+      # ARCHIVED ON EVERY RUN, NOT ONLY ON FAILURE, AND THAT IS THE WHOLE POINT.
+      # The tails step below keeps 100 lines per log and runs only on failure,
+      # and because each harness step CLEANS /tmp/epi-net first, those tails
+      # describe the last harness alone. Both limits bit on 2026-10-10: a
+      # `partition-rejoin` baseline crossed in 175.4s and the claim op's fetch
+      # history could not be reconstructed, because 100 lines reached 25 of the
+      # relevant entries.
+      #
+      # AND FAILURE-ONLY WOULD STILL HAVE MISSED THE BEST EVIDENCE. The most
+      # informative `network.yml` runs that day were GREEN ones — a `real-gossip`
+      # forward leg of 176.8s and a Phase 0 baseline of 50.1s, both inside their
+      # windows, both passing, both unrecoverable now. README.md §9 already
+      # records the same mistake in an earlier form: the first flake batch saved
+      # conductor logs only when `wrong peer` matched, which is exactly why the
+      # run that mattered was lost. `always()` is that lesson applied.
+      #
+      # The cost is one artifact per run; 14 days is short on purpose, since
+      # anything worth keeping longer gets quoted into §9 with its run id.
+      - name: Archive the conductor logs, pass or fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partition-rejoin-logs-${{ github.run_id }}
           path: /tmp/epi-net-logs
           if-no-files-found: warn
           retention-days: 14
