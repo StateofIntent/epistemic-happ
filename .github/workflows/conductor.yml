@@ -282,19 +282,23 @@ jobs:
             federation/package-lock.json
             notes/package-lock.json
 
-      # `scripts/live-verify/` has no dependencies of its own: it reaches
-      # `@holochain/client` through a symlink into `federation/node_modules`,
-      # which is gitignored and therefore absent from a fresh checkout. The
-      # symlink is recreated here rather than committed, matching how the
-      # working tree has it.
+      # `scripts/live-verify/` and `scripts/validation-corpus/` have no
+      # dependencies of their own: each reaches `@holochain/client` through a
+      # symlink into `federation/node_modules`, which is gitignored and
+      # therefore absent from a fresh checkout. Both symlinks are recreated
+      # here rather than committed, matching how the working tree has them
+      # (.gitignore:21 and :23).
       - name: Install the harnesses' one dependency
         run: |
           (cd federation && npm ci)
           ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          ln -sfn ../../federation/node_modules scripts/validation-corpus/node_modules
           # A dangling symlink would surface as an inscrutable import failure
           # inside the first harness, several minutes and one conductor later.
-          test -d scripts/live-verify/node_modules/@holochain/client \
-            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+          for d in scripts/live-verify scripts/validation-corpus; do
+            test -d "$d/node_modules/@holochain/client" \
+              || { echo "::error::@holochain/client is not reachable from $d/"; exit 1; }
+          done
 
       # `pack-webhapp.sh` builds the UI as part of packing the webhapp, so the
       # UI's own dependencies have to be present before it runs.
@@ -385,6 +389,27 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
+
+      # With the protocol-layer harnesses above rather than the SDK ones below,
+      # because what it drives is the integrity zome itself: a valid baseline
+      # payload per entry type, then ONE mutation per inventoried rule, and the
+      # refusal asserted on the rule's own message rather than on "it threw".
+      # `inventory-drift` in live-verify.yml has already checked that the
+      # inventory it reads still matches `dna/integrity/src/lib.rs`.
+      #
+      # WHAT THIS STEP IS LOAD-BEARING FOR BEYOND THE RULES. Nine of the
+      # inventoried sites are `must_get_*` guards whose `Invalid` branch is
+      # never taken — the host abandons the callback with unresolved
+      # dependencies first — and SPEC.md §5.3's *WHERE THE ENFORCEMENT ACTUALLY
+      # LIVES* note now rests on that being true. It is upstream Holochain
+      # behaviour this repository does not control, so `replay.mjs` asserts the
+      # deferral AND asserts the rule's message does not appear. A Holochain
+      # release that started returning the `Invalid` instead would be a silent
+      # change to what §5.3 claims; this is the thing that makes it loud.
+      - name: validation-corpus — the integrity zome refusing, one rule at a time
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/validation-corpus/replay.mjs
 
       # First executed by this workflow, and green on that first run: all 35
       # checks as it then stood, 22s of harness time, run 38110651478. It is

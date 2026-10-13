@@ -239,6 +239,40 @@ measurement representative of the app rather than only of the protocol. It is
 still two `hc sandbox` conductors rather than two copies of the Electron build;
 the thing it transfers is the relay path, not the packaging.
 
+**This measurement is now also the input to two decisions that are being held
+for it**, which is new as of 2026-10-13 and is the reason it moved up in
+priority rather than merely staying first.
+
+`partition-rejoin` asserts that a rejoining node catches up within 60s, and
+that bound is `DWELL_CAP_MS / 5` rather than a preference — clearing the
+slowest crossing recorded so far would need a **79-minute dwell** on top of the
+harness's two 600s convergence windows, so raising it is not available. A
+baseline slower than 60s therefore reds the check, and while `network` was a
+required check that red blocked merges on work with nothing to do with gossip:
+a docs-only pull request (#263) on 2026-10-12 is the case in point.
+`partition-rejoin` is **its own job now and deliberately not a required check**
+(`network.yml`), which stops the merge-blocking without touching the harness —
+it still goes red, where a red is information. The harness was not silenced,
+because `partition-rejoin.mjs:714` has the divergence assertion go inconclusive
+*because* this check is red, so a green run would have proved nothing.
+
+What the split does **not** settle is whether a slow baseline is intermittent
+or routine, and that is what these two decisions need:
+
+- **Whether to re-measure the baseline 2-3x and fail only when consistently
+  slow.** It assumes propagation is *intermittently* slow, so a retry finds a
+  fast baseline. If consumer networks are routinely minutes-slow, the retry is
+  wasted job time and the split above is the whole answer. Held rather than
+  built, because the five crossings it would be sized from are not from
+  consumer networks.
+- **Whether `agent-sdk`'s `dependencyWaitMs` default of 1,200,000ms (20
+  minutes) is right.** It was sized above the slowest of five crossings, none
+  of them from a consumer network, so it is currently a datacentre number
+  applied to home connections.
+
+Both are decisions a measurement makes for you. Neither is worth arguing about
+beforehand.
+
 ### 4. There are no phone builds, and that is upstream
 
 **There is no Android or iOS build, and the desktop builds cannot become one.**
