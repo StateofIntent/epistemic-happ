@@ -69,6 +69,44 @@ jobs:
       - name: harness-counts — README states the number of checks each harness actually has
         run: node scripts/check-harness-counts.mjs
 
+      # The fourth in this family, and the only one guarding something this
+      # repository did to ITSELF rather than something that drifted. Splitting
+      # `partition-rejoin` out of `network` (see network.yml's own header) made
+      # a merge-blocking red advisory, and paid for it by writing ten setup
+      # steps twice in one file. This is the check that keeps the two copies
+      # the same, so the advisory job never builds a different hApp from the
+      # one the required job verified.
+      - name: workflow-setup-drift — network.yml's two jobs still share one setup
+        run: node scripts/check-workflow-setup-drift.mjs
+
+      # Third in the same family, and for the same reason the two above exist:
+      # `scripts/validation-corpus/corpus/inventory.json` is a committed
+      # snapshot of every `ValidateCallbackResult::Invalid` site in
+      # `dna/integrity/src/lib.rs`, and `replay.mjs` drives only the cases that
+      # inventory lists. So a validation rule ADDED without regenerating it is
+      # a rule the corpus will never assert, and one REMOVED leaves the corpus
+      # asserting a message the zome can no longer produce — both silently, and
+      # both looking exactly like a green run. This is the thing that notices.
+      #
+      # `enumerate.mjs` reads the zome as text: no conductor, no node_modules,
+      # no WASM build, and its output is byte-stable, so the check is a
+      # regenerate-and-diff and answers in milliseconds.
+      #
+      # IT FIRES ON LINE SHIFTS TOO, and that is intended rather than tolerated.
+      # Each record carries the site's `line`, so an edit ANYWHERE above a site
+      # moves it and reds this check even when no rule changed. That is not a
+      # false positive: the inventory's whole job is to be a current description
+      # of the file, `replay.mjs` reports failures by line, and the remedy is
+      # one command. A check that ignored line moves would have to stop
+      # recording them, which is the more useful half of the record.
+      - name: inventory-drift — the validation corpus still matches the integrity zome
+        run: |
+          node scripts/validation-corpus/enumerate.mjs
+          git diff --exit-code scripts/validation-corpus/corpus/inventory.json || {
+            echo "::error::The integrity zome's Invalid sites have changed without scripts/validation-corpus/corpus/inventory.json being regenerated. The diff above is what moved. Run: node scripts/validation-corpus/enumerate.mjs && git add scripts/validation-corpus/corpus/inventory.json"
+            exit 1
+          }
+
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.
       - name: Install and build the notes service
