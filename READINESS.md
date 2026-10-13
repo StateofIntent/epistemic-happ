@@ -362,3 +362,49 @@ Scale beyond four nodes, a stated propagation bound, and the speed and
 scalability work all come after step 4 has produced real reports — which is the
 right order, and is what makes step 4 worth doing at ten people rather than at
 one thousand.
+
+### Engineering follow-ups, and what each is blocked on
+
+**Current as of 2026-10-13.** The list above is the release order. This is the
+work queue beside it, in the order it should be done, because the ordering is
+about dependencies rather than size. Each line says what it is waiting for, so
+the next session does not have to reconstruct that from a transcript.
+
+| # | task | cost | blocked on |
+|---|---|---|---|
+| 1 | ~~**Wire `validation-corpus` into CI**~~ | — | **CLOSED 2026-10-13 (#264).** `enumerate.mjs` + a diff of the committed `corpus/inventory.json` run in the `no-conductor` job; `replay.mjs` runs in `conductor.yml` with the protocol-layer harnesses, and the `validation-corpus/node_modules` symlink that job was missing is wired. The drift check fires on LINE SHIFTS as well as rule changes, which is intended: the records carry line numbers and `replay.mjs` reports by line. Run against a real conductor before shipping — 6 passed, 0 failed — and both deferral assertions are green on a runner too, which is the SPEC §5.3 `must_get_*` assumption actually gated rather than asserted. Watched going red: one new `Invalid` site in `lib.rs` moves the inventory to 195 and reds the diff |
+| 2 | ~~**Split `partition-rejoin` into its own job**~~ | — | **CLOSED 2026-10-13 (#264).** It is its own job and advisory BY CONSTRUCTION — branch protection requires five checks by name with `enforce_admins` on, so a job named anything else cannot block a merge and no settings change was needed. The harness is untouched and still goes red. Two things the plan did not name and that would have bitten: both jobs would have collided on one `upload-artifact` name, and v4 FAILS a duplicate rather than merging it; and the two jobs now run in parallel, safe despite the fixed 8894-8899 ports only because each gets its own runner VM. The split pays for itself with ten duplicated setup steps, so `scripts/check-workflow-setup-drift.mjs` holds the two copies byte-identical — a version bump applied to one job alone would leave the advisory job building a different hApp from the one the required check verified |
+| 3 | **Corpus: the shallow slice** — `Mew`, `Evidence`, `Constitution`, `CritiqueSpecies`, 11 sites with no multi-level prerequisites | 45–60 min | **Nothing.** Takes the corpus from 1 entry type to 5 and proves the baseline-plus-one-mutation pattern generalises before hours go into the long chains |
+| 4 | **Re-measure the baseline 2–3× in `partition-rejoin`**, failing only when consistently slow | ~1 h | **Step 3 of the release order — but see the revision below, which may unblock it early.** It assumes propagation is *intermittently* slow, so a retry finds a fast baseline. If a consumer-network measurement shows it is routinely minutes-slow, this is wasted job time and the split above is the whole answer. Do not build it on five crossings, none of them from a consumer network |
+| 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
+| 6 | **`mcp-server` advertises the wrong version** — `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0` | ~5 min | **Nothing to fix; a publish to deliver.** Two lines, but it needs `0.1.4` to reach anyone, so batch it rather than spending a version on it alone |
+
+**A revision to item 4's dependency, from two CI runs rather than from
+reasoning.** It is listed as blocked on a consumer-network measurement, on the
+grounds that retrying the baseline is wasted job time if propagation is
+routinely minutes-slow rather than intermittently so. That premise is about
+where the retry would actually RUN, and the retry runs on a GitHub runner — so
+consumer-network behaviour does not decide it. Two runs now bracket it: #263's
+`partition-rejoin` was still at 0 ops at t+160s and failed, and #264's crossed
+inside 60s and passed, both on the same runner class a day apart. That is the
+intermittent signature item 4 assumes, and README §9's measured `network` pass
+rate (83.1% before the dwell fix, ~86% after) is a far larger sample of the
+same thing. **So item 4 is probably unblocked already** — and §3 is still worth
+measuring, for the question it is actually about: whether a real user on a home
+connection waits minutes to publish, and whether `dependencyWaitMs`'s
+20-minute default is a datacentre number applied to consumer networks. Those
+two questions were conflated when this queue was written.
+
+**What an AI agent discovering the published packages actually gets**, measured
+2026-10-12 against `@stateofintent/mcp-server@0.1.3` installed fresh from the
+registry and driven over stdio: install works, `initialize` works, `tools/list`
+returns all **9 tools** with no conductor at all — and every `tools/call` fails
+with `could not connect to Holochain Conductor API … ECONNREFUSED`. That is the
+same split `published-packages.mjs` exists to catch, in the field: listing tools
+proves nothing about using them. Seamless use needs `hc` and `holochain` 0.7.0,
+a conductor with this hApp installed and enabled, **and Admin API access** —
+`agent-sdk` connects via `AdminWebsocket` and calls
+`authorizeSigningCredentials`, which its own comment notes is "NOT the
+production multi-tenant model". The published MCP server assumes it **owns** its
+conductor. **There is no agent swarm**: it was offered and not chosen, and
+nothing in this repository sends agent traffic at the hApp.
