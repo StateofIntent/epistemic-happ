@@ -17,6 +17,52 @@ Two files:
 Run them in that order. `replay.mjs` needs a sandbox
 (`scripts/sandbox.sh clean && scripts/sandbox.sh start`).
 
+**Both run in CI as of 2026-10-13** (#264): `enumerate.mjs` in the
+`no-conductor` job, where its output is diffed against the committed
+`inventory.json` so a rule added or removed without regenerating it fails the
+build, and `replay.mjs` in `conductor.yml` against a real conductor.
+
+## What is covered, and what the denominator is
+
+**Five entry types, 18 rules, and the coverage is asserted rather than
+stated.** `Claim`, `Mew`, `Evidence`, `Constitution` and `CritiqueSpecies` —
+29 checks, which is 5 baselines, 18 rules and 6 coverage assertions.
+
+| entry type | assertable rules | refusals | deferrals |
+|---|---|---|---|
+| `Claim` | 5 | 3 | 2 |
+| `Mew` | 4 | 3 | 1 |
+| `Evidence` | 2 | 2 | 0 |
+| `Constitution` | 4 | 4 | 0 |
+| `CritiqueSpecies` | 3 | 2 | 1 |
+
+**The counts in that table are not hand-maintained, which is the point.**
+`replay.mjs` compares the rules its case tables name against the inventory's
+own list for those five entry types, in **both** directions: a rule with no
+case fails the harness, and a case naming a rule the inventory no longer lists
+fails it too. The second direction is the one that would otherwise rot
+silently — a case asserting a message the zome can no longer produce still
+*looks* like coverage. The drift check in `live-verify.yml` catches the step
+before this one, where `lib.rs` moves and the inventory does not; neither
+catches the other's case.
+
+**What the shallow slice showed, which was the reason to do it before the long
+chains.** The baseline-plus-one-mutation pattern generalises without
+modification: four more entry types needed four baseline payloads and no change
+to the driver, and the Claim block was folded into the same driver rather than
+copied. Two shapes did need care, and both are boundary rather than
+bulk — `Mew`'s length rule is asserted at **561** bytes rather than a
+comfortable 600, because a value well past the limit passes against an
+off-by-one; and `Constitution`'s `expires_at` is asserted at **equality**,
+since the guard is `<=` while the message claims `>`, so a date in the past
+would fire the rule and leave that boundary unproven.
+
+What it did **not** touch is the reason items beyond this one are costed in
+hours: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is
+authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a
+`PreRegistration` with a question action predating it. Those are dependency
+chains, not payloads.
+
 ## What the classification is for
 
 The headline number is not 194. Counting all 194 as "rules to test" would be
@@ -105,8 +151,9 @@ larger job than adding a payload here.
 
 ## Negative evidence
 
-Both assertions in `replay.mjs` have been watched failing, against an otherwise
-green run:
+Every assertion in `replay.mjs` has been watched failing, against an otherwise
+green run. A and B were taken on the Claim-only version; C, D and E on the
+five-type version, which is 29 checks.
 
 - **Injection A** — the mutation for `Claim content cannot be empty.` removed,
   so the payload is valid and commits. Result: that one case red, the other five
@@ -114,6 +161,21 @@ green run:
 - **Injection B** — the expected message changed to
   `Claim domain must be a palindrome.`. Result: that one case red, the rest
   green. The assertion is on the message, not merely on "it threw".
+- **Injection C** — `Mew`'s 561-byte mutation replaced with a short string, so
+  the payload is valid. Result: **28 passed, 1 failed**, the one case reporting
+  `the call COMMITTED — nothing stopped this payload`. A length rule that stops
+  firing is caught on an entry type other than `Claim`.
+- **Injection D** — `CritiqueSpecies name cannot be empty.` renamed in the case
+  table to a message the zome never emits. Result: **26 passed, 3 failed** — the
+  assertion itself, *and both coverage directions*, because a renamed rule is
+  simultaneously a rule with no case and a case naming nothing in the
+  inventory. Three reds from one edit is the coverage check working rather than
+  noise.
+- **Injection E** — the case for `Evidence content cannot be empty.` deleted
+  outright, with the inventory left correct. Result: **27 passed, 1 failed**,
+  on `evidence: all 2 assertable rules have a case`. This is the gap the
+  inventory drift check cannot see: a correct inventory, a correct zome, and
+  coverage that silently shrank.
 
 ## Why one mutation at a time
 

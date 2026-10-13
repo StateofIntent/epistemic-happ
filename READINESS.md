@@ -273,6 +273,38 @@ or routine, and that is what these two decisions need:
 Both are decisions a measurement makes for you. Neither is worth arguing about
 beforehand.
 
+**AND THE SPLIT IS NOT THE WHOLE ANSWER, WHICH TOOK THREE HOURS TO FIND OUT.**
+The paragraph above was written as though `partition-rejoin` were the only slow
+crossing in `network.yml`. It is not. Within three hours of the split, two runs
+landed on opposite sides of it:
+
+| run | `network` (required) | `partition-rejoin` (advisory) |
+|---|---|---|
+| `main`, 2026-10-13 11:20 | **pass** | fail |
+| #265, 2026-10-13 11:30 | **fail** | pass |
+
+The first is the split working exactly as designed — `main` stayed green on its
+required checks while the advisory job went red, which is the whole point. The
+second is the case the split does not cover: `real-gossip`'s forward leg missed
+its 330s window and the entry then arrived at **t+151s past it**, so roughly
+481s for a crossing between three conductors on ONE MACHINE. `real-gossip` is
+in the required job, so that red blocks merges exactly as `partition-rejoin`'s
+used to.
+
+**This is not the split misbehaving and it is not a regression from running the
+two jobs in parallel** — `network.sh` runs its own `kitsune2-bootstrap-srv` on
+127.0.0.1:8893 with the embedded relay on :8892, so two jobs on two runner VMs
+cannot discover each other. It is the same intermittency, in the harness nobody
+had separated out, and README §9's measured `network` pass rate (83.1% before
+the dwell fix, ~86% after) was always a rate for BOTH harnesses pooled.
+
+**So item 4 is mis-scoped as well as mis-blocked.** It proposes re-measuring
+the baseline in `partition-rejoin`, which is now the advisory job — the one
+where a red costs nothing. The harness that actually blocks merges is
+`real-gossip`, and it wants the same treatment first. Splitting it out too
+would be the wrong answer: it would leave `network` required and empty.
+
+
 ### 4. There are no phone builds, and that is upstream
 
 **There is no Android or iOS build, and the desktop builds cannot become one.**
@@ -374,9 +406,9 @@ the next session does not have to reconstruct that from a transcript.
 |---|---|---|---|
 | 1 | ~~**Wire `validation-corpus` into CI**~~ | — | **CLOSED 2026-10-13 (#264).** `enumerate.mjs` + a diff of the committed `corpus/inventory.json` run in the `no-conductor` job; `replay.mjs` runs in `conductor.yml` with the protocol-layer harnesses, and the `validation-corpus/node_modules` symlink that job was missing is wired. The drift check fires on LINE SHIFTS as well as rule changes, which is intended: the records carry line numbers and `replay.mjs` reports by line. Run against a real conductor before shipping — 6 passed, 0 failed — and both deferral assertions are green on a runner too, which is the SPEC §5.3 `must_get_*` assumption actually gated rather than asserted. Watched going red: one new `Invalid` site in `lib.rs` moves the inventory to 195 and reds the diff |
 | 2 | ~~**Split `partition-rejoin` into its own job**~~ | — | **CLOSED 2026-10-13 (#264).** It is its own job and advisory BY CONSTRUCTION — branch protection requires five checks by name with `enforce_admins` on, so a job named anything else cannot block a merge and no settings change was needed. The harness is untouched and still goes red. Two things the plan did not name and that would have bitten: both jobs would have collided on one `upload-artifact` name, and v4 FAILS a duplicate rather than merging it; and the two jobs now run in parallel, safe despite the fixed 8894-8899 ports only because each gets its own runner VM. The split pays for itself with ten duplicated setup steps, so `scripts/check-workflow-setup-drift.mjs` holds the two copies byte-identical — a version bump applied to one job alone would leave the advisory job building a different hApp from the one the required check verified |
-| 3 | **Corpus: the shallow slice** — `Mew`, `Evidence`, `Constitution`, `CritiqueSpecies`, 11 sites with no multi-level prerequisites | 45–60 min | **Nothing.** Takes the corpus from 1 entry type to 5 and proves the baseline-plus-one-mutation pattern generalises before hours go into the long chains |
+| 3 | ~~**Corpus: the shallow slice**~~ | — | **CLOSED 2026-10-13 (#265).** Five entry types now, 29 checks against a real conductor and 0 failed — 5 baselines, 18 rules, 6 coverage assertions. **The pattern generalised with no change to the logic**, so the Claim block was folded into one driver rather than copied four times; that is what this slice was for. Two mutations needed care and both are BOUNDARIES: `Mew`'s length rule is asserted at 561 bytes rather than a comfortable 600, since a value well past the limit passes against an off-by-one, and `Constitution`'s `expires_at` is asserted at EQUALITY because the guard is `<=` while the message claims `>`. Coverage is now a check in both directions — a rule with no case fails, and a case naming a rule the inventory no longer lists fails too — which is **the gap item 1's drift gate cannot see**: that gate watches `lib.rs` against `inventory.json`, this one watches `inventory.json` against the corpus. Watched failing three ways, including one case deleted with the inventory left correct (27/1) |
 | 4 | **Re-measure the baseline 2–3× in `partition-rejoin`**, failing only when consistently slow | ~1 h | **Step 3 of the release order — but see the revision below, which may unblock it early.** It assumes propagation is *intermittently* slow, so a retry finds a fast baseline. If a consumer-network measurement shows it is routinely minutes-slow, this is wasted job time and the split above is the whole answer. Do not build it on five crossings, none of them from a consumer network |
-| 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
+| 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last — and item 3 is now evidence for this estimate rather than a guess about it: four entry types cost minutes because they are payloads, and the driver they share is written and gated.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
 | 6 | **`mcp-server` advertises the wrong version** — `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0` | ~5 min | **Nothing to fix; a publish to deliver.** Two lines, but it needs `0.1.4` to reach anyone, so batch it rather than spending a version on it alone |
 
 **A revision to item 4's dependency, from two CI runs rather than from
