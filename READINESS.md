@@ -304,6 +304,20 @@ where a red costs nothing. The harness that actually blocks merges is
 `real-gossip`, and it wants the same treatment first. Splitting it out too
 would be the wrong answer: it would leave `network` required and empty.
 
+**And the intermittency is now proven on a SAME COMMIT, which is the strongest
+form this evidence can take.** #265's `network` job failed at 11m50s and then
+passed at **2m48s on the identical tree** — a re-run, no code difference to
+explain it away, nothing left for a "something changed" account to attach to.
+Five observations across 2026-10-12/13, pooling both harnesses: two slow
+enough to fail, the rest inside their windows. That is what item 4's retry
+assumes, so item 4 no longer needs §3 to proceed.
+
+**What §3 still decides, and it is not item 4.** Whether a real user on a home
+connection waits minutes to publish, and whether `agent-sdk`'s
+`dependencyWaitMs` default of 1,200,000ms is a datacentre number applied to
+consumer networks. No amount of CI history answers either; only two machines on
+two home connections do.
+
 
 ### 4. There are no phone builds, and that is upstream
 
@@ -407,7 +421,7 @@ the next session does not have to reconstruct that from a transcript.
 | 1 | ~~**Wire `validation-corpus` into CI**~~ | — | **CLOSED 2026-10-13 (#264).** `enumerate.mjs` + a diff of the committed `corpus/inventory.json` run in the `no-conductor` job; `replay.mjs` runs in `conductor.yml` with the protocol-layer harnesses, and the `validation-corpus/node_modules` symlink that job was missing is wired. The drift check fires on LINE SHIFTS as well as rule changes, which is intended: the records carry line numbers and `replay.mjs` reports by line. Run against a real conductor before shipping — 6 passed, 0 failed — and both deferral assertions are green on a runner too, which is the SPEC §5.3 `must_get_*` assumption actually gated rather than asserted. Watched going red: one new `Invalid` site in `lib.rs` moves the inventory to 195 and reds the diff |
 | 2 | ~~**Split `partition-rejoin` into its own job**~~ | — | **CLOSED 2026-10-13 (#264).** It is its own job and advisory BY CONSTRUCTION — branch protection requires five checks by name with `enforce_admins` on, so a job named anything else cannot block a merge and no settings change was needed. The harness is untouched and still goes red. Two things the plan did not name and that would have bitten: both jobs would have collided on one `upload-artifact` name, and v4 FAILS a duplicate rather than merging it; and the two jobs now run in parallel, safe despite the fixed 8894-8899 ports only because each gets its own runner VM. The split pays for itself with ten duplicated setup steps, so `scripts/check-workflow-setup-drift.mjs` holds the two copies byte-identical — a version bump applied to one job alone would leave the advisory job building a different hApp from the one the required check verified |
 | 3 | ~~**Corpus: the shallow slice**~~ | — | **CLOSED 2026-10-13 (#265).** Five entry types now, 29 checks against a real conductor and 0 failed — 5 baselines, 18 rules, 6 coverage assertions. **The pattern generalised with no change to the logic**, so the Claim block was folded into one driver rather than copied four times; that is what this slice was for. Two mutations needed care and both are BOUNDARIES: `Mew`'s length rule is asserted at 561 bytes rather than a comfortable 600, since a value well past the limit passes against an off-by-one, and `Constitution`'s `expires_at` is asserted at EQUALITY because the guard is `<=` while the message claims `>`. Coverage is now a check in both directions — a rule with no case fails, and a case naming a rule the inventory no longer lists fails too — which is **the gap item 1's drift gate cannot see**: that gate watches `lib.rs` against `inventory.json`, this one watches `inventory.json` against the corpus. Watched failing three ways, including one case deleted with the inventory left correct (27/1) |
-| 4 | **Re-measure the baseline 2–3× in `partition-rejoin`**, failing only when consistently slow | ~1 h | **Step 3 of the release order — but see the revision below, which may unblock it early.** It assumes propagation is *intermittently* slow, so a retry finds a fast baseline. If a consumer-network measurement shows it is routinely minutes-slow, this is wasted job time and the split above is the whole answer. Do not build it on five crossings, none of them from a consumer network |
+| 4 | **Re-measure the baseline 2–3×, failing only when consistently slow — IN `real-gossip` FIRST, not `partition-rejoin`** | ~1 h | **Nothing. Unblocked 2026-10-13, and re-scoped the same day.** The premise it needed was that slow crossings are intermittent, and the proof is a SAME-COMMIT pair: #265's `network` failed at 11m50s and then passed at 2m48s on the identical tree, no code difference to explain it away. Re-scoped because the row as written would put the retry in `partition-rejoin`, which is now the ADVISORY job where a red costs nothing, and leave it out of `real-gossip`, which is in the required job and blocks merges. Do NOT also split `real-gossip` out — that would leave `network` required and empty |
 | 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last — and item 3 is now evidence for this estimate rather than a guess about it: four entry types cost minutes because they are payloads, and the driver they share is written and gated.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
 | 6 | **`mcp-server` advertises the wrong version** — `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0` | ~5 min | **Nothing to fix; a publish to deliver.** Two lines, but it needs `0.1.4` to reach anyone, so batch it rather than spending a version on it alone |
 
@@ -426,6 +440,34 @@ measuring, for the question it is actually about: whether a real user on a home
 connection waits minutes to publish, and whether `dependencyWaitMs`'s
 20-minute default is a datacentre number applied to consumer networks. Those
 two questions were conflated when this queue was written.
+
+### Where this session stopped — 2026-10-13
+
+**Closed today, all merged to `main`:** queue items **1** (#264, corpus gated in
+CI), **2** (#264, `partition-rejoin` split out and advisory), **3** (#265,
+corpus covers five entry types with coverage asserted both ways). Each row in
+the table above carries what the work found, including the two findings that
+would otherwise be rediscovered: the drift gate watches `lib.rs` against
+`inventory.json` and is blind to a correct inventory with a missing case, which
+is why `replay.mjs` now checks the other direction itself; and
+`upload-artifact@v4` fails a duplicate name rather than merging it.
+
+**Next, and it is the one thing standing between this repository and merges
+that do not need watching:** item 4 as re-scoped above — the baseline retry, in
+`real-gossip`, ~1 h. Unblocked; no decision outstanding; nothing to measure
+first.
+
+**Yours rather than anyone else's:** §3's two-machine measurement. It is
+independent of every queue item, and after today it is the input to
+`dependencyWaitMs` alone rather than to item 4 as well.
+
+**One bookkeeping trap, recorded because it cost real confusion today.** This
+queue numbers its own items, and a working session will naturally number its
+own plan too — and the two do not line up. Today's plan called the §3
+measurement "item 4"; this table's item 4 is the baseline retry. They are
+different pieces of work with different owners. **Cite queue items as "queue
+item N" and release-order steps as "step N of the release order"**, as the
+rest of this file does, rather than a bare number.
 
 **What an AI agent discovering the published packages actually gets**, measured
 2026-10-12 against `@stateofintent/mcp-server@0.1.3` installed fresh from the
