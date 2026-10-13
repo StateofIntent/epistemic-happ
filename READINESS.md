@@ -273,6 +273,38 @@ or routine, and that is what these two decisions need:
 Both are decisions a measurement makes for you. Neither is worth arguing about
 beforehand.
 
+**AND THE SPLIT IS NOT THE WHOLE ANSWER, WHICH TOOK THREE HOURS TO FIND OUT.**
+The paragraph above was written as though `partition-rejoin` were the only slow
+crossing in `network.yml`. It is not. Within three hours of the split, two runs
+landed on opposite sides of it:
+
+| run | `network` (required) | `partition-rejoin` (advisory) |
+|---|---|---|
+| `main`, 2026-10-13 11:20 | **pass** | fail |
+| #265, 2026-10-13 11:30 | **fail** | pass |
+
+The first is the split working exactly as designed — `main` stayed green on its
+required checks while the advisory job went red, which is the whole point. The
+second is the case the split does not cover: `real-gossip`'s forward leg missed
+its 330s window and the entry then arrived at **t+151s past it**, so roughly
+481s for a crossing between three conductors on ONE MACHINE. `real-gossip` is
+in the required job, so that red blocks merges exactly as `partition-rejoin`'s
+used to.
+
+**This is not the split misbehaving and it is not a regression from running the
+two jobs in parallel** — `network.sh` runs its own `kitsune2-bootstrap-srv` on
+127.0.0.1:8893 with the embedded relay on :8892, so two jobs on two runner VMs
+cannot discover each other. It is the same intermittency, in the harness nobody
+had separated out, and README §9's measured `network` pass rate (83.1% before
+the dwell fix, ~86% after) was always a rate for BOTH harnesses pooled.
+
+**So item 4 is mis-scoped as well as mis-blocked.** It proposes re-measuring
+the baseline in `partition-rejoin`, which is now the advisory job — the one
+where a red costs nothing. The harness that actually blocks merges is
+`real-gossip`, and it wants the same treatment first. Splitting it out too
+would be the wrong answer: it would leave `network` required and empty.
+
+
 ### 4. There are no phone builds, and that is upstream
 
 **There is no Android or iOS build, and the desktop builds cannot become one.**
