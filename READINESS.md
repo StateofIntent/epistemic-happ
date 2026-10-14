@@ -319,6 +319,24 @@ consumer networks. No amount of CI history answers either; only two machines on
 two home connections do.
 
 
+**AND THE RETRY IS BUILT, AS OF 2026-10-14 — so this section no longer holds
+anything back.** `real-gossip.mjs` re-asks a missed crossing up to three times
+with a fresh publish each time and reds only when all three miss
+(`CROSSING_ATTEMPTS`), which is queue item 4 closed. What that means for the
+required `network` job is that an intermittent slow crossing no longer blocks a
+merge, while a routine one still does — the distinction this section spent three
+weeks establishing is now the thing the gate actually measures.
+
+**It changes nothing about §3's own measurement, and the temptation to think
+otherwise is worth naming.** A retry that absorbs an intermittency on a GitHub
+runner says nothing about how long a practitioner on a home connection waits to
+publish, and it does not touch `dependencyWaitMs`. If anything it raises the
+stakes slightly: the retry is sized on the premise that slow crossings are
+intermittent, and the only measurement that could overturn that premise — rather
+than confirm it on more runners — is the two-machine one below. The harness
+prints a `::warning::` on every run that needed a retry precisely so that a
+premise going stale is visible as a rate rather than invisible as a green tick.
+
 ### 4. There are no phone builds, and that is upstream
 
 **There is no Android or iOS build, and the desktop builds cannot become one.**
@@ -421,7 +439,8 @@ the next session does not have to reconstruct that from a transcript.
 | 1 | ~~**Wire `validation-corpus` into CI**~~ | — | **CLOSED 2026-10-13 (#264).** `enumerate.mjs` + a diff of the committed `corpus/inventory.json` run in the `no-conductor` job; `replay.mjs` runs in `conductor.yml` with the protocol-layer harnesses, and the `validation-corpus/node_modules` symlink that job was missing is wired. The drift check fires on LINE SHIFTS as well as rule changes, which is intended: the records carry line numbers and `replay.mjs` reports by line. Run against a real conductor before shipping — 6 passed, 0 failed — and both deferral assertions are green on a runner too, which is the SPEC §5.3 `must_get_*` assumption actually gated rather than asserted. Watched going red: one new `Invalid` site in `lib.rs` moves the inventory to 195 and reds the diff |
 | 2 | ~~**Split `partition-rejoin` into its own job**~~ | — | **CLOSED 2026-10-13 (#264).** It is its own job and advisory BY CONSTRUCTION — branch protection requires five checks by name with `enforce_admins` on, so a job named anything else cannot block a merge and no settings change was needed. The harness is untouched and still goes red. Two things the plan did not name and that would have bitten: both jobs would have collided on one `upload-artifact` name, and v4 FAILS a duplicate rather than merging it; and the two jobs now run in parallel, safe despite the fixed 8894-8899 ports only because each gets its own runner VM. The split pays for itself with ten duplicated setup steps, so `scripts/check-workflow-setup-drift.mjs` holds the two copies byte-identical — a version bump applied to one job alone would leave the advisory job building a different hApp from the one the required check verified |
 | 3 | ~~**Corpus: the shallow slice**~~ | — | **CLOSED 2026-10-13 (#265).** Five entry types now, 29 checks against a real conductor and 0 failed — 5 baselines, 18 rules, 6 coverage assertions. **The pattern generalised with no change to the logic**, so the Claim block was folded into one driver rather than copied four times; that is what this slice was for. Two mutations needed care and both are BOUNDARIES: `Mew`'s length rule is asserted at 561 bytes rather than a comfortable 600, since a value well past the limit passes against an off-by-one, and `Constitution`'s `expires_at` is asserted at EQUALITY because the guard is `<=` while the message claims `>`. Coverage is now a check in both directions — a rule with no case fails, and a case naming a rule the inventory no longer lists fails too — which is **the gap item 1's drift gate cannot see**: that gate watches `lib.rs` against `inventory.json`, this one watches `inventory.json` against the corpus. Watched failing three ways, including one case deleted with the inventory left correct (27/1) |
-| 4 | **Re-measure the baseline 2–3×, failing only when consistently slow — IN `real-gossip` FIRST, not `partition-rejoin`** | ~1 h | **Nothing. Unblocked 2026-10-13, and re-scoped the same day.** The premise it needed was that slow crossings are intermittent, and the proof is a SAME-COMMIT pair: #265's `network` failed at 11m50s and then passed at 2m48s on the identical tree, no code difference to explain it away. Re-scoped because the row as written would put the retry in `partition-rejoin`, which is now the ADVISORY job where a red costs nothing, and leave it out of `real-gossip`, which is in the required job and blocks merges. Do NOT also split `real-gossip` out — that would leave `network` required and empty |
+| 4 | ~~**Re-measure the baseline 2–3×, failing only when consistently slow — in `real-gossip` first**~~ | — | **CLOSED 2026-10-14.** `CROSSING_ATTEMPTS = 3` in `real-gossip.mjs`: a missed window is re-asked with a FRESH publish in a fresh domain, and the gate reds only when every attempt misses. **A fresh publish rather than a longer window, and that is the whole design** — a longer window asks "does THIS op ever arrive", which `OBSERVE_PAST_WINDOW_MS` already asks and deliberately does not gate; the retry asks "does a crossing work NOW", which is the invariant. Every attempt gets the SAME window, because a shorter one for retries would red a crossing `CONVERGE_WINDOW_MS` itself calls a pass — the #131 defect in a new place. THREE rather than two for a reason that is not statistics: the burst limiter allows 15 initiations per peer per 10 MINUTES, so two attempts can land entirely inside one such window. Four things the plan did not name: a green tick that needed a retry prints a `::warning::` naming every missed domain, since the risk of absorbing an intermittency is that it stops being counted; each retry re-takes §2's emptiness precondition, which is the one way the retry could turn a real failure green; the counted checks stay at 25 regardless of attempts, so a run's check count is still comparable; and **the job ceiling had to move, 45 → 60** — see the row below. Watched in six scenarios against stubbed conductors, including the retry succeeding, all three missing, and one arriving during the observation |
+| 4b | ~~**The `network` job's 45-minute ceiling was already thin**~~ | — | **CLOSED 2026-10-14, and found while costing item 4 rather than looked for.** `real-gossip.mjs` now sums every serial wait it can spend in `worstCaseMs()` and refuses to START if that plus a setup allowance exceeds `JOB_CEILING_MS`, which must equal `network.yml`'s `timeout-minutes`. The arithmetic: **33 minutes at ONE attempt**, because sections 3, 5, 8 and 9 each wait on a crossing with the same 330s window — so 45 was thin before this change and nobody had added it up. Three attempts take it to 44 minutes of waiting, 50 with setup, hence 60. A ceiling a PASSING run can reach kills it and reports it as a failure, which is the flaky-red-meaning-nothing this repository has twice refused. `partition-rejoin` stays at 45 — different harness, different worst case — and its comment no longer claims to be "the same 45 as `network`" |
 | 5a | ~~**Corpus: the first dependency chain**~~ | — | **CLOSED 2026-10-17.** `Retraction` is covered: 6 entry types, 38 checks, 0 failed against a real conductor. A spec may now declare an async `setup` whose result `baseline(ctx)` consumes, built once per entry type, with a chain that fails to build reported as its own red rather than letting every case below it "pass" by being refused for the wrong reason. **The chain cost one extra call, not a new mechanism** — which retires item 5's stated reason for being costed in hours. One rule is declared unreachable with its reason (`GAPS`) and asserted to still exist in the inventory, so an exemption outliving its rule reds the file. Watched failing in three injections, including the deferral asserted as a refusal (F, G, I) |
 | 5b | **Corpus: the four remaining raw-payload entry types** — `critique`, `antibody_pattern`, `membrane`, `federation_record`, 22 assertable sites | 2–3 h | **Nothing, and 5a is the pattern.** All four have an extern taking the raw entry, so they are payloads plus a chain: `membrane` needs the creator's own `Constitution`, and `federation_record` needs a `Membrane` which needs that `Constitution` — **depth 2, the deepest in the zome.** Two costs are real and named here so they are not rediscovered: `critique` and `antibody_pattern` each carry an SWO temporal-friction rule enforced at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour, so those two cases are rate-limited by the protocol itself; and four rules across these types are second-agent rules ("only by the membrane's own creator" and kin) that one conductor cannot reach — `GAPS` or a second agent, and `scripts/network.sh` already builds one |
 | 5c | **Corpus: the 90 link rules** — 19 link types via the `attempt_*` probers | 3–5 h | **Nothing, but it is a third driver shape rather than more of 5a/5b, and this is the row item 5 never had.** 90 distinct messages across 19 link types, strongly patterned — `target must be an ActionHash`, `base is not a X`, `may only be created by the author` — so one driver over a per-link-type baseline should generalise the way the shallow slice did. It is the bulk of what item 5 called "the remaining 143 assertable sites" and was invisible in that framing |
@@ -471,6 +490,44 @@ measurement "item 4"; this table's item 4 is the baseline retry. They are
 different pieces of work with different owners. **Cite queue items as "queue
 item N" and release-order steps as "step N of the release order"**, as the
 rest of this file does, rather than a bare number.
+
+### Where this session stopped — 2026-10-14
+
+**Closed today:** queue item **4** (the crossing retry, in `real-gossip` where
+it blocks merges) and **4b** (the job ceiling it exposed, 45 → 60). Both rows
+above carry what the work found. One correction landed on the way past:
+`partition-rejoin`'s timeout comment claimed to be "the same 45 as `network`",
+which stopped being true the moment `network` moved to 60.
+
+**The one finding that was not on the plan.** The ceiling was already thin
+before this change, not because of it: sections 3, 5, 8 and 9 each wait on a
+crossing with the same 330s window, so even at ONE attempt the worst case is 33
+minutes against a 45-minute ceiling. Nobody had added it up, and the arithmetic
+is now a startup guard (`worstCaseMs`) rather than a comment, so the next person
+to raise `CROSSING_ATTEMPTS` is told to move the ceiling with it instead of
+discovering it from a killed run an hour in.
+
+**How it was verified, and the honest limit of that.** There is no Holochain
+toolchain on this machine, so the harness could not be run against three real
+conductors here. The new control flow was exercised against stubbed conductors
+in six scenarios — a healthy crossing on the first attempt (which must cost
+nothing: one attempt, 25 counted checks, no warning), a retry succeeding on the
+second and on the third, all three missing, one arriving during the observation
+window, and a retry domain that was not empty — and each behaved as designed.
+**What that does NOT cover is the thing the harness exists for:** a real
+crossing over real iroh. The first CI run of this branch is the first time the
+retry meets a real network, and a green `network` job on it proves only that the
+single-attempt path still works, since a healthy run never reaches the retry.
+The retry's real-network behaviour is only observed on a run that needed it.
+
+**Next, and nothing in the queue is blocked:** item **5** (corpus long chains,
+3–5 h) and item **6** (the `mcp-server` version, which needs a `0.1.4` publish
+to reach anyone and should be batched). Item 5 is the substantial one.
+
+**Yours rather than anyone else's, and unchanged by today:** §3's two-machine
+measurement. It decides `dependencyWaitMs` and whether a practitioner on a home
+connection waits minutes to publish. Today's retry does not touch either, and
+§3 above says why it does not.
 
 **That measurement has since been overtaken, and the registry copy is worse
 than it reads below.** As of 2026-10-15 a fresh install of
