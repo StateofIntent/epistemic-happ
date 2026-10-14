@@ -515,10 +515,15 @@ nothing: one attempt, 25 counted checks, no warning), a retry succeeding on the
 second and on the third, all three missing, one arriving during the observation
 window, and a retry domain that was not empty — and each behaved as designed.
 **What that does NOT cover is the thing the harness exists for:** a real
-crossing over real iroh. The first CI run of this branch is the first time the
-retry meets a real network, and a green `network` job on it proves only that the
-single-attempt path still works, since a healthy run never reaches the retry.
-The retry's real-network behaviour is only observed on a run that needed it.
+crossing over real iroh. **Measured on #267's first CI run and it went exactly
+that far:** `network` passed in 3m35s — the same figure `network.yml`'s header
+records for this job before the change — with the crossing arriving `after 0.0s,
+on attempt 1 of 3`, and the startup guard printing `worst case 44.3 min of
+waiting against a 60 min job ceiling` against the real constants. So the
+single-attempt path and the budget arithmetic are confirmed on a real network,
+and **the retry path is not**: a healthy run never reaches it. Its real-network
+behaviour is first observed on a run that needs it, and the `::warning::` is
+what will say so.
 
 **Next, and nothing in the queue is blocked:** item **5** (corpus long chains,
 3–5 h) and item **6** (the `mcp-server` version, which needs a `0.1.4` publish
