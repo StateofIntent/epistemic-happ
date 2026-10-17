@@ -24,10 +24,29 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Six entry types, 23 rules, and the coverage is asserted rather than
-stated.** `Claim`, `Mew`, `Evidence`, `Constitution`, `CritiqueSpecies` and
-`Retraction` — 38 checks, which is 6 baselines, 1 dependency chain, 23 rules
-and 8 coverage assertions.
+**Ten entry types and four link types, and the coverage is asserted rather
+than stated.** 92 checks. Link rules use the same driver — a link case is still
+a valid thing with one field broken — but they are keyed on `link_type` rather
+than `entry`, because every link site shares `entry: "create_link"` and
+grouping them by entry would collapse nineteen rule sets into one meaningless
+denominator.
+
+| link type | prober | assertable rules | asserted | declared unreachable |
+|---|---|---|---|---|
+| `AgentToClaim` | `attempt_false_attachment_link` | 6 | 5 | 1 |
+| `AgentToConstitution` | `attempt_false_attachment_link` | 3 | 2 | 1 |
+| `DomainToClaim` | `attempt_false_domain_index` | 3 | 2 | 1 |
+| `MembraneRegistry` | `attempt_false_membrane_registry` | 3 | 2 | 1 |
+
+**The slice covers all three probers on purpose.** The generic one carries 18 of
+the 19 link types and lets the caller choose base, target and raw tag bytes; the
+other two are single-purpose and NARROWER, building the anchor themselves from a
+domain or an override, so the rules they can reach are bounded by their
+parameters rather than by the validator. A slice using only the generic prober
+would have proved nothing about the other two.
+
+**15 of 19 link types remain.** What is done is the driver, the three prober
+shapes, and both anchor forms.
 
 | entry type | assertable rules | refusals | deferrals | declared unreachable |
 |---|---|---|---|---|
@@ -37,6 +56,10 @@ and 8 coverage assertions.
 | `Constitution` | 4 | 4 | 0 | 0 |
 | `CritiqueSpecies` | 3 | 2 | 1 | 0 |
 | `Retraction` | 6 | 3 | 2 | 1 |
+| `Critique` | 6 | 4 | 1 | 1 |
+| `AntibodyPattern` | 5 | 4 | 0 | 1 |
+| `Membrane` | 5 | 4 | 0 | 1 |
+| `FederationRecord` | 6 | 4 | 1 | 1 |
 
 **`Retraction` is the first entry type with a dependency chain, and it cost one
 extra call rather than a new mechanism.** `target_claim` must be the EntryHash
@@ -98,9 +121,10 @@ cannot be reached by the thing that would need to reach them.
 | class | count | what it means |
 |---|---|---|
 | `honest` | 19 | reachable through the SDK's typed methods or the MCP tools, by a client doing nothing special |
-| `crafted` | 130 | reachable only by calling the coordinator with a payload the typed methods never produce |
+| `crafted` | 120 | reachable only by calling the coordinator with a payload the typed methods never produce |
 | `deferred` | 15 | a `must_get_*` guard — **the message never fires**; see below |
 | `needs_prober` | 14 | link rules with no `attempt_*` path, so unreachable from JavaScript at all |
+| `needs_extern` | 10 | entry rules whose field the coordinator **derives** rather than accepting — same cost as `needs_prober` |
 | `remote` | 4 | needs a bad DNA build or a `Delete` action the coordinator never emits |
 | `passthrough` | 12 | forwards another validator's result; no message of its own |
 
@@ -111,18 +135,27 @@ corrected ones; what the correction found is finding 4.
 
 ### Three findings this produced on its first run
 
-**1. An AI agent driving the MCP server can reach 24 of 194.** That is the
+**1. An AI agent driving the MCP server can reach 19 of 194.** That is the
 `honest` row, and it is a feature of the SDK rather than a gap in the tools:
 `agent-sdk` sets `author: this.agentPubKey` and `timestamp: nowMicros()`
 (`index.ts:308-309`), so every *"author must match action author"* rule and
 every self-reported-time rule is unreachable from any honest client. Pointing
 agents at `publish_claim` exercises the semantic rules and the budget path
 hard — and leaves the identity and ordering rules untouched while looking like
-validation stress. The remaining 130 need `EpistemicAgent.call()`
+validation stress. A further 120 need `EpistemicAgent.call()`
 (`index.ts:195`, public) with a hand-built payload.
 
-**2. The nine `must_get_*` rules are enforced, but not by the lines that look
-like the enforcement.** `must_get_entry` and `must_get_action` are deterministic
+*(This read 24 and 130 on the first run. Both numbers were wrong for reasons
+findings 4 and 5 record: five sites were deferrals mislabelled `honest`, and ten
+were `crafted` rules whose field the coordinator derives, so no payload reaches
+them. The counts here are regenerated rather than hand-maintained — `node
+enumerate.mjs` prints them — and the figures in this file are from the
+2026-10-17 run.)*
+
+**2. The `must_get_*` rules are enforced, but not by the lines that look
+like the enforcement.** *(This said "nine" and the count is 15 — see finding 4.
+The mechanism below is unchanged and was never in doubt; only how many sites it
+covers was.)* `must_get_entry` and `must_get_action` are deterministic
 dependency fetches: when the dependency is absent the host abandons the callback
 with unresolved dependencies, so the `Invalid("… not found.")` branch beneath
 each one is never taken. The rule still holds — the write is stopped by the
@@ -246,13 +279,142 @@ because `params.expires_at` passes straight through. The other seven need a new
 `attempt_*` extern and a DNA rebuild, which is the same cost as the
 `needs_prober` link rules.
 
-**The classification is wrong in both directions here**, which is the part worth
-keeping: `PeriodBoundary sample_action not found.` was classed `honest` and is
-not reachable at all, while `expires_at must be > created_at.` is classed
-`crafted` and is the one a plain client can trigger. `enumerate.mjs` reads only
-the integrity zome, so it cannot see any of this — teaching it to cross-check the
-coordinator's externs is the fix, and it is not done. Until it is, **24 sites
-across those five entry types are counted assertable and mostly are not.**
+**The classification was wrong in both directions here**, which is the part
+worth keeping: `PeriodBoundary sample_action not found.` was classed `honest`
+and is not reachable at all, while `expires_at must be > created_at.` sat in
+`crafted` alongside seven rules nobody can reach.
+
+**FIXED 2026-10-17 — `enumerate.mjs` now reads the coordinator too**, and the
+split of labour is the point. Mechanical half: for each extern it parses the
+struct literal that builds the entry and records, per field, whether the value
+comes from the params (`input.x`, `params.x`) or from the host. Judgement half:
+mapping a RULE to the field it guards, which most messages do themselves and
+some do not — *"Only the author of a PreRegistration may reveal it."* guards
+`pre_registration` and names no field. Those are curated in `GUARDS_FIELD`, and
+**a params-only site matching neither a field name nor the table stops the build
+with exit 1 before the inventory is written.** An unresolved site is a question
+about reachability, and answering it by default is how the wrong denominator got
+here. The gate fired twice during development, on real omissions.
+
+Of the 24 sites across those five entry types, **9 are assertable as refusals**,
+5 are deferrals and 10 are `needs_extern`:
+
+| entry type | caller-controlled fields | reachable as a refusal |
+|---|---|---|
+| `worldline_trace` | `expertise_tags`, `expires_at` | **1** of 8 |
+| `revelation` | `pre_registration`, `prediction`, `salt` | 4 of 6 |
+| `pre_registration` | `question`, `reveal_deadline` | 2 of 4 |
+| `bridge_record` | 8 fields | 1 of 3 |
+| `external_critique` | 5 fields | 1 of 3 |
+
+**Two details that decided the implementation**, both found by being wrong
+first. Matching a rule to *caller-controlled* field names only is not enough —
+`trace_payload exceeds 64KB limit.` names its field plainly and fell through to
+"unresolved" precisely BECAUSE the field is derived, so the match runs over every
+field of the entry and reachability is decided by membership afterwards. And the
+field whose name appears **earliest** in the message wins, not the longest:
+*"ExternalCritique importer must match action author. Note this is … the Twitter
+handle in `author_handle`"* names two fields and guards the first, so
+longest-match picks `author_handle` and is wrong.
+
+### Finding 6 — the coordinator refuses first, so the rule's own message never appears
+
+**The reachability question 5d opened has a second answer, and this one is not
+about derived fields.** Four of `Membrane`'s rules and both SWO friction rules
+are mirrored as coordinator PRE-CHECKS, with different wording. Driving them
+through the ordinary extern produces the coordinator's string, so every case
+"passes" by being refused for the wrong reason:
+
+| driven through | came back |
+|---|---|
+| `create_membrane`, empty promises | `Membrane must declare at least one required_promise.` (no trailing prose — the coordinator's) |
+| `create_membrane`, bad constitution | `Deserialize("missing field `agent`")` |
+| `create_membrane`, forged creator | `Membrane constitution must be the creator's own published Constitution.` — a DIFFERENT rule, because the coordinator checks in another order |
+| `create_critique` × 21 | `epistemic_coordinator:888`, *"already created in the last 3600 seconds"* |
+
+**For `Membrane` there is a way through and it is already in the tree.**
+`attempt_unaccountable_membrane` is `create_entry` with nothing in front of it,
+and its own doc comment says that is why it exists: so DHT validation can be
+observed refusing rather than assumed to. The corpus drives `Membrane` through
+the prober, and all four rules then produce their real messages.
+
+**For the two friction rules there is no such path**, so they are declared
+unreachable. The part worth not losing: **what is tested is the courtesy and
+what is untested is the enforcement.** The coordinator's check is what a custom
+client skips; the integrity rule, built on
+`count_recent_actions_since_checkpoint`, is what every validating peer runs.
+That inversion is exactly what this corpus exists to find, and it is now
+recorded instead of implied.
+
+`enumerate.mjs` cannot see any of this yet — it learned about derived fields in
+5d, not about pre-checks that shadow a rule. Teaching it is its own queue item.
+
+### Finding 7 — a message that needs `Ok(None)`, which a wrong-typed entry does not produce
+
+`Membrane's constitution hash does not resolve to a Constitution entry.` guards:
+
+```rust
+let record = must_get_valid_record(membrane.constitution)?;
+let c: Option<Constitution> = record.entry().to_app_option().map_err(..)?;
+let Some(c) = c else { return Invalid("... does not resolve ...") };
+```
+
+The message needs `to_app_option` to return **`Ok(None)`**, and two obvious
+payloads do not get there — both measured before the third worked:
+
+| `constitution` points at | what happens |
+|---|---|
+| a dangling ActionHash | `must_get_valid_record(..)?` **defers** the commit |
+| a Claim's ActionHash | a Claim IS an app entry, so the deserialize **fails** — `Deserialize("missing field `agent`")`, a wasm error, not this rule |
+| **a CreateLink action** | no app entry → `Ok(None)` → **the rule fires** |
+
+So the corpus builds a valid `AgentToClaim` link through
+`attempt_false_attachment_link` and uses its ActionHash. Two constraints showed
+up on the way: the target must be an **ActionHash**, and the tag must be the
+claim's own domain or the link itself is refused and the record never exists to
+be fetched.
+
+**This is the deferral finding's shape again at one more remove.** A rule whose
+message reads as the enforcement, whose obvious trigger produces something else
+entirely, and which is reachable only by a payload nobody would guess. It is
+asserted now rather than assumed.
+
+### Finding 8 — 23 rules are waiting on one piece of work, and it is a second agent
+
+**Counted rather than discovered a few at a time.** Every one of the 19 link
+types carries a *"may only be created by the owner"* rule in some wording:
+**20 of the 88 link rules**, across all 19 types. Add the three entry-type gaps
+(`Retraction`, `Membrane`, `FederationRecord`) and **23 rules in this corpus are
+blocked on the same thing** — a second agent on one DHT. One conductor has one
+agent, so everything it can author is its own, and forging the owning field is
+stopped a rule earlier by the matching author check.
+
+| | count |
+|---|---|
+| link rules reachable with one agent | 68 |
+| link rules needing a second agent | 20 |
+| entry rules needing a second agent | 3 |
+
+**That makes the two-agent harness higher-leverage than the remaining link
+bulk**, which is the opposite of how the queue was ordered when the link work
+was costed. `scripts/network.sh` already stands up multiple conductors for the
+gossip harnesses, so the parts exist; what is missing is the corpus driving two
+of them.
+
+### Finding 9 — a `format!` rule cannot be matched literally
+
+The inventory records the zome's SOURCE string, so
+`DomainToClaim base anchor does not match the claim's own domain ({:?}).` is
+what the rule says, while the conductor returns the domain substituted in. The
+first formatted rule to be *asserted* rather than declared unreachable found
+this immediately.
+
+Matching the literal would fail forever. Loosening the check to "did it throw"
+would pass for any reason at all — the failure mode this whole corpus exists to
+stop. So the comparison is the stable **prefix up to the first interpolation**,
+everything the zome wrote verbatim, and **a prefix too short to identify a rule
+is refused outright rather than silently weakened** (under 20 characters). That
+guard is tested, not assumed — see Injection Q.
 
 ## Negative evidence
 
@@ -300,6 +462,56 @@ F, G and I were taken on the six-type version, which is 38 checks.
   from one edit, the same shape as Injection D, and the reason `GAPS` cannot
   become a way to hide a missing case: an exemption that outlives its rule reds
   the file.
+
+J and K are on `enumerate.mjs` rather than `replay.mjs` — the inventory is input
+to the corpus, so a classifier that cannot go wrong loudly is the same hazard one
+level up.
+
+- **Injection J** — `Checksum must be 32 bytes.` removed from `GUARDS_FIELD`, so
+  a params-only rule has no field mapping. Result: **exit 1**, naming
+  `worldline_trace:1650`, and `corpus/inventory.json` is left untouched — the
+  guard sits above the write, so a half-classified inventory is never committed.
+- **Injection K** — the coordinator edited so `checksum` comes from
+  `params.checksum_override` instead of being derived. Result: `needs_extern`
+  **10 → 9** and that rule moves to `crafted`, with `checksum` appearing in its
+  `caller_controlled_fields`. This is the one that matters: it shows the class is
+  computed from the coordinator's own source rather than from a list of entry
+  types somebody typed, so an extern that starts accepting a field is noticed
+  instead of staying permanently unreachable in the records.
+
+L, M and N were taken on the ten-type version, which is 68 checks.
+
+- **Injection L** — `Membrane` driven through `create_membrane` instead of
+  `attempt_unaccountable_membrane`. Result: **65 passed, 3 failed**, each
+  reporting the COORDINATOR's wording rather than the zome's, and one of them
+  naming a different rule entirely because the coordinator checks in another
+  order. This is finding 6 as a test: the prober is load-bearing, not a
+  stylistic choice, and without it three green ticks would have meant nothing.
+- **Injection M** — the non-Constitution hash changed from the CreateLink
+  action's to a Claim's. Result: **67 passed, 1 failed**, on
+  `epistemic_integrity:1531: Deserialize("missing field `agent`")`. Finding 7 as
+  a test: the obvious payload raises a wasm error instead of the rule, so a case
+  written the obvious way asserts nothing.
+- **Injection N** — the mutation for `FederationRecord remote_membrane_ref
+  cannot be empty.` removed. Result: **67 passed, 1 failed**, `the call
+  COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
+  not only on a flat payload.
+
+O, P and Q were taken on the version with link rules, which is 92 checks.
+
+- **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
+  passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
+  caught, on the same terms as an entry rule.
+- **Injection P** — the formatted rule's prefix changed to a message the zome
+  never emits. Result: **89 passed, 3 failed** — the assertion reports `stopped
+  for a different reason` and both coverage directions red. **The prefix match
+  is not a wildcard**, which is the thing worth proving about it: a rule matched
+  on a prefix could easily have become a check that passes on any refusal.
+- **Injection Q** — a case whose rule interpolates after three characters
+  (`"Mem {} brane"`). Result: **89 passed, 3 failed**, the assertion reporting
+  `this rule interpolates too early to identify it from a prefix ("Mem")`. The
+  guard refuses rather than weakening, so finding 9's mechanism cannot be
+  stretched into a loophole by the next rule that happens to interpolate early.
 
 ## Why one mutation at a time
 

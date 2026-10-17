@@ -99,11 +99,20 @@ jobs:
       # of the file, `replay.mjs` reports failures by line, and the remedy is
       # one command. A check that ignored line moves would have to stop
       # recording them, which is the more useful half of the record.
-      - name: inventory-drift — the validation corpus still matches the integrity zome
+      #
+      # AND IT WATCHES THE COORDINATOR TOO, since 2026-10-17. `enumerate.mjs`
+      # reads both zomes: the integrity zome for the sites, the coordinator for
+      # whether an extern hands a rule's field to the caller or derives it. So a
+      # COORDINATOR-only edit can legitimately move a site's class, and this
+      # check already catches that because it regenerates and diffs rather than
+      # watching one file's mtime. Nothing needed adding — but the step name and
+      # the error below both said "the integrity zome", which would have sent
+      # the next person to the wrong file.
+      - name: inventory-drift — the validation corpus still matches both zomes
         run: |
           node scripts/validation-corpus/enumerate.mjs
           git diff --exit-code scripts/validation-corpus/corpus/inventory.json || {
-            echo "::error::The integrity zome's Invalid sites have changed without scripts/validation-corpus/corpus/inventory.json being regenerated. The diff above is what moved. Run: node scripts/validation-corpus/enumerate.mjs && git add scripts/validation-corpus/corpus/inventory.json"
+            echo "::error::The inventory is stale. Either the integrity zome's Invalid sites moved, or the coordinator changed which fields an extern accepts rather than derives (that decides the honest/crafted/needs_extern class). The diff above is what moved. Run: node scripts/validation-corpus/enumerate.mjs && git add scripts/validation-corpus/corpus/inventory.json"
             exit 1
           }
 

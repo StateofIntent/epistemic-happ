@@ -1,12 +1,16 @@
 {
-  "generated_from": "dna/integrity/src/lib.rs",
+  "generated_from": [
+    "dna/integrity/src/lib.rs",
+    "dna/coordinator/src/lib.rs"
+  ],
   "protocol_version": "9",
   "total_sites": 194,
   "by_class": {
     "honest": 19,
-    "crafted": 130,
+    "crafted": 120,
     "deferred": 15,
     "needs_prober": 14,
+    "needs_extern": 10,
     "remote": 4,
     "passthrough": 12
   },
@@ -119,7 +123,8 @@
       "formatted": false,
       "guard": "if &mew.author != action.author()",
       "class": "crafted",
-      "entry": "mew"
+      "entry": "mew",
+      "write_path": "create_mew(Mew)"
     },
     {
       "line": 1073,
@@ -129,7 +134,8 @@
       "formatted": false,
       "guard": "if mew.content.is_empty()",
       "class": "honest",
-      "entry": "mew"
+      "entry": "mew",
+      "write_path": "create_mew(Mew)"
     },
     {
       "line": 1077,
@@ -139,7 +145,8 @@
       "formatted": false,
       "guard": "if mew.content.len() > 560",
       "class": "crafted",
-      "entry": "mew"
+      "entry": "mew",
+      "write_path": "create_mew(Mew)"
     },
     {
       "line": 1087,
@@ -159,7 +166,8 @@
       "formatted": false,
       "guard": "if &claim.author != action.author()",
       "class": "crafted",
-      "entry": "claim"
+      "entry": "claim",
+      "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
       "line": 1099,
@@ -169,7 +177,8 @@
       "formatted": false,
       "guard": "if claim.content.is_empty()",
       "class": "honest",
-      "entry": "claim"
+      "entry": "claim",
+      "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
       "line": 1102,
@@ -179,7 +188,8 @@
       "formatted": false,
       "guard": "if claim.domain.is_empty()",
       "class": "honest",
-      "entry": "claim"
+      "entry": "claim",
+      "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
       "line": 1106,
@@ -208,8 +218,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &pr.author != action.author()",
-      "class": "crafted",
-      "entry": "pre_registration"
+      "class": "needs_extern",
+      "entry": "pre_registration",
+      "write_path": "pre_register(PreRegisterInput)",
+      "caller_controlled_fields": [
+        "question",
+        "reveal_deadline"
+      ],
+      "guards_field": "author"
     },
     {
       "line": 1151,
@@ -219,7 +235,13 @@
       "formatted": false,
       "guard": "if (pr.reveal_deadline as i64) <= committed_at",
       "class": "crafted",
-      "entry": "pre_registration"
+      "entry": "pre_registration",
+      "write_path": "pre_register(PreRegisterInput)",
+      "caller_controlled_fields": [
+        "question",
+        "reveal_deadline"
+      ],
+      "guards_field": "reveal_deadline"
     },
     {
       "line": 1157,
@@ -239,7 +261,13 @@
       "formatted": false,
       "guard": "if question.action().timestamp().as_micros() >= committed_at",
       "class": "crafted",
-      "entry": "pre_registration"
+      "entry": "pre_registration",
+      "write_path": "pre_register(PreRegisterInput)",
+      "caller_controlled_fields": [
+        "question",
+        "reveal_deadline"
+      ],
+      "guards_field": "question"
     },
     {
       "line": 1182,
@@ -248,8 +276,15 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &rev.author != action.author()",
-      "class": "crafted",
-      "entry": "revelation"
+      "class": "needs_extern",
+      "entry": "revelation",
+      "write_path": "reveal_pre_registration(RevealInput)",
+      "caller_controlled_fields": [
+        "pre_registration",
+        "prediction",
+        "salt"
+      ],
+      "guards_field": "author"
     },
     {
       "line": 1186,
@@ -269,7 +304,14 @@
       "formatted": false,
       "guard": "if &rev.author != action.author()",
       "class": "honest",
-      "entry": "revelation"
+      "entry": "revelation",
+      "write_path": "reveal_pre_registration(RevealInput)",
+      "caller_controlled_fields": [
+        "pre_registration",
+        "prediction",
+        "salt"
+      ],
+      "guards_field": "pre_registration"
     },
     {
       "line": 1197,
@@ -279,7 +321,14 @@
       "formatted": false,
       "guard": "if pr.author != rev.author",
       "class": "crafted",
-      "entry": "revelation"
+      "entry": "revelation",
+      "write_path": "reveal_pre_registration(RevealInput)",
+      "caller_controlled_fields": [
+        "pre_registration",
+        "prediction",
+        "salt"
+      ],
+      "guards_field": "pre_registration"
     },
     {
       "line": 1205,
@@ -289,7 +338,14 @@
       "formatted": false,
       "guard": "if recomputed != pr.sealed",
       "class": "crafted",
-      "entry": "revelation"
+      "entry": "revelation",
+      "write_path": "reveal_pre_registration(RevealInput)",
+      "caller_controlled_fields": [
+        "pre_registration",
+        "prediction",
+        "salt"
+      ],
+      "guards_field": "prediction"
     },
     {
       "line": 1211,
@@ -299,7 +355,14 @@
       "formatted": false,
       "guard": "if action.timestamp().as_micros() > (pr.reveal_deadline as i64)",
       "class": "crafted",
-      "entry": "revelation"
+      "entry": "revelation",
+      "write_path": "reveal_pre_registration(RevealInput)",
+      "caller_controlled_fields": [
+        "pre_registration",
+        "prediction",
+        "salt"
+      ],
+      "guards_field": "pre_registration"
     },
     {
       "line": 1221,
@@ -309,7 +372,8 @@
       "formatted": false,
       "guard": "if &retraction.author != action.author()",
       "class": "crafted",
-      "entry": "retraction"
+      "entry": "retraction",
+      "write_path": "create_retraction(Retraction)"
     },
     {
       "line": 1241,
@@ -329,7 +393,8 @@
       "formatted": false,
       "guard": null,
       "class": "crafted",
-      "entry": "retraction"
+      "entry": "retraction",
+      "write_path": "create_retraction(Retraction)"
     },
     {
       "line": 1251,
@@ -339,7 +404,8 @@
       "formatted": false,
       "guard": "if claim.author != retraction.author",
       "class": "crafted",
-      "entry": "retraction"
+      "entry": "retraction",
+      "write_path": "create_retraction(Retraction)"
     },
     {
       "line": 1258,
@@ -349,7 +415,8 @@
       "formatted": false,
       "guard": "if retraction.reason.is_empty()",
       "class": "honest",
-      "entry": "retraction"
+      "entry": "retraction",
+      "write_path": "create_retraction(Retraction)"
     },
     {
       "line": 1263,
@@ -369,7 +436,8 @@
       "formatted": false,
       "guard": "if &critique.author != action.author()",
       "class": "crafted",
-      "entry": "critique"
+      "entry": "critique",
+      "write_path": "create_critique(Critique)"
     },
     {
       "line": 1341,
@@ -379,7 +447,8 @@
       "formatted": false,
       "guard": "Some(_) =>",
       "class": "crafted",
-      "entry": "critique"
+      "entry": "critique",
+      "write_path": "create_critique(Critique)"
     },
     {
       "line": 1346,
@@ -389,7 +458,8 @@
       "formatted": false,
       "guard": "None =>",
       "class": "honest",
-      "entry": "critique"
+      "entry": "critique",
+      "write_path": "create_critique(Critique)"
     },
     {
       "line": 1353,
@@ -399,7 +469,8 @@
       "formatted": false,
       "guard": "if critique.content.is_empty()",
       "class": "honest",
-      "entry": "critique"
+      "entry": "critique",
+      "write_path": "create_critique(Critique)"
     },
     {
       "line": 1357,
@@ -419,7 +490,8 @@
       "formatted": true,
       "guard": "if recent_count >= CRITIQUE_MAX_PER_WINDOW_VALIDATION",
       "class": "crafted",
-      "entry": "critique"
+      "entry": "critique",
+      "write_path": "create_critique(Critique)"
     },
     {
       "line": 1407,
@@ -429,7 +501,8 @@
       "formatted": false,
       "guard": "if &pattern.author != action.author()",
       "class": "crafted",
-      "entry": "antibody_pattern"
+      "entry": "antibody_pattern",
+      "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
       "line": 1441,
@@ -439,7 +512,8 @@
       "formatted": false,
       "guard": "Some(_) =>",
       "class": "crafted",
-      "entry": "antibody_pattern"
+      "entry": "antibody_pattern",
+      "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
       "line": 1446,
@@ -449,7 +523,8 @@
       "formatted": false,
       "guard": "None =>",
       "class": "honest",
-      "entry": "antibody_pattern"
+      "entry": "antibody_pattern",
+      "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
       "line": 1453,
@@ -459,7 +534,8 @@
       "formatted": false,
       "guard": "if pattern.rationale.is_empty()",
       "class": "honest",
-      "entry": "antibody_pattern"
+      "entry": "antibody_pattern",
+      "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
       "line": 1470,
@@ -469,7 +545,8 @@
       "formatted": true,
       "guard": "if recent_count >= ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION",
       "class": "crafted",
-      "entry": "antibody_pattern"
+      "entry": "antibody_pattern",
+      "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
       "line": 1483,
@@ -479,7 +556,8 @@
       "formatted": false,
       "guard": "if &evidence.author != action.author()",
       "class": "crafted",
-      "entry": "evidence"
+      "entry": "evidence",
+      "write_path": "create_evidence(Evidence)"
     },
     {
       "line": 1486,
@@ -489,7 +567,8 @@
       "formatted": false,
       "guard": "if evidence.content.is_empty()",
       "class": "honest",
-      "entry": "evidence"
+      "entry": "evidence",
+      "write_path": "create_evidence(Evidence)"
     },
     {
       "line": 1494,
@@ -499,7 +578,8 @@
       "formatted": false,
       "guard": "if &membrane.creator != action.author()",
       "class": "crafted",
-      "entry": "membrane"
+      "entry": "membrane",
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
       "line": 1497,
@@ -509,7 +589,8 @@
       "formatted": false,
       "guard": "if membrane.domain.is_empty()",
       "class": "honest",
-      "entry": "membrane"
+      "entry": "membrane",
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
       "line": 1523,
@@ -519,7 +600,8 @@
       "formatted": false,
       "guard": "if membrane.required_promises.is_empty()",
       "class": "crafted",
-      "entry": "membrane"
+      "entry": "membrane",
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
       "line": 1533,
@@ -529,7 +611,8 @@
       "formatted": false,
       "guard": "if membrane.required_promises.is_empty()",
       "class": "honest",
-      "entry": "membrane"
+      "entry": "membrane",
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
       "line": 1538,
@@ -539,7 +622,8 @@
       "formatted": false,
       "guard": "if constitution.agent != membrane.creator",
       "class": "crafted",
-      "entry": "membrane"
+      "entry": "membrane",
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
       "line": 1559,
@@ -549,7 +633,8 @@
       "formatted": false,
       "guard": "if &record.author != action.author()",
       "class": "crafted",
-      "entry": "federation_record"
+      "entry": "federation_record",
+      "write_path": "record_federation(FederationRecord)"
     },
     {
       "line": 1564,
@@ -569,7 +654,8 @@
       "formatted": false,
       "guard": "Ok(None) | Err(_) =>",
       "class": "honest",
-      "entry": "federation_record"
+      "entry": "federation_record",
+      "write_path": "record_federation(FederationRecord)"
     },
     {
       "line": 1573,
@@ -579,7 +665,8 @@
       "formatted": false,
       "guard": "if membrane.creator != record.author",
       "class": "crafted",
-      "entry": "federation_record"
+      "entry": "federation_record",
+      "write_path": "record_federation(FederationRecord)"
     },
     {
       "line": 1579,
@@ -589,7 +676,8 @@
       "formatted": false,
       "guard": "if record.remote_network_label.is_empty()",
       "class": "honest",
-      "entry": "federation_record"
+      "entry": "federation_record",
+      "write_path": "record_federation(FederationRecord)"
     },
     {
       "line": 1582,
@@ -599,7 +687,8 @@
       "formatted": false,
       "guard": "if record.remote_membrane_ref.is_empty()",
       "class": "honest",
-      "entry": "federation_record"
+      "entry": "federation_record",
+      "write_path": "record_federation(FederationRecord)"
     },
     {
       "line": 1591,
@@ -609,7 +698,8 @@
       "formatted": false,
       "guard": "if &constitution.agent != action.author()",
       "class": "crafted",
-      "entry": "constitution"
+      "entry": "constitution",
+      "write_path": "publish_constitution(Constitution)"
     },
     {
       "line": 1594,
@@ -619,7 +709,8 @@
       "formatted": false,
       "guard": "if constitution.promises.is_empty()",
       "class": "honest",
-      "entry": "constitution"
+      "entry": "constitution",
+      "write_path": "publish_constitution(Constitution)"
     },
     {
       "line": 1598,
@@ -629,7 +720,8 @@
       "formatted": false,
       "guard": "if promise.action.is_empty() || promise.domain.is_empty()",
       "class": "honest",
-      "entry": "constitution"
+      "entry": "constitution",
+      "write_path": "publish_constitution(Constitution)"
     },
     {
       "line": 1603,
@@ -639,7 +731,8 @@
       "formatted": false,
       "guard": "if expires <= constitution.published_at",
       "class": "crafted",
-      "entry": "constitution"
+      "entry": "constitution",
+      "write_path": "publish_constitution(Constitution)"
     },
     {
       "line": 1612,
@@ -649,7 +742,8 @@
       "formatted": false,
       "guard": "if &species.proposer != action.author()",
       "class": "crafted",
-      "entry": "critique_species"
+      "entry": "critique_species",
+      "write_path": "create_critique_species(CritiqueSpecies)"
     },
     {
       "line": 1615,
@@ -659,7 +753,8 @@
       "formatted": false,
       "guard": "if species.name.is_empty()",
       "class": "honest",
-      "entry": "critique_species"
+      "entry": "critique_species",
+      "write_path": "create_critique_species(CritiqueSpecies)"
     },
     {
       "line": 1619,
@@ -678,8 +773,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &trace.agent != action.author()",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "agent"
     },
     {
       "line": 1631,
@@ -688,8 +789,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if trace.period_boundaries.is_empty()",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "period_boundaries"
     },
     {
       "line": 1641,
@@ -698,8 +805,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if *record.action().author() != trace.agent",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "period_boundaries"
     },
     {
       "line": 1645,
@@ -718,8 +831,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if trace.checksum.len() != 32",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "checksum"
     },
     {
       "line": 1654,
@@ -728,8 +847,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if boundary.start_time > boundary.end_time",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "period_boundaries"
     },
     {
       "line": 1659,
@@ -739,7 +864,13 @@
       "formatted": false,
       "guard": "if expires <= trace.created_at",
       "class": "crafted",
-      "entry": "worldline_trace"
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "expires_at"
     },
     {
       "line": 1664,
@@ -748,8 +879,14 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if payload.len() > 65_536",
-      "class": "crafted",
-      "entry": "worldline_trace"
+      "class": "needs_extern",
+      "entry": "worldline_trace",
+      "write_path": "generate_worldline_trace(TraceGenerationParams)",
+      "caller_controlled_fields": [
+        "expertise_tags",
+        "expires_at"
+      ],
+      "guards_field": "trace_payload"
     },
     {
       "line": 1691,
@@ -758,8 +895,20 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &record.author != action.author()",
-      "class": "crafted",
-      "entry": "bridge_record"
+      "class": "needs_extern",
+      "entry": "bridge_record",
+      "write_path": "record_twitter_mirror(RecordTwitterMirrorInput)",
+      "caller_controlled_fields": [
+        "mew_hash",
+        "twitter_id",
+        "platform",
+        "mirrored_at",
+        "carried_fields",
+        "dropped_fields",
+        "original_length",
+        "excerpt_length"
+      ],
+      "guards_field": "author"
     },
     {
       "line": 1694,
@@ -779,7 +928,19 @@
       "formatted": true,
       "guard": "if let Err(msg) = bridge_record_loss_fields_consistent(record)",
       "class": "crafted",
-      "entry": "bridge_record"
+      "entry": "bridge_record",
+      "write_path": "record_twitter_mirror(RecordTwitterMirrorInput)",
+      "caller_controlled_fields": [
+        "mew_hash",
+        "twitter_id",
+        "platform",
+        "mirrored_at",
+        "carried_fields",
+        "dropped_fields",
+        "original_length",
+        "excerpt_length"
+      ],
+      "guards_field": "carried_fields"
     },
     {
       "line": 1705,
@@ -788,8 +949,17 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &ext.importer != action.author()",
-      "class": "crafted",
-      "entry": "external_critique"
+      "class": "needs_extern",
+      "entry": "external_critique",
+      "write_path": "import_twitter_reply(ImportTwitterReplyInput)",
+      "caller_controlled_fields": [
+        "twitter_id",
+        "author_handle",
+        "content",
+        "linked_holochain_claim",
+        "imported_at"
+      ],
+      "guards_field": "importer"
     },
     {
       "line": 1711,
@@ -799,7 +969,16 @@
       "formatted": false,
       "guard": "if ext.content.is_empty()",
       "class": "honest",
-      "entry": "external_critique"
+      "entry": "external_critique",
+      "write_path": "import_twitter_reply(ImportTwitterReplyInput)",
+      "caller_controlled_fields": [
+        "twitter_id",
+        "author_handle",
+        "content",
+        "linked_holochain_claim",
+        "imported_at"
+      ],
+      "guards_field": "content"
     },
     {
       "line": 1714,

@@ -113,10 +113,17 @@ async function refusal(fn_name, payload) {
 }
 
 const nowMicros = () => Date.now() * 1000;
+// Constitution and Membrane carry SECONDS (`published_at`, `created_at`) while
+// Claim and friends carry microseconds. Mixing them up does not fail loudly —
+// `expires_at must be > created_at` is a comparison between two numbers either
+// way — so the two helpers are named rather than inlined.
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
 
 log('=== validation corpus: replay ===');
 log(`conductor ${APP_URL}  app ${APP_ID}`);
 const inv = JSON.parse(readFileSync(INVENTORY, 'utf8'));
+
 log(`inventory: ${inv.total_sites} sites, protocol_version ${inv.protocol_version}`);
 log('');
 // ============================================================================
@@ -149,7 +156,10 @@ log('');
 // for a different reason entirely: no coordinator extern accepts a raw payload
 // for either, so the fields their rules are about are derived by the extern and
 // cannot be reached from JavaScript at all. See README.md's finding 5.
-const COVERED = ['claim', 'mew', 'evidence', 'constitution', 'critique_species', 'retraction'];
+const COVERED = [
+  'claim', 'mew', 'evidence', 'constitution', 'critique_species', 'retraction',
+  'critique', 'antibody_pattern', 'membrane', 'federation_record',
+];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
 // harness, each with the reason, so that coverage stays a real number instead
@@ -172,6 +182,79 @@ const COVERED = ['claim', 'mew', 'evidence', 'constitution', 'critique_species',
 // `scripts/network.sh` already builds for the gossip harnesses — so it is a
 // harness-shape change, not a zome change, and it is the natural next slice.
 const GAPS = [
+  // --- TWO SHAPES OF GAP, and they are not the same cost.
+  //
+  // (a) THE COORDINATOR REFUSES FIRST. Both SWO friction rules are mirrored as
+  // a coordinator pre-check, so `create_critique` and
+  // `publish_antibody_pattern` return the COORDINATOR's wording and the
+  // integrity zome's message is never produced. Measured 2026-10-17 after
+  // committing 20 of each: `epistemic_coordinator:888` and `:1028` raise
+  // "... already created in the last 3600 seconds", which is a different string
+  // from the rule. Unlike Membrane — where `attempt_unaccountable_membrane`
+  // exists precisely to skip the pre-check — there is no bypassing extern for
+  // either of these, so the rules are unreachable through any published path.
+  // Same cost as `needs_extern`: a new extern plus a DNA rebuild.
+  //
+  // THE RULES ARE NOT REDUNDANT, which is the part worth not losing. The
+  // coordinator's check is a courtesy a custom client skips; the integrity
+  // one is the enforcement, and `count_recent_actions_since_checkpoint` is what
+  // every peer runs. What is untested is the enforcement, and what is tested is
+  // the courtesy — exactly the inversion this corpus exists to find, now
+  // recorded rather than implied.
+  {
+    entry: 'critique',
+    rule: 'SWO temporal friction: author has {} Critiques in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
+    why: "the coordinator pre-checks the same limit and refuses first with its own wording; no attempt_* extern bypasses create_critique",
+  },
+  {
+    entry: 'antibody_pattern',
+    rule: 'SWO temporal friction: author has {} AntibodyPatterns in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
+    why: 'the coordinator pre-checks the same limit and refuses first; no bypassing extern for publish_antibody_pattern',
+  },
+  // (b) A SECOND AGENT. ALL SEVEN BELOW ARE THE SAME PROBLEM, which is worth seeing as one: a rule that
+  // fires when a thing belongs to SOMEBODY ELSE. One conductor has one agent,
+  // so everything it can author is its own, and forging the owning field is
+  // stopped a rule earlier by the matching author check. None of the three is a
+  // zome limitation or a payload problem — they need a second agent on one DHT,
+  // which `scripts/network.sh` already stands up for the gossip harnesses. That
+  // makes "run the corpus against two agents" a single piece of work that
+  // closes all three at once, rather than three separate puzzles.
+  {
+    entry: 'membrane',
+    rule: "Membrane's constitution must be the creator's own published Constitution — a founder is accountable under promises they made themselves.",
+    why: "needs a Constitution published by a DIFFERENT agent; one conductor, one agent",
+  },
+  {
+    entry: 'federation_record',
+    rule: "FederationRecord can only be authored by local_membrane's own creator.",
+    why: 'needs a Membrane created by a DIFFERENT agent; one conductor, one agent',
+  },
+  // EVERY LINK TYPE HAS ONE OF THESE — 20 of the 88 link rules, across all 19
+  // types, are "may only be created by the owner" in some wording. Four are in
+  // this slice. Counted here rather than discovered four at a time: with the
+  // three entry-type gaps above, **23 rules in this corpus are waiting on one
+  // piece of work**, which is a second agent on one DHT. That makes it the
+  // highest-leverage item left, not the remaining link bulk.
+  {
+    linkType: 'AgentToClaim',
+    rule: "An AgentToClaim link may only be created by the claim's own author.",
+    why: 'needs a Claim authored by a DIFFERENT agent; one conductor, one agent',
+  },
+  {
+    linkType: 'AgentToConstitution',
+    rule: 'An AgentToConstitution link may only be created by the agent whose constitution it indexes.',
+    why: 'needs a Constitution published by a DIFFERENT agent',
+  },
+  {
+    linkType: 'DomainToClaim',
+    rule: "A DomainToClaim link may only be created by the claim's own author.",
+    why: 'needs a Claim authored by a DIFFERENT agent',
+  },
+  {
+    linkType: 'MembraneRegistry',
+    rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
+    why: 'needs a Membrane created by a DIFFERENT agent',
+  },
   {
     entry: 'retraction',
     rule: 'A Retraction can only be published by the claim\'s own author — it records that the author no longer stands by it, not that someone else disagrees. Use a Critique for that.',
@@ -358,6 +441,256 @@ const entries = [
       { rule: 'Retraction replacement_claim not found.', expect: 'deferral', mutate: (r) => { r.replacement_claim = danglingHash('entry', 53); } },
     ],
   },
+  // --- CRITIQUE. A target that EXISTS and is a critiquable type, so the chain
+  // is one Claim — plus a Mew, which exists and is deliberately NOT critiquable
+  // (the list is Claim, Critique, Constitution, Membrane, CritiqueSpecies).
+  //
+  // `target` is an AnyLinkableHash and the validator resolves it with
+  // must_get_entry, so it is the Claim's ENTRY hash, read off the record the
+  // same way Retraction's is.
+  {
+    entry: 'critique',
+    label: 'Critique',
+    fn: 'create_critique',
+    chainNote: 'published a Claim to critique, and a Mew as a non-critiquable target',
+    setup: async () => {
+      const domain = `CorpusCritique${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, published in order to be critiqued',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      if (!claims.length) throw new Error(`the claim did not come back from get_claims_by_domain(${domain})`);
+      const target = claims[0].signed_action.hashed.content.data.entry_hash;
+      // A Mew is a real entry and not on the critiquable list, which is what
+      // separates "wrong type" from "no such entry" (the latter defers).
+      const notCritiquable = await call('create_evidence', {
+        content: 'corpus evidence, used only as a non-critiquable critique target',
+        evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
+      });
+      return { target, notCritiquable, domain };
+    },
+    baseline: (ctx) => ({
+      target: ctx.target,
+      target_type: 'Claim',
+      critique_mode: 'Logical',
+      content: 'corpus baseline critique',
+      author: myKey,
+      timestamp: nowMicros(),
+      replication_attempted: false,
+      evidence_hashes: [],
+      species: null,
+    }),
+    cases: [
+      { rule: 'Critique author must match action author.', mutate: (c) => { c.author = danglingHash('agent', 61); } },
+      // The target really is a Claim; the payload CLAIMS it is a Constitution.
+      // Both halves have to be true at once or this is the rule below instead.
+      { rule: 'Critique target_type does not match what the target actually is.', mutate: (c) => { c.target_type = 'Constitution'; } },
+      { rule: 'Critique target is not a critiquable entry type.', mutate: (c, ctx) => { c.target = ctx.notCritiquable; } },
+      { rule: 'Critique content cannot be empty.', mutate: (c) => { c.content = ''; } },
+      { rule: 'Critique species reference not found.', expect: 'deferral', mutate: (c) => { c.species = danglingHash('entry', 62); } },
+      // LAST, AND THE DRIVER ENFORCES THAT. This one is not a broken payload —
+      // it is a valid one sent once past the limit, so it needs 20 commits
+      // first and it leaves this agent unable to publish a Critique for the
+      // rest of the rolling hour. See the baseline check's saturation note.
+    ],
+  },
+  // --- ANTIBODYPATTERN. The same shape as Critique, including its own friction
+  // rule with its own counter: the rule counts AntibodyPattern creates, so
+  // Critique's 20 do not move it and the two cases do not interfere.
+  {
+    entry: 'antibody_pattern',
+    label: 'AntibodyPattern',
+    fn: 'publish_antibody_pattern',
+    chainNote: 'reused a Claim as the flagged target, and an Evidence as a non-critiquable one',
+    setup: async () => {
+      const domain = `CorpusAntibody${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, published in order to be flagged',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      if (!claims.length) throw new Error(`the claim did not come back from get_claims_by_domain(${domain})`);
+      const target = claims[0].signed_action.hashed.content.data.entry_hash;
+      const notCritiquable = await call('create_evidence', {
+        content: 'corpus evidence, used only as a non-critiquable antibody target',
+        evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
+      });
+      return { target, notCritiquable };
+    },
+    baseline: (ctx) => ({
+      target: ctx.target,
+      target_type: 'Claim',
+      kind: 'SpamFlood',
+      rationale: 'corpus baseline antibody pattern',
+      author: myKey,
+      timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'AntibodyPattern author must match action author.', mutate: (a) => { a.author = danglingHash('agent', 71); } },
+      { rule: 'AntibodyPattern target_type does not match what the target actually is.', mutate: (a) => { a.target_type = 'Constitution'; } },
+      { rule: 'AntibodyPattern target is not a critiquable entry type.', mutate: (a, ctx) => { a.target = ctx.notCritiquable; } },
+      { rule: 'AntibodyPattern rationale cannot be empty.', mutate: (a) => { a.rationale = ''; } },
+    ],
+  },
+  // --- MEMBRANE. Depth 1: the creator's OWN published Constitution, by
+  // ActionHash (not EntryHash — the validator uses must_get_valid_record, which
+  // wants an action). `publish_constitution` returns exactly that.
+  //
+  // Note the ORDER the validator checks in, because it decides two payloads:
+  // `required_promises` is checked BEFORE the constitution is fetched, so the
+  // empty-promises case needs a valid constitution anyway; and the
+  // does-not-resolve case needs an ActionHash that RESOLVES to something that
+  // is not a Constitution, since a dangling one defers via `?` instead.
+  {
+    entry: 'membrane',
+    label: 'Membrane',
+    // `attempt_unaccountable_membrane`, NOT `create_membrane`, and this is the
+    // whole lesson of this entry type. `create_membrane` mirrors all four of
+    // these rules as coordinator pre-checks and refuses FIRST with its own
+    // wording — so every case below "passed" by being refused for the wrong
+    // reason, and the integrity messages never appeared. The prober is
+    // `create_entry` with nothing in front of it, which its own doc comment
+    // says is why it exists: so DHT validation can be observed refusing rather
+    // than assumed to. Measured, 2026-10-17: via `create_membrane` the
+    // empty-promises case came back `Membrane must declare at least one
+    // required_promise.` (the coordinator's string, not the zome's) and the
+    // bad-constitution case came back `Deserialize("missing field \`agent\`")`.
+    fn: 'attempt_unaccountable_membrane',
+    chainNote: "published the creator's own Constitution, plus a Claim whose ActionHash is not a Constitution",
+    setup: async () => {
+      const domain = `CorpusMembrane${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'state what this domain demands', domain, modality: null }],
+        conditions: [],
+        published_at: nowSecs(),
+        expires_at: null,
+      });
+      // AN ACTION WITH NO APP ENTRY, and getting here took two wrong answers
+      // that are worth keeping, because the obvious payload does not reach this
+      // rule at all.
+      //
+      // The guard is:
+      //     let record = must_get_valid_record(membrane.constitution)?;
+      //     let c: Option<Constitution> = record.entry().to_app_option()
+      //         .map_err(..)?;
+      //     let Some(c) = c else { return Invalid("... does not resolve ...") };
+      //
+      // So the message needs `to_app_option` to return Ok(NONE). A dangling
+      // hash does not do it — `must_get_valid_record(..)?` defers the commit
+      // instead. A Claim's ActionHash does not do it either: a Claim IS an app
+      // entry, so the deserialize FAILS and `.map_err(..)?` raises
+      // `Deserialize("missing field \`agent\`")`, a wasm error rather than this
+      // rule. Measured both ways before this worked.
+      //
+      // Ok(None) needs a record whose entry is not applicable, i.e. an action
+      // that carries no app entry — a CreateLink. `attempt_false_attachment_link`
+      // returns exactly that ActionHash, and given VALID arguments the link
+      // commits, so the record is fetchable by `must_get_valid_record`.
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the target of the link below',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const linkAction = await call('attempt_false_attachment_link', {
+        kind: 'AgentToClaim',
+        base: claimAction,          // replaced by the agent anchor via anchor_of
+        target: claimAction,        // AgentToClaim target must be an ActionHash
+        // The tag is not optional in practice: `AgentToClaim tag must be the
+        // claim's own domain, which is the only domain a by-agent reader has to
+        // go on.` A null tag is refused, so the link would never commit and the
+        // record would not exist to be fetched.
+        tag: Array.from(Buffer.from(domain, 'utf8')),
+        anchor_of: myKey,
+        question_anchor_of: null,
+      });
+      return { constitution, notAConstitution: linkAction, domain };
+    },
+    baseline: (ctx) => ({
+      domain: ctx.domain,
+      description: 'corpus baseline membrane',
+      required_promises: ['state what this domain demands'],
+      validation_rules_hash: null,
+      creator: myKey,
+      created_at: nowSecs(),
+      constitution: ctx.constitution,
+    }),
+    cases: [
+      { rule: 'Membrane creator must match action author.', mutate: (m) => { m.creator = danglingHash('agent', 81); } },
+      { rule: 'Membrane domain cannot be empty.', mutate: (m) => { m.domain = ''; } },
+      { rule: 'Membrane must declare at least one required_promise — a domain states what it demands of its participants rather than charging them to enter.', mutate: (m) => { m.required_promises = []; } },
+      // `notAConstitution` is a CreateLink action hash, not a Claim's — see
+      // setup for why a Claim's raises a deserialize error instead of this rule.
+      { rule: "Membrane's constitution hash does not resolve to a Constitution entry.", mutate: (m, ctx) => { m.constitution = ctx.notAConstitution; } },
+    ],
+  },
+  // --- FEDERATIONRECORD. Depth 2, and the deepest chain in the zome: a
+  // Constitution, then a Membrane that cites it, then that Membrane's ENTRY
+  // hash. `create_membrane` returns an ActionHash and
+  // `FederationRecord.local_membrane` is an EntryHash, so the entry hash is
+  // read back off `get_membranes()` — the same asymmetry Retraction documents.
+  {
+    entry: 'federation_record',
+    label: 'FederationRecord',
+    fn: 'record_federation',
+    chainNote: 'Constitution -> Membrane -> its EntryHash, the deepest chain here',
+    setup: async () => {
+      const domain = `CorpusFederation${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'recognise peer networks honestly', domain, modality: null }],
+        conditions: [],
+        published_at: nowSecs(),
+        expires_at: null,
+      });
+      // The REAL create_membrane here, not the prober: this membrane has to be
+      // valid AND indexed, because the entry hash is read back off
+      // `get_membranes()`, which is link-only by design and so cannot see an
+      // entry the prober wrote without a registry link.
+      const membraneAction = await call('create_membrane', {
+        domain,
+        description: 'corpus membrane, published in order to be federated',
+        required_promises: ['recognise peer networks honestly'],
+        validation_rules_hash: null,
+        creator: myKey,
+        created_at: nowSecs(),
+        constitution,
+      });
+      const membranes = await call('get_membranes');
+      // MATCHED BY ACTION HASH, and the first attempt matched on the domain
+      // string instead — which cannot work and is worth recording: a Record's
+      // entry crosses as msgpack BYTES, so the domain is not present as text
+      // anywhere in the JSON and `JSON.stringify(r).includes(domain)` is false
+      // for the very record it is looking for. The action hash is a field, so
+      // it compares.
+      const key = Buffer.from(membraneAction).toString('base64');
+      const row = membranes.find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64') === key);
+      if (!row) throw new Error(`the membrane just created did not come back from get_membranes (${membranes.length} returned)`);
+      const localMembrane = row.signed_action.hashed.content.data.entry_hash;
+      const notAMembrane = await call('create_evidence', {
+        content: 'corpus evidence, used only as a non-Membrane entry hash',
+        evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
+      });
+      return { localMembrane, notAMembrane, domain };
+    },
+    baseline: (ctx) => ({
+      local_membrane: ctx.localMembrane,
+      remote_network_label: 'corpus-remote-net',
+      remote_membrane_ref: 'corpus-remote-ref',
+      author: myKey,
+      created_at: nowSecs(),
+    }),
+    cases: [
+      { rule: 'FederationRecord author must match action author.', mutate: (f) => { f.author = danglingHash('agent', 91); } },
+      { rule: 'FederationRecord local_membrane not found.', expect: 'deferral', mutate: (f) => { f.local_membrane = danglingHash('entry', 92); } },
+      { rule: 'FederationRecord local_membrane is not a Membrane entry.', mutate: (f, ctx) => { f.local_membrane = ctx.notAMembrane; } },
+      { rule: 'FederationRecord remote_network_label cannot be empty.', mutate: (f) => { f.remote_network_label = ''; } },
+      { rule: 'FederationRecord remote_membrane_ref cannot be empty.', mutate: (f) => { f.remote_membrane_ref = ''; } },
+    ],
+  },
 ];
 
 // --- One driver for all five, rather than the Claim block copied four times.
@@ -404,7 +737,22 @@ async function drive(spec) {
     committed = true;
     check(true, `baseline ${spec.label} commits — the mutations below start from something valid`);
   } catch (e) {
-    check(false, `baseline ${spec.label} commits`, String(e?.message ?? e).slice(0, 300));
+    const msg = String(e?.message ?? e);
+    // A SATURATED CHAIN LOOKS LIKE A BROKEN BASELINE, so it is named. Nothing
+    // in THIS harness saturates it — the friction rules are declared gaps, see
+    // GAPS — but `agent-sdk.mjs` spends real critique budget and is documented
+    // as crashing on a second run inside an hour, so a corpus run after one of
+    // those meets a 20-per-hour limit on a payload that is perfectly valid.
+    // Worth naming because the message arrives on the BASELINE check, where it
+    // reads as the zome refusing something it should accept.
+    const saturated = /SWO temporal friction/.test(msg);
+    check(false, `baseline ${spec.label} commits`,
+      saturated
+        ? `the author's chain is SATURATED for this entry type — 20 in the rolling `
+          + `hour, probably from agent-sdk.mjs or a hand-run harness, not a zome `
+          + `defect. Run scripts/sandbox.sh clean && scripts/sandbox.sh start for a `
+          + `fresh agent, or wait out the window. Original: ${msg.slice(0, 150)}`
+        : msg.slice(0, 300));
   }
 
   if (!committed) {
@@ -427,8 +775,25 @@ async function drive(spec) {
       continue;
     }
     if (kind === 'refusal') {
-      check(err.includes(c.rule), `refused: ${c.rule}`,
-        err.includes(c.rule) ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
+      // A `format!` RULE CANNOT BE MATCHED LITERALLY, and the first one to be
+      // asserted rather than gapped found this: the inventory records the zome's
+      // source string, so `DomainToClaim ... own domain ({:?})` is what the rule
+      // says while the conductor returns the domain substituted in. Matching on
+      // the literal would fail forever, and loosening it to "did it throw"
+      // would pass for any reason at all. So the comparison is the stable
+      // PREFIX up to the first interpolation — everything the zome wrote
+      // verbatim — and a prefix too short to identify a rule is refused outright
+      // rather than silently weakened.
+      const brace = c.rule.indexOf('{');
+      const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
+      if (brace !== -1 && expect.length < 20) {
+        check(false, `refused: ${c.rule}`,
+          `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
+        continue;
+      }
+      const hit = err.includes(expect);
+      check(hit, `refused: ${c.rule}`,
+        hit ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
       continue;
     }
     // kind === 'deferral'
@@ -444,7 +809,176 @@ async function drive(spec) {
   log('');
 }
 
+// ============================================================================
+// --- LINK RULES. The same driver, a different call target.
+//
+// `drive()` needs no changes for these: a link case is still a valid thing with
+// one field broken, so setup/baseline/cases carry over unaltered. What differs
+// is the inventory key — every link site has `entry: "create_link"` and is told
+// apart by `link_type` — so these live in their own list with their own
+// coverage loop rather than being wedged into COVERED.
+//
+// THREE PROBERS, AND THE SLICE COVERS ALL THREE DELIBERATELY. The generic
+// `attempt_false_attachment_link` carries 18 of the 19 link types and lets the
+// caller choose base, target and raw tag bytes. `attempt_false_domain_index`
+// and `attempt_false_membrane_registry` are single-purpose and NARROWER: they
+// build the anchor themselves from a domain or an override, so the rules they
+// can reach are bounded by their parameters rather than by the validator. A
+// slice that only used the generic one would prove nothing about the other two.
+//
+// WHY `anchor_of` IS SET FOR A BASELINE AND CLEARED FOR A MUTATION.
+// `attempt_false_attachment_link` computes the base from `anchor_of` when it is
+// present and IGNORES `payload.base`. The anchor is a Path hash, which this
+// harness cannot derive in JavaScript — so a valid baseline passes `anchor_of`
+// and lets the coordinator compute it, and any case that needs a wrong base
+// clears `anchor_of` to take control of the field.
+const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry'];
+
+const linkEntries = [
+  {
+    linkType: 'AgentToClaim',
+    label: 'AgentToClaim',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Claim of this agent\'s own, indexed under its author anchor',
+    setup: async () => {
+      const domain = `CorpusLinkA2C${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the target of an AgentToClaim link',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const claimEntry = claims[0].signed_action.hashed.content.data.entry_hash;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { claimAction, claimEntry, domain, constitution };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToClaim',
+      base: ctx.claimAction,              // ignored: anchor_of wins
+      target: ctx.claimAction,
+      tag: Array.from(Buffer.from(ctx.domain, 'utf8')),
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      // An EntryHash where an ActionHash is required — `ActionHash::try_from`
+      // is what fails, so the hash has to be well-formed and of the wrong kind.
+      { rule: 'AgentToClaim target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      // A real action whose entry is not a Claim. Reachable the obvious way
+      // here, and that is worth contrasting with Membrane: this validator
+      // matches `_ =>`, which catches the deserialize Err as well as Ok(None),
+      // while validate_membrane uses `.map_err(..)?` and raises instead.
+      { rule: 'AgentToClaim target is not a Claim.', mutate: (l, ctx) => { l.target = ctx.constitution; } },
+      { rule: 'AgentToClaim base must be an EntryHash anchor.', mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimAction; } },
+      { rule: "AgentToClaim base anchor does not match the claim's own author. A claim may only be indexed under the agent who wrote it.", mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimEntry; } },
+      { rule: "AgentToClaim tag must be the claim's own domain, which is the only domain a by-agent reader has to go on.", mutate: (l) => { l.tag = Array.from(Buffer.from('NotTheDomain', 'utf8')); } },
+    ],
+  },
+  {
+    linkType: 'AgentToConstitution',
+    label: 'AgentToConstitution',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "this agent's own Constitution, indexed under its agent anchor",
+    setup: async () => {
+      const domain = `CorpusLinkA2K${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used as a non-Constitution target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const claimEntry = claims[0].signed_action.hashed.content.data.entry_hash;
+      return { constitution, claimAction, claimEntry };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToConstitution',
+      base: ctx.constitution,
+      target: ctx.constitution,
+      tag: null,
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToConstitution target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'AgentToConstitution target is not a Constitution.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+    ],
+  },
+  {
+    linkType: 'DomainToClaim',
+    label: 'DomainToClaim',
+    // A NARROWER PROBER, and the narrowness is the point: it takes a claim
+    // action and a domain and builds the anchor itself, so the only fields a
+    // caller can get wrong are the two the rules are about.
+    fn: 'attempt_false_domain_index',
+    chainNote: "a Claim of this agent's own, filed under its own domain",
+    setup: async () => {
+      const domain = `CorpusLinkD2C${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, filed in the by-domain index',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { claimAction, domain, constitution };
+    },
+    baseline: (ctx) => ({ claim_action: ctx.claimAction, domain: ctx.domain }),
+    cases: [
+      { rule: 'DomainToClaim target is not a Claim.', mutate: (l, ctx) => { l.claim_action = ctx.constitution; } },
+      { rule: "DomainToClaim base anchor does not match the claim's own domain ({:?}). A claim may only be indexed under the domain it declares.", mutate: (l) => { l.domain = 'NotTheClaimsDomain'; } },
+    ],
+  },
+  {
+    linkType: 'MembraneRegistry',
+    label: 'MembraneRegistry',
+    fn: 'attempt_false_membrane_registry',
+    chainNote: "this agent's own Membrane, re-indexed in the registry",
+    setup: async () => {
+      const domain = `CorpusLinkMR${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'state what this domain demands', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const membraneAction = await call('create_membrane', {
+        domain,
+        description: 'corpus membrane, re-indexed by the registry prober',
+        required_promises: ['state what this domain demands'],
+        validation_rules_hash: null,
+        creator: myKey, created_at: nowSecs(), constitution,
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used as a non-Membrane registry target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { membraneAction, claimAction };
+    },
+    // `create_membrane` already wrote this exact link; links are not unique, so
+    // a second identical one validates and the baseline is a real baseline
+    // rather than a duplicate-detection test.
+    baseline: (ctx) => ({ membrane_action: ctx.membraneAction, anchor_override: null }),
+    cases: [
+      { rule: 'MembraneRegistry target is not a Membrane.', mutate: (l, ctx) => { l.membrane_action = ctx.claimAction; } },
+      { rule: 'MembraneRegistry base is not the membrane registry anchor.', mutate: (l) => { l.anchor_override = 'not_the_registry_anchor'; } },
+    ],
+  },
+];
+
 for (const spec of entries) await drive(spec);
+for (const spec of linkEntries) await drive(spec);
 
 // ---------------------------------------------------------------- coverage
 // WHY THIS IS A CHECK AND NOT A PRINTOUT. The inventory drift gate in
@@ -490,8 +1024,40 @@ check(staleGaps.length === 0,
 if (GAPS.length) {
   log('');
   log(`  declared unreachable from this harness (${GAPS.length}), each still inventoried:`);
-  for (const g of GAPS) log(`    - [${g.entry}] ${g.why}`);
+  for (const g of GAPS) log(`    - [${g.entry ?? g.linkType}] ${g.why}`);
 }
+
+// --- The same two checks for link types, keyed on `link_type` rather than
+// `entry`. Link sites all share entry "create_link", so grouping them by entry
+// would collapse nineteen different rule sets into one meaningless denominator.
+log('');
+log('--- coverage: every inventoried rule for these link types has a case ---');
+
+const namedLinks = new Set(linkEntries.flatMap((s) => s.cases.map((c) => c.rule)));
+
+for (const lt of COVERED_LINKS) {
+  const sites = inv.sites.filter(
+    (s) => s.link_type === lt && ['honest', 'crafted', 'deferred'].includes(s.class) && s.message,
+  );
+  const messages = [...new Set(sites.map((s) => s.message))];
+  const missing = messages.filter((m) => !namedLinks.has(m) && !gapped.has(m));
+  const gapsHere = messages.filter((m) => gapped.has(m));
+
+  check(missing.length === 0,
+    `${lt}: ${messages.length - gapsHere.length} of ${messages.length} assertable rules have a case`
+      + (gapsHere.length ? `, ${gapsHere.length} declared unreachable` : ''),
+    missing.length === 0 ? null
+      : `no case for: ${missing.map((m) => JSON.stringify(m)).join(', ')}`);
+}
+
+const inventoriedLinks = new Set(
+  inv.sites.filter((s) => COVERED_LINKS.includes(s.link_type) && s.message).map((s) => s.message),
+);
+const linkOrphans = [...namedLinks].filter((m) => !inventoriedLinks.has(m));
+check(linkOrphans.length === 0,
+  `every link case here names a rule the inventory still lists`,
+  linkOrphans.length === 0 ? null
+    : `not in the inventory: ${linkOrphans.map((m) => JSON.stringify(m)).join(', ')}`);
 
 // And the other direction, which catches a case left behind by a rule that was
 // REMOVED or whose wording changed — a case asserting a message the zome can no
