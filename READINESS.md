@@ -312,6 +312,36 @@ Five observations across 2026-10-12/13, pooling both harnesses: two slow
 enough to fail, the rest inside their windows. That is what item 4's retry
 assumes, so item 4 no longer needs §3 to proceed.
 
+**The running count, and it has moved toward the boundary the retry's own
+design names as its falsification condition.** #267's second `network` run
+(2026-10-14, run `38546085167`) is the first real-network occurrence the retry
+actually absorbed: the forward leg missed **two** full 330s windows and a third
+fresh publish then crossed in **243.5s**. Pooling both harnesses, the count is
+now **eight observations, four of them slow enough to fail without a retry** —
+the two from 2026-10-12/13, plus that forward leg and, in the same run, the
+`partition-rejoin` Phase 0 baseline that never crossed at all. Four of eight is
+not "most runs", so the premise holds as written; it is also no longer the
+comfortable minority it was at two of five. `real-gossip.mjs`'s
+`CROSSING_ATTEMPTS` comment states the condition that would retire the
+absorption — "a retry needed on most runs is not an intermittency being
+absorbed, it is a routine failure being hidden" — and **the number to watch it
+with is this count, which is why the occurrence is written here rather than
+left in a run log.** The observations pool two harnesses with different window
+semantics, so treat the rate as an order of magnitude rather than a
+measurement.
+
+**One thing this occurrence settles that no stubbed scenario could: three
+attempts rather than two was load-bearing, and not as a statistical hedge.**
+The comment's reason is the burst limiter — 15 initiations per peer per 10
+minutes, so "two attempts at 330s each can land entirely within it while three
+span past it". In this run attempt 1 began at 10:00:52 and attempt 3 at
+10:10:51, so **attempts 1 and 2 fell inside a single ~10-minute burst window
+and both missed, and the attempt that crossed is the first one past it**;
+nodeB's census carries `initiate too soon=25` from the same window. A
+two-attempt retry would have reddened this run. The reasoning that picked three
+was written before any real-network run needed it, and this is the run that
+needed it.
+
 **What §3 still decides, and it is not item 4.** Whether a real user on a home
 connection waits minutes to publish, and whether `agent-sdk`'s
 `dependencyWaitMs` default of 1,200,000ms is a datacentre number applied to
@@ -429,7 +459,7 @@ one thousand.
 
 ### Engineering follow-ups, and what each is blocked on
 
-**Current as of 2026-10-13.** The list above is the release order. This is the
+**Current as of 2026-10-17.** The list above is the release order. This is the
 work queue beside it, in the order it should be done, because the ordering is
 about dependencies rather than size. Each line says what it is waiting for, so
 the next session does not have to reconstruct that from a transcript.
@@ -446,6 +476,7 @@ the next session does not have to reconstruct that from a transcript.
 | 5c | **Corpus: the 90 link rules** — 19 link types via the `attempt_*` probers | 3–5 h | **Nothing, but it is a third driver shape rather than more of 5a/5b, and this is the row item 5 never had.** 90 distinct messages across 19 link types, strongly patterned — `target must be an ActionHash`, `base is not a X`, `may only be created by the author` — so one driver over a per-link-type baseline should generalise the way the shallow slice did. It is the bulk of what item 5 called "the remaining 143 assertable sites" and was invisible in that framing |
 | 5d | **Teach `enumerate.mjs` to cross-check the coordinator's externs** — 24 sites are counted assertable and mostly are not | 1–2 h | **Nothing, and it should precede 5b/5c rather than follow them, because it corrects the denominator they are planned from.** `crafted` assumes a hand-built payload can reach the validator, which holds only if an extern accepts the raw entry. For `worldline_trace`, `revelation`, `pre_registration`, `bridge_record` and `external_critique` none does — the extern takes a params struct and derives the fields the rules are about. **`generate_worldline_trace` is the worked case: 1 of its 8 sites is reachable**, not 8, and the classification is wrong in BOTH directions there. `enumerate.mjs` reads only the integrity zome, so it cannot see any of it |
 | 6 | **A `0.1.4` publish, now carrying two fixes rather than one.** (a) `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0`. (b) **`@holochain/client` floated to `0.21.1` on 2026-10-15 and broke the published SDK** | ~5 min of edits, then a publish | **The pin is fixed in-tree as of 2026-10-17; the publish is not, and that is now urgent rather than tidy.** This row used to say "nothing to fix; a publish to deliver" and batching it was free. It no longer is: `agent-sdk@0.1.3` declares `^0.21.0`, client `0.21.1` is the client for conductor `0.7.1`, and this repository pins `0.7.0` exactly because the zomes pin `hdk = "=0.7.0"` — so **a fresh `npm install` of the published package cannot sign a zome call** (`authorizeSigningCredentials` → `Failed to deserialize request`). Confirmed both ways against one local conductor, not inferred from dates. All six conductor-facing packages now pin `0.21.0` with no range, which fixes what CI packs; **the registry copy stays broken until `0.1.4` ships.** Caught by `published-packages.mjs` going red on a documentation-only commit — see its header. Also relocked `agent-sdk/package-lock.json`, which was stale at `0.1.1` |
+| 7 | **`partition-rejoin`'s Phase 0 baseline has no retry, and it is the same crossing invariant `real-gossip` now re-asks** — port `CROSSING_ATTEMPTS` to it, or state in the harness why an advisory job is deliberately left to red on intermittency | ~30 min | **Nothing. Evidence arrived on its own, from the same run rather than from reasoning.** #267's run `38546085167` is a controlled comparison nobody set up: same runner class, same `network.sh` services, same minutes — `network` absorbed two missed 330s windows and went green, while `partition-rejoin` failed at `a claim crosses nodeA -> nodeB with both up (baseline)` and reported `SETUP FAILED: The network is not carrying claims even with both nodes up`. Item 4 scoped the retry to `real-gossip` **first** and that was right, because that is where merges are blocked; what it leaves is an advisory job whose most likely red is now an intermittency rather than a rejoin defect, and **an advisory check that reds for a reason unrelated to its subject is one people learn to ignore** — which is the signal `partition-rejoin` exists to carry. Not urgent: it blocks no merge by construction (item 2). Note the ceiling if it is ported — `partition-rejoin` is at 45 minutes with its own worst case, so it needs item 4b's `worstCaseMs` treatment and not a copied constant |
 
 **A revision to item 4's dependency, from two CI runs rather than from
 reasoning.** It is listed as blocked on a consumer-network measurement, on the
@@ -523,7 +554,8 @@ waiting against a 60 min job ceiling` against the real constants. So the
 single-attempt path and the budget arithmetic are confirmed on a real network,
 and **the retry path is not**: a healthy run never reaches it. Its real-network
 behaviour is first observed on a run that needs it, and the `::warning::` is
-what will say so.
+what will say so. **That run arrived on the next push to the same PR — see
+2026-10-17 below, which replaces this prediction with the measurement.**
 
 **Next, and nothing in the queue is blocked:** item **5** (corpus long chains,
 3–5 h) and item **6** (the `mcp-server` version, which needs a `0.1.4` publish
@@ -559,11 +591,66 @@ production multi-tenant model". The published MCP server assumes it **owns** its
 conductor. **There is no agent swarm**: it was offered and not chosen, and
 nothing in this repository sends agent traffic at the hApp.
 
+### Where this session stopped — 2026-10-17 (the crossing retry, measured)
+
+**Nothing was built today. A CI run that finished after the last session had
+already answered its open question, and this session's whole output is reading
+it and writing down what it said.** The corpus and the dependency pin came
+after, and have their own section below.
+
+**The question it answered.** The 2026-10-14 section above predicted that the
+crossing retry's real-network behaviour would first be observed "on a run that
+needs it, and the `::warning::` is what will say so". #267's second `network`
+run — `38546085167`, 22m27s against the 3m35s of its first — is that run. The
+forward leg missed **two** full 330s windows and a third fresh publish crossed
+in **243.5s**; the gate went green, the `::warning::` named both missed domains,
+and the startup guard's budget held. **So the retry path is confirmed on a real
+network, and `CROSSING_ATTEMPTS` is the reason a merge was not blocked by a
+network that took fifteen minutes to carry one claim.**
+
+**The finding that was not predicted, and it is the one worth carrying
+forward.** Three attempts rather than two was argued from the burst limiter
+before any run needed it — 15 initiations per peer per 10 minutes, so two
+attempts can sit inside one window. This run's attempts 1 and 2 began at
+10:00:52 and ran to 10:10:51, inside a single such window, and both missed;
+the attempt that crossed is the first one past it, with `initiate too soon=25`
+in nodeB's census. **A two-attempt retry would have reddened this run.** The
+reasoning was load-bearing rather than cautious, which a stubbed scenario could
+not have shown.
+
+**And the same run is a controlled comparison nobody set up — hence new queue
+item 7.** `partition-rejoin`, on the same commit and the same minutes with no
+retry, failed at its Phase 0 baseline: `the network is not carrying claims even
+with both nodes up`. Item 4 scoped the retry to `real-gossip` first and that was
+correct, since that is where merges are blocked. What it leaves behind is an
+advisory job whose likeliest red is now an intermittency rather than a rejoin
+defect, and an advisory check that reds for reasons unrelated to its subject is
+one people stop reading. ~30 min, blocked on nothing, and it needs item 4b's
+`worstCaseMs` treatment rather than a copied constant.
+
+**The number that now needs watching, recorded in §3 rather than here because
+that is where the count lives.** Pooling both harnesses, four of eight
+observations are slow enough to have failed without a retry, against two of five
+before this run. Four of eight is not "most runs", so the premise the absorption
+rests on holds as written — and it is no longer a comfortable minority.
+`CROSSING_ATTEMPTS`'s own comment names "a retry needed on most runs" as the
+condition under which the gate is hiding a routine failure, so **this rate is
+the thing that decides whether the retry stays honest, and it only works as a
+rate if every occurrence gets written down.**
+
+**Where #267 stands.** All five required checks pass (`zomes`, `no-conductor`,
+`conductor`, `ui`, `network`); `partition-rejoin` is red and is advisory by
+construction, which is item 2 working as designed and is also what item 7 is
+about. The PR was taken out of draft today on that basis. It was not merged —
+that is the one action left, and it is yours.
+
+**Yours rather than anyone else's, and still unchanged:** §3's two-machine
+measurement. Two sessions of retry work have not touched it and §3 says why.
+
 ### Where this session stopped — 2026-10-17 (the dependency pin, and corpus 5a)
 
-**Read this with the other 2026-10-17 section**, which covers the crossing-retry
-measurement on #267 and lives on `network/crossing-retry`. This one is #268 and
-`corpus/long-chains`.
+**Read this with the section directly above**, which covers the crossing-retry
+measurement on #267. This one is #268 and #269, and the two were one session.
 
 **THE TOOLCHAIN IS ON THIS MACHINE, and that is the third time this has had to
 be written down.** `~/.cargo/bin` holds `hc` 0.7.0, `holochain` 0.7.0 and
