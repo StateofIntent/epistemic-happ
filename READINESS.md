@@ -475,7 +475,7 @@ the next session does not have to reconstruct that from a transcript.
 | 5b | **Corpus: the four remaining raw-payload entry types** — `critique`, `antibody_pattern`, `membrane`, `federation_record`, 22 assertable sites | 2–3 h | **Nothing, and 5a is the pattern.** All four have an extern taking the raw entry, so they are payloads plus a chain: `membrane` needs the creator's own `Constitution`, and `federation_record` needs a `Membrane` which needs that `Constitution` — **depth 2, the deepest in the zome.** Two costs are real and named here so they are not rediscovered: `critique` and `antibody_pattern` each carry an SWO temporal-friction rule enforced at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour, so those two cases are rate-limited by the protocol itself; and four rules across these types are second-agent rules ("only by the membrane's own creator" and kin) that one conductor cannot reach — `GAPS` or a second agent, and `scripts/network.sh` already builds one |
 | 5c | **Corpus: the 90 link rules** — 19 link types via the `attempt_*` probers | 3–5 h | **Nothing, but it is a third driver shape rather than more of 5a/5b, and this is the row item 5 never had.** 90 distinct messages across 19 link types, strongly patterned — `target must be an ActionHash`, `base is not a X`, `may only be created by the author` — so one driver over a per-link-type baseline should generalise the way the shallow slice did. It is the bulk of what item 5 called "the remaining 143 assertable sites" and was invisible in that framing |
 | 5d | **Teach `enumerate.mjs` to cross-check the coordinator's externs** — 24 sites are counted assertable and mostly are not | 1–2 h | **Nothing, and it should precede 5b/5c rather than follow them, because it corrects the denominator they are planned from.** `crafted` assumes a hand-built payload can reach the validator, which holds only if an extern accepts the raw entry. For `worldline_trace`, `revelation`, `pre_registration`, `bridge_record` and `external_critique` none does — the extern takes a params struct and derives the fields the rules are about. **`generate_worldline_trace` is the worked case: 1 of its 8 sites is reachable**, not 8, and the classification is wrong in BOTH directions there. `enumerate.mjs` reads only the integrity zome, so it cannot see any of it |
-| 6 | **A `0.1.4` publish, now carrying two fixes rather than one.** (a) `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0`. (b) **`@holochain/client` floated to `0.21.1` on 2026-10-15 and broke the published SDK** | ~5 min of edits, then a publish | **The pin is fixed in-tree as of 2026-10-17; the publish is not, and that is now urgent rather than tidy.** This row used to say "nothing to fix; a publish to deliver" and batching it was free. It no longer is: `agent-sdk@0.1.3` declares `^0.21.0`, client `0.21.1` is the client for conductor `0.7.1`, and this repository pins `0.7.0` exactly because the zomes pin `hdk = "=0.7.0"` — so **a fresh `npm install` of the published package cannot sign a zome call** (`authorizeSigningCredentials` → `Failed to deserialize request`). Confirmed both ways against one local conductor, not inferred from dates. All six conductor-facing packages now pin `0.21.0` with no range, which fixes what CI packs; **the registry copy stays broken until `0.1.4` ships.** Caught by `published-packages.mjs` going red on a documentation-only commit — see its header. Also relocked `agent-sdk/package-lock.json`, which was stale at `0.1.1` |
+| 6 | **A `0.1.4` publish, now carrying two fixes rather than one.** (a) `serverInfo.version` was hardcoded `'0.1.0'` while the package was `0.1.3`, so every MCP client was told the wrong thing since `0.1.0`. (b) **`@holochain/client` floated to `0.21.1` on 2026-10-15 and broke the published SDK** | ~15 min, and it needs `npm login` | **BUMP PREPARED 2026-10-17 on `release/0.1.4`; the publish itself is outstanding and needs credentials.** Both fixes are already merged to `main` — (a) is now READ from `package.json` so the second place is gone, verified reporting `0.1.4` after the bump with no further edit; (b) pins all six conductor-facing packages to `0.21.0`. **What is still true and urgent: the registry copy of `0.1.3` cannot sign a zome call at all** (`authorizeSigningCredentials` → `Failed to deserialize request`), so anyone running `npm install` gets a package that imports fine and dies on first use — the exact shape `0.1.1` shipped in. The in-tree pin fixes what CI packs, not what is published. **See the publish sequence below the queue — it has an ordering constraint that makes one commit red CI on purpose** |
 | 7 | **`partition-rejoin`'s Phase 0 baseline has no retry, and it is the same crossing invariant `real-gossip` now re-asks** — port `CROSSING_ATTEMPTS` to it, or state in the harness why an advisory job is deliberately left to red on intermittency | ~30 min | **Nothing. Evidence arrived on its own, from the same run rather than from reasoning.** #267's run `38546085167` is a controlled comparison nobody set up: same runner class, same `network.sh` services, same minutes — `network` absorbed two missed 330s windows and went green, while `partition-rejoin` failed at `a claim crosses nodeA -> nodeB with both up (baseline)` and reported `SETUP FAILED: The network is not carrying claims even with both nodes up`. Item 4 scoped the retry to `real-gossip` **first** and that was right, because that is where merges are blocked; what it leaves is an advisory job whose most likely red is now an intermittency rather than a rejoin defect, and **an advisory check that reds for a reason unrelated to its subject is one people learn to ignore** — which is the signal `partition-rejoin` exists to carry. Not urgent: it blocks no merge by construction (item 2). Note the ceiling if it is ported — `partition-rejoin` is at 45 minutes with its own worst case, so it needs item 4b's `worstCaseMs` treatment and not a copied constant |
 
 **A revision to item 4's dependency, from two CI runs rather than from
@@ -493,6 +493,55 @@ measuring, for the question it is actually about: whether a real user on a home
 connection waits minutes to publish, and whether `dependencyWaitMs`'s
 20-minute default is a datacentre number applied to consumer networks. Those
 two questions were conflated when this queue was written.
+
+### The 0.1.4 publish sequence, and why one commit must red CI
+
+**Prepared 2026-10-17 on `release/0.1.4`, off `main` at `0ca7b1e`.** Both fixes
+it ships are already in `main`; this branch is only the version bump.
+
+```
+agent-sdk   0.1.3 -> 0.1.4   (+ relocked)
+mcp-server  0.1.3 -> 0.1.4   (+ dependency range ^0.1.3 -> ^0.1.4)
+```
+
+**THE RANGE IS NOT OPTIONAL.** `scripts/publish-packages.sh` checks that
+`mcp-server`'s `@stateofintent/agent-sdk` range CONTAINS the SDK version being
+published, as a plain substring — so `^0.1.3` fails the check. Without the
+tightening, an installer could resolve the very SDK version being replaced,
+which is how `0.1.1` stayed reachable after `0.1.2` shipped.
+
+**AND THAT IS WHAT MAKES ONE COMMIT UNABLE TO PASS CI, BY CONSTRUCTION RATHER
+THAN BY MISTAKE.** `mcp-server/package-lock.json` cannot be regenerated until
+`agent-sdk@0.1.4` exists on the registry — `npm install --package-lock-only`
+fails `ETARGET: No matching version found for @stateofintent/agent-sdk@^0.1.4`,
+and so does `npm ci`, which `conductor.yml` runs in `mcp-server`. Measured, not
+predicted. The publish script requires a CLEAN TREE, so that stale lock has to
+be committed before publishing, and the `conductor` job will red on it. **Do not
+treat that red as a problem to fix before publishing — it is the ordering the
+two-stage publish forces**, and it clears in step 4.
+
+The order to do it in:
+
+1. `npm login` — `npm whoami` currently returns **401**, and the script refuses
+   without it. This is the only part that is not already done.
+2. `scripts/sandbox.sh clean && scripts/sandbox.sh start` — the script will not
+   publish unless `published-packages.mjs` has just passed against a real
+   conductor, which is the check that would have caught `0.1.1`.
+3. `scripts/publish-packages.sh` from the clean `release/0.1.4` tree. It
+   publishes `agent-sdk` first and waits until the registry can serve it before
+   `mcp-server`, because otherwise the first installer resolves whatever SDK
+   version is already there.
+4. **Then, and only then:** `cd mcp-server && npm install --package-lock-only`.
+   It resolves now. Commit that lock — this is the step that makes `npm ci` work
+   again and turns the `conductor` job green.
+5. Merge `release/0.1.4` to `main` with the lock consistent.
+
+**One thing to check after, rather than assume.** `0.1.3` is broken on the
+registry and will stay there; what changes is that `latest` moves and
+`mcp-server@0.1.4` requires `^0.1.4`, so nobody resolves the broken SDK any
+more. That is the same way `0.1.1` was retired rather than removed. Confirm it
+by installing fresh from the registry into an empty project and checking the
+resolved `@holochain/client` is `0.21.0`.
 
 ### Where this session stopped — 2026-10-13
 
