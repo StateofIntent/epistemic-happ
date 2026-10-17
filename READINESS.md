@@ -641,8 +641,16 @@ rate if every occurrence gets written down.**
 **Where #267 stands.** All five required checks pass (`zomes`, `no-conductor`,
 `conductor`, `ui`, `network`); `partition-rejoin` is red and is advisory by
 construction, which is item 2 working as designed and is also what item 7 is
-about. The PR was taken out of draft today on that basis. It was not merged —
-that is the one action left, and it is yours.
+about.
+
+**It is still a draft, and deliberately.** Today's commit is documentation only,
+but pushing it re-triggered all six checks, so the green above belongs to the
+parent commit rather than to the head. The remaining actions are therefore both
+yours and in this order: take it out of draft once this run's five required
+checks are green, then merge. **If `network` reds on this run, read the
+`::warning::` before re-running it** — a second absorbed crossing would move the
+count in §3 from four of eight to five of nine, and that is a number worth
+having rather than discarding with a re-run.
 
 **Yours rather than anyone else's, and still unchanged:** §3's two-machine
 measurement. Two sessions of retry work have not touched it and §3 says why.
