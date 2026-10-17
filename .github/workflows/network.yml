@@ -174,16 +174,24 @@ jobs:
   network:
     runs-on: ubuntu-latest
     # RAISED FOR THE WORST CASE, NOT THE TYPICAL ONE. This job took 3m35s with
-    # real-gossip alone, and partition-rejoin measures 1m45s locally — so the
-    # expected total is well under ten minutes even allowing for two vCPUs being
-    # slower than a development machine. The timeout is not sized from that.
-    # partition-rejoin calls `awaitConvergence` TWICE with a 600s window each,
-    # so a run that is slow but legitimately passing can want twenty minutes of
-    # its own, and a job timeout it could reach would kill a passing run and
-    # report it as a failure — the flaky-red-meaning-nothing this repository has
-    # repeatedly refused. 45 leaves room for both windows, real-gossip, and two
-    # network bring-ups.
-    timeout-minutes: 45
+    # real-gossip alone, so the expected total is well under ten minutes even
+    # allowing for two vCPUs being slower than a development machine. The
+    # timeout is not sized from that: a job timeout a slow but legitimately
+    # PASSING run could reach would kill it and report it as a failure — the
+    # flaky-red-meaning-nothing this repository has repeatedly refused.
+    #
+    # 60 RATHER THAN 45, AND THE ARITHMETIC IS IN THE HARNESS. `real-gossip.mjs`
+    # sums every serial wait it can be made to spend in `worstCaseMs()` and
+    # refuses to start if that sum plus a setup allowance exceeds JOB_CEILING_MS,
+    # which is this number — so the two must move together, and the harness is
+    # what notices when they do not. At CROSSING_ATTEMPTS = 3 the sum is about
+    # 44 minutes of waiting, 50 with setup.
+    #
+    # MOST OF THAT WAS ALREADY HERE. The three crossing attempts add 11 minutes;
+    # the other 33 are sections 3, 5, 8 and 9 each waiting on a crossing with
+    # the same 330s window, which they did before this change. 45 was already
+    # thin against that and nobody had added it up.
+    timeout-minutes: 60
 
     steps:
       # >>> SHARED SETUP — byte-identical in both jobs; scripts/check-workflow-setup-drift.mjs enforces it >>>
@@ -398,10 +406,16 @@ jobs:
   # ===========================================================================
   partition-rejoin:
     runs-on: ubuntu-latest
-    # Same 45 as `network`, and for the reason stated there: TWO
+    # 45, AND DELIBERATELY NOT `network`'s 60. The two jobs run different
+    # harnesses with different worst cases, so one number for both would be
+    # either too tight here or slack there. This one is sized from TWO
     # `awaitConvergence` calls with a 600s window each, so a slow but
-    # legitimately passing run can want twenty minutes of its own. This job is
-    # the one that reasoning was actually about.
+    # legitimately passing run can want twenty minutes of its own — the
+    # reasoning `network` states and that this job was actually about.
+    # `partition-rejoin.mjs` has no retry loop and no `worstCaseMs`, so nothing
+    # here enforces this number against the harness the way `real-gossip.mjs`
+    # enforces 60 against its own; if that retry is ever extended to this
+    # harness, that guard comes with it.
     timeout-minutes: 45
 
     steps:

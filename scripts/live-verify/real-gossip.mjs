@@ -47,6 +47,15 @@
 //      repaired by a gossip round about two minutes later — the substrate
 //      behaving as documented. Conflating the two is what made this harness
 //      red about 7% of the time for a reason nobody could read.
+//
+//      AND A MISSED WINDOW IS RE-ASKED, up to CROSSING_ATTEMPTS times, with a
+//      FRESH publish in a fresh domain each time — the gate reddens only when
+//      every attempt misses. A healthy run makes exactly one attempt and pays
+//      nothing for this. A run that needed a retry is green and prints a
+//      ::warning:: naming every missed domain, because the risk of absorbing
+//      an intermittency is that it stops being counted. Read CROSSING_ATTEMPTS
+//      before changing any of it: a longer window and a second publish answer
+//      different questions, and only one of them is the invariant.
 //   4. IT IS THE SAME ENTRY. The claim nodeB holds is compared field by
 //      field with what nodeA wrote, and its author is nodeA's key.
 //   5. TWO INDEPENDENT READ PATHS. `get_claims_by_agent` on nodeB finds
@@ -233,6 +242,34 @@
 //   `by-agent=10, none of them this run's claim`. The check was never
 //   wrong, since it matches on content; the number beside it was.
 //
+//   CROSSING_ATTEMPTS was exercised against STUBBED CONDUCTORS, and the
+//   distinction matters enough to state rather than bury: the machine it
+//   was written on has no Holochain toolchain, so the retry has never been
+//   watched absorbing a REAL slow crossing. What was verified is the
+//   control flow, with the three conductors replaced by an in-memory DHT
+//   whose crossing delay is set per domain. Six scenarios:
+//     - a crossing on the first attempt: ONE attempt, 25 counted checks,
+//       no warning, exit 0 — the healthy path must cost nothing.
+//     - a crossing on the second and on the third: exit 0, still 25
+//       counted checks, and the ::warning:: naming each missed domain.
+//       The check COUNT not moving with the attempt count is deliberate;
+//       a count that moves is one nobody can compare between runs.
+//     - all three missing: 7 red (the gate, section 4's five, section 5),
+//       and the observation reporting none of the three arrived, with the
+//       oldest's age since its own write.
+//     - one arriving DURING the observation: the gate still red, that
+//       attempt's late arrival attributed to it by number and measured
+//       from its own publish, and the two that never arrived named.
+//     - a retry domain that was not empty: SETUP FAILED before publishing,
+//       which is the one way this retry could turn a real failure green.
+//   The sections BELOW section 3 are what that last pair really tested: a
+//   retry that crosses must leave sections 4 and 5 pointed at the domain
+//   that crossed, or they report section 3's failure again after a full
+//   window each. That wiring was written deliberately rather than found by
+//   failing, so the retry-2 scenario is what CONFIRMS it — had sections 4
+//   and 5 stayed on attempt 1, that run would have been 6 red on a green
+//   gate, which is the shape to look for if this is ever refactored.
+//
 // Re-check the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green. And if you change what it
 // PRINTS on a failure, inject a failure and read the words.
@@ -368,6 +405,90 @@ const CONTROL_MARGIN_MS = 20_000;
 // the answer is "seconds or nothing" in every occurrence recorded so far, and
 // a failing run has by then already spent four minutes waiting.
 const STRANDED_PROBE_MS = 30_000;
+
+// HOW MANY TIMES A MISSED CROSSING IS RE-ASKED BEFORE THE GATE GOES RED.
+//
+// WHY THIS EXISTS. The convergence check is the gate, and when it reddens it
+// blocks merges on work that has nothing to do with gossip — a
+// documentation-only pull request (#263) on 2026-10-12 is the case in point.
+// Splitting `partition-rejoin` into its own advisory job stopped that for one
+// harness and not for this one: `real-gossip` is in the REQUIRED job, so its
+// red is still a merge blocker. READINESS.md §3 carries the history.
+//
+// WHY A RETRY IS THE RIGHT SHAPE, AND IT RESTS ON A MEASUREMENT. The slowness
+// is intermittent rather than routine, and it is proven on a SAME COMMIT:
+// #265's `network` job failed at 11m50s and then passed at 2m48s on the
+// identical tree — a re-run, no code difference for a "something changed"
+// account to attach to. Five observations across 2026-10-12/13 pooling both
+// harnesses, two of them slow enough to fail. A retry is therefore expected to
+// find a fast crossing, which is what makes it an honest gate rather than a
+// timeout raised to get a green tick.
+//
+// A FRESH PUBLISH, NOT A LONGER WINDOW, and that distinction is the whole
+// design. A longer window asks "does THIS op ever arrive" — already asked, by
+// OBSERVE_PAST_WINDOW_MS, which deliberately does not gate. A retry asks "does
+// a crossing work NOW", which is the invariant this job exists to protect: a
+// practitioner publishing an entry needs their next write to cross, not the one
+// the network stranded ten minutes ago.
+//
+// EVERY ATTEMPT GETS THE SAME WINDOW. A shorter budget for retries would hold a
+// retry to a stricter standard than the gate's own and red a crossing that
+// CONVERGE_WINDOW_MS itself calls a pass — the #131 defect, one read path held
+// to a laxer standard than the other, in a new place. The cost is paid in the
+// job ceiling instead; see `worstCaseMs`.
+//
+// THREE RATHER THAN TWO, for a reason that is not statistics: the burst
+// limiter. A refused round logs `initiate too soon` and the allowance is 15
+// initiations per peer per 10 MINUTES (see TRANSPORT_SIGNATURES), so attempts
+// inside one such window are correlated — and two attempts at 330s each can
+// land entirely within it while three span past it.
+//
+// WHAT IT MUST NOT BECOME. A retry needed on most runs is not an intermittency
+// being absorbed, it is a routine failure being hidden, and the two look
+// identical from the tick alone. The green path therefore prints a ::warning::
+// naming every missed window, and a run that needed a retry is an occurrence to
+// be counted in READINESS.md §3 — which is where the running count is kept —
+// rather than a clean pass.
+const CROSSING_ATTEMPTS = 3;
+
+// THE WORST CASE HAS TO FIT THE JOB, and the arithmetic lives here because
+// every number in it is declared in this file. A job timeout a PASSING run can
+// reach kills it and reports it as a failure — the flaky-red-meaning-nothing
+// this repository has repeatedly refused — and CROSSING_ATTEMPTS buys its
+// retries in exactly that currency, so the two cannot be chosen independently.
+//
+// `network.yml`'s `timeout-minutes` for the `network` job, which this file does
+// not get to read. Keep the two in step; the guard in `main` is what notices
+// when a future edit does not.
+const JOB_CEILING_MS = 60 * 60_000;
+// What the workflow spends before this harness starts: checkout, toolchain, the
+// cached bootstrap server and relay, the Holochain binaries, the zome build and
+// the network bring-up. About 90s on a warm cache — #265's passing run was
+// 2m48s in total, less this harness's own time — and allowed four times that,
+// because a cold cache builds the bootstrap server and relay from source.
+const SETUP_ALLOWANCE_MS = 360_000;
+
+/** Every serial wait this harness can be made to spend on one run, summed.
+ *
+ * Deliberately a sum of named constants rather than a measured figure. It is
+ * asked at startup, before anything has been measured, and its job is to refuse
+ * a CONFIGURATION that cannot fit rather than to predict a run.
+ *
+ * It is also why the ceiling moved from 45 minutes to 60. The three attempts
+ * are the visible half of that; the other half was already there and unnoticed,
+ * because sections 5, 8 and 9 each wait on a crossing with the same
+ * CONVERGE_WINDOW_MS. Even at one attempt this sum is about 33 minutes, so 45
+ * was thin before this change rather than because of it. */
+function worstCaseMs() {
+  return CROSSING_ATTEMPTS * CONVERGE_WINDOW_MS  // section 3, every attempt
+    + STRANDED_PROBE_MS                          // the first miss's probe, once
+    + OBSERVE_PAST_WINDOW_MS                     // only on the all-missed path
+    + CONVERGE_WINDOW_MS                         // section 5, the second index
+    + CONTROL_MARGIN_MS                          // section 6's margin
+    + CONVERGE_WINDOW_MS                         // section 8, the reverse leg
+    + CONVERGE_WINDOW_MS                         // section 9's wait, at most
+    + CONVERGE_WINDOW_MS;                        // section 9's paired control
+}
 
 // Where scripts/network.sh puts each conductor's log. The workflow already
 // tails these after a failure; this file reads them itself, for the reason in
@@ -896,6 +1017,32 @@ async function main() {
     ]);
   }
 
+  // See `worstCaseMs`. A configuration that cannot fit the job it runs in is a
+  // setup failure, and belongs here rather than being discovered an hour in when
+  // the runner kills a run that was passing.
+  if (CROSSING_ATTEMPTS < 1) {
+    setupFail([
+      `CROSSING_ATTEMPTS is ${CROSSING_ATTEMPTS}, so section 3 would publish nothing at all`,
+      'and the gate below would pass vacuously on an empty list of attempts.',
+      'At least one attempt is required; see that constant for why it is 3.',
+    ]);
+  }
+  if (worstCaseMs() + SETUP_ALLOWANCE_MS > JOB_CEILING_MS) {
+    setupFail([
+      `the worst case is ${(worstCaseMs() / 60_000).toFixed(1)} min of waiting plus `
+        + `${(SETUP_ALLOWANCE_MS / 60_000).toFixed(0)} min of setup, against a `
+        + `${(JOB_CEILING_MS / 60_000).toFixed(0)} min job ceiling.`,
+      'A ceiling a PASSING run can reach kills it and reports it as a failure,',
+      'which is worse than the slow pass it replaced. Raise timeout-minutes on',
+      'the `network` job in .github/workflows/network.yml and JOB_CEILING_MS',
+      'here TOGETHER, or lower CROSSING_ATTEMPTS — worstCaseMs itemises where',
+      'the time goes, and sections 5, 8 and 9 each hold a full window of their own.',
+    ]);
+  }
+  log(`  budget: up to ${CROSSING_ATTEMPTS} crossing attempts of ${CONVERGE_WINDOW_MS / 1000}s each; `
+    + `worst case ${(worstCaseMs() / 60_000).toFixed(1)} min of waiting against a `
+    + `${(JOB_CEILING_MS / 60_000).toFixed(0)} min job ceiling`);
+
   log('\n--- 1. Preconditions: three real, distinct nodes ---');
   const sameDht = b64(A.dna) === b64(B.dna);
   const isolated = b64(A.dna) !== b64(C.dna);
@@ -917,51 +1064,124 @@ async function main() {
   }
 
   // ---- 2. Nothing is there first ---------------------------------------
-  const DOMAIN = `Gossip${Date.now()}`;
-  const CONTENT = `Written on nodeA at ${new Date().toISOString()}, and nowhere else.`;
-  log(`\n--- 2. Before anything is published, domain ${DOMAIN} is empty everywhere ---`);
+  //
+  // FIRST_, because section 3 may publish more than once — see
+  // CROSSING_ATTEMPTS. Each retry takes this same emptiness precondition for
+  // its own domain rather than inheriting this one.
+  const FIRST_DOMAIN = `Gossip${Date.now()}`;
+  const FIRST_CONTENT = `Written on nodeA at ${new Date().toISOString()}, and nowhere else.`;
+  log(`\n--- 2. Before anything is published, domain ${FIRST_DOMAIN} is empty everywhere ---`);
   check('nodeB sees 0 claims in this run\'s domain before nodeA publishes',
-    (await B.call('get_claims_by_domain', DOMAIN)).length === 0);
+    (await B.call('get_claims_by_domain', FIRST_DOMAIN)).length === 0);
   check('nodeC sees 0 claims in this run\'s domain before nodeA publishes',
-    (await C.call('get_claims_by_domain', DOMAIN)).length === 0);
+    (await C.call('get_claims_by_domain', FIRST_DOMAIN)).length === 0);
 
   // ---- 3. The finding ---------------------------------------------------
   log('\n--- 3. nodeA publishes; does nodeB receive it over the network? ---');
-  // Recorded BEFORE the publish, because after a failure it is too late to
-  // ask: see `peerCount`. This says whether the two conductors had found each
-  // other at the moment the claim was written.
-  log(`  at publish time: ${await peersLine(A, B)}`);
-  await publishClaim(A, DOMAIN, CONTENT);
-  const ownRead = await A.call('get_claims_by_domain', DOMAIN);
-  check('nodeA sees its own claim (control: the write itself worked)', ownRead.length === 1);
-  if (ownRead.length !== 1) {
-    setupFail([
-      'nodeA cannot see the claim it just wrote, so there is nothing to gossip.',
-      'This is a failure of the zome or of a stale build, not of networking:',
-      'hc dna pack packages the wasm on disk rather than compiling it, so a',
-      'pack without a build verifies the previous version. Rebuild with',
-      'scripts/pack-webhapp.sh, then scripts/network.sh clean && start.',
-    ]);
+
+  // Null unless the prompt budget was missed on the FIRST attempt; see
+  // `strandedProbe`. Section 5 reads it, so it is declared before the wait
+  // that may populate it.
+  let probe = null;
+  // OR-ed across every attempt, because the control's claim is about the whole
+  // run: nodeC must not have seen ANY of the claims nodeA published here, not
+  // merely the one that happened to cross.
+  let isolatedEverSaw = false;
+  const attempts = [];
+
+  for (let n = 1; n <= CROSSING_ATTEMPTS; n++) {
+    const domain = n === 1 ? FIRST_DOMAIN : `Gossip${Date.now()}Retry${n}`;
+    const content = n === 1
+      ? FIRST_CONTENT
+      : `Written on nodeA at ${new Date().toISOString()} for attempt ${n}, and nowhere else.`;
+
+    if (n > 1) {
+      log(`\n  --- attempt ${n} of ${CROSSING_ATTEMPTS}: a FRESH claim, in domain ${domain} ---`);
+      log('  The previous attempt\'s window closed with nothing. This is a new publish');
+      log('  rather than more time for the old one, and CROSSING_ATTEMPTS says why those');
+      log('  are different questions and why this is the one that gates.');
+      // The precondition section 2 takes for the first domain, taken again here
+      // rather than inferred from the timestamp in the name. A retry that
+      // measured a domain already holding something would report a crossing
+      // that never happened — the one way this retry could turn a real failure
+      // green, so it is checked rather than reasoned about.
+      const before = (await B.call('get_claims_by_domain', domain)).length;
+      if (before !== 0) {
+        setupFail([
+          `node${B.name} already holds ${before} claim(s) in ${domain}, which this run has`,
+          'not published to yet. A retry is only evidence if its domain starts empty,',
+          'so this stops rather than reporting somebody else\'s claim as a crossing.',
+          'A previous run left running, or two harnesses sharing one conductor set,',
+          'would both produce this: scripts/network.sh clean && scripts/network.sh start.',
+        ]);
+      }
+    }
+
+    // Recorded BEFORE the publish, because after a failure it is too late to
+    // ask: see `peerCount`. This says whether the two conductors had found each
+    // other at the moment the claim was written.
+    log(`  at publish time: ${await peersLine(A, B)}`);
+    const publishedAt = Date.now();
+    await publishClaim(A, domain, content);
+    const own = await A.call('get_claims_by_domain', domain);
+    // COUNTED AS A CHECK ON THE FIRST ATTEMPT ONLY, so a run's list of checks
+    // does not change length with the number of attempts it happened to need —
+    // a count that moves is a count nobody can compare between runs. A retry
+    // whose own write fails is still fatal, immediately below.
+    if (n === 1) {
+      check('nodeA sees its own claim (control: the write itself worked)', own.length === 1);
+    } else if (own.length !== 1) {
+      log(`  nodeA cannot see the claim it just wrote for attempt ${n}`);
+    }
+    if (own.length !== 1) {
+      setupFail([
+        'nodeA cannot see the claim it just wrote, so there is nothing to gossip.',
+        'This is a failure of the zome or of a stale build, not of networking:',
+        'hc dna pack packages the wasm on disk rather than compiling it, so a',
+        'pack without a build verifies the previous version. Rebuild with',
+        'scripts/pack-webhapp.sh, then scripts/network.sh clean && start.',
+      ]);
+    }
+
+    const got = await awaitGossip(B, C, domain, {
+      // THE PROBE IS A DIAGNOSTIC AND IS SPENT ONCE. On the first miss it asks
+      // "does a fresh op cross right now?" with a 30s budget; every later
+      // attempt asks that same question with the gate's own budget. Paying for
+      // the probe again before each retry would be asking twice, and would put
+      // 30s of its own between a miss and the re-ask that answers it.
+      onPromptMiss: n > 1 ? null : async () => {
+        // The peer counts, asked at the moment the prompt budget expired rather
+        // than at the end of the long window. Both above one means they had found
+        // each other and the publish still did not land; a one on either means
+        // this node was alone on the DHT when it mattered.
+        log(`    ${PROMPT_PUBLISH_MS / 1000}s gone without the claim: ${await peersLine(A, B)}`);
+        probe = await strandedProbe(A, B, domain, C);
+        // Last, because it is the line that most often holds the answer and
+        // should sit closest to the verdict: every failure measured so far had
+        // the transport logging a refusal while the peer counts said "2 and 2".
+        logTransportErrors(await transportErrors());
+        return probe;
+      },
+    });
+    if (got.isolatedEverSaw) isolatedEverSaw = true;
+    attempts.push({ n, domain, content, ownRead: own, publishedAt, ms: got.ms, lateMs: null });
+
+    if (got.ms !== null) break;
+    log(`    attempt ${n} of ${CROSSING_ATTEMPTS} missed its ${CONVERGE_WINDOW_MS / 1000}s window`);
   }
 
-  // Null unless the prompt budget was missed; see `strandedProbe`. Section 5
-  // reads it, so it is declared before the wait that may populate it.
-  let probe = null;
-  const { ms: arrivedMs, isolatedEverSaw } = await awaitGossip(B, C, DOMAIN, {
-    onPromptMiss: async () => {
-      // The peer counts, asked at the moment the prompt budget expired rather
-      // than at the end of the long window. Both above one means they had found
-      // each other and the publish still did not land; a one on either means
-      // this node was alone on the DHT when it mattered.
-      log(`    ${PROMPT_PUBLISH_MS / 1000}s gone without the claim: ${await peersLine(A, B)}`);
-      probe = await strandedProbe(A, B, DOMAIN, C);
-      // Last, because it is the line that most often holds the answer and
-      // should sit closest to the verdict: every failure measured so far had
-      // the transport logging a refusal while the peer counts said "2 and 2".
-      logTransportErrors(await transportErrors());
-      return probe;
-    },
-  });
+  // THE ATTEMPT THAT CROSSED IS THE ONE EVERY SECTION BELOW IS ABOUT. Section 4
+  // compares what nodeB holds against what nodeA wrote, and section 5 waits for
+  // the by-agent index of the same content; pointing them at a domain that
+  // never crossed would make them report section 3's failure a second and third
+  // time, each after a full window of its own. When nothing crossed they stay
+  // on the first attempt, which is exactly what they described before retries
+  // existed.
+  const crossing = attempts.find((a) => a.ms !== null) ?? attempts[0];
+  const DOMAIN = crossing.domain;
+  const CONTENT = crossing.content;
+  const ownRead = crossing.ownRead;
+  const arrivedMs = crossing.ms;
 
   // TWO CHECKS, BECAUSE THEY ARE TWO PROMISES — see PROMPT_PUBLISH_MS above and
   // README.md §9. The gate is convergence: "an entry written on one conductor
@@ -970,10 +1190,27 @@ async function main() {
   // warned about, because publish has no retry in kitsune2 and an op it drops
   // is repaired by a gossip round roughly two minutes later — the substrate
   // behaving as documented, which must not read as a broken invariant.
-  check(`nodeB receives nodeA's claim over the network (within ${CONVERGE_WINDOW_MS / 1000}s)`,
-    arrivedMs !== null);
+  check(`nodeB receives nodeA's claim over the network (within ${CONVERGE_WINDOW_MS / 1000}s, in `
+    + `up to ${CROSSING_ATTEMPTS} attempts)`, arrivedMs !== null);
   if (arrivedMs !== null) {
-    log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s`);
+    log(`    arrived after ${(arrivedMs / 1000).toFixed(1)}s, on attempt ${crossing.n} of ${CROSSING_ATTEMPTS}`);
+    // A GREEN TICK THAT NEEDED A RETRY IS AN OCCURRENCE, AND MUST NOT READ AS
+    // "nothing happened". The point of CROSSING_ATTEMPTS is to stop this job
+    // reddening unrelated work; its risk is that the intermittency it absorbs
+    // stops being counted. This warning is what keeps it counted, and it names
+    // the missed domains rather than only their number, so the occurrence can
+    // be filed against the others with something to look up in the logs.
+    if (crossing.n > 1) {
+      const missed = attempts.filter((a) => a.ms === null);
+      log(`    ::warning::THE CROSSING NEEDED ${crossing.n} ATTEMPTS. `
+        + `${missed.length} publish(es) missed a full ${CONVERGE_WINDOW_MS / 1000}s window each `
+        + `(${missed.map((a) => a.domain).join(', ')}), and a fresh one then crossed in `
+        + `${(arrivedMs / 1000).toFixed(1)}s. The gate is green BY DESIGN — see CROSSING_ATTEMPTS — `
+        + 'but this run is an occurrence of the intermittency READINESS.md §3 counts and belongs '
+        + 'in that count, with its crossing times in README.md §9\'s per-leg table. If a retry is '
+        + 'needed on most runs, the premise this absorption rests on has changed and it is hiding '
+        + 'a routine failure rather than an intermittent one.');
+    }
     if (arrivedMs <= PROMPT_PUBLISH_MS) {
       log(`    the direct publish landed inside ${PROMPT_PUBLISH_MS / 1000}s, so nothing had to repair it`);
     } else {
@@ -983,47 +1220,76 @@ async function main() {
         + 'rather than a failure.');
     }
   } else {
-    log(`    not after ${CONVERGE_WINDOW_MS / 1000}s, and gossip's own worst case for repairing a `
-      + `dropped publish is ${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s — see `
+    log(`    not once in ${CROSSING_ATTEMPTS} attempts of ${CONVERGE_WINDOW_MS / 1000}s each — `
+      + `${(CROSSING_ATTEMPTS * CONVERGE_WINDOW_MS) / 1000}s of window spent on `
+      + `${CROSSING_ATTEMPTS} separate publishes, so this is the CONSISTENTLY slow case rather `
+      + 'than the intermittent one CROSSING_ATTEMPTS absorbs. Gossip\'s own worst case for '
+      + `repairing a dropped publish is ${GOSSIP_REPAIR_WORST_CASE_MS / 1000}s — see `
       + 'GOSSIP_REPAIR_WORST_CASE_MS for what that is made of, and for the case it does '
       + 'NOT cover');
     log(`    at the end: ${await peersLine(A, B)}`);
 
     // See OBSERVE_PAST_WINDOW_MS. The verdict is already decided; this decides
     // which of two fixes the next person should reach for.
+    //
+    // EVERY MISSED ATTEMPT IS WATCHED, not only the last, and for the same 300s.
+    // The attempts were published minutes apart, so at the moment this starts
+    // they sit at different points in gossip's repair cycle — the first has had
+    // the longest and is the likeliest to have been repaired already. Watching
+    // one of them would answer "was the window the constraint" for one publish
+    // and leave the others unobserved, having already paid for the poll.
     log(`\n    --- still watching for ${OBSERVE_PAST_WINDOW_MS / 1000}s past the window, to `
       + 'establish whether more time would have helped ---');
     const tObs = Date.now();
-    let lateMs = null;
+    const pending = attempts.filter((a) => a.ms === null);
     // Sleeps before re-checking the clock, so at least one poll always happens
     // even if the budget is shorter than POLL_MS. That is intended rather than
     // incidental: an observation budget that can take zero observations reports
     // "still absent" without having looked, which is the wrong answer stated
     // confidently. The cost is overshooting the budget by at most one POLL_MS.
-    while (Date.now() - tObs < OBSERVE_PAST_WINDOW_MS) {
+    while (Date.now() - tObs < OBSERVE_PAST_WINDOW_MS && pending.some((a) => a.lateMs === null)) {
       await sleep(POLL_MS);
-      let got = 0;
-      try { got = (await B.call('get_claims_by_domain', DOMAIN)).length; }
-      catch (e) {
-        // A read that fails here is not a verdict either way, and must not
-        // replace the observation with an error about reading.
-        log(`    t+${((Date.now() - tObs) / 1000).toFixed(0)}s past window: node${B.name} did not answer `
-          + `(${String(e?.message ?? e).split('\n')[0].slice(0, 80)})`);
-        continue;
+      const t = ((Date.now() - tObs) / 1000).toFixed(0);
+      for (const a of pending) {
+        if (a.lateMs !== null) continue;
+        let got = 0;
+        try { got = (await B.call('get_claims_by_domain', a.domain)).length; }
+        catch (e) {
+          // A read that fails here is not a verdict either way, and must not
+          // replace the observation with an error about reading.
+          log(`    t+${t}s past window: node${B.name} did not answer for attempt ${a.n} `
+            + `(${String(e?.message ?? e).split('\n')[0].slice(0, 80)})`);
+          continue;
+        }
+        log(`    t+${t}s past window: attempt ${a.n} node${B.name}=${got}`);
+        if (got > 0) a.lateMs = Date.now() - tObs;
       }
-      log(`    t+${((Date.now() - tObs) / 1000).toFixed(0)}s past window: node${B.name}=${got}`);
-      if (got > 0) { lateMs = Date.now() - tObs; break; }
     }
-    if (lateMs !== null) {
-      log(`    ::warning::IT ARRIVED LATE — ${((CONVERGE_WINDOW_MS + lateMs) / 1000).toFixed(0)}s from the `
-        + `write, i.e. ${(lateMs / 1000).toFixed(0)}s past a ${CONVERGE_WINDOW_MS / 1000}s window. So on `
-        + 'THIS run the window was the constraint and the mechanism did eventually work. Record it '
-        + 'against the other occurrences before widening anything — one late arrival is not a '
-        + 'distribution, and a window raised on one was already reverted once (see '
-        + 'transitive-gossip.mjs).');
+    const arrivedLate = pending.filter((a) => a.lateMs !== null);
+    if (arrivedLate.length > 0) {
+      for (const a of arrivedLate) {
+        const fromWrite = tObs + a.lateMs - a.publishedAt;
+        log(`    ::warning::ATTEMPT ${a.n} ARRIVED LATE — ${(fromWrite / 1000).toFixed(0)}s from its `
+          + `write, i.e. ${((fromWrite - CONVERGE_WINDOW_MS) / 1000).toFixed(0)}s past a `
+          + `${CONVERGE_WINDOW_MS / 1000}s window. So on THIS run the window was the constraint and `
+          + 'the mechanism did eventually work. Record it against the other occurrences before '
+          + 'widening anything — one late arrival is not a distribution, and a window raised on '
+          + 'one was already reverted once (see transitive-gossip.mjs).');
+      }
+      // THE SHARPER HALF, and it is a shape one attempt could never show: the
+      // same pair of conductors stranded one op and repaired another, minutes
+      // apart. A longer window is not a fix for both, so this rules out
+      // CONVERGE_WINDOW_MS as the single answer rather than merely failing to
+      // confirm it.
+      if (arrivedLate.length < pending.length) {
+        log(`    and ${pending.length - arrivedLate.length} of the ${pending.length} missed `
+          + 'publishes did NOT arrive even then. Some stranded and some repaired, on the same '
+          + 'two conductors minutes apart, so more time is not a fix for all of them.');
+      }
     } else {
-      log(`    ::warning::STILL ABSENT after a further ${OBSERVE_PAST_WINDOW_MS / 1000}s — `
-        + `${(CONVERGE_WINDOW_MS + OBSERVE_PAST_WINDOW_MS) / 1000}s from the write in total. So on THIS `
+      log(`    ::warning::STILL ABSENT after a further ${OBSERVE_PAST_WINDOW_MS / 1000}s — none of the `
+        + `${pending.length} missed publishes arrived, the oldest `
+        + `${((Date.now() - pending[0].publishedAt) / 1000).toFixed(0)}s after its write. So on THIS `
         + 'run more time would NOT have helped, and the window is not the thing to change. That '
         + 'points at the 15s round timeout being too tight for this machine rather than at '
         + 'CONVERGE_WINDOW_MS.');
