@@ -1755,6 +1755,25 @@ written, and it reads as a stronger claim than twenty-four measurements support*
 — so it is qualified here rather than left to be quoted on its own. A long right
 tail is the shape the evidence now has; two modes is not.
 
+**Two more, from the first real-network run that needed the crossing retry**
+(2026-10-14, run [`38546085167`](../../actions/runs/38546085167), `network` and
+`partition-rejoin` on the same commit and the same minutes):
+
+| | measured | window |
+|---|---|---|
+| `real-gossip` forward leg | missed, missed, **243.5** | three 330s attempts; `CROSSING_ATTEMPTS` |
+| `partition-rejoin` Phase 0 baseline | **never crossed** | one window, no retry — the job failed at setup |
+
+**These two belong together or neither is worth recording.** They are the same
+intermittency observed twice at once, under the only difference that matters —
+one harness re-asks a missed crossing and the other does not. The forward leg's
+`243.5` is also not comparable to the twelve above without its attempt number:
+it is 243.5s *into a third fresh publish*, roughly 903s after the first one, so
+as a propagation figure it sits past the `176.8` tail and as a gate figure it is
+a pass. The same run's other legs were unremarkable — `get_claims_by_agent`
+4.0s, reverse leg 2.0s, §9's paired control 4.0s — which is the forward-leg
+asymmetry this section records further down, not a slow network overall.
+
 *(Provenance, because it explains why there are twelve `network.yml` runs and not
 one: these were dispatched while aiming at a fifth `NoDiff` batch, which lives in
 `peering-rate.yml` and not here. A twelve-trial `NoDiff` batch is one dispatch of
