@@ -24,9 +24,29 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types, 44 rules, and the coverage is asserted rather than
-stated.** 68 checks: 10 baselines, 4 dependency chains, 39 asserted rules, 5
-declared unreachable, and 12 coverage assertions.
+**Ten entry types and four link types, and the coverage is asserted rather
+than stated.** 92 checks. Link rules use the same driver — a link case is still
+a valid thing with one field broken — but they are keyed on `link_type` rather
+than `entry`, because every link site shares `entry: "create_link"` and
+grouping them by entry would collapse nineteen rule sets into one meaningless
+denominator.
+
+| link type | prober | assertable rules | asserted | declared unreachable |
+|---|---|---|---|---|
+| `AgentToClaim` | `attempt_false_attachment_link` | 6 | 5 | 1 |
+| `AgentToConstitution` | `attempt_false_attachment_link` | 3 | 2 | 1 |
+| `DomainToClaim` | `attempt_false_domain_index` | 3 | 2 | 1 |
+| `MembraneRegistry` | `attempt_false_membrane_registry` | 3 | 2 | 1 |
+
+**The slice covers all three probers on purpose.** The generic one carries 18 of
+the 19 link types and lets the caller choose base, target and raw tag bytes; the
+other two are single-purpose and NARROWER, building the anchor themselves from a
+domain or an override, so the rules they can reach are bounded by their
+parameters rather than by the validator. A slice using only the generic prober
+would have proved nothing about the other two.
+
+**15 of 19 link types remain.** What is done is the driver, the three prober
+shapes, and both anchor forms.
 
 | entry type | assertable rules | refusals | deferrals | declared unreachable |
 |---|---|---|---|---|
@@ -359,6 +379,43 @@ message reads as the enforcement, whose obvious trigger produces something else
 entirely, and which is reachable only by a payload nobody would guess. It is
 asserted now rather than assumed.
 
+### Finding 8 — 23 rules are waiting on one piece of work, and it is a second agent
+
+**Counted rather than discovered a few at a time.** Every one of the 19 link
+types carries a *"may only be created by the owner"* rule in some wording:
+**20 of the 88 link rules**, across all 19 types. Add the three entry-type gaps
+(`Retraction`, `Membrane`, `FederationRecord`) and **23 rules in this corpus are
+blocked on the same thing** — a second agent on one DHT. One conductor has one
+agent, so everything it can author is its own, and forging the owning field is
+stopped a rule earlier by the matching author check.
+
+| | count |
+|---|---|
+| link rules reachable with one agent | 68 |
+| link rules needing a second agent | 20 |
+| entry rules needing a second agent | 3 |
+
+**That makes the two-agent harness higher-leverage than the remaining link
+bulk**, which is the opposite of how the queue was ordered when the link work
+was costed. `scripts/network.sh` already stands up multiple conductors for the
+gossip harnesses, so the parts exist; what is missing is the corpus driving two
+of them.
+
+### Finding 9 — a `format!` rule cannot be matched literally
+
+The inventory records the zome's SOURCE string, so
+`DomainToClaim base anchor does not match the claim's own domain ({:?}).` is
+what the rule says, while the conductor returns the domain substituted in. The
+first formatted rule to be *asserted* rather than declared unreachable found
+this immediately.
+
+Matching the literal would fail forever. Loosening the check to "did it throw"
+would pass for any reason at all — the failure mode this whole corpus exists to
+stop. So the comparison is the stable **prefix up to the first interpolation**,
+everything the zome wrote verbatim, and **a prefix too short to identify a rule
+is refused outright rather than silently weakened** (under 20 characters). That
+guard is tested, not assumed — see Injection Q.
+
 ## Negative evidence
 
 Every assertion in `replay.mjs` has been watched failing, against an otherwise
@@ -439,6 +496,22 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   cannot be empty.` removed. Result: **67 passed, 1 failed**, `the call
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
+
+O, P and Q were taken on the version with link rules, which is 92 checks.
+
+- **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
+  passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
+  caught, on the same terms as an entry rule.
+- **Injection P** — the formatted rule's prefix changed to a message the zome
+  never emits. Result: **89 passed, 3 failed** — the assertion reports `stopped
+  for a different reason` and both coverage directions red. **The prefix match
+  is not a wildcard**, which is the thing worth proving about it: a rule matched
+  on a prefix could easily have become a check that passes on any refusal.
+- **Injection Q** — a case whose rule interpolates after three characters
+  (`"Mem {} brane"`). Result: **89 passed, 3 failed**, the assertion reporting
+  `this rule interpolates too early to identify it from a prefix ("Mem")`. The
+  guard refuses rather than weakening, so finding 9's mechanism cannot be
+  stretched into a loophole by the next rule that happens to interpolate early.
 
 ## Why one mutation at a time
 

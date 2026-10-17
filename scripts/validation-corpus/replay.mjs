@@ -211,7 +211,7 @@ const GAPS = [
     rule: 'SWO temporal friction: author has {} AntibodyPatterns in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
     why: 'the coordinator pre-checks the same limit and refuses first; no bypassing extern for publish_antibody_pattern',
   },
-  // (b) A SECOND AGENT. ALL THREE BELOW ARE THE SAME PROBLEM, which is worth seeing as one: a rule that
+  // (b) A SECOND AGENT. ALL SEVEN BELOW ARE THE SAME PROBLEM, which is worth seeing as one: a rule that
   // fires when a thing belongs to SOMEBODY ELSE. One conductor has one agent,
   // so everything it can author is its own, and forging the owning field is
   // stopped a rule earlier by the matching author check. None of the three is a
@@ -228,6 +228,32 @@ const GAPS = [
     entry: 'federation_record',
     rule: "FederationRecord can only be authored by local_membrane's own creator.",
     why: 'needs a Membrane created by a DIFFERENT agent; one conductor, one agent',
+  },
+  // EVERY LINK TYPE HAS ONE OF THESE — 20 of the 88 link rules, across all 19
+  // types, are "may only be created by the owner" in some wording. Four are in
+  // this slice. Counted here rather than discovered four at a time: with the
+  // three entry-type gaps above, **23 rules in this corpus are waiting on one
+  // piece of work**, which is a second agent on one DHT. That makes it the
+  // highest-leverage item left, not the remaining link bulk.
+  {
+    linkType: 'AgentToClaim',
+    rule: "An AgentToClaim link may only be created by the claim's own author.",
+    why: 'needs a Claim authored by a DIFFERENT agent; one conductor, one agent',
+  },
+  {
+    linkType: 'AgentToConstitution',
+    rule: 'An AgentToConstitution link may only be created by the agent whose constitution it indexes.',
+    why: 'needs a Constitution published by a DIFFERENT agent',
+  },
+  {
+    linkType: 'DomainToClaim',
+    rule: "A DomainToClaim link may only be created by the claim's own author.",
+    why: 'needs a Claim authored by a DIFFERENT agent',
+  },
+  {
+    linkType: 'MembraneRegistry',
+    rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
+    why: 'needs a Membrane created by a DIFFERENT agent',
   },
   {
     entry: 'retraction',
@@ -749,8 +775,25 @@ async function drive(spec) {
       continue;
     }
     if (kind === 'refusal') {
-      check(err.includes(c.rule), `refused: ${c.rule}`,
-        err.includes(c.rule) ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
+      // A `format!` RULE CANNOT BE MATCHED LITERALLY, and the first one to be
+      // asserted rather than gapped found this: the inventory records the zome's
+      // source string, so `DomainToClaim ... own domain ({:?})` is what the rule
+      // says while the conductor returns the domain substituted in. Matching on
+      // the literal would fail forever, and loosening it to "did it throw"
+      // would pass for any reason at all. So the comparison is the stable
+      // PREFIX up to the first interpolation — everything the zome wrote
+      // verbatim — and a prefix too short to identify a rule is refused outright
+      // rather than silently weakened.
+      const brace = c.rule.indexOf('{');
+      const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
+      if (brace !== -1 && expect.length < 20) {
+        check(false, `refused: ${c.rule}`,
+          `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
+        continue;
+      }
+      const hit = err.includes(expect);
+      check(hit, `refused: ${c.rule}`,
+        hit ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
       continue;
     }
     // kind === 'deferral'
@@ -766,7 +809,176 @@ async function drive(spec) {
   log('');
 }
 
+// ============================================================================
+// --- LINK RULES. The same driver, a different call target.
+//
+// `drive()` needs no changes for these: a link case is still a valid thing with
+// one field broken, so setup/baseline/cases carry over unaltered. What differs
+// is the inventory key — every link site has `entry: "create_link"` and is told
+// apart by `link_type` — so these live in their own list with their own
+// coverage loop rather than being wedged into COVERED.
+//
+// THREE PROBERS, AND THE SLICE COVERS ALL THREE DELIBERATELY. The generic
+// `attempt_false_attachment_link` carries 18 of the 19 link types and lets the
+// caller choose base, target and raw tag bytes. `attempt_false_domain_index`
+// and `attempt_false_membrane_registry` are single-purpose and NARROWER: they
+// build the anchor themselves from a domain or an override, so the rules they
+// can reach are bounded by their parameters rather than by the validator. A
+// slice that only used the generic one would prove nothing about the other two.
+//
+// WHY `anchor_of` IS SET FOR A BASELINE AND CLEARED FOR A MUTATION.
+// `attempt_false_attachment_link` computes the base from `anchor_of` when it is
+// present and IGNORES `payload.base`. The anchor is a Path hash, which this
+// harness cannot derive in JavaScript — so a valid baseline passes `anchor_of`
+// and lets the coordinator compute it, and any case that needs a wrong base
+// clears `anchor_of` to take control of the field.
+const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry'];
+
+const linkEntries = [
+  {
+    linkType: 'AgentToClaim',
+    label: 'AgentToClaim',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Claim of this agent\'s own, indexed under its author anchor',
+    setup: async () => {
+      const domain = `CorpusLinkA2C${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the target of an AgentToClaim link',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const claimEntry = claims[0].signed_action.hashed.content.data.entry_hash;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { claimAction, claimEntry, domain, constitution };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToClaim',
+      base: ctx.claimAction,              // ignored: anchor_of wins
+      target: ctx.claimAction,
+      tag: Array.from(Buffer.from(ctx.domain, 'utf8')),
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      // An EntryHash where an ActionHash is required — `ActionHash::try_from`
+      // is what fails, so the hash has to be well-formed and of the wrong kind.
+      { rule: 'AgentToClaim target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      // A real action whose entry is not a Claim. Reachable the obvious way
+      // here, and that is worth contrasting with Membrane: this validator
+      // matches `_ =>`, which catches the deserialize Err as well as Ok(None),
+      // while validate_membrane uses `.map_err(..)?` and raises instead.
+      { rule: 'AgentToClaim target is not a Claim.', mutate: (l, ctx) => { l.target = ctx.constitution; } },
+      { rule: 'AgentToClaim base must be an EntryHash anchor.', mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimAction; } },
+      { rule: "AgentToClaim base anchor does not match the claim's own author. A claim may only be indexed under the agent who wrote it.", mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimEntry; } },
+      { rule: "AgentToClaim tag must be the claim's own domain, which is the only domain a by-agent reader has to go on.", mutate: (l) => { l.tag = Array.from(Buffer.from('NotTheDomain', 'utf8')); } },
+    ],
+  },
+  {
+    linkType: 'AgentToConstitution',
+    label: 'AgentToConstitution',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "this agent's own Constitution, indexed under its agent anchor",
+    setup: async () => {
+      const domain = `CorpusLinkA2K${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used as a non-Constitution target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const claimEntry = claims[0].signed_action.hashed.content.data.entry_hash;
+      return { constitution, claimAction, claimEntry };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToConstitution',
+      base: ctx.constitution,
+      target: ctx.constitution,
+      tag: null,
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToConstitution target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'AgentToConstitution target is not a Constitution.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+    ],
+  },
+  {
+    linkType: 'DomainToClaim',
+    label: 'DomainToClaim',
+    // A NARROWER PROBER, and the narrowness is the point: it takes a claim
+    // action and a domain and builds the anchor itself, so the only fields a
+    // caller can get wrong are the two the rules are about.
+    fn: 'attempt_false_domain_index',
+    chainNote: "a Claim of this agent's own, filed under its own domain",
+    setup: async () => {
+      const domain = `CorpusLinkD2C${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, filed in the by-domain index',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { claimAction, domain, constitution };
+    },
+    baseline: (ctx) => ({ claim_action: ctx.claimAction, domain: ctx.domain }),
+    cases: [
+      { rule: 'DomainToClaim target is not a Claim.', mutate: (l, ctx) => { l.claim_action = ctx.constitution; } },
+      { rule: "DomainToClaim base anchor does not match the claim's own domain ({:?}). A claim may only be indexed under the domain it declares.", mutate: (l) => { l.domain = 'NotTheClaimsDomain'; } },
+    ],
+  },
+  {
+    linkType: 'MembraneRegistry',
+    label: 'MembraneRegistry',
+    fn: 'attempt_false_membrane_registry',
+    chainNote: "this agent's own Membrane, re-indexed in the registry",
+    setup: async () => {
+      const domain = `CorpusLinkMR${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'state what this domain demands', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const membraneAction = await call('create_membrane', {
+        domain,
+        description: 'corpus membrane, re-indexed by the registry prober',
+        required_promises: ['state what this domain demands'],
+        validation_rules_hash: null,
+        creator: myKey, created_at: nowSecs(), constitution,
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used as a non-Membrane registry target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { membraneAction, claimAction };
+    },
+    // `create_membrane` already wrote this exact link; links are not unique, so
+    // a second identical one validates and the baseline is a real baseline
+    // rather than a duplicate-detection test.
+    baseline: (ctx) => ({ membrane_action: ctx.membraneAction, anchor_override: null }),
+    cases: [
+      { rule: 'MembraneRegistry target is not a Membrane.', mutate: (l, ctx) => { l.membrane_action = ctx.claimAction; } },
+      { rule: 'MembraneRegistry base is not the membrane registry anchor.', mutate: (l) => { l.anchor_override = 'not_the_registry_anchor'; } },
+    ],
+  },
+];
+
 for (const spec of entries) await drive(spec);
+for (const spec of linkEntries) await drive(spec);
 
 // ---------------------------------------------------------------- coverage
 // WHY THIS IS A CHECK AND NOT A PRINTOUT. The inventory drift gate in
@@ -812,8 +1024,40 @@ check(staleGaps.length === 0,
 if (GAPS.length) {
   log('');
   log(`  declared unreachable from this harness (${GAPS.length}), each still inventoried:`);
-  for (const g of GAPS) log(`    - [${g.entry}] ${g.why}`);
+  for (const g of GAPS) log(`    - [${g.entry ?? g.linkType}] ${g.why}`);
 }
+
+// --- The same two checks for link types, keyed on `link_type` rather than
+// `entry`. Link sites all share entry "create_link", so grouping them by entry
+// would collapse nineteen different rule sets into one meaningless denominator.
+log('');
+log('--- coverage: every inventoried rule for these link types has a case ---');
+
+const namedLinks = new Set(linkEntries.flatMap((s) => s.cases.map((c) => c.rule)));
+
+for (const lt of COVERED_LINKS) {
+  const sites = inv.sites.filter(
+    (s) => s.link_type === lt && ['honest', 'crafted', 'deferred'].includes(s.class) && s.message,
+  );
+  const messages = [...new Set(sites.map((s) => s.message))];
+  const missing = messages.filter((m) => !namedLinks.has(m) && !gapped.has(m));
+  const gapsHere = messages.filter((m) => gapped.has(m));
+
+  check(missing.length === 0,
+    `${lt}: ${messages.length - gapsHere.length} of ${messages.length} assertable rules have a case`
+      + (gapsHere.length ? `, ${gapsHere.length} declared unreachable` : ''),
+    missing.length === 0 ? null
+      : `no case for: ${missing.map((m) => JSON.stringify(m)).join(', ')}`);
+}
+
+const inventoriedLinks = new Set(
+  inv.sites.filter((s) => COVERED_LINKS.includes(s.link_type) && s.message).map((s) => s.message),
+);
+const linkOrphans = [...namedLinks].filter((m) => !inventoriedLinks.has(m));
+check(linkOrphans.length === 0,
+  `every link case here names a rule the inventory still lists`,
+  linkOrphans.length === 0 ? null
+    : `not in the inventory: ${linkOrphans.map((m) => JSON.stringify(m)).join(', ')}`);
 
 // And the other direction, which catches a case left behind by a rule that was
 // REMOVED or whose wording changed — a case asserting a message the zome can no
