@@ -24,10 +24,9 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Six entry types, 23 rules, and the coverage is asserted rather than
-stated.** `Claim`, `Mew`, `Evidence`, `Constitution`, `CritiqueSpecies` and
-`Retraction` — 38 checks, which is 6 baselines, 1 dependency chain, 23 rules
-and 8 coverage assertions.
+**Ten entry types, 44 rules, and the coverage is asserted rather than
+stated.** 68 checks: 10 baselines, 4 dependency chains, 39 asserted rules, 5
+declared unreachable, and 12 coverage assertions.
 
 | entry type | assertable rules | refusals | deferrals | declared unreachable |
 |---|---|---|---|---|
@@ -37,6 +36,10 @@ and 8 coverage assertions.
 | `Constitution` | 4 | 4 | 0 | 0 |
 | `CritiqueSpecies` | 3 | 2 | 1 | 0 |
 | `Retraction` | 6 | 3 | 2 | 1 |
+| `Critique` | 6 | 4 | 1 | 1 |
+| `AntibodyPattern` | 5 | 4 | 0 | 1 |
+| `Membrane` | 5 | 4 | 0 | 1 |
+| `FederationRecord` | 6 | 4 | 1 | 1 |
 
 **`Retraction` is the first entry type with a dependency chain, and it cost one
 extra call rather than a new mechanism.** `target_claim` must be the EntryHash
@@ -294,6 +297,68 @@ field whose name appears **earliest** in the message wins, not the longest:
 handle in `author_handle`"* names two fields and guards the first, so
 longest-match picks `author_handle` and is wrong.
 
+### Finding 6 — the coordinator refuses first, so the rule's own message never appears
+
+**The reachability question 5d opened has a second answer, and this one is not
+about derived fields.** Four of `Membrane`'s rules and both SWO friction rules
+are mirrored as coordinator PRE-CHECKS, with different wording. Driving them
+through the ordinary extern produces the coordinator's string, so every case
+"passes" by being refused for the wrong reason:
+
+| driven through | came back |
+|---|---|
+| `create_membrane`, empty promises | `Membrane must declare at least one required_promise.` (no trailing prose — the coordinator's) |
+| `create_membrane`, bad constitution | `Deserialize("missing field `agent`")` |
+| `create_membrane`, forged creator | `Membrane constitution must be the creator's own published Constitution.` — a DIFFERENT rule, because the coordinator checks in another order |
+| `create_critique` × 21 | `epistemic_coordinator:888`, *"already created in the last 3600 seconds"* |
+
+**For `Membrane` there is a way through and it is already in the tree.**
+`attempt_unaccountable_membrane` is `create_entry` with nothing in front of it,
+and its own doc comment says that is why it exists: so DHT validation can be
+observed refusing rather than assumed to. The corpus drives `Membrane` through
+the prober, and all four rules then produce their real messages.
+
+**For the two friction rules there is no such path**, so they are declared
+unreachable. The part worth not losing: **what is tested is the courtesy and
+what is untested is the enforcement.** The coordinator's check is what a custom
+client skips; the integrity rule, built on
+`count_recent_actions_since_checkpoint`, is what every validating peer runs.
+That inversion is exactly what this corpus exists to find, and it is now
+recorded instead of implied.
+
+`enumerate.mjs` cannot see any of this yet — it learned about derived fields in
+5d, not about pre-checks that shadow a rule. Teaching it is its own queue item.
+
+### Finding 7 — a message that needs `Ok(None)`, which a wrong-typed entry does not produce
+
+`Membrane's constitution hash does not resolve to a Constitution entry.` guards:
+
+```rust
+let record = must_get_valid_record(membrane.constitution)?;
+let c: Option<Constitution> = record.entry().to_app_option().map_err(..)?;
+let Some(c) = c else { return Invalid("... does not resolve ...") };
+```
+
+The message needs `to_app_option` to return **`Ok(None)`**, and two obvious
+payloads do not get there — both measured before the third worked:
+
+| `constitution` points at | what happens |
+|---|---|
+| a dangling ActionHash | `must_get_valid_record(..)?` **defers** the commit |
+| a Claim's ActionHash | a Claim IS an app entry, so the deserialize **fails** — `Deserialize("missing field `agent`")`, a wasm error, not this rule |
+| **a CreateLink action** | no app entry → `Ok(None)` → **the rule fires** |
+
+So the corpus builds a valid `AgentToClaim` link through
+`attempt_false_attachment_link` and uses its ActionHash. Two constraints showed
+up on the way: the target must be an **ActionHash**, and the tag must be the
+claim's own domain or the link itself is refused and the record never exists to
+be fetched.
+
+**This is the deferral finding's shape again at one more remove.** A rule whose
+message reads as the enforcement, whose obvious trigger produces something else
+entirely, and which is reachable only by a payload nobody would guess. It is
+asserted now rather than assumed.
+
 ## Negative evidence
 
 Every assertion in `replay.mjs` has been watched failing, against an otherwise
@@ -356,6 +421,24 @@ level up.
   computed from the coordinator's own source rather than from a list of entry
   types somebody typed, so an extern that starts accepting a field is noticed
   instead of staying permanently unreachable in the records.
+
+L, M and N were taken on the ten-type version, which is 68 checks.
+
+- **Injection L** — `Membrane` driven through `create_membrane` instead of
+  `attempt_unaccountable_membrane`. Result: **65 passed, 3 failed**, each
+  reporting the COORDINATOR's wording rather than the zome's, and one of them
+  naming a different rule entirely because the coordinator checks in another
+  order. This is finding 6 as a test: the prober is load-bearing, not a
+  stylistic choice, and without it three green ticks would have meant nothing.
+- **Injection M** — the non-Constitution hash changed from the CreateLink
+  action's to a Claim's. Result: **67 passed, 1 failed**, on
+  `epistemic_integrity:1531: Deserialize("missing field `agent`")`. Finding 7 as
+  a test: the obvious payload raises a wasm error instead of the rule, so a case
+  written the obvious way asserts nothing.
+- **Injection N** — the mutation for `FederationRecord remote_membrane_ref
+  cannot be empty.` removed. Result: **67 passed, 1 failed**, `the call
+  COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
+  not only on a flat payload.
 
 ## Why one mutation at a time
 
