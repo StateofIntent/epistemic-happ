@@ -3,10 +3,10 @@
   "protocol_version": "9",
   "total_sites": 194,
   "by_class": {
-    "honest": 24,
+    "honest": 19,
     "crafted": 130,
-    "deferred": 9,
-    "needs_prober": 15,
+    "deferred": 15,
+    "needs_prober": 14,
     "remote": 4,
     "passthrough": 12
   },
@@ -228,7 +228,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if (pr.reveal_deadline as i64) <= committed_at",
-      "class": "honest",
+      "class": "deferred",
       "entry": "pre_registration"
     },
     {
@@ -258,7 +258,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &rev.author != action.author()",
-      "class": "honest",
+      "class": "deferred",
       "entry": "revelation"
     },
     {
@@ -318,7 +318,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": null,
-      "class": "honest",
+      "class": "deferred",
       "entry": "retraction"
     },
     {
@@ -558,7 +558,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &record.author != action.author()",
-      "class": "honest",
+      "class": "deferred",
       "entry": "federation_record"
     },
     {
@@ -708,7 +708,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "Err(_) =>",
-      "class": "honest",
+      "class": "deferred",
       "entry": "worldline_trace"
     },
     {
@@ -927,8 +927,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "Err(_) =>",
-      "link_type": "AttestationGrant",
-      "class": "needs_prober",
+      "class": "deferred",
       "entry": "create_link"
     },
     {

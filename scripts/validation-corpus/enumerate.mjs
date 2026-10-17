@@ -134,6 +134,86 @@ function guardFor(siteLine) {
   return null;
 }
 
+// --- The failure branches of `must_get_*` calls, as line ranges.
+//
+// WHY THIS IS NOT A REGEX ON THE GUARD. The deferral class used to be decided
+// by `guardFor(site)` matching /must_get_(entry|action)/, which found exactly
+// ONE of the four shapes this zome writes and silently mislabelled the rest:
+//
+//   if must_get_entry(h).is_err() { Invalid(..) }        <- found
+//   let Ok(v) = must_get_entry(h) else { Invalid(..) }   <- guard came back null
+//   match must_get_entry(h) { Err(_) => Invalid(..) }    <- guard came back "Err(_) =>"
+//   must_get_valid_record(h)?                            <- no Invalid of its own
+//
+// Measured consequence, 2026-10-17, against a real conductor: `Retraction
+// target claim not found.` and `FederationRecord local_membrane not found.`
+// were classed `honest` — "reachable by a client doing nothing special" — and
+// both are in fact retryable stalls. A `create_retraction` with a well-formed
+// but nonexistent `target_claim` comes back
+// `DepMissingFromDht([AnyDhtHash(..)])`, never the rule's own message. A corpus
+// case asserting either message would have failed forever, which is precisely
+// the trap README.md documents at length for the nine already known.
+//
+// AND PROXIMITY IS NOT ENOUGH EITHER, which is why this does brace matching.
+// `Retraction target must be a Claim.` sits six lines below the same
+// `must_get_entry` and is NOT a deferral: it is reached when the entry resolves
+// and is the wrong type. Any rule keyed on "is there a must_get above me"
+// mislabels it. What decides the class is whether the site sits INSIDE the
+// failure branch of the call, so that is what is computed.
+function matchingBrace(openLine, openIdx) {
+  let depth = 0;
+  for (let i = openLine; i < lines.length; i++) {
+    const text = i === openLine ? lines[i].slice(openIdx) : lines[i];
+    for (const ch of text) {
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) return i + 1; }
+    }
+  }
+  return openLine + 1;
+}
+
+const MUST_GET = /must_get_(entry|action|valid_record)\s*\(/;
+
+function deferralRanges() {
+  const ranges = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (!MUST_GET.test(l)) continue;
+
+    // Shape 1: `if must_get_X(..).is_err() {` — the whole if-body.
+    if (/\.is_err\(\)/.test(l) && l.includes('{')) {
+      ranges.push([i + 1, matchingBrace(i, l.indexOf('{'))]);
+      continue;
+    }
+    // Shape 2: `let Ok(..) = must_get_X(..) else {` — the else-body only.
+    if (/^\s*let\s+Ok\s*\(/.test(l) && /\belse\b/.test(l) && l.includes('{')) {
+      const idx = l.indexOf('{', l.indexOf('else'));
+      if (idx !== -1) { ranges.push([i + 1, matchingBrace(i, idx)]); continue; }
+    }
+    // Shape 3: `match must_get_X(..) {` — the Err arm inside the match body.
+    if (/^\s*(?:let\s+\w+\s*=\s*)?match\s/.test(l) && l.includes('{')) {
+      const end = matchingBrace(i, l.indexOf('{'));
+      for (let j = i + 1; j < end; j++) {
+        const arm = /^\s*(Ok|Err)\b[^=]*=>\s*(\{?)/.exec(lines[j]);
+        if (!arm || arm[1] !== 'Err') continue;
+        // A braced arm ends at its own brace; a bare one ends at its line, and
+        // a `return` inside it is on that same line in this file.
+        const armEnd = arm[2] === '{' ? matchingBrace(j, lines[j].indexOf('{')) : j + 1;
+        ranges.push([j + 1, armEnd]);
+      }
+      continue;
+    }
+    // Shape 4: `?` / `.map_err(..)` — the host defers and no Invalid of this
+    // call's own is reachable, so there is no branch to record. Left alone
+    // deliberately: these produce no site, rather than a mislabelled one.
+  }
+  return ranges;
+}
+
+const DEFERRAL_RANGES = deferralRanges();
+const inDeferralBranch = (line) =>
+  DEFERRAL_RANGES.some(([a, b]) => line >= a && line <= b);
+
 // --- Which LinkTypes a client can author with attacker-controlled fields.
 // Link ops ARE authored locally — every create_claim writes index links — so a
 // link rule is not "remote" merely for being a link rule. What decides whether
@@ -213,7 +293,7 @@ function classify(site) {
   // assert the deferral. Asserting the message would fail forever; asserting
   // only "it threw" would pass for the wrong reason, which is the failure mode
   // this whole corpus exists to stop.
-  if (site.guard && /must_get_(entry|action)/.test(site.guard)) return 'deferred';
+  if (inDeferralBranch(site.line)) return 'deferred';
 
   // A pass-through returns whatever the validator it delegated to returned. It
   // is a real site but has no message and no payload of its own, so it is not
