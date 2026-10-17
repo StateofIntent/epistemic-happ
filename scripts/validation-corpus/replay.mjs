@@ -139,10 +139,45 @@ log('');
 
 // The entry types this corpus claims COMPLETE coverage of. Everything outside
 // this list is accounted for in README.md's class table and is not pretended
-// about here: `WorldlineTrace` and `Revelation` need dependency chains (a
-// `PeriodBoundary` authored by the trace agent, a `PreRegistration` predating
-// its question), which is a different and much larger job than a payload.
-const COVERED = ['claim', 'mew', 'evidence', 'constitution', 'critique_species'];
+// about here.
+//
+// THIS COMMENT USED TO SAY that `WorldlineTrace` and `Revelation` were excluded
+// because they need dependency chains, and that this was "a different and much
+// larger job than a payload". The first half was a guess and the second was
+// wrong in both directions. `Retraction` DOES need a chain and it cost one extra
+// call — it is in the list now. `WorldlineTrace` and `Revelation` are excluded
+// for a different reason entirely: no coordinator extern accepts a raw payload
+// for either, so the fields their rules are about are derived by the extern and
+// cannot be reached from JavaScript at all. See README.md's finding 5.
+const COVERED = ['claim', 'mew', 'evidence', 'constitution', 'critique_species', 'retraction'];
+
+// --- Rules that are inventoried as assertable and are NOT reachable from this
+// harness, each with the reason, so that coverage stays a real number instead
+// of being quietly redefined.
+//
+// WHY AN EXPLICIT LIST RATHER THAN A SHORTER DENOMINATOR. A gap left out of the
+// coverage check is indistinguishable from a rule nobody noticed. A gap listed
+// here is asserted to STILL EXIST in the inventory, so a renamed or deleted
+// rule reds this file the same way an orphaned case does — the escape hatch
+// cannot rot into a silencer. It is printed on every run, loudly, because the
+// number that matters is "covered out of assertable", not "covered out of
+// covered".
+//
+// THE ONE THING IN HERE SO FAR IS A SECOND-AGENT PROBLEM, not a payload one.
+// "A Retraction can only be published by the claim's own author" fires when the
+// target Claim was authored by SOMEBODY ELSE, and this harness drives one
+// conductor with one agent: every Claim it can create is its own, and a Claim
+// with a forged `author` is stopped one rule earlier by "Claim author must match
+// action author." Reaching it needs a second agent on the same DHT — which
+// `scripts/network.sh` already builds for the gossip harnesses — so it is a
+// harness-shape change, not a zome change, and it is the natural next slice.
+const GAPS = [
+  {
+    entry: 'retraction',
+    rule: 'A Retraction can only be published by the claim\'s own author — it records that the author no longer stands by it, not that someone else disagrees. Use a Critique for that.',
+    why: 'needs a Claim authored by a DIFFERENT agent; this harness has one agent on one conductor',
+  },
+];
 
 const entries = [
   {
@@ -260,6 +295,69 @@ const entries = [
       { rule: 'Parent CritiqueSpecies not found.', expect: 'deferral', mutate: (s) => { s.parent_species = danglingHash('entry', 42); } },
     ],
   },
+  // --- THE FIRST ENTRY TYPE WITH A DEPENDENCY CHAIN. Everything above is a
+  // payload: a valid one can be written down field by field. A valid
+  // `Retraction` cannot, because `target_claim` must be the EntryHash of a
+  // Claim that exists and belongs to the retracting agent, so `setup` publishes
+  // one first. That is the whole of what made this entry type "a different and
+  // much larger job than a payload" — one extra call, not a new mechanism.
+  //
+  // TWO HASHES COME OUT OF SETUP AND THEY ARRIVE DIFFERENTLY, which is worth
+  // stating because getting it wrong looks like a validation bug. `create_claim`
+  // returns an ActionHash and `Retraction.target_claim` is an EntryHash, so the
+  // claim's entry hash is read back off the record
+  // (`signed_action.hashed.content.data.entry_hash`, the same path
+  // `membranes-ui.mjs` uses). `create_evidence` is this zome's exception: it
+  // ends `hash_entry(&evidence)` and hands back the EntryHash directly.
+  {
+    entry: 'retraction',
+    label: 'Retraction',
+    fn: 'create_retraction',
+    chainNote: 'published a Claim to retract, and an Evidence entry to stand in as a non-Claim target',
+    setup: async () => {
+      // A per-run domain, so a re-run cannot read a previous run's claim out of
+      // the index and retract something this run did not publish.
+      const domain = `CorpusRetraction${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, published in order to be retracted',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      if (!claims.length) throw new Error(`the claim did not come back from get_claims_by_domain(${domain})`);
+      const targetClaim = claims[0].signed_action.hashed.content.data.entry_hash;
+
+      // A real entry that is NOT a Claim, for the target-type rule. It has to
+      // RESOLVE — a dangling hash defers instead, which is the case above it.
+      const notAClaim = await call('create_evidence', {
+        content: 'corpus evidence, used only as a non-Claim retraction target',
+        evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
+      });
+      return { targetClaim, notAClaim };
+    },
+    baseline: (ctx) => ({
+      target_claim: ctx.targetClaim,
+      reason: 'corpus baseline retraction',
+      replacement_claim: null,
+      author: myKey,
+      timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'Retraction author must match action author.', mutate: (r) => { r.author = danglingHash('agent', 51); } },
+      // RECLASSIFIED 2026-10-17, measured rather than reasoned: the guard is
+      // `let Ok(target) = must_get_entry(..) else`, so a nonexistent target
+      // defers the commit (`DepMissingFromDht`) and this message never fires.
+      // The inventory called it `honest` until enumerate.mjs learned the
+      // let-else shape. Asserting the message here would have failed forever.
+      { rule: 'Retraction target claim not found.', expect: 'deferral', mutate: (r) => { r.target_claim = danglingHash('entry', 52); } },
+      // The distinction the line above exists to protect: this target RESOLVES
+      // and is the wrong type, which is a refusal with a message, six lines
+      // below a must_get in the same validator.
+      { rule: 'Retraction target must be a Claim.', mutate: (r, ctx) => { r.target_claim = ctx.notAClaim; } },
+      { rule: 'Retraction reason cannot be empty.', mutate: (r) => { r.reason = ''; } },
+      { rule: 'Retraction replacement_claim not found.', expect: 'deferral', mutate: (r) => { r.replacement_claim = danglingHash('entry', 53); } },
+    ],
+  },
 ];
 
 // --- One driver for all five, rather than the Claim block copied four times.
@@ -268,9 +366,41 @@ const entries = [
 async function drive(spec) {
   log(`--- ${spec.label}: baseline, then one mutation per rule ---`);
 
+  // THE DEPENDENCY CHAIN, AND WHY IT IS A SEPARATE STEP FROM THE BASELINE.
+  // The five entry types this corpus started with are payloads: every field of
+  // a valid one can be written down. `Retraction` cannot — its `target_claim`
+  // has to be the EntryHash of a Claim that EXISTS and is the retracting
+  // agent's own, so something has to be published before the baseline can be
+  // described at all. `setup` returns that context and `baseline(ctx)` consumes
+  // it.
+  //
+  // It runs ONCE per entry type rather than per case, which is deliberate: the
+  // chain is shared scaffolding, not part of what any single case is testing,
+  // and re-publishing it per mutation would spend friction budget on setup. The
+  // cost of that choice is that a case must not mutate `ctx` itself — only the
+  // payload it is handed — and `baseline(ctx)` therefore builds a fresh payload
+  // every call while reading the same ctx.
+  //
+  // A SETUP FAILURE IS NOT A RULE FAILURE, and is reported as its own check so
+  // a red says which. If the chain cannot be built, every case below it would
+  // be refused for the wrong reason and "pass" by being refused at all — the
+  // same trap the baseline check exists to stop, one level further out.
+  let ctx = null;
+  if (spec.setup) {
+    try {
+      ctx = await spec.setup();
+      check(true, `${spec.label} dependency chain builds — ${spec.chainNote ?? 'setup published its prerequisites'}`);
+    } catch (e) {
+      check(false, `${spec.label} dependency chain builds`, String(e?.message ?? e).slice(0, 300));
+      for (const c of spec.cases) { skip++; log(`  SKIP: ${c.rule} — dependency chain did not build`); }
+      log('');
+      return;
+    }
+  }
+
   let committed = false;
   try {
-    await call(spec.fn, spec.baseline());
+    await call(spec.fn, spec.baseline(ctx));
     committed = true;
     check(true, `baseline ${spec.label} commits — the mutations below start from something valid`);
   } catch (e) {
@@ -287,8 +417,8 @@ async function drive(spec) {
   }
 
   for (const c of spec.cases) {
-    const p = spec.baseline();
-    c.mutate(p);
+    const p = spec.baseline(ctx);
+    c.mutate(p, ctx);
     const err = await refusal(spec.fn, p);
     const kind = c.expect ?? 'refusal';
 
@@ -326,6 +456,7 @@ for (const spec of entries) await drive(spec);
 log('--- coverage: every inventoried rule for these entry types has a case ---');
 
 const named = new Set(entries.flatMap((s) => s.cases.map((c) => c.rule)));
+const gapped = new Set(GAPS.map((g) => g.rule));
 
 for (const entry of COVERED) {
   // `passthrough` sites forward another validator's result and have no message
@@ -335,12 +466,31 @@ for (const entry of COVERED) {
     (s) => s.entry === entry && ['honest', 'crafted', 'deferred'].includes(s.class) && s.message,
   );
   const messages = [...new Set(sites.map((s) => s.message))];
-  const missing = messages.filter((m) => !named.has(m));
+  const missing = messages.filter((m) => !named.has(m) && !gapped.has(m));
+  const gapsHere = messages.filter((m) => gapped.has(m));
 
   check(missing.length === 0,
-    `${entry}: all ${messages.length} assertable rules have a case`,
+    `${entry}: ${messages.length - gapsHere.length} of ${messages.length} assertable rules have a case`
+      + (gapsHere.length ? `, ${gapsHere.length} declared unreachable` : ''),
     missing.length === 0 ? null
       : `no case for: ${missing.map((m) => JSON.stringify(m)).join(', ')}`);
+}
+
+// The gaps have to still be real. A declared-unreachable rule that the zome no
+// longer has is an exemption outliving its subject, and it would go on
+// subtracting from the denominator forever — so it reds here exactly as an
+// orphaned case does.
+const inventoriedAll = new Set(inv.sites.filter((s) => s.message).map((s) => s.message));
+const staleGaps = GAPS.filter((g) => !inventoriedAll.has(g.rule));
+check(staleGaps.length === 0,
+  `every declared-unreachable rule is still in the inventory`,
+  staleGaps.length === 0 ? null
+    : `no longer a rule: ${staleGaps.map((g) => JSON.stringify(g.rule)).join(', ')}`);
+
+if (GAPS.length) {
+  log('');
+  log(`  declared unreachable from this harness (${GAPS.length}), each still inventoried:`);
+  for (const g of GAPS) log(`    - [${g.entry}] ${g.why}`);
 }
 
 // And the other direction, which catches a case left behind by a rule that was

@@ -422,7 +422,10 @@ the next session does not have to reconstruct that from a transcript.
 | 2 | ~~**Split `partition-rejoin` into its own job**~~ | — | **CLOSED 2026-10-13 (#264).** It is its own job and advisory BY CONSTRUCTION — branch protection requires five checks by name with `enforce_admins` on, so a job named anything else cannot block a merge and no settings change was needed. The harness is untouched and still goes red. Two things the plan did not name and that would have bitten: both jobs would have collided on one `upload-artifact` name, and v4 FAILS a duplicate rather than merging it; and the two jobs now run in parallel, safe despite the fixed 8894-8899 ports only because each gets its own runner VM. The split pays for itself with ten duplicated setup steps, so `scripts/check-workflow-setup-drift.mjs` holds the two copies byte-identical — a version bump applied to one job alone would leave the advisory job building a different hApp from the one the required check verified |
 | 3 | ~~**Corpus: the shallow slice**~~ | — | **CLOSED 2026-10-13 (#265).** Five entry types now, 29 checks against a real conductor and 0 failed — 5 baselines, 18 rules, 6 coverage assertions. **The pattern generalised with no change to the logic**, so the Claim block was folded into one driver rather than copied four times; that is what this slice was for. Two mutations needed care and both are BOUNDARIES: `Mew`'s length rule is asserted at 561 bytes rather than a comfortable 600, since a value well past the limit passes against an off-by-one, and `Constitution`'s `expires_at` is asserted at EQUALITY because the guard is `<=` while the message claims `>`. Coverage is now a check in both directions — a rule with no case fails, and a case naming a rule the inventory no longer lists fails too — which is **the gap item 1's drift gate cannot see**: that gate watches `lib.rs` against `inventory.json`, this one watches `inventory.json` against the corpus. Watched failing three ways, including one case deleted with the inventory left correct (27/1) |
 | 4 | **Re-measure the baseline 2–3×, failing only when consistently slow — IN `real-gossip` FIRST, not `partition-rejoin`** | ~1 h | **Nothing. Unblocked 2026-10-13, and re-scoped the same day.** The premise it needed was that slow crossings are intermittent, and the proof is a SAME-COMMIT pair: #265's `network` failed at 11m50s and then passed at 2m48s on the identical tree, no code difference to explain it away. Re-scoped because the row as written would put the retry in `partition-rejoin`, which is now the ADVISORY job where a red costs nothing, and leave it out of `real-gossip`, which is in the required job and blocks merges. Do NOT also split `real-gossip` out — that would leave `network` required and empty |
-| 5 | **Corpus: the long chains** — the remaining 143 assertable sites | 3–5 h | **Nothing, but deliberately last — and item 3 is now evidence for this estimate rather than a guess about it: four entry types cost minutes because they are payloads, and the driver they share is written and gated.** The cost is valid baselines with dependency chains, not the cases: `WorldlineTrace` needs `PeriodBoundary`s whose `sample_action` is authored by the trace agent plus a 32-byte checksum, and `Revelation` needs a `PreRegistration` which needs a question action predating it. Development iteration is also rate-limited — a real `Critique` costs friction budget at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour |
+| 5a | ~~**Corpus: the first dependency chain**~~ | — | **CLOSED 2026-10-17.** `Retraction` is covered: 6 entry types, 38 checks, 0 failed against a real conductor. A spec may now declare an async `setup` whose result `baseline(ctx)` consumes, built once per entry type, with a chain that fails to build reported as its own red rather than letting every case below it "pass" by being refused for the wrong reason. **The chain cost one extra call, not a new mechanism** — which retires item 5's stated reason for being costed in hours. One rule is declared unreachable with its reason (`GAPS`) and asserted to still exist in the inventory, so an exemption outliving its rule reds the file. Watched failing in three injections, including the deferral asserted as a refusal (F, G, I) |
+| 5b | **Corpus: the four remaining raw-payload entry types** — `critique`, `antibody_pattern`, `membrane`, `federation_record`, 22 assertable sites | 2–3 h | **Nothing, and 5a is the pattern.** All four have an extern taking the raw entry, so they are payloads plus a chain: `membrane` needs the creator's own `Constitution`, and `federation_record` needs a `Membrane` which needs that `Constitution` — **depth 2, the deepest in the zome.** Two costs are real and named here so they are not rediscovered: `critique` and `antibody_pattern` each carry an SWO temporal-friction rule enforced at 20 per rolling hour, which is what crashes `agent-sdk.mjs` on a second run inside an hour, so those two cases are rate-limited by the protocol itself; and four rules across these types are second-agent rules ("only by the membrane's own creator" and kin) that one conductor cannot reach — `GAPS` or a second agent, and `scripts/network.sh` already builds one |
+| 5c | **Corpus: the 90 link rules** — 19 link types via the `attempt_*` probers | 3–5 h | **Nothing, but it is a third driver shape rather than more of 5a/5b, and this is the row item 5 never had.** 90 distinct messages across 19 link types, strongly patterned — `target must be an ActionHash`, `base is not a X`, `may only be created by the author` — so one driver over a per-link-type baseline should generalise the way the shallow slice did. It is the bulk of what item 5 called "the remaining 143 assertable sites" and was invisible in that framing |
+| 5d | **Teach `enumerate.mjs` to cross-check the coordinator's externs** — 24 sites are counted assertable and mostly are not | 1–2 h | **Nothing, and it should precede 5b/5c rather than follow them, because it corrects the denominator they are planned from.** `crafted` assumes a hand-built payload can reach the validator, which holds only if an extern accepts the raw entry. For `worldline_trace`, `revelation`, `pre_registration`, `bridge_record` and `external_critique` none does — the extern takes a params struct and derives the fields the rules are about. **`generate_worldline_trace` is the worked case: 1 of its 8 sites is reachable**, not 8, and the classification is wrong in BOTH directions there. `enumerate.mjs` reads only the integrity zome, so it cannot see any of it |
 | 6 | **A `0.1.4` publish, now carrying two fixes rather than one.** (a) `serverInfo.version` is hardcoded `'0.1.0'` at `mcp-server/src/index.ts:193` while the package is `0.1.3`, so every MCP client is told the wrong thing, and has been since `0.1.0`. (b) **`@holochain/client` floated to `0.21.1` on 2026-10-15 and broke the published SDK** | ~5 min of edits, then a publish | **The pin is fixed in-tree as of 2026-10-17; the publish is not, and that is now urgent rather than tidy.** This row used to say "nothing to fix; a publish to deliver" and batching it was free. It no longer is: `agent-sdk@0.1.3` declares `^0.21.0`, client `0.21.1` is the client for conductor `0.7.1`, and this repository pins `0.7.0` exactly because the zomes pin `hdk = "=0.7.0"` — so **a fresh `npm install` of the published package cannot sign a zome call** (`authorizeSigningCredentials` → `Failed to deserialize request`). Confirmed both ways against one local conductor, not inferred from dates. All six conductor-facing packages now pin `0.21.0` with no range, which fixes what CI packs; **the registry copy stays broken until `0.1.4` ships.** Caught by `published-packages.mjs` going red on a documentation-only commit — see its header. Also relocked `agent-sdk/package-lock.json`, which was stale at `0.1.1` |
 
 **A revision to item 4's dependency, from two CI runs rather than from
@@ -493,3 +496,64 @@ a conductor with this hApp installed and enabled, **and Admin API access** —
 production multi-tenant model". The published MCP server assumes it **owns** its
 conductor. **There is no agent swarm**: it was offered and not chosen, and
 nothing in this repository sends agent traffic at the hApp.
+
+### Where this session stopped — 2026-10-17 (the dependency pin, and corpus 5a)
+
+**Read this with the other 2026-10-17 section**, which covers the crossing-retry
+measurement on #267 and lives on `network/crossing-retry`. This one is #268 and
+`corpus/long-chains`.
+
+**THE TOOLCHAIN IS ON THIS MACHINE, and that is the third time this has had to
+be written down.** `~/.cargo/bin` holds `hc` 0.7.0, `holochain` 0.7.0 and
+`kitsune2-bootstrap-srv` 0.5.1 — exactly what `scripts/ci/install-holochain.sh`
+installs, because that is where it installs them. PR #253, *"The toolchain was
+installed the whole time"*, corrected this claim and is merged into `main`; the
+2026-10-14 handoff section then repeated it verbatim — *"There is no Holochain
+toolchain on this machine"* — and used it to explain why the crossing retry was
+only stub-verified. `scripts/sandbox.sh` resolves `~/.cargo/bin` itself and has
+since before any of this, so nothing was blocked at any point. **What it cost
+today is nothing and what it has cost twice is a session's worth of verification
+each time**, which is why it is in the queue-adjacent prose rather than a commit
+message: `which holochain` printing nothing is not evidence of absence on this
+machine, and the only check that counts is `ls ~/.cargo/bin`.
+
+The one prerequisite that genuinely was missing is a packed bundle —
+`hc app pack .` writes `epistemic-resonance-happ.happ`, which `sandbox.sh start`
+needs and which is gitignored. That is a build step, not an install.
+
+**Closed today:** queue item **6a** (the `mcp-server` version string, now READ
+from `package.json` so the second place is gone rather than corrected, verified
+over stdio as reporting `0.1.3`) and queue item **5a** (the first dependency
+chain — `Retraction`, 38 checks, 0 failed). Item **6**'s row is rewritten: it is
+no longer a tidy-up batched behind a publish, because the published package is
+now broken in the field.
+
+**The unplanned work, and it blocked everything else.** `published-packages.mjs`
+went red on #267's documentation-only commit. `@holochain/client@0.21.1`
+published 2026-10-15, `agent-sdk` declared `^0.21.0`, and 0.21.1 is the client
+for conductor 0.7.1 while this repository pins 0.7.0 exactly — so a fresh
+resolve cannot sign a zome call. **The defect was the caret, not the release.**
+#268 pins all six conductor-facing packages. Confirmed both ways against one
+local conductor rather than inferred from the dates.
+
+**What is NOT fixed by that pin:** the registry copy of `0.1.3`, which has been
+broken since 2026-10-15 for anyone running `npm install`. Only a `0.1.4` publish
+reaches them, and that publish is yours — queue item 6.
+
+**Next, in this order and the order matters:** item **5d** before 5b and 5c,
+because it corrects the denominator both are planned from — 24 sites are counted
+assertable and mostly are not. Then **5b** (four raw-payload entry types, 22
+sites, with the depth-2 `Constitution → Membrane → FederationRecord` chain) and
+**5c** (90 link rules, a third driver shape). Item 5's original "3–5 h for the
+remaining 143" was an estimate for about a sixth of the work, under a reason
+that turned out to be wrong.
+
+**One trap to carry forward, because it cost a confusing probe today.** A zome
+call from outside the launcher fails with `no signing credentials have been
+authorized for cell [..]` until `authorizeSigningCredentials` is called per
+cell. `replay.mjs`'s own comment says it reads exactly like a validation
+refusal to a harness that only checks "did it throw" — and it reads exactly
+like one to a person writing an ad-hoc probe, too.
+
+**Yours rather than anyone else's, and unchanged by any of today:** §3's
+two-machine measurement, and the `0.1.4` publish.
