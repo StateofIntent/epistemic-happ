@@ -27,6 +27,16 @@
 //              Claim struct, and EpistemicAgent.call() is public (index.ts:195),
 //              so a crafted payload can.
 //
+//   needs_extern
+//              An ENTRY rule whose field the coordinator derives rather than
+//              accepting. `crafted` assumed a hand-built payload can reach any
+//              entry validator; that holds only where an extern takes the whole
+//              entry struct. Five entry types instead take a params struct and
+//              BUILD the entry — so `agent`, `checksum`, `period_boundaries`
+//              and friends are the host's, not the caller's, and no payload
+//              reaches the rules about them. Same cost as `needs_prober`: a new
+//              extern plus a DNA rebuild.
+//
 //   remote     Not reachable from any local call. These fire on ops that arrive
 //              from a peer during gossip — link validation, agent activity, and
 //              the update/delete refusals that need an action type the
@@ -214,6 +224,139 @@ const DEFERRAL_RANGES = deferralRanges();
 const inDeferralBranch = (line) =>
   DEFERRAL_RANGES.some(([a, b]) => line >= a && line <= b);
 
+// ============================================================================
+// --- THE COORDINATOR CROSS-CHECK, which is what `crafted` was asserting
+// without evidence.
+//
+// `crafted` means "reachable by calling the coordinator with a payload the
+// typed methods never produce". That is only true if the coordinator exposes a
+// path which carries the field the rule guards. For ten entry types it does —
+// the extern takes the whole entry struct, so every field is the caller's. For
+// FIVE it does not: the extern takes a params struct and BUILDS the entry,
+// deriving the identity and timing fields from the host.
+//
+//   generate_worldline_trace(TraceGenerationParams)
+//   reveal_pre_registration(RevealInput)
+//   pre_register(PreRegisterInput)
+//   record_twitter_mirror(RecordTwitterMirrorInput)
+//   import_twitter_reply(ImportTwitterReplyInput)
+//
+// `generate_worldline_trace` is the worked case and it is not marginal: it sets
+// `agent` from `agent_info()`, builds `period_boundaries` by `query()`ing the
+// caller's own source chain, and derives `checksum` and `trace_payload`. Only
+// `expertise_tags` and `expires_at` come from the caller. So of its 8 sites
+// exactly ONE can be made to fire from JavaScript — and the old classification
+// was wrong in BOTH directions there, calling `PeriodBoundary sample_action not
+// found.` honest (it is a deferral, and unreachable besides) while the one rule
+// a plain client CAN trigger sat in `crafted` alongside seven that nobody can.
+//
+// HOW THE DECISION IS MADE, and which half is mechanical. The tool reads each
+// extern's struct literal and records, per entry field, whether the value comes
+// from the params (`input.x`, `params.x`) or from somewhere else — that is
+// mechanical and is the part a machine should own. Mapping a RULE to the field
+// it guards is not mechanical: most messages name their field, some do not
+// ("Only the author of a PreRegistration may reveal it." guards
+// `pre_registration`), so the unnamed ones are curated in GUARDS_FIELD below
+// and the build FAILS if a params-only site matches neither. An unresolved site
+// is a question about reachability, and answering it by default is how the
+// wrong denominator got here in the first place.
+// Every entry struct's field list, read from the integrity zome, so a rule can
+// be matched to the field it guards whether or not that field is the caller's.
+// Matching only caller-controlled names was the first attempt and it was wrong
+// in a telling way: `trace_payload exceeds 64KB limit.` names its field plainly
+// and fell through to "unresolved" precisely BECAUSE the field is derived.
+const entryFields = new Map();
+{
+  // COMMENTS ARE STRIPPED FIRST, and skipping that is a silent wrong answer
+  // rather than a parse error. `PreRegistration`'s doc comment contains
+  // `hash_entry(SealedPrediction { .. })`, so a field scan bounded by the first
+  // `}` stops inside the comment and reports the struct as having one field —
+  // which quietly loses `author` and `reveal_deadline` and sent both of their
+  // rules to "unresolved".
+  const bare = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const re = /pub struct ([A-Z][A-Za-z_0-9]*)\s*\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(bare)) !== null) {
+    const fields = [...m[2].matchAll(/pub\s+([a-z_0-9]+)\s*:/g)].map((f) => f[1]);
+    if (fields.length) entryFields.set(m[1], fields);
+  }
+}
+
+const COORD_SRC = resolve(REPO, 'dna/coordinator/src/lib.rs');
+const coord = readFileSync(COORD_SRC, 'utf8');
+const coordLines = coord.split('\n');
+
+const pascal = (snake) => snake.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join('');
+
+// Every #[hdk_extern], with the name and single parameter of the fn beneath it.
+const externs = [];
+for (let i = 0; i < coordLines.length; i++) {
+  if (!/#\[hdk_extern\]/.test(coordLines[i])) continue;
+  for (let j = i + 1; j < Math.min(i + 6, coordLines.length); j++) {
+    const m = /pub fn ([a-z_0-9]+)\s*\(\s*([a-z_0-9]+)\s*:\s*([A-Za-z_0-9]+)/.exec(coordLines[j]);
+    if (m) { externs.push({ fn: m[1], param: m[2], type: m[3], line: j + 1 }); break; }
+    if (/pub fn ([a-z_0-9]+)\s*\(\s*\)/.test(coordLines[j])) break;   // no-arg extern
+  }
+}
+const externAt = (ln) => {
+  let best = null;
+  for (const e of externs) if (e.line <= ln && (!best || e.line > best.line)) best = e;
+  return best;
+};
+
+// Which extern writes which entry type, and — when the param is NOT the entry
+// itself — which of the entry's fields that extern fills from the caller.
+const writePaths = new Map();   // EntryTypes name -> [{fn, takes, raw, callerFields}]
+for (let i = 0; i < coordLines.length; i++) {
+  const m = /create_entry\(EntryTypes::([A-Za-z_0-9]+)/.exec(coordLines[i]);
+  if (!m) continue;
+  const owner = externAt(i + 1);
+  if (!owner) continue;
+  const entryType = m[1];
+  const raw = owner.type === entryType;
+
+  // The struct literal that built it: `Entry { field: expr, shorthand, .. }`,
+  // the nearest one above this create_entry inside the same extern.
+  const callerFields = new Set();
+  if (!raw) {
+    for (let j = i; j >= owner.line - 1; j--) {
+      if (!new RegExp(`${entryType}\\s*\\{`).test(coordLines[j])) continue;
+      let depth = 0, started = false;
+      for (let k = j; k < Math.min(j + 60, coordLines.length); k++) {
+        for (const ch of coordLines[k]) {
+          if (ch === '{') { depth++; started = true; }
+          else if (ch === '}') depth--;
+        }
+        if (k > j || started) {
+          // `field: expr,` — caller-controlled when expr reads the param.
+          const f = /^\s*([a-z_0-9]+)\s*:\s*(.+?),?\s*$/.exec(coordLines[k]);
+          if (f && new RegExp(`\\b${owner.param}\\.`).test(f[2])) callerFields.add(f[1]);
+        }
+        if (started && depth <= 0) break;
+      }
+      break;
+    }
+  }
+  const list = writePaths.get(entryType) ?? [];
+  list.push({ fn: owner.fn, takes: owner.type, raw, callerFields: [...callerFields] });
+  writePaths.set(entryType, list);
+}
+
+// Rules whose message does not name the entry field they guard. Curated, short,
+// and asserted complete: a params-only site matching neither a field name nor
+// this table stops the build rather than being guessed at.
+const GUARDS_FIELD = {
+  'Only the author of a PreRegistration may reveal it.': 'pre_registration',
+  'Revelation content does not hash to the sealed commitment; this is not what was committed to.': 'prediction',
+  'Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.': 'pre_registration',
+  'PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.': 'question',
+  'WorldlineTrace must have at least one period boundary.': 'period_boundaries',
+  'PeriodBoundary sample_action must be authored by trace agent.': 'period_boundaries',
+  'PeriodBoundary start_time must be <= end_time.': 'period_boundaries',
+  'Checksum must be 32 bytes.': 'checksum',
+  'BridgeRecord {}.': 'carried_fields',
+};
+
 // --- Which LinkTypes a client can author with attacker-controlled fields.
 // Link ops ARE authored locally — every create_claim writes index links — so a
 // link rule is not "remote" merely for being a link rule. What decides whether
@@ -335,12 +478,70 @@ for (const s of sites) {
   s.entry = m2 ? m2[1] : null;
 }
 
-const byClass = { honest: 0, crafted: 0, deferred: 0, needs_prober: 0, remote: 0, passthrough: 0 };
+// --- THE CROSS-CHECK APPLIED. Runs last and only ever makes a class STRICTER,
+// so it cannot manufacture coverage: `honest`/`crafted` may become
+// `needs_extern`, and nothing becomes reachable that was not.
+//
+// `deferred` is left alone on purpose. Its message does not fire whatever the
+// write path looks like, and re-labelling those sites would lose the
+// distinction the deferral cases in replay.mjs assert.
+const unresolved = [];
+for (const s of sites) {
+  if (!s.entry || !['honest', 'crafted'].includes(s.class)) continue;
+  const paths = writePaths.get(pascal(s.entry));
+  if (!paths) continue;                       // not an entry type with a write path
+  if (paths.some((w) => w.raw)) {             // the whole struct is the caller's
+    s.write_path = paths.map((w) => `${w.fn}(${w.takes})`).join(', ');
+    continue;
+  }
+  const caller = new Set(paths.flatMap((w) => w.callerFields));
+  s.write_path = paths.map((w) => `${w.fn}(${w.takes})`).join(', ');
+  s.caller_controlled_fields = [...caller];
+
+  // The field this rule guards: curated first, else the entry field whose name
+  // appears EARLIEST in the message. Earliest rather than longest, because
+  // `ExternalCritique importer must match action author. Note this is ... the
+  // Twitter handle in author_handle` names two fields and guards the first;
+  // longest-match picks `author_handle` and is wrong.
+  const fields = entryFields.get(pascal(s.entry)) ?? [];
+  let field = GUARDS_FIELD[s.message] ?? null;
+  if (!field) {
+    let bestAt = Infinity;
+    for (const f of fields) {
+      const at = (s.message ?? '').search(new RegExp(`\\b${f}\\b`));
+      if (at !== -1 && at < bestAt) { bestAt = at; field = f; }
+    }
+  }
+  if (!field) {
+    // Nothing named it, and the curated table does not cover it. Could be a
+    // derived field (unreachable) or a caller field the message never names —
+    // and defaulting either way is what produced the wrong denominator before.
+    unresolved.push(s);
+    continue;
+  }
+  s.guards_field = field;
+  if (!caller.has(field)) s.class = 'needs_extern';
+}
+
+if (unresolved.length) {
+  console.error('\nUNRESOLVED: these sites belong to an entry type whose extern builds the');
+  console.error('entry, and neither the message nor GUARDS_FIELD says which field they guard.');
+  console.error('Add each to GUARDS_FIELD (naming the ENTRY field it guards) and re-run.\n');
+  for (const s of unresolved) console.error(`  ${s.entry}:${s.line}  ${JSON.stringify(s.message)}`);
+  process.exit(1);
+}
+
+const byClass = { honest: 0, crafted: 0, deferred: 0, needs_prober: 0, needs_extern: 0, remote: 0, passthrough: 0 };
 for (const s of sites) byClass[s.class]++;
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify({
-  generated_from: 'dna/integrity/src/lib.rs',
+  // BOTH zomes, as of 2026-10-17. The coordinator decides reachability — which
+  // fields an extern accepts rather than derives — so a coordinator-only change
+  // can legitimately move a site's class. The CI drift gate regenerates this
+  // file and diffs it, so that is caught without any new check; what would have
+  // been misleading is this field continuing to name one input.
+  generated_from: ['dna/integrity/src/lib.rs', 'dna/coordinator/src/lib.rs'],
   protocol_version: (/pub const PROTOCOL_VERSION: u16 = (\d+)/.exec(src) || [])[1] ?? null,
   total_sites: sites.length,
   by_class: byClass,
@@ -354,9 +555,10 @@ console.log(`  honest   ${String(byClass.honest).padStart(3)}   reachable throug
 console.log(`  crafted  ${String(byClass.crafted).padStart(3)}   reachable only via a crafted payload to the coordinator`);
 console.log(`  deferred ${String(byClass.deferred).padStart(3)}   a must_get_* guard — the dependency defers the commit, so the message never fires`);
 console.log(`  needs_prober ${String(byClass.needs_prober).padStart(3)}  link rules with no attempt_* path — needs a coordinator change + DNA rebuild`);
+console.log(`  needs_extern ${String(byClass.needs_extern).padStart(3)}  entry rules whose field the extern DERIVES — same cost, needs a raw-payload extern`);
 console.log(`  remote   ${String(byClass.remote).padStart(3)}   needs a peer authoring a bad op — not reachable locally`);
 console.log(`  (passthrough ${byClass.passthrough} — forwards another validator's result, no message of its own)`);
 console.log(`\n  assertable as a REFUSAL from JavaScript: ${byClass.honest + byClass.crafted}`);
 console.log(`  assertable only as a DEFERRAL:          ${byClass.deferred}`);
-console.log(`  blocked on a coordinator change:  ${byClass.needs_prober}`);
+console.log(`  blocked on a coordinator change:  ${byClass.needs_prober + byClass.needs_extern}`   + ` (${byClass.needs_prober} link rules + ${byClass.needs_extern} entry rules)`);
 console.log(`\nwrote ${OUT.replace(REPO + '/', '')}`);
