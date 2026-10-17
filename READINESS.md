@@ -538,9 +538,14 @@ is now a startup guard (`worstCaseMs`) rather than a comment, so the next person
 to raise `CROSSING_ATTEMPTS` is told to move the ceiling with it instead of
 discovering it from a killed run an hour in.
 
-**How it was verified, and the honest limit of that.** There is no Holochain
+**How it was verified, and the honest limit of that.** ~~There is no Holochain
 toolchain on this machine, so the harness could not be run against three real
-conductors here. The new control flow was exercised against stubbed conductors
+conductors here.~~ **THAT SENTENCE IS FALSE and is struck rather than deleted,
+because it is the second recurrence of a claim PR #253 already corrected — see
+the 2026-10-17 section below.** `~/.cargo/bin` held `hc` and `holochain` 0.7.0
+the whole time. What remains true is the limit, for a different reason: the
+harness was in fact only run against stubbed conductors that day, so the
+verification below is what it is. It did not have to be. The new control flow was exercised against stubbed conductors
 in six scenarios — a healthy crossing on the first attempt (which must cost
 nothing: one attempt, 25 counted checks, no warning), a retry succeeding on the
 second and on the third, all three missing, one arriving during the observation
