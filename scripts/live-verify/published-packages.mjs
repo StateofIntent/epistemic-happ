@@ -63,6 +63,37 @@
 //   too, because reaching the conductor is not what broke; only the check that
 //   the two packages agree about one network catches it. Watched before it was
 //   believed.
+//
+// ---------------------------------------------------------------------------
+// AND IT CAUGHT ONE IN THE WILD, 2026-10-17, WHICH IS WHAT THE FRESH RESOLVE IS
+// FOR. This harness went red on a commit that changed two documentation files
+// and nothing else. Nothing in this repository had broken: `@holochain/client`
+// published `0.21.1` on 2026-10-15, `agent-sdk` declared `^0.21.0`, and a fresh
+// resolve therefore picked up a client the pinned conductor cannot talk to.
+// `authorizeSigningCredentials` fails `Failed to deserialize request`, so the
+// SDK connects, issues a token, opens an app socket, reads `appInfo` — and then
+// cannot sign a single zome call.
+//
+// THE VERSION COUPLING, because the fix follows from it rather than from taste.
+// Conductor `0.7.1` was released 2026-10-14 and client `0.21.1` the day after:
+// `0.21.1` is the client FOR `0.7.1`. This repository pins the conductor
+// exactly — `scripts/ci/install-holochain.sh` treats 0.7.1 as a failure because
+// the zomes pin `hdk = "=0.7.0"` — so the admin wire format it speaks is
+// `0.21.0`'s. The defect was never the new release; it was a CARET on a
+// dependency whose protocol is pinned exactly at the other end. All six
+// conductor-facing packages now pin `0.21.0` with no range.
+//
+// WHY EVERY OTHER CHECK STAYED GREEN, and it is this harness's whole thesis
+// restated by events: the lockfiles hold `0.21.0`, so every job that runs
+// `npm ci` was unaffected and correct. This one resolves fresh ON PURPOSE,
+// which is the only reason anybody found out — and a stranger running
+// `npm install @stateofintent/agent-sdk` gets the broken tree, not the locked
+// one. The registry copy of `0.1.3` is broken from 2026-10-15 until a `0.1.4`
+// ships; pinning here fixes what CI packs, not what is already published.
+//
+// Confirmed both ways on one machine against one conductor, rather than
+// inferred from the dates: `0.21.0` all steps OK, `0.21.1` failing at
+// `authorizeSigningCredentials`, same code either side.
 // ============================================================================
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';

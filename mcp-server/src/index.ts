@@ -42,6 +42,7 @@
 // position that disagreement should cost something.
 // ============================================================================
 
+import { readFileSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -189,8 +190,22 @@ const TOOLS = [
   },
 ] as const;
 
+// THE VERSION IS READ, NOT TYPED. This said `'0.1.0'` from 0.1.0 through
+// 0.1.3, so every MCP client was told the wrong version for three releases —
+// the same defect class as the lockfile that sat at 0.1.1 while the package
+// said 0.1.3: a version recorded in a second place and never updated with the
+// first. Reading `package.json` removes the second place rather than
+// correcting it, so the next bump cannot reintroduce this.
+//
+// `../package.json` resolves from `dist/index.js`, and npm always includes
+// `package.json` in a tarball regardless of the `files` allowlist, so this
+// holds for the published package and not only in-tree.
+const { version: VERSION } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 const server = new Server(
-  { name: 'epistemic-resonance', version: '0.1.0' },
+  { name: 'epistemic-resonance', version: VERSION },
   { capabilities: { tools: {} } },
 );
 
