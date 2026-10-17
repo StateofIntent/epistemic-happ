@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@holochain/client": "^0.21.0"
+    "@holochain/client": "0.21.0"
   },
   "devDependencies": {
     "playwright": "^1.62.1",

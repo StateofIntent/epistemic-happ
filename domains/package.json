@@ -7,6 +7,6 @@
     "bootstrap": "node bootstrap.mjs"
   },
   "dependencies": {
-    "@holochain/client": "^0.21.0"
+    "@holochain/client": "0.21.0"
   }
 }
