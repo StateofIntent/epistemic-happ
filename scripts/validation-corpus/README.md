@@ -24,10 +24,10 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and four link types, and the coverage is asserted rather
-than stated.** 99 checks, **seven of which need a second agent** — see
-*A second agent* below. Every link type here is now 3 of 3: nothing in this
-slice is declared unreachable any more. Link rules use the same driver — a link case is still
+**Ten entry types and seven link types, and the coverage is asserted rather
+than stated.** 117 checks, **ten of which need a second agent** — see
+*A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
+nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
 than `entry`, because every link site shares `entry: "create_link"` and
 grouping them by entry would collapse nineteen rule sets into one meaningless
@@ -499,6 +499,52 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### Finding 8 — a `Claim` deserialises as a `Mew`, so the type check does not separate them
+
+**Measured, and the obvious payload COMMITTED.** `AgentToMew`'s type rule is
+
+```rust
+let mew = match target_record.entry().to_app_option::<Mew>() {
+    Ok(Some(m)) => m,
+    _ => return Invalid("AgentToMew target is not a Mew."),
+};
+```
+
+so the message needs the deserialise to fail or return `None`. Pointing the
+target at a **Claim**'s ActionHash does neither: the Claim's entry
+deserialises into `Mew` successfully, the rule never fires, and the link
+commits. `Mew` is `{content, author, timestamp, reply_to, semantic_tags,
+linked_claim}` and a `Claim` carries `content`, `author`, `timestamp` and
+`semantic_tags` already, which is apparently enough.
+
+**A `Constitution` is the payload that reaches the rule** — it shares no field
+names with `Mew` — and that is what the case uses.
+
+**WHAT THIS MEANS, bounded honestly.** The ownership rule still binds, so this
+is not cross-agent poisoning: `mew.author != action.author()` stops an agent
+indexing somebody else's entry. What an agent CAN do is index **its own Claim
+under its own AgentToMew anchor**, so `get_mews_by_agent` may return a Claim to
+a reader expecting a Mew. Mild, and real, and the rule reads as though it
+prevents exactly this.
+
+**It is the AgentToClaim contrast in reverse.** There, the validator matches
+`_ =>`, which catches a deserialise Err as well as `Ok(None)`, and a
+Constitution target is refused the obvious way. Here the same shape of guard is
+defeated not by the error path but by a SUCCESSFUL deserialise of the wrong
+entry type. Two entry types whose field sets overlap are not distinguished by
+`to_app_option` at all, and nothing in this corpus would have found that without
+driving the obvious payload first and watching it pass.
+
+### The agent-anchor family is not uniform
+
+Four link types index an entity under its owner's agent anchor and carry the
+same three rules. **Three are `crafted` and are covered. The fourth,
+`AgentToMembrane`, is not** — the inventory classes it `needs_prober`, and the
+reason is checkable: `attempt_false_attachment_link`'s `AttachmentLinkKind` has
+no `AgentToMembrane` variant, so no published path can write one with a broken
+field. It stays out of `COVERED_LINKS` rather than being declared a gap,
+because a type nobody can drive has no cases to declare unreachable.
+
 ### A second agent — item 5f, and it was cheaper than predicted
 
 **Twenty-three rules in this corpus fire when a thing belongs to somebody
@@ -553,7 +599,8 @@ friction rules are mirrored as coordinator pre-checks with no bypassing extern,
 which needs a new extern and a DNA rebuild.
 
 O, P and Q were taken on the version with link rules, which is 92 checks.
-R was taken on the 93-check version and S on the 99-check one.
+R was taken on the 93-check version, S on the 99-check one, and T on the
+117-check version with the agent-anchor family.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -590,6 +637,12 @@ R was taken on the 93-check version and S on the 99-check one.
   holding on a second family of rules. `Retraction` is unaffected because it
   seeds its own target rather than using the shared fixtures — injection R
   covers it.
+
+- **Injection T** — the three agent-anchor owner cases aimed at agent 1's own
+  Mew, trace and PreRegistration instead of agent 2's. Result: **114 passed, 3
+  failed**, all three `the call COMMITTED`. Confirms the family's owner rules
+  are sensitive on the same terms injection S established for the first four,
+  and that nothing about the new types is passing by accident.
 
 ## Why one mutation at a time
 
