@@ -951,9 +951,22 @@ goes stale, and a fifth copy of a number is not a handover.
    **The fourth, the security review, has been run** — it found five defects
    and four are fixed; what it leaves is in its own row and in *What the
    security review found* below.
-4. **One optional open row, and it needs a person**: post the upstream
-   `kitsune2` draft at `~/upstream-kitsune2-cursor-before-fetch-draft.md`, or
-   decide not to. Nothing in this repository depends on it either way.
+4. **A CONFIRMED defect in the foresight mechanism, and it is the one thing
+   here that changes what the protocol can claim.** `reveal_deadline` is
+   enforced against a timestamp the author writes: `hdi` exposes no `sys_time`
+   (validation must be deterministic) and the host checks only chain-local
+   monotonicity, so a commitment whose window has passed can be revealed by
+   moving the authoring conductor's clock back inside it. **Measured, not
+   argued** — `scripts/live-verify/clock-skew-reveal.mjs`, reproduced twice,
+   with the honest refusal reproduced as the control in the same run. **And the
+   forgery is permanent**: restoring the clock leaves it still reading as
+   revealed, and Invariant 6 means it cannot be deleted. SPEC §5.22 carries the
+   result and a MUST — do not present `get_foresight_record`'s `revealed`
+   entries as evidence of foresight, nor derive an accuracy figure from them —
+   which stands until READINESS item 14 closes it. The denominator is
+   unaffected. *(The previous item 4 here, posting the upstream `kitsune2`
+   draft, closed on 2026-10-12 as [holochain/kitsune2#673](https://github.com/holochain/kitsune2/issues/673)
+   and is kept in the open-item table below rather than in this list.)*
 
 **And the summary of those two halves, because "done" was being read as one
 claim when it is two.** The basics are done: a release for early adopters — people
@@ -998,9 +1011,12 @@ is spent; the CI binary download retries; four browser intermittencies were
 traced to one defect and fixed — the fourth being the same defect's second half,
 which only became visible because the first fix let `main` fail again in a way
 that named it; the address-keyed ceilings hold for one machine however it
-connects; a room can ask somebody to leave; **the npm republish shipped on
-2026-09-12** and `0.1.2` of both packages is `latest` on the registry, verified
-from the registry rather than from a tarball; and the `notes-ui` intermittency
+connects; a room can ask somebody to leave; **`0.1.4` of both packages shipped on
+2026-10-18 and is `latest` on the registry** — verified from the registry
+rather than from a tarball, with a fresh install into an empty project
+resolving `@holochain/client` `0.21.0` and both published tarball shasums
+matching the build the live check drove against a real conductor; and the
+`notes-ui` intermittency
 was closed without waiting for its recurrence, by forcing the race its
 written-up hypothesis described.
 
@@ -1012,7 +1028,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-12, restructured on 2026-10-10 because the single table
+**Current as of 2026-10-18, restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1020,6 +1036,30 @@ did exactly that for a day while [#134](../../pull/134) sat in CI, and did it
 again for twenty minutes on 2026-10-12 while the last open row sat closed, so
 the rows are written to be checkable rather than trusted, and the split below
 is maintenance of that rather than tidying.
+
+**2026-10-18, and the day changed two things in this section rather than one.**
+The `0.1.4` publish shipped — both packages are `latest`, a fresh registry
+install resolves `@holochain/client` `0.21.0`, and the published shasums match
+the build the live check drove, so the registry copy can sign a zome call for
+the first time since `0.21.1` floated on 2026-10-15. That closes the one row
+here that was urgent rather than tidy. It took two publish runs, exactly as
+READINESS.md said to expect, because the registry could not serve `agent-sdk`
+yet when the script went to publish `mcp-server` — the refusal is the `0.1.1`
+shape being prevented, not a fault.
+
+**The other thing is a defect, and it is the more important of the two.** A
+reading of the pre-registration path found that `reveal_deadline` is enforced
+against a timestamp the author supplies, and a probe then confirmed it: a
+commitment whose window has closed can be revealed by moving the authoring
+conductor's clock back inside it, and the resulting record is permanent and
+indistinguishable from an honest reveal. **It is the first defect in this
+repository found by argument and then measured in the same day**, which is the
+order this section's whole discipline asks for and had not previously been
+tested on something that mattered. SPEC §5.22 carries it with a MUST; item 4 of
+*Where to start next time* above is now that MUST rather than an optional
+upstream errand. **Nothing about it is in `main` as a fix** — only as a
+documented constraint — so anybody reading `revealed` as a track record today
+is reading something the protocol does not vouch for.
 
 **Nothing is open against the roadmap, for the first time. The roadmap being
 finished is not the same as being ready for a crowd — the four items under
@@ -1046,7 +1086,7 @@ in this file; what was missing was a list of them in one place.
 | **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
 | **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
 | **Propagation latency a user would accept** | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | A decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated" in the UI. The protocol's value is claims reaching peers, so minutes-long silence is a product characteristic |
-| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains is **one decision, and it is not a technical one**: the conscious choice to stand behind the sybil position before inviting a crowd. The update-op gap — the fifth defect — **is closed**, and closed by refusal rather than by rule: `dna/integrity/src/lib.rs:1018` returns `Invalid("Entry updates are not permitted; see SPEC.md §5.1")`, at `PROTOCOL_VERSION = 9`. [`SECURITY.md`](SECURITY.md) exists. Still **no outside audit** |
+| **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains is **one decision, and it is not a technical one**: the conscious choice to stand behind the sybil position before inviting a crowd. The update-op gap — the fifth defect — **is closed**, and closed by refusal rather than by rule: `dna/integrity/src/lib.rs:1018` returns `Invalid("Entry updates are not permitted; see SPEC.md §5.1")`, at `PROTOCOL_VERSION = 9`. [`SECURITY.md`](SECURITY.md) exists. Still **no outside audit** **AND A SIXTH DEFECT WAS CONFIRMED ON 2026-10-18, after this review and of a different shape from the five.** It was found by reading rather than by the review's own sweep, and then measured: `reveal_deadline` is enforced against a timestamp the author supplies, so a commitment whose window has closed can still be revealed by moving the authoring conductor's clock back inside it — permanently, since the resulting `Revelation` is a durable entry Invariant 6 forbids deleting. `scripts/live-verify/clock-skew-reveal.mjs`, reproduced twice, with the honest refusal as the in-run control. **This one cannot be fixed by a validation rule at all** — `hdi` has no `sys_time` because validation must be deterministic — so every repair names a clock instead (countersigning, or an attested external one). SPEC §5.22 and READINESS item 14. **The lesson for this row is about the review's coverage, not only the defect**: the five it found were all link-level and of one shape, and the sixth was a different shape in a path the review did not reach, which is the argument for an outside audit rather than against it. |
 
 #### What the security review found
 
