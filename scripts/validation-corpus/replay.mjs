@@ -370,12 +370,24 @@ async function otherAgentFixtures() {
     created_at: nowSecs(),
   });
 
+  // Agent 2 mirrors its own Mew. `author` is filled from agent_info() inside
+  // record_twitter_mirror, so — like ExternalCritique's importer and
+  // FederationRecord's §5.18 author — a BridgeRecord belonging to somebody
+  // else can only be obtained by having somebody else record it. Third of
+  // three unforgeable-by-construction owner rules in this corpus.
+  const otherBridgeAction = await callOther('record_twitter_mirror', {
+    mew_hash: otherMewEntry, twitter_id: `corpus-other-bridge-${Date.now()}`,
+    platform: 'twitter', mirrored_at: nowSecs(),
+    carried_fields: ['content'], dropped_fields: [],
+    original_length: 48, excerpt_length: 48,
+  });
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
     mewAction, traceAction, preRegAction, revelationAction,
     replacementAction, replacementEntry, retractionAction,
     mewEntry: otherMewEntry, promotedAction, externalCritiqueAction,
-    federationAction: otherFederationAction,
+    federationAction: otherFederationAction, bridgeAction: otherBridgeAction,
   };
   return _others;
 }
@@ -1131,7 +1143,8 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'AgentToMew', 'AgentToWorldlineTrace', 'AgentToPreRegistration',
   'QuestionToPreRegistration', 'PreRegistrationToRevelation',
   'ClaimToRetraction', 'RetractionToReplacement',
-  'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord'];
+  'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord',
+  'MewToBridgeRecord'];
 
 const linkEntries = [
   {
@@ -1837,6 +1850,101 @@ const linkEntries = [
       {
         rule: "A MembraneToFederationRecord link may only be created by the FederationRecord's own author — who §5.18 already requires to be the membrane's founder.",
         mutate: (l, ctx) => { l.base = ctx.others.membraneEntry; l.target = ctx.others.federationAction; },
+      },
+    ],
+  },
+  // --- THE BRIDGE INDEX, and the only spec here whose rules span TWO link
+  // types. The inventory files all seven under `MewToBridgeRecord`, but two of
+  // them are about which type the base may be: a mirror of a Mew filed as a
+  // claim's, or the reverse. So one case switches `kind` to
+  // `ClaimToBridgeRecord` — the rule under test IS the type distinction, and a
+  // spec pinned to a single kind could not reach it.
+  //
+  // That needs TWO BridgeRecords: one mirroring a Mew and one mirroring a
+  // Claim, because each cross-type case has to satisfy "hang from the entry
+  // the BridgeRecord names in mew_hash" while violating only the type rule.
+  {
+    linkType: 'MewToBridgeRecord',
+    label: 'MewToBridgeRecord',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Mew and a Claim, each with its own mirror, plus a second Mew to hang one from wrongly',
+    setup: async () => {
+      const domain = `CorpusLinkM2B${Date.now()}`;
+      const mkMew = (content) => call('create_mew', {
+        content, author: myKey, timestamp: nowMicros(),
+        reply_to: null, semantic_tags: ['corpus'], linked_claim: null,
+      });
+      const mewAction = await mkMew('corpus mew, the one mirrored');
+      const strayMewAction = await mkMew('corpus mew, mirrored by nothing');
+      const mews = await call('get_mews_by_agent', myKey);
+      const mewEntryFor = (a) => mews
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const mewEntry = mewEntryFor(mewAction);
+      const strayMewEntry = mewEntryFor(strayMewAction);
+
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the one mirrored', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const rows = await call('get_claims_by_domain', domain);
+      const claimEntry = rows[0].signed_action.hashed.content.data.entry_hash;
+
+      const mirror = (hash, label) => call('record_twitter_mirror', {
+        mew_hash: hash, twitter_id: `corpus-${label}-${Date.now()}`,
+        platform: 'twitter', mirrored_at: nowSecs(),
+        carried_fields: ['content'], dropped_fields: [],
+        original_length: 64, excerpt_length: 32,
+      });
+      const mewBridge = await mirror(mewEntry, 'mew');
+      const claimBridge = await mirror(claimEntry, 'claim');
+
+      // AN ENTRY THAT IS NEITHER, and finding 9 is why it has to be. The
+      // obvious payload for "base is not a Mew" is a CLAIM's entry, and it
+      // does not reach the rule: the guard is
+      // `to_app_option::<Mew>().ok().flatten().is_some()`, and a Claim
+      // deserialises into Mew (finding 8), so `is_mew` is TRUE for a Claim and
+      // the rule cannot fire. Measured — the call COMMITTED. `create_evidence`
+      // returns an EntryHash directly, and an Evidence is neither a Claim nor
+      // a Mew, so it is the payload that actually reaches the message.
+      const evidenceEntry = await call('create_evidence', {
+        content: 'corpus evidence, mirrored only to be neither a Claim nor a Mew',
+        evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
+      });
+      const evidenceBridge = await mirror(evidenceEntry, 'evidence');
+
+      return {
+        mewEntry, strayMewEntry, mewAction, claimEntry, mewBridge, claimBridge,
+        evidenceEntry, evidenceBridge, others: await otherAgentFixtures(),
+      };
+    },
+    baseline: (ctx) => ({
+      kind: 'MewToBridgeRecord',
+      base: ctx.mewEntry,
+      target: ctx.mewBridge,
+      tag: Array.from(Buffer.from('bridged', 'utf8')),
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: "A BridgeRecord link's target must be an ActionHash.", mutate: (l, ctx) => { l.target = ctx.mewEntry; } },
+      { rule: "A BridgeRecord link's target is not a BridgeRecord.", mutate: (l, ctx) => { l.target = ctx.mewAction; } },
+      { rule: "A BridgeRecord link's base must be an EntryHash.", mutate: (l, ctx) => { l.base = ctx.mewAction; } },
+      { rule: 'A BridgeRecord link must hang from the entry the BridgeRecord itself names in mew_hash.', mutate: (l, ctx) => { l.base = ctx.strayMewEntry; } },
+      // THE KIND SWITCHES HERE, and that is the point: the rule under test is
+      // the type distinction itself. mew_hash still matches the base, so the
+      // rule above cannot fire first; only the link type is wrong.
+      { rule: "A ClaimToBridgeRecord link's base is not a Claim. A mirror of a Mew filed as a claim's would make get_unbridged_claims answer about the wrong entry.", mutate: (l) => { l.kind = 'ClaimToBridgeRecord'; } },
+      // NOT the mirror image, and that asymmetry is finding 9. A Claim base
+      // cannot drive this: a Claim reads as a Mew, so `is_mew` is true and the
+      // rule is inert in exactly the direction the sibling rule above is not.
+      // An Evidence base is neither type, so it reaches the message.
+      { rule: "A MewToBridgeRecord link's base is not a Mew.", mutate: (l, ctx) => { l.base = ctx.evidenceEntry; l.target = ctx.evidenceBridge; } },
+      {
+        rule: 'A BridgeRecord link may only be created by the agent who recorded the mirror.',
+        mutate: (l, ctx) => { l.base = ctx.others.mewEntry; l.target = ctx.others.bridgeAction; },
       },
     ],
   },

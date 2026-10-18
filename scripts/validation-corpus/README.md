@@ -24,8 +24,8 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and fourteen link types, and the coverage is asserted rather
-than stated.** 175 checks, **seventeen of which need a second agent** — see
+**Ten entry types and fifteen link types, and the coverage is asserted rather
+than stated.** 185 checks, **eighteen of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -499,6 +499,50 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### Finding 9 — finding 8 defeats a SECOND rule, and the asymmetry predicted which one
+
+**The Claim-reads-as-Mew confusion is reachable at two guard sites, not one**,
+and at the second it makes a protective rule inert in exactly one direction.
+
+`MewToBridgeRecord` and `ClaimToBridgeRecord` share one guard:
+
+```rust
+let is_claim = subject_entry.to_app_option::<Claim>().ok().flatten().is_some();
+let is_mew   = subject_entry.to_app_option::<Mew>().ok().flatten().is_some();
+let wanted_claim = link_type == LinkTypes::ClaimToBridgeRecord;
+if  wanted_claim && !is_claim { return Invalid("...base is not a Claim...") }
+if !wanted_claim && !is_mew   { return Invalid("...base is not a Mew.")     }
+```
+
+Driving a CLAIM's entry as the base of a `MewToBridgeRecord` link — the obvious
+payload for "base is not a Mew" — **COMMITTED**. `is_mew` is computed by
+`to_app_option::<Mew>()`, a Claim deserialises into `Mew` (finding 8), so
+`is_mew` is TRUE for a Claim and the rule cannot fire.
+
+**THE SIBLING RULE HOLDS, AND THE SWEEP SAID WHY BEFORE THIS WAS DRIVEN.**
+`scripts/check-entry-type-confusion.mjs` reports exactly one direction —
+`Claim -> Mew`, never `Mew -> Claim`, because `Claim` has non-Option fields
+(`domain`, `confidence`, `evidence_hashes`, `attestation_policy`) that `Mew`
+does not carry. So a Mew base cannot pass as a Claim, `is_claim` is false, and
+`ClaimToBridgeRecord`'s half fires correctly. **One guard, two rules, and the
+confusion's asymmetry decides which of them is real.** That is the sweep
+earning its place: the model predicted the asymmetry before the probe found it.
+
+**WHY THIS ONE MATTERS MORE THAN FINDING 8 DID.** `AgentToMew`'s consequence
+was an agent mis-indexing its own Claim in a by-author list. Here the sibling
+rule's own message states the stake — *"a mirror of a Mew filed as a claim's
+would make `get_unbridged_claims` answer about the wrong entry"* — and the
+inert direction is the reverse of that: a CLAIM's mirror can be filed under the
+Mew link type, so the read over `MewToBridgeRecord` answers about the wrong
+entry. Bounded the same way finding 8 is: the owner rule still binds, so only
+the mirror's own recorder can do it.
+
+**The payload that does reach the message is an entry that is NEITHER type.**
+`create_evidence` returns an EntryHash directly and an `Evidence` is neither a
+Claim nor a Mew, so the case mirrors one and uses it as the base. Recorded
+because it is the 5b lesson for a third time: the obvious payload proved the
+rule inert, and only a stranger one proved it exists at all.
+
 ### The index rules that must name what the entry names
 
 Four link types landed together because they share one rule shape, and it is
@@ -676,7 +720,8 @@ which needs a new extern and a DNA rebuild.
 O, P and Q were taken on the version with link rules, which is 92 checks.
 R was taken on the 93-check version, S on the 99-check one, T on the 117-check
 version with the agent-anchor family, X on the 133-check version, Y and Z on
-the 150- and 167-check versions, and AA on the 175-check one.
+the 150- and 167-check versions, AA on the 175-check one, and AB on the 185-check
+version.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is

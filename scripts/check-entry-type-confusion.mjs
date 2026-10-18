@@ -102,10 +102,17 @@ for (const m of src.matchAll(/let \w+\s*:\s*(?:Option<)?([A-Z][A-Za-z]*)>?\s*=\s
 const KNOWN = [
   {
     from: 'Claim', to: 'Mew', status: 'LIVE',
-    why: 'corpus finding 8. AgentToMew reads Mew, so this is reachable: an agent may index its OWN '
-       + 'Claim under its own AgentToMew anchor and get_mews_by_agent returns a Claim to a reader '
-       + 'expecting a Mew. Bounded by the ownership rule, which still binds, so it is not '
-       + 'cross-agent poisoning. READINESS item 16 carries the decision on whether to tighten it.',
+    why: 'corpus findings 8 AND 9 — TWO live guard sites, which is more than this ledger first said. '
+       + '(1) AgentToMew reads Mew, so an agent may index its OWN Claim under its own AgentToMew '
+       + 'anchor and get_mews_by_agent returns a Claim to a reader expecting a Mew. (2) The shared '
+       + 'BridgeRecord guard computes is_mew with to_app_option::<Mew>(), so a CLAIM base passes as '
+       + 'a Mew and "A MewToBridgeRecord link\'s base is not a Mew." CANNOT FIRE — a claim\'s mirror '
+       + 'can be filed under the Mew link type, which is the reverse of the harm its sibling rule '
+       + 'names ("would make get_unbridged_claims answer about the wrong entry"). The sibling holds '
+       + 'because this confusion is ONE-DIRECTIONAL: Claim carries domain/confidence/evidence_hashes/'
+       + 'attestation_policy, which Mew does not, so a Mew never passes as a Claim. Both sites are '
+       + 'bounded by their ownership rules, so neither is cross-agent. READINESS item 17 carries the '
+       + 'decision on whether to tighten it; item 16 was the sweep that found the second site.',
   },
   {
     from: 'Revelation', to: 'SealedPrediction', status: 'LATENT',
