@@ -24,8 +24,9 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and TWENTY link types, and the coverage is asserted rather
-than stated.** 223 checks, **twenty-three of which need a second agent** — see
+**Ten entry types and TWENTY-THREE link types — every link type in the zome,
+with every rule either asserted or declared unreachable with its reason.** 238
+checks, **twenty-three of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -499,6 +500,64 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### The coverage hole item 18 opened, and how it was found
+
+**This is the most important thing in this file, because the tool that catches
+inversions committed one.**
+
+`enumerate.mjs` decided whether a link rule was drivable by consulting
+`PROBED_LINK_TYPES` — a HARDCODED list of eighteen names. Item 18 added four
+`AttachmentLinkKind` variants in the coordinator and a fifth single-purpose
+prober, and nothing connected the Rust to that list. So five link types stayed
+classed `needs_prober` while their rules were perfectly drivable.
+
+**The corpus then asserted nine of those rules, and the coverage loop reported
+`0 of 0 assertable rules` for two whole link types.** Cases running. Cases
+passing. Gating nothing — because a rule the inventory calls unreachable is a
+rule the coverage check does not require a case for. Delete those nine cases and
+the harness would have stayed green.
+
+It was caught by reading the coverage output rather than by any gate, which is
+worth saying plainly: the inventory drift gate passed, correctly, because
+regenerating produced an identical file. The inventory was not stale. It was
+WRONG in a way regeneration could not fix, because the classifier's own input
+was a list nobody had updated.
+
+**The fix is to stop restating the Rust.** `PROBED_LINK_TYPES` is now parsed
+from `enum AttachmentLinkKind`, and only the three single-purpose probers —
+one extern per link type, not enumerable from a type — stay listed, each
+checked to actually exist in the coordinator. Adding a variant in Rust now
+reclassifies its rules with no second edit, and `needs_prober` fell to **zero**:
+every link rule in the zome is `crafted`, so every one of them must now be
+cased or declared.
+
+**That forced five honest declarations rather than letting them hide**, which is
+the whole point:
+
+| rule | why it stays undrivable |
+|---|---|
+| `AttestationGrant` ×3 | **no committing baseline exists.** `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is thirty days, so a valid grant needs a join action thirty days older than it. Without a baseline every case is refused for tenure rather than for the rule under test — the exact trap the baseline check exists to stop. Needs a harness that asserts refusals without a valid baseline, not another extern |
+| `Reinforcement` friction | 40 in one window, spending allowance the rest of the run needs |
+| `SynapticLink` friction | 20 in one window, and each one costs a Critique |
+
+### Two operational findings from driving these
+
+**An agent target must be sent with the ENTRY prefix.** `Reinforcement`'s target
+is the reinforcing agent, and validation does
+`AgentPubKey::try_from(target_address)`. In Rust, `create_link(base, agent, ..)`
+reaches `AnyLinkableHash` via `EntryHash::from(AgentPubKey)`, which REWRITES the
+three-byte prefix — so the hash the DHT stores is entry-prefixed. Sending raw
+agent-prefixed bytes is refused by `AnyLinkableHash`'s own deserialiser before
+any rule runs, as a payload `Deserialize` at the extern. Same 36-byte core,
+different first three bytes. Measured both ways.
+
+**A clean sandbox resets the friction window.** Development hit
+`20 Critiques already created in the last 3600 seconds` partway through this
+item — the limit this corpus documents, arriving in practice. The window is per
+AGENT, and `sandbox.sh clean && start` generates a new one, so a restart buys a
+fresh allowance where waiting an hour is the alternative. Worth knowing before
+concluding a spec is broken.
+
 ### Item 18: a prober this corpus asked for, and what a prober cannot fix
 
 `TaxonomyToSpecies` is the first type here driven by an extern added BECAUSE
@@ -797,8 +856,8 @@ O, P and Q were taken on the version with link rules, which is 92 checks.
 R was taken on the 93-check version, S on the 99-check one, T on the 117-check
 version with the agent-anchor family, X on the 133-check version, Y and Z on
 the 150- and 167-check versions, AA on the 175-check one, AB on the 185-check version,
-AC on the 217-check one, and AD on the
-223-check one.
+AC on the 217-check one, AD on the
+223-check one, and AE on the 238-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -879,6 +938,11 @@ AC on the 217-check one, and AD on the
   the proof that matters for item 18: the prober added for this corpus does not
   merely compile and get called, it drives rules that fail when the payload
   stops violating them.
+
+- **Injection AE** — across item 18's last three: `AgentToMembrane`'s tag
+  restored to the author's own key, `Reinforcement`'s target likewise, and
+  `SynapticLink`'s short tag padded back to four bytes. Result: **235 passed, 3
+  failed**.
 
 ## Why one mutation at a time
 

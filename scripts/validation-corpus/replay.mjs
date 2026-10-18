@@ -567,6 +567,51 @@ const GAPS = [
   // piece of work**, which is a second agent on one DHT. That makes it the
   // highest-leverage item left, not the remaining link bulk.
 
+  // --- ITEM 18's FIVE, newly declarable because they are newly CLASSIFIED.
+  //
+  // Until enumerate.mjs learned to parse `AttachmentLinkKind`, these rules were
+  // `needs_prober` — and a rule the inventory calls unreachable is one the
+  // coverage loop does not demand a case for. So they could not be gapped
+  // either: there was nothing to be exempt from. Now that the classifier reads
+  // the Rust, all five are `crafted` and have to be accounted for here.
+  //
+  // (a) ATTESTATION GRANT — ALL THREE, AND NO PROBER FIXES IT.
+  // `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is 30 * 24 * 3600 — thirty
+  // days. A VALID grant needs an AgentToMembrane join whose action timestamp is
+  // thirty days older than the grant's, so no test run can construct a
+  // committing baseline. Without one every case below it would be refused for
+  // the tenure reason rather than for the rule under test and would "pass" by
+  // being refused at all, which is precisely what the baseline check exists to
+  // stop. These need a harness that asserts refusals WITHOUT a valid baseline,
+  // which is a different shape from this one — not another extern.
+  {
+    linkType: 'AttestationGrant',
+    rule: 'AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).',
+    why: 'no committing baseline is constructible: a valid AttestationGrant needs an AgentToMembrane join thirty days older than it (ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION), so every case would be refused for tenure rather than for this rule',
+  },
+  {
+    linkType: 'AttestationGrant',
+    rule: "AttestationGrant requires proof of sufficiently tenured membership in this membrane — the referenced action must be the granter's own AgentToMembrane join for this same membrane, created at least the required tenure period ago.",
+    why: 'the rule IS the thirty-day tenure, and a run cannot age a fixture past a month; asserting it would need a clock this harness does not have in CI',
+  },
+  {
+    linkType: 'AttestationGrant',
+    rule: 'SWO temporal friction: author has granted attestation {} times in the last {} seconds (limit {}). This bounds how fast the right to vouch can be spent, not just how fast links can be created.',
+    why: 'friction, and unreachable twice over — it sits behind the tenure gate that no baseline can pass',
+  },
+  // (b) TWO FRICTION RULES, the same exception the two entry-type gaps above
+  // take: a limit reached only by committing the whole window's allowance,
+  // which spends a budget later runs in the same hour need.
+  {
+    linkType: 'Reinforcement',
+    rule: 'SWO temporal friction: author has {} Reinforcements in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
+    why: 'reaching it means committing 40 Reinforcements in one window, which spends an allowance the rest of this corpus run needs — the same exception the critique and antibody friction rules take',
+  },
+  {
+    linkType: 'SynapticLink',
+    rule: 'SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). This is an absolute limit, enforced by DHT validation, not a client-side courtesy.',
+    why: 'reaching it means committing 20 SynapticLinks in one window, and each one costs a Critique — the limit that stopped this corpus mid-development, measured rather than imagined',
+  },
 ];
 
 const entries = [
@@ -1188,7 +1233,7 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord',
   'MewToBridgeRecord',
   'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody',
-  'TaxonomyToSpecies'];
+  'TaxonomyToSpecies', 'AgentToMembrane', 'Reinforcement', 'SynapticLink'];
 
 const linkEntries = [
   {
@@ -2228,6 +2273,155 @@ const linkEntries = [
         rule: "A TaxonomyToSpecies link may only be created by the species' own proposer.",
         mutate: (l, ctx) => { l.species_action = ctx.others.childSpecies; },
       },
+    ],
+  },
+  // --- MEMBERSHIP AND REINFORCEMENT — item 18's other two drivable types,
+  // reachable now that `AttachmentLinkKind` carries their variants.
+  //
+  // Both are written by dedicated externs that pre-check what validation
+  // re-checks (`join_membrane`, `reinforce_synaptic_link`), which is why the
+  // rules were unreachable: the same shape as `create_membrane` hiding four
+  // Membrane rules until `attempt_unaccountable_membrane` existed.
+  //
+  // `AgentToMembrane`'s TARGET is the joining agent's derived anchor, which a
+  // caller cannot compute — but nothing validates the target, so the baseline
+  // puts the membrane's own EntryHash there. Checked against the validator
+  // rather than assumed: it tests the tag's length, the tag against the action
+  // author, and that the base downcasts to a resolving EntryHash. Nothing else.
+  {
+    linkType: 'AgentToMembrane',
+    label: 'AgentToMembrane',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "a Constitution and a Membrane under it, for this agent to join",
+    setup: async () => {
+      const domain = `CorpusLinkA2Mem${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'belong honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const membraneAction = await call('create_membrane', {
+        domain, description: 'corpus membrane, to be joined',
+        required_promises: ['belong honestly'], validation_rules_hash: null,
+        creator: myKey, created_at: nowSecs(), constitution,
+      });
+      const membraneEntry = (await call('get_membranes'))
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(membraneAction).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      return { membraneEntry, membraneAction, others: await otherAgentFixtures() };
+    },
+    // `get_raw_36()` strips a holochain hash's 3-byte prefix, so the tag the
+    // zome compares is the agent key's last 36 bytes, not all 39.
+    baseline: (ctx) => ({
+      kind: 'AgentToMembrane',
+      base: ctx.membraneEntry,
+      target: ctx.membraneEntry,
+      tag: Array.from(myKey.slice(3)),
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToMembrane tag must be exactly 36 bytes (a raw AgentPubKey).', mutate: (l) => { l.tag = [1, 2, 3]; } },
+      // The tag claims agent 2 while agent 1 authors the call — "on someone
+      // else's behalf" stated exactly.
+      { rule: "AgentToMembrane links can only be created by the agent joining, not on someone else's behalf.", mutate: (l) => { l.tag = Array.from(otherKey.slice(3)); } },
+      { rule: 'AgentToMembrane base must be an EntryHash.', mutate: (l, ctx) => { l.base = ctx.membraneAction; } },
+    ],
+  },
+
+  {
+    linkType: 'Reinforcement',
+    label: 'Reinforcement',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Critique, whose creation makes the SynapticLink this reinforces',
+    setup: async () => {
+      const domain = `CorpusLinkReinf${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the critiqued node', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimEntry = (await call('get_claims_by_domain', domain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      // create_critique makes a SynapticLink from the critique's target to the
+      // critique itself (coordinator:931). find_synaptic_link returns that
+      // CreateLink action's hash, which is what a Reinforcement hangs from.
+      const critiqueAction = await call('create_critique', {
+        target: claimEntry, target_type: 'Claim', critique_mode: 'Logical',
+        content: 'corpus critique, published to create a SynapticLink',
+        author: myKey, timestamp: nowMicros(),
+        replication_attempted: false, evidence_hashes: [], species: null,
+      });
+      const synapticAction = await call('find_synaptic_link', {
+        base: claimEntry, target_action: critiqueAction,
+      });
+      if (!synapticAction) throw new Error('find_synaptic_link returned nothing for the critique just published');
+      return { synapticAction, claimAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'Reinforcement',
+      base: ctx.synapticAction,
+      // THE AGENT KEY, CARRYING AN ENTRY PREFIX RATHER THAN AN AGENT ONE. The
+      // validator does `AgentPubKey::try_from(target_address)`, and in Rust
+      // `create_link(base, agent, ..)` reaches AnyLinkableHash via
+      // `EntryHash::from(AgentPubKey)`, which REWRITES the 3-byte prefix — so
+      // the hash the DHT stores is entry-prefixed. Sending the raw
+      // agent-prefixed bytes is refused by AnyLinkableHash's own deserialiser
+      // before any rule runs, measured as a payload Deserialize at the extern.
+      // Same 36-byte core, different first three bytes.
+      target: new Uint8Array([0x84, 0x21, 0x24, ...myKey.slice(3)]),
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: "Reinforcement links can only be created by the agent doing the reinforcing, not on someone else's behalf.", mutate: (l) => { l.target = new Uint8Array([0x84, 0x21, 0x24, ...otherKey.slice(3)]); } },
+      { rule: 'Reinforcement base is not a SynapticLink creation.', mutate: (l, ctx) => { l.base = ctx.claimAction; } },
+    ],
+  },
+  // --- THE SYNAPTIC LINK ITSELF, one rule of two. The other is an SWO
+  // friction limit (20 per rolling hour) of the same class as this corpus's
+  // standing gaps, and is declared below rather than asserted.
+  //
+  // Its real creator is a PRIVATE fn, not an extern: `create_synaptic_link` is
+  // called from inside `create_critique` (coordinator:931), which is why the
+  // tag rule had no caller to drive it until `AttachmentLinkKind` gained a
+  // variant. The tag is the f32 conductance in little-endian bytes.
+  {
+    linkType: 'SynapticLink',
+    label: 'SynapticLink',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Claim and a Critique of it, the pair a real SynapticLink connects',
+    setup: async () => {
+      const domain = `CorpusLinkSyn${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, one end of the connection', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimEntry = (await call('get_claims_by_domain', domain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      const critiqueAction = await call('create_critique', {
+        target: claimEntry, target_type: 'Claim', critique_mode: 'Logical',
+        content: 'corpus critique, the other end of the connection',
+        author: myKey, timestamp: nowMicros(),
+        replication_attempted: false, evidence_hashes: [], species: null,
+      });
+      return { claimEntry, critiqueAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'SynapticLink',
+      base: ctx.claimEntry,
+      target: ctx.critiqueAction,
+      // 1.0f32, little-endian — the four bytes the read layer parses back out
+      // as the link's immutable initial conductance.
+      tag: [0x00, 0x00, 0x80, 0x3f],
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'SynapticLink tag must contain at least 4 bytes (f32 conductance).', mutate: (l) => { l.tag = [0x00, 0x00, 0x80]; } },
     ],
   },
 ];
