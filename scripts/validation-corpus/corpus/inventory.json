@@ -7,9 +7,9 @@
   "total_sites": 194,
   "by_class": {
     "honest": 19,
-    "crafted": 120,
+    "crafted": 134,
     "deferred": 15,
-    "needs_prober": 14,
+    "needs_prober": 0,
     "needs_extern": 10,
     "remote": 4,
     "passthrough": 12
@@ -998,7 +998,7 @@
       "formatted": false,
       "guard": "if tag.0.len() < 4",
       "link_type": "SynapticLink",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1009,7 +1009,7 @@
       "formatted": true,
       "guard": "if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION",
       "link_type": "SynapticLink",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1020,7 +1020,7 @@
       "formatted": false,
       "guard": "if tag.0.len() != 36",
       "link_type": "AgentToMembrane",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1031,7 +1031,7 @@
       "formatted": false,
       "guard": "if &claimed_agent != action.author()",
       "link_type": "AgentToMembrane",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1052,7 +1052,7 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToMembrane",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1063,7 +1063,7 @@
       "formatted": false,
       "guard": "if &claimed_reinforcer != action.author()",
       "link_type": "Reinforcement",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1074,7 +1074,7 @@
       "formatted": false,
       "guard": "if !is_synaptic_link",
       "link_type": "Reinforcement",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1085,7 +1085,7 @@
       "formatted": true,
       "guard": "if recent_count >= REINFORCEMENT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "Reinforcement",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1096,7 +1096,7 @@
       "formatted": false,
       "guard": "if tag.0.len() != 36",
       "link_type": "AttestationGrant",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1117,7 +1117,7 @@
       "formatted": false,
       "guard": "if !tenure_ok",
       "link_type": "AttestationGrant",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1128,7 +1128,7 @@
       "formatted": true,
       "guard": "if recent_count >= ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "AttestationGrant",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1172,7 +1172,7 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "TaxonomyToSpecies",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1183,7 +1183,7 @@
       "formatted": false,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "TaxonomyToSpecies",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1194,7 +1194,7 @@
       "formatted": false,
       "guard": "if &species.proposer != action.author()",
       "link_type": "TaxonomyToSpecies",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {

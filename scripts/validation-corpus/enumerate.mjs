@@ -370,18 +370,43 @@ const GUARDS_FIELD = {
 // in the coordinator, which means rebuilding and repacking the DNA. That is a
 // different and much larger job than adding a payload to a corpus, which is why
 // those sites get their own class instead of being counted as reachable.
+// READ FROM THE RUST RATHER THAN RESTATED HERE, and the reason is a mistake
+// this file invited and then got. This was a hand-maintained list of eighteen
+// names. Item 18 added four `AttachmentLinkKind` variants in the coordinator
+// and a fifth single-purpose prober — and because nothing connected the Rust to
+// this list, five link types stayed classed `needs_prober` while their rules
+// were perfectly drivable. The corpus went on to assert nine of them, and the
+// coverage loop counted "0 of 0 assertable rules" for two whole link types:
+// cases running, passing, and gating NOTHING, because a rule the inventory
+// calls unreachable is a rule the coverage check does not require a case for.
+//
+// That is the exact inversion this directory exists to catch, committed by the
+// tool that catches it. So the generic prober's reach is now PARSED from
+// `enum AttachmentLinkKind`, and only the single-purpose probers — which are
+// one extern per link type and cannot be enumerated from a type — stay listed.
+const ATTACHMENT_KIND_VARIANTS = (() => {
+  const m = /pub enum AttachmentLinkKind \{([\s\S]*?)\n\}/.exec(coord);
+  if (!m) throw new Error('could not find `enum AttachmentLinkKind` in the coordinator — this classifier depends on it');
+  return [...m[1].matchAll(/^\s{4}([A-Z][A-Za-z]*),/gm)].map((v) => v[1]);
+})();
+
+const SINGLE_PURPOSE_PROBERS = {
+  DomainToClaim: 'attempt_false_domain_index',
+  MembraneRegistry: 'attempt_false_membrane_registry',
+  TaxonomyToSpecies: 'attempt_false_taxonomy_index',
+};
+
+// Each single-purpose prober must actually EXIST, or this list is the same kind
+// of stale claim the hardcoded set was.
+for (const [lt, fn] of Object.entries(SINGLE_PURPOSE_PROBERS)) {
+  if (!coord.includes(`pub fn ${fn}(`)) {
+    throw new Error(`${lt} is listed as probed by ${fn}, which is not in the coordinator`);
+  }
+}
+
 const PROBED_LINK_TYPES = new Set([
-  // attempt_false_attachment_link — generic over AttachmentLinkKind, with
-  // caller-chosen base, target and raw tag bytes.
-  'ClaimToRetraction', 'RetractionToReplacement', 'TargetToCritique',
-  'TargetToAntibody', 'AgentToClaim', 'CritiqueToSpecies',
-  'AgentToConstitution', 'AgentToWorldlineTrace', 'AgentToMew',
-  'SpeciesToParent', 'PreRegistrationToRevelation', 'AgentToPreRegistration',
-  'QuestionToPreRegistration', 'MewToClaim', 'MembraneToFederationRecord',
-  'MewToBridgeRecord', 'ClaimToBridgeRecord', 'ClaimToExternalCritique',
-  // single-purpose probers
-  'DomainToClaim',        // attempt_false_domain_index
-  'MembraneRegistry',     // attempt_false_membrane_registry
+  ...ATTACHMENT_KIND_VARIANTS,
+  ...Object.keys(SINGLE_PURPOSE_PROBERS),
 ]);
 
 // The link validators are one long if / else-if chain over `link_type`, so the
