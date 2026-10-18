@@ -1187,7 +1187,8 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'ClaimToRetraction', 'RetractionToReplacement',
   'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord',
   'MewToBridgeRecord',
-  'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody'];
+  'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody',
+  'TaxonomyToSpecies'];
 
 const linkEntries = [
   {
@@ -2188,6 +2189,44 @@ const linkEntries = [
       {
         rule: "A TargetToAntibody link may only be created by the AntibodyPattern's own author.",
         mutate: (l, ctx) => { l.base = ctx.others.claimEntry; l.target = ctx.others.antibodyAction; },
+      },
+    ],
+  },
+  // --- THE TAXONOMY INDEX — READINESS item 18, and the first type driven by a
+  // prober this corpus asked for rather than inherited.
+  //
+  // It needed its own extern. `attempt_false_attachment_link` derives only an
+  // AGENT anchor and a QUESTION anchor, and this link's base is the TAXONOMY
+  // anchor, so no payload through that prober could put the base in the right
+  // place — which is why all three of these rules were classed `needs_prober`
+  // rather than gapped. `attempt_false_taxonomy_index` mirrors
+  // `attempt_false_domain_index`: it derives the real anchor, and
+  // `anchor_override` moves the base off it so the base rule can be driven.
+  {
+    linkType: 'TaxonomyToSpecies',
+    label: 'TaxonomyToSpecies',
+    fn: 'attempt_false_taxonomy_index',
+    chainNote: "this agent's own CritiqueSpecies, plus a Claim action of the wrong entry type",
+    setup: async () => {
+      const domain = `CorpusLinkT2S${Date.now()}`;
+      const speciesAction = await call('create_critique_species', {
+        name: `CorpusTaxonomy${Date.now()}`, parent_species: null,
+        required_evidence: [], proposer: myKey, created_at: nowMicros(),
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used only as a non-CritiqueSpecies target', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { speciesAction, claimAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({ species_action: ctx.speciesAction, anchor_override: null }),
+    cases: [
+      { rule: 'TaxonomyToSpecies target is not a CritiqueSpecies.', mutate: (l, ctx) => { l.species_action = ctx.claimAction; } },
+      { rule: 'TaxonomyToSpecies base is not the taxonomy anchor.', mutate: (l) => { l.anchor_override = 'not_the_taxonomy_anchor'; } },
+      {
+        rule: "A TaxonomyToSpecies link may only be created by the species' own proposer.",
+        mutate: (l, ctx) => { l.species_action = ctx.others.childSpecies; },
       },
     ],
   },

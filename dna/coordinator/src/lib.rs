@@ -1429,6 +1429,42 @@ pub fn attempt_false_membrane_registry(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct FalseTaxonomyIndexPayload {
+    pub species_action: ActionHash,
+    /// When set, the base is this path instead of the real taxonomy anchor, so
+    /// the "base is not the taxonomy anchor" rule can be driven. Left None, the
+    /// base is correct and the rules ABOUT the species are what fire.
+    pub anchor_override: Option<String>,
+}
+
+/// Attempts a TaxonomyToSpecies link directly, bypassing
+/// `create_critique_species`, so the integrity zome's three taxonomy-index
+/// rules can be watched refusing real attempts. READINESS item 18.
+///
+/// WHY THIS ONE NEEDS ITS OWN EXTERN rather than an `AttachmentLinkKind`
+/// variant: its base is the taxonomy anchor, which a caller cannot supply —
+/// the hash is derived, and `attempt_false_attachment_link` only knows how to
+/// derive an AGENT anchor and a QUESTION anchor. Same reason
+/// `attempt_false_domain_index` and `attempt_false_membrane_registry` exist.
+///
+/// If this ever SUCCEEDS with a species somebody else proposed,
+/// `get_all_critique_species` has become a list of whatever anyone filed under
+/// the taxonomy, which is the read it exists to serve.
+#[hdk_extern]
+pub fn attempt_false_taxonomy_index(payload: FalseTaxonomyIndexPayload) -> ExternResult<ActionHash> {
+    let anchor = match payload.anchor_override {
+        Some(ref other) => Path::from(other.clone()).path_entry_hash()?,
+        None => taxonomy_anchor_hash()?,
+    };
+    create_link(
+        anchor,
+        payload.species_action,
+        LinkTypes::TaxonomyToSpecies,
+        LinkTag::new(Vec::<u8>::new()),
+    )
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AttemptEntryUpdatePayload {
     pub original_action: ActionHash,
     pub claim: Claim,
@@ -1455,9 +1491,23 @@ pub fn attempt_entry_update(payload: AttemptEntryUpdatePayload) -> ExternResult<
     update_entry(payload.original_action, payload.claim)
 }
 
-/// Which of the eighteen bound attachment/index links to attempt. Named
-/// rather than numbered so a harness's intent is readable in its own
-/// payload — `kind: "ClaimToRetraction"` says what is being probed.
+/// Which bound attachment/index link to attempt. Named rather than numbered so
+/// a harness's intent is readable in its own payload — `kind:
+/// "ClaimToRetraction"` says what is being probed.
+///
+/// EIGHTEEN OF THESE ARE §5.19's BOUND INDEX LINKS. The last four —
+/// `AgentToMembrane`, `Reinforcement`, `AttestationGrant` and `SynapticLink` —
+/// are not index links at all: each is written by its own dedicated extern
+/// (`join_membrane`, `reinforce_synaptic_link`, `grant_attestation`,
+/// `create_synaptic_link`), and each of those pre-checks what validation then
+/// re-checks. They were unreachable for the same reason `create_membrane` made
+/// four `Membrane` rules unreachable until `attempt_unaccountable_membrane`
+/// existed: a rule enforced only behind a coordinator that refuses first can
+/// never be watched refusing. Added for READINESS item 18.
+///
+/// `TaxonomyToSpecies` is deliberately NOT here. Its base is an anchor the
+/// caller cannot supply, so it gets its own prober below, on the same terms as
+/// `attempt_false_domain_index` and `attempt_false_membrane_registry`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum AttachmentLinkKind {
     ClaimToRetraction,
@@ -1478,6 +1528,11 @@ pub enum AttachmentLinkKind {
     MewToBridgeRecord,
     ClaimToBridgeRecord,
     ClaimToExternalCritique,
+    // READINESS item 18 — not index links; see the note above.
+    AgentToMembrane,
+    Reinforcement,
+    AttestationGrant,
+    SynapticLink,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1575,6 +1630,10 @@ pub fn attempt_false_attachment_link(
         AttachmentLinkKind::MewToBridgeRecord => LinkTypes::MewToBridgeRecord,
         AttachmentLinkKind::ClaimToBridgeRecord => LinkTypes::ClaimToBridgeRecord,
         AttachmentLinkKind::ClaimToExternalCritique => LinkTypes::ClaimToExternalCritique,
+        AttachmentLinkKind::AgentToMembrane => LinkTypes::AgentToMembrane,
+        AttachmentLinkKind::Reinforcement => LinkTypes::Reinforcement,
+        AttachmentLinkKind::AttestationGrant => LinkTypes::AttestationGrant,
+        AttachmentLinkKind::SynapticLink => LinkTypes::SynapticLink,
     };
     let base: AnyLinkableHash = match (&payload.anchor_of, &payload.question_anchor_of) {
         (Some(agent), _) => agent_anchor_hash(agent)?.into(),
