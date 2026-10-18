@@ -107,6 +107,74 @@ for (const roleCells of Object.values(appInfo.cell_info)) {
 const call = (fn_name, payload) =>
   app.callZome({ role_name: ROLE, zome_name: ZOME, fn_name, payload });
 
+// ============================================================================
+// THE SECOND AGENT — READINESS.md item 5f.
+//
+// WHY ONE IS NOT ENOUGH, restated here because the shape of the fix is not the
+// shape the queue row predicted. Twenty-three rules in this corpus fire when a
+// thing belongs to SOMEBODY ELSE, and one conductor has one agent, so
+// everything it can author is its own and forging the owning field is stopped a
+// rule earlier by the matching author check. The row assumed this needed
+// `scripts/network.sh` and two conductors. It does not.
+//
+// WHAT IT ACTUALLY NEEDS, and it is much less: a second agent on the SAME
+// conductor, used ONLY to author entities. Every one of these rules compares an
+// owning field against the ACTION author, so the probe is "agent 1 writes about
+// agent 2's thing" — the driver keeps making every call as agent 1, and all
+// that changes is who published the entity it points at. No call routing, no
+// second conductor, no gossip to wait on across a network. The pattern is
+// `scripts/live-verify/attachment-links.mjs`, which has run two agents on one
+// conductor since §5.19's link rules were bound.
+//
+// INSTALLED IDEMPOTENTLY, because this harness is re-run constantly and a
+// second install of the same app id is an error rather than a no-op.
+const OTHER_APP_ID = process.env.EPI_OTHER_APP_ID ?? 'epistemic-resonance-happ-corpus2';
+const HAPP_PATH = new URL('../../epistemic-resonance-happ.happ', import.meta.url).pathname;
+
+const installedApps = await admin.listApps({});
+if (!installedApps.some((a) => a.installed_app_id === OTHER_APP_ID)) {
+  const otherPub = await admin.generateAgentPubKey();
+  await admin.installApp({
+    source: { type: 'path', value: HAPP_PATH },
+    agent_key: otherPub,
+    installed_app_id: OTHER_APP_ID,
+  });
+  await admin.enableApp({ installed_app_id: OTHER_APP_ID });
+}
+const otherToken = (await admin.issueAppAuthenticationToken({ installed_app_id: OTHER_APP_ID })).token;
+const otherApp = await AppWebsocket.connect({ url: new URL(APP_URL), token: otherToken, wsClientOptions: { origin: 'live-verify' } });
+const otherInfo = await otherApp.appInfo();
+const otherKey = otherInfo.agent_pub_key;
+for (const roleCells of Object.values(otherInfo.cell_info)) {
+  for (const cell of roleCells) {
+    const id = cell?.value?.cell_id;
+    if (id) await admin.authorizeSigningCredentials(id);
+  }
+}
+
+const callOther = (fn_name, payload) =>
+  otherApp.callZome({ role_name: ROLE, zome_name: ZOME, fn_name, payload });
+
+// WAITED FOR RATHER THAN SLEPT THROUGH. Agent 1's validation has to FETCH the
+// entity agent 2 published — `must_get_entry` on another agent's entry — and
+// until that resolves locally the commit DEFERS with DepMissingFromDht instead
+// of being refused by the rule under test, which would look like a rule that
+// does not fire. Two agents on one conductor make that fast, but not
+// instantaneous and not a fixed duration, so this polls agent 1's own read
+// until the entity is actually visible to it and reports a timeout as a SETUP
+// failure, which `drive` already separates from a rule failure.
+async function awaitVisibleToMe(read, label, attempts = 40, everyMs = 500) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const got = await read();
+      if (got != null) return got;
+    } catch { /* not there yet */ }
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+  throw new Error(`${label} never became visible to agent 1 after ${(attempts * everyMs) / 1000}s — `
+    + `the second agent published it, but this agent cannot read it yet, so any rule about it would DEFER rather than refuse`);
+}
+
 async function refusal(fn_name, payload) {
   try { await call(fn_name, payload); return null; }
   catch (e) { return String(e?.message ?? e); }
@@ -173,14 +241,28 @@ const COVERED = [
 // number that matters is "covered out of assertable", not "covered out of
 // covered".
 //
-// THE ONE THING IN HERE SO FAR IS A SECOND-AGENT PROBLEM, not a payload one.
-// "A Retraction can only be published by the claim's own author" fires when the
-// target Claim was authored by SOMEBODY ELSE, and this harness drives one
-// conductor with one agent: every Claim it can create is its own, and a Claim
-// with a forged `author` is stopped one rule earlier by "Claim author must match
-// action author." Reaching it needs a second agent on the same DHT — which
-// `scripts/network.sh` already builds for the gossip harnesses — so it is a
-// harness-shape change, not a zome change, and it is the natural next slice.
+// THE SECOND AGENT NOW EXISTS, so these gaps are no longer the same KIND of
+// gap, and the distinction is the point of this block. Item 5f landed the
+// plumbing: `callOther` publishes as a second agent on the same conductor and
+// `awaitVisibleToMe` waits until agent 1 can actually read what it wrote. The
+// first rule it unblocked — "A Retraction can only be published by the claim's
+// own author" — is asserted below rather than listed here.
+//
+// WHAT THE PLUMBING TURNED OUT TO BE, recorded because the queue row predicted
+// something larger. These rules compare an owning field against the ACTION
+// author, so the probe is "agent 1 writes about agent 2's thing": every call
+// still goes through agent 1 and all that changes is who published the entity
+// it points at. No call routing, no second conductor, and no cross-network
+// gossip to wait on. `scripts/live-verify/attachment-links.mjs` has done it
+// this way since §5.19.
+//
+// SO THE SIX SECOND-AGENT ROWS LEFT BELOW ARE MECHANICAL, NOT BLOCKED. Each
+// needs its own fixture published by agent 2 — a Constitution, a Membrane, a
+// Claim and its domain — and, for the four link types, care that the OWNERSHIP
+// rule fires rather than the base-mismatch rule one line above it: the base
+// anchor must be agent 2's (correct), so that only the link's author differs.
+// That is a per-type payload exercise of the kind 5a/5b/5c already are, which
+// is why they are still declared here rather than asserted on a promise.
 const GAPS = [
   // --- TWO SHAPES OF GAP, and they are not the same cost.
   //
@@ -222,12 +304,12 @@ const GAPS = [
   {
     entry: 'membrane',
     rule: "Membrane's constitution must be the creator's own published Constitution — a founder is accountable under promises they made themselves.",
-    why: "needs a Constitution published by a DIFFERENT agent; one conductor, one agent",
+    why: 'MECHANICAL since 5f, not blocked: needs agent 2 to publish a Constitution, then this creator cites it via attempt_unaccountable_membrane',
   },
   {
     entry: 'federation_record',
     rule: "FederationRecord can only be authored by local_membrane's own creator.",
-    why: 'needs a Membrane created by a DIFFERENT agent; one conductor, one agent',
+    why: 'MECHANICAL since 5f: needs agent 2 to create a Membrane (its own Constitution first), then this author cites it as local_membrane',
   },
   // EVERY LINK TYPE HAS ONE OF THESE — 20 of the 88 link rules, across all 19
   // types, are "may only be created by the owner" in some wording. Four are in
@@ -238,27 +320,22 @@ const GAPS = [
   {
     linkType: 'AgentToClaim',
     rule: "An AgentToClaim link may only be created by the claim's own author.",
-    why: 'needs a Claim authored by a DIFFERENT agent; one conductor, one agent',
+    why: "MECHANICAL since 5f: needs agent 2's Claim, with anchor_of and tag set to agent 2's so the base rule passes and only the link author differs",
   },
   {
     linkType: 'AgentToConstitution',
     rule: 'An AgentToConstitution link may only be created by the agent whose constitution it indexes.',
-    why: 'needs a Constitution published by a DIFFERENT agent',
+    why: "MECHANICAL since 5f: needs agent 2's Constitution, with anchor_of set to agent 2 so the base rule passes",
   },
   {
     linkType: 'DomainToClaim',
     rule: "A DomainToClaim link may only be created by the claim's own author.",
-    why: 'needs a Claim authored by a DIFFERENT agent',
+    why: "MECHANICAL since 5f: needs agent 2's Claim and its domain, driven through attempt_false_domain_index",
   },
   {
     linkType: 'MembraneRegistry',
     rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
-    why: 'needs a Membrane created by a DIFFERENT agent',
-  },
-  {
-    entry: 'retraction',
-    rule: 'A Retraction can only be published by the claim\'s own author — it records that the author no longer stands by it, not that someone else disagrees. Use a Critique for that.',
-    why: 'needs a Claim authored by a DIFFERENT agent; this harness has one agent on one conductor',
+    why: "MECHANICAL since 5f: needs agent 2's Membrane, driven through attempt_false_membrane_registry",
   },
 ];
 
@@ -416,7 +493,27 @@ const entries = [
         content: 'corpus evidence, used only as a non-Claim retraction target',
         evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
       });
-      return { targetClaim, notAClaim };
+
+      // THE SECOND AGENT'S CLAIM — item 5f. Authored by agent 2 so that
+      // `claim.author != retraction.author` can be true while
+      // `retraction.author == action.author()` still holds, which is the only
+      // way to reach the ownership rule: forging `author` is refused one rule
+      // earlier. Its own domain, so the index read cannot pick up agent 1's.
+      const otherDomain = `CorpusRetractionOther${Date.now()}`;
+      await callOther('create_claim', {
+        content: "corpus claim, published by the OTHER agent so agent 1 can fail to retract it",
+        domain: otherDomain, author: otherKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const othersClaim = await awaitVisibleToMe(
+        async () => {
+          const found = await call('get_claims_by_domain', otherDomain);
+          return found.length ? found[0].signed_action.hashed.content.data.entry_hash : null;
+        },
+        "the second agent's Claim",
+      );
+
+      return { targetClaim, notAClaim, othersClaim };
     },
     baseline: (ctx) => ({
       target_claim: ctx.targetClaim,
@@ -439,6 +536,13 @@ const entries = [
       { rule: 'Retraction target must be a Claim.', mutate: (r, ctx) => { r.target_claim = ctx.notAClaim; } },
       { rule: 'Retraction reason cannot be empty.', mutate: (r) => { r.reason = ''; } },
       { rule: 'Retraction replacement_claim not found.', expect: 'deferral', mutate: (r) => { r.replacement_claim = danglingHash('entry', 53); } },
+      // CLOSED BY THE SECOND AGENT — item 5f. `author` stays agent 1's, so the
+      // author-match rule above passes; only the TARGET changes, to a Claim
+      // agent 2 published. Nothing is forged.
+      {
+        rule: "A Retraction can only be published by the claim's own author — it records that the author no longer stands by it, not that someone else disagrees. Use a Critique for that.",
+        mutate: (r, ctx) => { r.target_claim = ctx.othersClaim; },
+      },
     ],
   },
   // --- CRITIQUE. A target that EXISTS and is a critiquable type, so the chain

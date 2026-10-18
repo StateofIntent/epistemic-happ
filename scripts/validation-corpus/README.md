@@ -25,7 +25,8 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 ## What is covered, and what the denominator is
 
 **Ten entry types and four link types, and the coverage is asserted rather
-than stated.** 92 checks. Link rules use the same driver — a link case is still
+than stated.** 93 checks, **and one of them needs a second agent** — see
+*A second agent* below. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
 than `entry`, because every link site shares `entry: "create_link"` and
 grouping them by entry would collapse nineteen rule sets into one meaningless
@@ -497,7 +498,48 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### A second agent — item 5f, and it was cheaper than predicted
+
+**Twenty-three rules in this corpus fire when a thing belongs to somebody
+else**, and one conductor has one agent, so everything this harness could author
+was its own and forging the owning field was refused one rule earlier by the
+matching author check. The queue row assumed closing that needed
+`scripts/network.sh` and two conductors on a real network.
+
+**It did not.** Every one of these rules compares an owning field against the
+ACTION author, so the probe is *agent 1 writes about agent 2's thing*: the
+driver keeps making every call as agent 1, and all that changes is who published
+the entity it points at. A second agent on the SAME conductor is enough — no
+call routing, no second conductor, no cross-network gossip. The pattern is
+`scripts/live-verify/attachment-links.mjs`, which has run two agents on one
+conductor since §5.19.
+
+Two pieces of plumbing, both in `replay.mjs`:
+
+- `callOther` — a second agent installed idempotently on the same conductor
+  (`generateAgentPubKey` + `installApp` under its own app id), used only to
+  author entities.
+- `awaitVisibleToMe` — **waited for, not slept through.** Agent 1's validation
+  has to `must_get_entry` an entry agent 2 wrote, and until that resolves
+  locally the commit DEFERS with `DepMissingFromDht` instead of being refused by
+  the rule under test — which would read as a rule that does not fire. Two
+  agents on one conductor make it fast but neither instant nor a fixed duration,
+  so this polls agent 1's own read and reports a timeout as a SETUP failure,
+  which `drive` already separates from a rule failure.
+
+**The first rule it closed is `Retraction`'s ownership rule**, and the shape
+generalises: `author` stays agent 1's, so the author-match rule still passes;
+only the TARGET changes, to a Claim agent 2 published. Nothing is forged.
+
+**Six second-agent rows remain in `GAPS` and they are now MECHANICAL rather than
+blocked** — each needs its own fixture from agent 2, and the four link types
+additionally need the base anchor set to agent 2's so the ownership rule fires
+rather than the base-mismatch rule one line above it. The `why` strings say so
+individually, because "blocked on a second agent" and "needs a fixture" are
+different costs and the old wording no longer distinguished them.
+
 O, P and Q were taken on the version with link rules, which is 92 checks.
+Injection R was taken on the 93-check version.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -512,6 +554,14 @@ O, P and Q were taken on the version with link rules, which is 92 checks.
   `this rule interpolates too early to identify it from a prefix ("Mem")`. The
   guard refuses rather than weakening, so finding 9's mechanism cannot be
   stretched into a loophole by the next rule that happens to interpolate early.
+
+- **Injection R** — the second-agent probe aimed at agent 1's OWN claim instead
+  of agent 2's. Result: **92 passed, 1 failed**, `the call COMMITTED — nothing
+  stopped this payload`. This is the injection that matters for 5f, because it
+  proves **the second agent is load-bearing rather than decorative**: with the
+  target switched to the driver's own claim the retraction is simply valid, so a
+  green tick here cannot be had without agent 2 actually having authored the
+  thing being retracted.
 
 ## Why one mutation at a time
 
