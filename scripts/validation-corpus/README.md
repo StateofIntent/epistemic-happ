@@ -24,8 +24,9 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and fifteen link types, and the coverage is asserted rather
-than stated.** 185 checks, **eighteen of which need a second agent** — see
+**Ten entry types and NINETEEN link types — every link type a published path
+can drive — and the coverage is asserted rather than stated.** 217 checks,
+**twenty-two of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -499,6 +500,43 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### The rate-limited four, and the denominator that is left
+
+`CritiqueToSpecies`, `SpeciesToParent`, `TargetToCritique` and
+`TargetToAntibody` went in as one slice for a reason that is not about their
+rules: **`Critique` and `AntibodyPattern` creation is capped at 20 per rolling
+hour each (§6), enforced by DHT validation.** Every setup here spends allowance
+a later run in the same hour will not have, so these are written to be
+economical rather than tidy — agent 2's single critique declares BOTH a species
+and a target so it serves two owner rules, and nothing is published that an
+existing fixture already covers. Iterating these four separately would have
+failed for friction rather than for a defect, which is the kind of red that
+teaches people to ignore a harness.
+
+Two of them carry the "does not declare it" rule the promotion index had: a
+Critique whose `species` is None, and a child species whose `parent_species` is
+None. Neither is reachable by mutating a hash; both need a second,
+differently-shaped VALID entry.
+
+**WITH THESE FOUR, EVERY LINK TYPE A PUBLISHED PATH CAN DRIVE IS COVERED.** The
+honest remaining denominator is not zero, and it is not rules — it is five link
+types no extern can reach at all:
+
+| link type | rules |
+|---|---|
+| `AgentToMembrane` | 3 |
+| `Reinforcement` | 3 |
+| `AttestationGrant` | 3 |
+| `TaxonomyToSpecies` | 3 |
+| `SynapticLink` | 2 |
+
+All five are classed `needs_prober`: `attempt_false_attachment_link`'s
+`AttachmentLinkKind` has no variant for them, so no published path can write one
+with a broken field. **14 rules, and they are not gaps in this corpus** — a type
+nobody can drive has no cases to declare unreachable. Closing them means adding
+probers and rebuilding the DNA, a different piece of work, queued as its own
+item rather than left looking like coverage that is merely missing.
+
 ### Finding 9 — finding 8 defeats a SECOND rule, and the asymmetry predicted which one
 
 **The Claim-reads-as-Mew confusion is reachable at two guard sites, not one**,
@@ -720,8 +758,8 @@ which needs a new extern and a DNA rebuild.
 O, P and Q were taken on the version with link rules, which is 92 checks.
 R was taken on the 93-check version, S on the 99-check one, T on the 117-check
 version with the agent-anchor family, X on the 133-check version, Y and Z on
-the 150- and 167-check versions, AA on the 175-check one, and AB on the 185-check
-version.
+the 150- and 167-check versions, AA on the 175-check one, AB on the 185-check version,
+and AC on the 217-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -786,6 +824,16 @@ version.
 - **Injection AA** — the federation index's mismatch case pointed back at the
   Membrane the record names, and its owner case aimed at agent 1's own.
   Result: **173 passed, 2 failed**. Both `the call COMMITTED`.
+
+- **Injection AB** — the bridge index's `base is not a Mew` case restored to a
+  CLAIM base, the payload finding 9 proved inert, plus its owner case aimed at
+  agent 1's own. Result: **183 passed, 2 failed**. **This one doubles as a
+  regression test for finding 9**: the first failure IS the confusion, so if
+  `Claim -> Mew` is ever tightened, AB stops failing there and says so.
+- **Injection AC** — across the rate-limited four: both "does not declare it"
+  rules pointed at entries that DO declare, and all four owner cases aimed at
+  agent 1's own. Result: **211 passed, 6 failed**. One run, because an
+  injection run spends critique allowance too.
 
 ## Why one mutation at a time
 
