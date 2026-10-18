@@ -79,6 +79,16 @@ jobs:
       - name: workflow-setup-drift — network.yml's two jobs still share one setup
         run: node scripts/check-workflow-setup-drift.mjs
 
+      # The fifth, and the only one in this family that guards a property of
+      # the TYPES rather than of a document. `scripts/validation-corpus/`
+      # finding 8 found by probe that a `Claim`'s bytes deserialise into `Mew`,
+      # so `AgentToMew`'s type check does not separate the two. That was one
+      # payload on one link type; this sweeps every pair of entry structs for
+      # the same overlap, and distinguishes a pair a guard can REACH from one
+      # that is merely waiting for a future guard. Milliseconds, nothing built.
+      - name: entry-type-confusion — no entry type's bytes can be read as another's, beyond the known two
+        run: node scripts/check-entry-type-confusion.mjs
+
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in
