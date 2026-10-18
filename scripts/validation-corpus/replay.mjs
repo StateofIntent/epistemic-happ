@@ -238,7 +238,50 @@ async function otherAgentFixtures() {
     "the other agent's Membrane",
   );
 
-  _others = { domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry };
+  // --- 5c's agent-anchor family also needs agent 2 to own these three ---
+  const mewAction = await callOther('create_mew', {
+    content: 'corpus mew, authored by the OTHER agent',
+    author: otherKey, timestamp: nowMicros(),
+    reply_to: null, semantic_tags: ['corpus'], linked_claim: null,
+  });
+  // A trace is always of the CALLER's own chain (generate_worldline_trace reads
+  // agent_info), so agent 2 has to generate its own — there is no way to make
+  // one about somebody else, which is the rule's whole point.
+  const traceAction = await callOther('generate_worldline_trace', {
+    period_granularity_secs: 3600, expertise_tags: [], expires_at: null,
+  });
+  // The question must PREDATE the commitment (lib.rs:1159), and agent 2's claim
+  // above was published several writes ago, so it already does.
+  const preRegAction = await callOther('pre_register', {
+    question: claimAction,
+    prediction: 'corpus prediction, committed by the OTHER agent',
+    salt: 'corpus-other-salt-4a1c',
+    reveal_deadline: nowMicros() + 3_600_000_000,
+  });
+
+  await awaitVisibleToMe(
+    async () => {
+      const mews = await call('get_mews_by_agent', otherKey);
+      return mews.length ? true : null;
+    },
+    "the other agent's Mew",
+  );
+  await awaitVisibleToMe(
+    async () => (await call('get_agent_worldline_trace', otherKey)) ?? null,
+    "the other agent's WorldlineTrace",
+  );
+  await awaitVisibleToMe(
+    async () => {
+      const prs = await call('get_pre_registrations_for_question', claimAction);
+      return prs.length ? true : null;
+    },
+    "the other agent's PreRegistration",
+  );
+
+  _others = {
+    domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
+    mewAction, traceAction, preRegAction,
+  };
   return _others;
 }
 
@@ -989,7 +1032,8 @@ async function drive(spec) {
 // harness cannot derive in JavaScript — so a valid baseline passes `anchor_of`
 // and lets the coordinator compute it, and any case that needs a wrong base
 // clears `anchor_of` to take control of the field.
-const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry'];
+const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry',
+  'AgentToMew', 'AgentToWorldlineTrace', 'AgentToPreRegistration'];
 
 const linkEntries = [
   {
@@ -1162,6 +1206,147 @@ const linkEntries = [
       {
         rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
         mutate: (l, ctx) => { l.membrane_action = ctx.others.membraneAction; },
+      },
+    ],
+  },
+  // --- THE REST OF THE AGENT-ANCHOR FAMILY, and it is not uniform.
+  //
+  // Four link types index an entity under its owner's agent anchor and carry
+  // the same three rules: the target must be an ActionHash, the target must be
+  // the right entry type, and only the owner may create it. Three of them are
+  // `crafted` and are below. THE FOURTH, `AgentToMembrane`, IS NOT — the
+  // inventory classes it `needs_prober`, and checking why confirms it:
+  // `attempt_false_attachment_link`'s `AttachmentLinkKind` has no
+  // AgentToMembrane variant, so no published path can write one with a broken
+  // field. It stays out of COVERED_LINKS rather than being listed as a gap,
+  // because a type nobody can drive has no cases to declare unreachable.
+  //
+  // The owner rule in all three is free now that item 5f exists: agent 2 owns
+  // the entity, `anchor_of` is agent 2's so the base is correct, and only the
+  // link's author differs.
+  {
+    linkType: 'AgentToMew',
+    label: 'AgentToMew',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "this agent's own Mew, plus a Claim action to stand in as the wrong entry type",
+    setup: async () => {
+      const domain = `CorpusLinkA2Mew${Date.now()}`;
+      const mewAction = await call('create_mew', {
+        content: 'corpus mew, the target of an AgentToMew link',
+        author: myKey, timestamp: nowMicros(),
+        reply_to: null, semantic_tags: ['corpus'], linked_claim: null,
+      });
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used only as a non-Mew target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const anyEntryHash = claims[0].signed_action.hashed.content.data.entry_hash;
+      // NOT A CLAIM, and this is the finding rather than a detail: a Claim's
+      // record DESERIALISES as a Mew, so `to_app_option::<Mew>()` returns
+      // Ok(Some(..)) and this rule never fires. Measured — the obvious payload
+      // COMMITTED. A Constitution shares no field names with Mew, so it is the
+      // payload that actually reaches the type check. See README's finding 8.
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'post honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { mewAction, claimAction, constitution, anyEntryHash, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToMew',
+      base: ctx.mewAction,
+      target: ctx.mewAction,
+      tag: null,
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToMew target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.anyEntryHash; } },
+      { rule: 'AgentToMew target is not a Mew.', mutate: (l, ctx) => { l.target = ctx.constitution; } },
+      {
+        rule: "An AgentToMew link may only be created by the Mew's own author.",
+        mutate: (l, ctx) => { l.target = ctx.others.mewAction; l.anchor_of = otherKey; },
+      },
+    ],
+  },
+  {
+    linkType: 'AgentToWorldlineTrace',
+    label: 'AgentToWorldlineTrace',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "a trace of this agent's own chain — the only kind it can generate",
+    setup: async () => {
+      const domain = `CorpusLinkA2WT${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, used only as a non-WorldlineTrace target',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const anyEntryHash = claims[0].signed_action.hashed.content.data.entry_hash;
+      const traceAction = await call('generate_worldline_trace', {
+        period_granularity_secs: 3600, expertise_tags: [], expires_at: null,
+      });
+      return { traceAction, claimAction, anyEntryHash, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToWorldlineTrace',
+      base: ctx.traceAction,
+      target: ctx.traceAction,
+      tag: null,
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToWorldlineTrace target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.anyEntryHash; } },
+      { rule: 'AgentToWorldlineTrace target is not a WorldlineTrace.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      {
+        rule: 'An AgentToWorldlineTrace link may only be created by the agent whose chain the trace compresses.',
+        mutate: (l, ctx) => { l.target = ctx.others.traceAction; l.anchor_of = otherKey; },
+      },
+    ],
+  },
+  {
+    linkType: 'AgentToPreRegistration',
+    label: 'AgentToPreRegistration',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a question Claim that predates its own commitment, then the commitment',
+    setup: async () => {
+      const domain = `CorpusLinkA2PR${Date.now()}`;
+      const question = await call('create_claim', {
+        content: 'corpus question, posed in advance of its own commitment',
+        domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const anyEntryHash = claims[0].signed_action.hashed.content.data.entry_hash;
+      // The question MUST predate the commitment (lib.rs:1159), and both are
+      // stamped by the same conductor, so a real gap is needed between them.
+      await new Promise((r) => setTimeout(r, 1500));
+      const preRegAction = await call('pre_register', {
+        question,
+        prediction: 'corpus prediction, committed in order to be indexed',
+        salt: 'corpus-a2pr-salt-91fe',
+        reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      return { preRegAction, question, anyEntryHash, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'AgentToPreRegistration',
+      base: ctx.preRegAction,
+      target: ctx.preRegAction,
+      tag: null,
+      anchor_of: myKey,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'AgentToPreRegistration target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.anyEntryHash; } },
+      { rule: 'AgentToPreRegistration target is not a PreRegistration.', mutate: (l, ctx) => { l.target = ctx.question; } },
+      {
+        rule: 'An AgentToPreRegistration link may only be created by the committing agent.',
+        mutate: (l, ctx) => { l.target = ctx.others.preRegAction; l.anchor_of = otherKey; },
       },
     ],
   },
