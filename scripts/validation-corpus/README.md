@@ -25,8 +25,9 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 ## What is covered, and what the denominator is
 
 **Ten entry types and four link types, and the coverage is asserted rather
-than stated.** 93 checks, **and one of them needs a second agent** — see
-*A second agent* below. Link rules use the same driver — a link case is still
+than stated.** 99 checks, **seven of which need a second agent** — see
+*A second agent* below. Every link type here is now 3 of 3: nothing in this
+slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
 than `entry`, because every link site shares `entry: "create_link"` and
 grouping them by entry would collapse nineteen rule sets into one meaningless
@@ -527,19 +528,32 @@ Two pieces of plumbing, both in `replay.mjs`:
   so this polls agent 1's own read and reports a timeout as a SETUP failure,
   which `drive` already separates from a rule failure.
 
-**The first rule it closed is `Retraction`'s ownership rule**, and the shape
-generalises: `author` stays agent 1's, so the author-match rule still passes;
-only the TARGET changes, to a Claim agent 2 published. Nothing is forged.
+**ALL SEVEN SECOND-AGENT RULES ARE NOW ASSERTED**, 92 -> 99 checks. The shape
+is the same in every one: the owning field stays agent 1's so the author-match
+rule still passes, and only the thing pointed AT changes to something agent 2
+published. Nothing is forged anywhere.
 
-**Six second-agent rows remain in `GAPS` and they are now MECHANICAL rather than
-blocked** — each needs its own fixture from agent 2, and the four link types
-additionally need the base anchor set to agent 2's so the ownership rule fires
-rather than the base-mismatch rule one line above it. The `why` strings say so
-individually, because "blocked on a second agent" and "needs a fixture" are
-different costs and the old wording no longer distinguished them.
+| rule | what agent 2 owns | what keeps the earlier rule from firing first |
+|---|---|---|
+| `Retraction` ownership | a Claim | `author` stays agent 1's |
+| `Membrane` constitution accountability | a Constitution | `creator` stays agent 1's; driven through the prober, since `create_membrane` pre-checks it |
+| `FederationRecord` creator | a Membrane | `author` stays agent 1's |
+| `AgentToClaim` author | a Claim | `anchor_of` AND `tag` are agent 2's, so the base and tag rules pass |
+| `AgentToConstitution` author | a Constitution | `anchor_of` is agent 2's |
+| `DomainToClaim` author | a Claim | `domain` is agent 2's, so the anchor matches |
+| `MembraneRegistry` author | a Membrane | `anchor_override` stays null, so the registry anchor is real |
+
+**The fixtures are published once and shared**, and waited for INDIVIDUALLY
+rather than once at the end: agent 1's validation fetches a different one per
+rule, so a single wait would leave the others racing and a rule whose dependency
+has not arrived DEFERS rather than refusing.
+
+**Two rows remain in `GAPS` and neither is a second-agent problem** — both SWO
+friction rules are mirrored as coordinator pre-checks with no bypassing extern,
+which needs a new extern and a DNA rebuild.
 
 O, P and Q were taken on the version with link rules, which is 92 checks.
-Injection R was taken on the 93-check version.
+R was taken on the 93-check version and S on the 99-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -562,6 +576,20 @@ Injection R was taken on the 93-check version.
   target switched to the driver's own claim the retraction is simply valid, so a
   green tick here cannot be had without agent 2 actually having authored the
   thing being retracted.
+
+- **Injection S** — `otherAgentFixtures` switched to publish as agent 1 instead
+  of agent 2, so every "other" entity is the driver's own. Result: **93 passed,
+  6 failed**, and it failed in TWO shapes, which is the part worth keeping.
+  Four — `Membrane`, `FederationRecord`, `DomainToClaim`, `MembraneRegistry` —
+  reported `the call COMMITTED`, because owning the thing makes the operation
+  simply valid. The other two — `AgentToClaim` and `AgentToConstitution` — were
+  REFUSED but for a different reason, because their `anchor_of` is still agent
+  2's while the claim is now agent 1's, so the base-mismatch rule fires one line
+  above the ownership rule. **The assertion caught that instead of passing on
+  any refusal**, which is the prefix discipline injection P exists to protect,
+  holding on a second family of rules. `Retraction` is unaffected because it
+  seeds its own target rather than using the shared fixtures — injection R
+  covers it.
 
 ## Why one mutation at a time
 

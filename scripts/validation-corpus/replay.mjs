@@ -175,6 +175,73 @@ async function awaitVisibleToMe(read, label, attempts = 40, everyMs = 500) {
     + `the second agent published it, but this agent cannot read it yet, so any rule about it would DEFER rather than refuse`);
 }
 
+// THE OTHER AGENT'S FIXTURES, published once and shared.
+//
+// Memoised deliberately. Six rules need agent 2 to own something, and each of
+// these writes costs friction budget and a visibility wait — publishing them
+// per entry type would multiply both for no gain, since none of the six
+// mutates the fixture, only points at it.
+//
+// WAITED FOR INDIVIDUALLY, not once at the end. Agent 1's validation fetches a
+// DIFFERENT one of these per rule — the Constitution for Membrane and
+// AgentToConstitution, the Claim for AgentToClaim and DomainToClaim, the
+// Membrane for FederationRecord and MembraneRegistry — so a single wait on one
+// of them would leave the others racing, and a rule whose dependency has not
+// arrived DEFERS rather than refusing, which reads as a rule that does not
+// fire.
+let _others = null;
+async function otherAgentFixtures() {
+  if (_others) return _others;
+  const domain = `CorpusOther${Date.now()}`;
+
+  const constitution = await callOther('publish_constitution', {
+    agent: otherKey,
+    promises: [{ action: 'own what it publishes', domain, modality: null }],
+    conditions: [], published_at: nowSecs(), expires_at: null,
+  });
+  const claimAction = await callOther('create_claim', {
+    content: 'corpus claim, authored by the OTHER agent so agent 1 can fail to own it',
+    domain, author: otherKey, timestamp: nowMicros(),
+    evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+  });
+  // The REAL create_membrane, not the prober: agent 2 cites its OWN
+  // Constitution so this is a valid membrane, and `get_membranes` is link-only
+  // so it has to be indexed to be read back at all.
+  const membraneAction = await callOther('create_membrane', {
+    domain,
+    description: 'corpus membrane, created by the OTHER agent',
+    required_promises: ['own what it publishes'],
+    validation_rules_hash: null,
+    creator: otherKey,
+    created_at: nowSecs(),
+    constitution,
+  });
+
+  await awaitVisibleToMe(
+    async () => (await call('get_agent_constitution', otherKey)) ?? null,
+    "the other agent's Constitution",
+  );
+  const claimEntry = await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_claims_by_domain', domain);
+      return found.length ? found[0].signed_action.hashed.content.data.entry_hash : null;
+    },
+    "the other agent's Claim",
+  );
+  const membraneEntry = await awaitVisibleToMe(
+    async () => {
+      const key = Buffer.from(membraneAction).toString('base64');
+      const row = (await call('get_membranes'))
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64') === key);
+      return row ? row.signed_action.hashed.content.data.entry_hash : null;
+    },
+    "the other agent's Membrane",
+  );
+
+  _others = { domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry };
+  return _others;
+}
+
 async function refusal(fn_name, payload) {
   try { await call(fn_name, payload); return null; }
   catch (e) { return String(e?.message ?? e); }
@@ -301,42 +368,13 @@ const GAPS = [
   // which `scripts/network.sh` already stands up for the gossip harnesses. That
   // makes "run the corpus against two agents" a single piece of work that
   // closes all three at once, rather than three separate puzzles.
-  {
-    entry: 'membrane',
-    rule: "Membrane's constitution must be the creator's own published Constitution — a founder is accountable under promises they made themselves.",
-    why: 'MECHANICAL since 5f, not blocked: needs agent 2 to publish a Constitution, then this creator cites it via attempt_unaccountable_membrane',
-  },
-  {
-    entry: 'federation_record',
-    rule: "FederationRecord can only be authored by local_membrane's own creator.",
-    why: 'MECHANICAL since 5f: needs agent 2 to create a Membrane (its own Constitution first), then this author cites it as local_membrane',
-  },
   // EVERY LINK TYPE HAS ONE OF THESE — 20 of the 88 link rules, across all 19
   // types, are "may only be created by the owner" in some wording. Four are in
   // this slice. Counted here rather than discovered four at a time: with the
   // three entry-type gaps above, **23 rules in this corpus are waiting on one
   // piece of work**, which is a second agent on one DHT. That makes it the
   // highest-leverage item left, not the remaining link bulk.
-  {
-    linkType: 'AgentToClaim',
-    rule: "An AgentToClaim link may only be created by the claim's own author.",
-    why: "MECHANICAL since 5f: needs agent 2's Claim, with anchor_of and tag set to agent 2's so the base rule passes and only the link author differs",
-  },
-  {
-    linkType: 'AgentToConstitution',
-    rule: 'An AgentToConstitution link may only be created by the agent whose constitution it indexes.',
-    why: "MECHANICAL since 5f: needs agent 2's Constitution, with anchor_of set to agent 2 so the base rule passes",
-  },
-  {
-    linkType: 'DomainToClaim',
-    rule: "A DomainToClaim link may only be created by the claim's own author.",
-    why: "MECHANICAL since 5f: needs agent 2's Claim and its domain, driven through attempt_false_domain_index",
-  },
-  {
-    linkType: 'MembraneRegistry',
-    rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
-    why: "MECHANICAL since 5f: needs agent 2's Membrane, driven through attempt_false_membrane_registry",
-  },
+
 ];
 
 const entries = [
@@ -711,7 +749,7 @@ const entries = [
         anchor_of: myKey,
         question_anchor_of: null,
       });
-      return { constitution, notAConstitution: linkAction, domain };
+      return { constitution, notAConstitution: linkAction, domain, others: await otherAgentFixtures() };
     },
     baseline: (ctx) => ({
       domain: ctx.domain,
@@ -729,6 +767,14 @@ const entries = [
       // `notAConstitution` is a CreateLink action hash, not a Claim's — see
       // setup for why a Claim's raises a deserialize error instead of this rule.
       { rule: "Membrane's constitution hash does not resolve to a Constitution entry.", mutate: (m, ctx) => { m.constitution = ctx.notAConstitution; } },
+      // CLOSED BY THE SECOND AGENT — item 5f. `creator` stays agent 1's, so the
+      // creator-matches-author rule still passes; the constitution cited is
+      // agent 2's, so `constitution.agent != membrane.creator` fires. Driven
+      // through the prober because create_membrane pre-checks this one.
+      {
+        rule: "Membrane's constitution must be the creator's own published Constitution — a founder is accountable under promises they made themselves.",
+        mutate: (m, ctx) => { m.constitution = ctx.others.constitution; },
+      },
     ],
   },
   // --- FEDERATIONRECORD. Depth 2, and the deepest chain in the zome: a
@@ -778,7 +824,7 @@ const entries = [
         content: 'corpus evidence, used only as a non-Membrane entry hash',
         evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
       });
-      return { localMembrane, notAMembrane, domain };
+      return { localMembrane, notAMembrane, domain, others: await otherAgentFixtures() };
     },
     baseline: (ctx) => ({
       local_membrane: ctx.localMembrane,
@@ -793,6 +839,13 @@ const entries = [
       { rule: 'FederationRecord local_membrane is not a Membrane entry.', mutate: (f, ctx) => { f.local_membrane = ctx.notAMembrane; } },
       { rule: 'FederationRecord remote_network_label cannot be empty.', mutate: (f) => { f.remote_network_label = ''; } },
       { rule: 'FederationRecord remote_membrane_ref cannot be empty.', mutate: (f) => { f.remote_membrane_ref = ''; } },
+      // CLOSED BY THE SECOND AGENT — item 5f. `author` stays agent 1's so the
+      // author-match rule passes; the membrane federated is agent 2's, so
+      // `membrane.creator != record.author` fires.
+      {
+        rule: "FederationRecord can only be authored by local_membrane's own creator.",
+        mutate: (f, ctx) => { f.local_membrane = ctx.others.membraneEntry; },
+      },
     ],
   },
 ];
@@ -958,7 +1011,7 @@ const linkEntries = [
         promises: [{ action: 'index honestly', domain, modality: null }],
         conditions: [], published_at: nowSecs(), expires_at: null,
       });
-      return { claimAction, claimEntry, domain, constitution };
+      return { claimAction, claimEntry, domain, constitution, others: await otherAgentFixtures() };
     },
     baseline: (ctx) => ({
       kind: 'AgentToClaim',
@@ -980,6 +1033,19 @@ const linkEntries = [
       { rule: 'AgentToClaim base must be an EntryHash anchor.', mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimAction; } },
       { rule: "AgentToClaim base anchor does not match the claim's own author. A claim may only be indexed under the agent who wrote it.", mutate: (l, ctx) => { l.anchor_of = null; l.base = ctx.claimEntry; } },
       { rule: "AgentToClaim tag must be the claim's own domain, which is the only domain a by-agent reader has to go on.", mutate: (l) => { l.tag = Array.from(Buffer.from('NotTheDomain', 'utf8')); } },
+      // CLOSED BY THE SECOND AGENT — item 5f. Everything here is CORRECT for
+      // agent 2's claim: the anchor is agent 2's, the tag is its domain, the
+      // target is its claim. Only the link's author differs, which is the one
+      // thing that cannot be set in a payload — so this is the ownership rule
+      // and not the base-mismatch rule two lines above it.
+      {
+        rule: "An AgentToClaim link may only be created by the claim's own author.",
+        mutate: (l, ctx) => {
+          l.target = ctx.others.claimAction;
+          l.anchor_of = otherKey;
+          l.tag = Array.from(Buffer.from(ctx.others.domain, 'utf8'));
+        },
+      },
     ],
   },
   {
@@ -1001,7 +1067,7 @@ const linkEntries = [
       });
       const claims = await call('get_claims_by_domain', domain);
       const claimEntry = claims[0].signed_action.hashed.content.data.entry_hash;
-      return { constitution, claimAction, claimEntry };
+      return { constitution, claimAction, claimEntry, others: await otherAgentFixtures() };
     },
     baseline: (ctx) => ({
       kind: 'AgentToConstitution',
@@ -1014,6 +1080,13 @@ const linkEntries = [
     cases: [
       { rule: 'AgentToConstitution target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
       { rule: 'AgentToConstitution target is not a Constitution.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      // CLOSED BY THE SECOND AGENT — item 5f. `anchor_of` is agent 2's, so the
+      // base check above passes and what is left is `constitution.agent !=
+      // action.author()`.
+      {
+        rule: 'An AgentToConstitution link may only be created by the agent whose constitution it indexes.',
+        mutate: (l, ctx) => { l.target = ctx.others.constitution; l.anchor_of = otherKey; },
+      },
     ],
   },
   {
@@ -1036,12 +1109,19 @@ const linkEntries = [
         promises: [{ action: 'index honestly', domain, modality: null }],
         conditions: [], published_at: nowSecs(), expires_at: null,
       });
-      return { claimAction, domain, constitution };
+      return { claimAction, domain, constitution, others: await otherAgentFixtures() };
     },
     baseline: (ctx) => ({ claim_action: ctx.claimAction, domain: ctx.domain }),
     cases: [
       { rule: 'DomainToClaim target is not a Claim.', mutate: (l, ctx) => { l.claim_action = ctx.constitution; } },
       { rule: "DomainToClaim base anchor does not match the claim's own domain ({:?}). A claim may only be indexed under the domain it declares.", mutate: (l) => { l.domain = 'NotTheClaimsDomain'; } },
+      // CLOSED BY THE SECOND AGENT — item 5f. The domain is agent 2's own, so
+      // the anchor matches and the base rule above does not fire; only the
+      // author does.
+      {
+        rule: "A DomainToClaim link may only be created by the claim's own author.",
+        mutate: (l, ctx) => { l.claim_action = ctx.others.claimAction; l.domain = ctx.others.domain; },
+      },
     ],
   },
   {
@@ -1068,7 +1148,7 @@ const linkEntries = [
         domain, author: myKey, timestamp: nowMicros(),
         evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
       });
-      return { membraneAction, claimAction };
+      return { membraneAction, claimAction, others: await otherAgentFixtures() };
     },
     // `create_membrane` already wrote this exact link; links are not unique, so
     // a second identical one validates and the baseline is a real baseline
@@ -1077,6 +1157,12 @@ const linkEntries = [
     cases: [
       { rule: 'MembraneRegistry target is not a Membrane.', mutate: (l, ctx) => { l.membrane_action = ctx.claimAction; } },
       { rule: 'MembraneRegistry base is not the membrane registry anchor.', mutate: (l) => { l.anchor_override = 'not_the_registry_anchor'; } },
+      // CLOSED BY THE SECOND AGENT — item 5f. `anchor_override` stays null so
+      // the registry anchor is the real one and the rule above passes.
+      {
+        rule: "A MembraneRegistry link may only be created by the membrane's own creator.",
+        mutate: (l, ctx) => { l.membrane_action = ctx.others.membraneAction; },
+      },
     ],
   },
 ];
