@@ -24,8 +24,8 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and nine link types, and the coverage is asserted rather
-than stated.** 133 checks, **twelve of which need a second agent** — see
+**Ten entry types and fourteen link types, and the coverage is asserted rather
+than stated.** 175 checks, **seventeen of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -499,6 +499,50 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### The index rules that must name what the entry names
+
+Four link types landed together because they share one rule shape, and it is
+the shape that matters most in this whole directory: **a link must name what
+the ENTRY it points at already names.** An unbound index does not forge an
+entry; it files a true entry in a false place, and every read built on that
+index then answers about the wrong thing.
+
+| link type | what an unbound index would do |
+|---|---|
+| `ClaimToRetraction` | file a retraction of one claim against another, so `get_retractions_for_claim` shows a claim as withdrawn that its author still stands by — §2.3's remedy inverted |
+| `RetractionToReplacement` | record a replacement the Retraction never declared |
+| `MewToClaim` | assert a promotion the Claim does not claim |
+| `ClaimToExternalCritique` | attach an imported reply to a claim it never named |
+| `MembraneToFederationRecord` | record a federation against a membrane the record never named |
+
+**Three of these needed a second ENTITY rather than a wrong hash**, and that is
+the recurring cost of this family: the rule sits behind a `must_get`, so a
+dangling hash DEFERS and the rule never fires. So the setups publish, purely to
+be pointed at wrongly, a second claim (`ClaimToRetraction`), a second Mew
+(`MewToClaim`), and a second claim again (`ClaimToExternalCritique`).
+
+**Two rules needed something stranger than a second entity.**
+`RetractionToReplacement` has to refuse a link whose base Retraction names NO
+replacement, which needs a second Retraction that declares none. And
+`MewToClaim` has to refuse a link recording a promotion the Claim does not
+claim, which needs a Claim with `source_mew: None`. Neither is reachable by
+mutating a hash; both are a different valid entry.
+
+**TWO of these owner rules are unforgeable by construction**, which is worth
+noting as a design observation rather than a harness one.
+`ClaimToExternalCritique`'s `importer` is taken from `agent_info()` inside
+`import_twitter_reply` and cannot be supplied in the payload; and
+`MembraneToFederationRecord`'s author is already required by §5.18 to be the
+membrane's founder. In both cases the only way to obtain one that belongs to
+somebody else is to have somebody else make it — so the second agent is not a
+convenience here, it is the only path, and neither rule could be driven at all
+without item 5f.
+
+`MembraneToFederationRecord` also carries the **deepest chain in this
+directory**: Constitution → Membrane → FederationRecord → the link about it,
+with a SECOND Membrane under the same Constitution published only to be pointed
+at wrongly.
+
 ### The pre-registration index pair, and why these two rules are not bookkeeping
 
 `QuestionToPreRegistration` and `PreRegistrationToRevelation` carry the index
@@ -631,7 +675,8 @@ which needs a new extern and a DNA rebuild.
 
 O, P and Q were taken on the version with link rules, which is 92 checks.
 R was taken on the 93-check version, S on the 99-check one, T on the 117-check
-version with the agent-anchor family, and X on the 133-check version.
+version with the agent-anchor family, X on the 133-check version, Y and Z on
+the 150- and 167-check versions, and AA on the 175-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -683,6 +728,19 @@ version with the agent-anchor family, and X on the 133-check version.
   expired commitment is made to look revealed" is proven to fire only because
   the base really is a different commitment, so the check is not passing on the
   mere presence of a link.
+
+- **Injection Y** — the retraction pair's two name-what-the-entry-names
+  mutations pointed back at the right entity, and both owner cases aimed at
+  agent 1's own. Result: **146 passed, 4 failed**.
+- **Injection Z** — the same treatment across the promotion and import pair,
+  plus the `source_mew: None` case pointed at a Claim that IS promoted. Result:
+  **162 passed, 5 failed**. The `source_mew` one is the interesting member: it
+  proves the rule fires on the Claim's own declaration rather than on the link
+  being malformed, which is the distinction the rule exists to make.
+
+- **Injection AA** — the federation index's mismatch case pointed back at the
+  Membrane the record names, and its owner case aimed at agent 1's own.
+  Result: **173 passed, 2 failed**. Both `the call COMMITTED`.
 
 ## Why one mutation at a time
 
