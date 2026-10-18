@@ -382,12 +382,54 @@ async function otherAgentFixtures() {
     original_length: 48, excerpt_length: 48,
   });
 
+  // Agent 2's taxonomy, critique and antibody, for the last four owner rules.
+  // ONE critique serves two of them: it declares a species (CritiqueToSpecies)
+  // and names a target (TargetToCritique). Deliberately economical — Critique
+  // and AntibodyPattern are capped at 20 per rolling hour each (§6), so every
+  // avoidable one spends allowance a later run needs.
+  const otherParentSpecies = await callOther('create_critique_species', {
+    name: `CorpusOtherParent${Date.now()}`, parent_species: null,
+    required_evidence: [], proposer: otherKey, created_at: nowMicros(),
+  });
+  const speciesRows0 = await callOther('get_all_critique_species');
+  const speciesEntryFor = (rows, a) => rows
+    .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+               === Buffer.from(a).toString('base64'))
+    .signed_action.hashed.content.data.entry_hash;
+  const otherParentEntry = speciesEntryFor(speciesRows0, otherParentSpecies);
+  const otherChildSpecies = await callOther('create_critique_species', {
+    name: `CorpusOtherChild${Date.now()}`, parent_species: otherParentEntry,
+    required_evidence: [], proposer: otherKey, created_at: nowMicros(),
+  });
+  const otherCritique = await callOther('create_critique', {
+    target: claimEntry, target_type: 'Claim', critique_mode: 'Logical',
+    content: 'corpus critique, by the OTHER agent, declaring a species',
+    author: otherKey, timestamp: nowMicros(),
+    replication_attempted: false, evidence_hashes: [], species: otherParentEntry,
+  });
+  const otherAntibody = await callOther('publish_antibody_pattern', {
+    target: claimEntry, target_type: 'Claim', kind: 'SpamFlood',
+    rationale: 'corpus antibody pattern, by the OTHER agent',
+    author: otherKey, timestamp: nowMicros(),
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const rows = await call('get_all_critique_species');
+      return rows.some((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                            === Buffer.from(otherChildSpecies).toString('base64')) ? true : null;
+    },
+    "the other agent's CritiqueSpecies",
+  );
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
     mewAction, traceAction, preRegAction, revelationAction,
     replacementAction, replacementEntry, retractionAction,
     mewEntry: otherMewEntry, promotedAction, externalCritiqueAction,
     federationAction: otherFederationAction, bridgeAction: otherBridgeAction,
+    parentSpecies: otherParentSpecies, parentSpeciesEntry: otherParentEntry,
+    childSpecies: otherChildSpecies, critiqueAction: otherCritique,
+    antibodyAction: otherAntibody,
   };
   return _others;
 }
@@ -1144,7 +1186,8 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'QuestionToPreRegistration', 'PreRegistrationToRevelation',
   'ClaimToRetraction', 'RetractionToReplacement',
   'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord',
-  'MewToBridgeRecord'];
+  'MewToBridgeRecord',
+  'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody'];
 
 const linkEntries = [
   {
@@ -1945,6 +1988,206 @@ const linkEntries = [
       {
         rule: 'A BridgeRecord link may only be created by the agent who recorded the mirror.',
         mutate: (l, ctx) => { l.base = ctx.others.mewEntry; l.target = ctx.others.bridgeAction; },
+      },
+    ],
+  },
+  // --- THE RATE-LIMITED FOUR, and they are grouped for that reason rather
+  // than for a shared rule shape. `Critique` and `AntibodyPattern` creation is
+  // capped at 20 per rolling hour each (§6), enforced by DHT validation, so
+  // every one of these setups spends allowance that a later run in the same
+  // hour will not have. They are written to be economical rather than tidy:
+  // one critique declares BOTH a species and a target so it can serve two
+  // owner rules, and nothing is published that an existing fixture covers.
+  //
+  // Two of the six-rule pairs carry the "does not declare it" rule that the
+  // promotion index had: a Critique whose `species` is None, and a child
+  // species whose `parent_species` is None. Neither is reachable by mutating
+  // a hash; both need a second, differently-shaped valid entry.
+  {
+    linkType: 'CritiqueToSpecies',
+    label: 'CritiqueToSpecies',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'two species, a Critique declaring the first, and a Critique declaring none',
+    setup: async () => {
+      const domain = `CorpusLinkC2S${Date.now()}`;
+      const claimAction = await call('create_claim', {
+        content: 'corpus claim, the critiqued node', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimEntry = (await call('get_claims_by_domain', domain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      const mkSpecies = (name) => call('create_critique_species', {
+        name, parent_species: null, required_evidence: [], proposer: myKey, created_at: nowMicros(),
+      });
+      const speciesA = await mkSpecies(`CorpusSpeciesA${Date.now()}`);
+      const speciesB = await mkSpecies(`CorpusSpeciesB${Date.now()}`);
+      const rows = await call('get_all_critique_species');
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const speciesAEntry = entryFor(speciesA);
+      const speciesBEntry = entryFor(speciesB);
+      const mkCritique = (species, content) => call('create_critique', {
+        target: claimEntry, target_type: 'Claim', critique_mode: 'Logical',
+        content, author: myKey, timestamp: nowMicros(),
+        replication_attempted: false, evidence_hashes: [], species,
+      });
+      const critiqueAction = await mkCritique(speciesAEntry, 'corpus critique, declaring a species');
+      const speciesless = await mkCritique(null, 'corpus critique, declaring no species');
+      return { speciesAEntry, speciesBEntry, critiqueAction, speciesless, claimEntry, claimAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'CritiqueToSpecies',
+      base: ctx.speciesAEntry,
+      target: ctx.critiqueAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'CritiqueToSpecies target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.speciesAEntry; } },
+      { rule: 'CritiqueToSpecies target is not a Critique.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      { rule: "CritiqueToSpecies base must be a CritiqueSpecies' EntryHash.", mutate: (l, ctx) => { l.base = ctx.claimAction; } },
+      { rule: 'A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique itself declares in `species`, not a different one.', mutate: (l, ctx) => { l.base = ctx.speciesBEntry; } },
+      { rule: 'A CritiqueToSpecies link cannot record an adoption the Critique does not declare: its `species` field is None.', mutate: (l, ctx) => { l.target = ctx.speciesless; } },
+      {
+        rule: "A CritiqueToSpecies link may only be created by the Critique's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.parentSpeciesEntry; l.target = ctx.others.critiqueAction; },
+      },
+    ],
+  },
+  {
+    linkType: 'SpeciesToParent',
+    label: 'SpeciesToParent',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'two parent species, a child declaring the first, and a root declaring none',
+    setup: async () => {
+      const mkSpecies = (name, parent_species) => call('create_critique_species', {
+        name, parent_species, required_evidence: [], proposer: myKey, created_at: nowMicros(),
+      });
+      const parentA = await mkSpecies(`CorpusParentA${Date.now()}`, null);
+      const parentB = await mkSpecies(`CorpusParentB${Date.now()}`, null);
+      let rows = await call('get_all_critique_species');
+      const entryFor = (list, a) => list
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const parentAEntry = entryFor(rows, parentA);
+      const parentBEntry = entryFor(rows, parentB);
+      const childAction = await mkSpecies(`CorpusChild${Date.now()}`, parentAEntry);
+      const rootAction = await mkSpecies(`CorpusRoot${Date.now()}`, null);
+      rows = await call('get_all_critique_species');
+      return { parentAEntry, parentBEntry, childAction, rootAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'SpeciesToParent',
+      base: ctx.parentAEntry,
+      target: ctx.childAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'SpeciesToParent target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.parentAEntry; } },
+      { rule: 'SpeciesToParent target is not a CritiqueSpecies.', mutate: (l, ctx) => { l.target = ctx.others.claimAction; } },
+      { rule: "SpeciesToParent base must be the parent CritiqueSpecies' EntryHash.", mutate: (l, ctx) => { l.base = ctx.childAction; } },
+      { rule: 'A SpeciesToParent link must hang from the CritiqueSpecies the child itself declares in parent_species, not a different one.', mutate: (l, ctx) => { l.base = ctx.parentBEntry; } },
+      { rule: 'A SpeciesToParent link cannot record a parent the child does not declare: its parent_species field is None.', mutate: (l, ctx) => { l.target = ctx.rootAction; } },
+      {
+        rule: "A SpeciesToParent link may only be created by the child species' own proposer.",
+        mutate: (l, ctx) => { l.base = ctx.others.parentSpeciesEntry; l.target = ctx.others.childSpecies; },
+      },
+    ],
+  },
+  {
+    linkType: 'TargetToCritique',
+    label: 'TargetToCritique',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a critiqued Claim, a second Claim it does not name, and one Critique',
+    setup: async () => {
+      const domain = `CorpusLinkT2C${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimAction = await mk('corpus claim, the critiqued node');
+      const strayAction = await mk('corpus claim, named by no critique');
+      const rows = await call('get_claims_by_domain', domain);
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const claimEntry = entryFor(claimAction);
+      const strayEntry = entryFor(strayAction);
+      const critiqueAction = await call('create_critique', {
+        target: claimEntry, target_type: 'Claim', critique_mode: 'Logical',
+        content: 'corpus critique, for the target index', author: myKey,
+        timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [], species: null,
+      });
+      return { claimEntry, strayEntry, claimAction, critiqueAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'TargetToCritique',
+      base: ctx.claimEntry,
+      target: ctx.critiqueAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'TargetToCritique target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'TargetToCritique target is not a Critique.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      { rule: 'A TargetToCritique link must hang from the node the Critique itself names in target. A critique of one node may not be filed against another.', mutate: (l, ctx) => { l.base = ctx.strayEntry; } },
+      {
+        rule: "A TargetToCritique link may only be created by the Critique's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.claimEntry; l.target = ctx.others.critiqueAction; },
+      },
+    ],
+  },
+  {
+    linkType: 'TargetToAntibody',
+    label: 'TargetToAntibody',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a flagged Claim, a second Claim it does not name, and one AntibodyPattern',
+    setup: async () => {
+      const domain = `CorpusLinkT2A${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimAction = await mk('corpus claim, the flagged node');
+      const strayAction = await mk('corpus claim, flagged by nothing');
+      const rows = await call('get_claims_by_domain', domain);
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const claimEntry = entryFor(claimAction);
+      const strayEntry = entryFor(strayAction);
+      const antibodyAction = await call('publish_antibody_pattern', {
+        target: claimEntry, target_type: 'Claim', kind: 'SpamFlood',
+        rationale: 'corpus antibody pattern, for the target index',
+        author: myKey, timestamp: nowMicros(),
+      });
+      return { claimEntry, strayEntry, claimAction, antibodyAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'TargetToAntibody',
+      base: ctx.claimEntry,
+      target: ctx.antibodyAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'TargetToAntibody target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'TargetToAntibody target is not an AntibodyPattern.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      { rule: 'A TargetToAntibody link must hang from the node the AntibodyPattern itself names in target.', mutate: (l, ctx) => { l.base = ctx.strayEntry; } },
+      {
+        rule: "A TargetToAntibody link may only be created by the AntibodyPattern's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.claimEntry; l.target = ctx.others.antibodyAction; },
       },
     ],
   },
