@@ -293,9 +293,89 @@ async function otherAgentFixtures() {
     "the other agent's Revelation",
   );
 
+  // Agent 2's retraction chain, which both retraction-link owner rules need.
+  // ONE retraction serves both: ClaimToRetraction's owner case needs any
+  // Retraction of agent 2's, and RetractionToReplacement's needs one that
+  // NAMES a replacement — so it is published with one.
+  const replacementAction = await callOther('create_claim', {
+    content: 'corpus claim, the OTHER agent\'s replacement for its retracted claim',
+    domain, author: otherKey, timestamp: nowMicros(),
+    evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+  });
+  const otherClaims = await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_claims_by_domain', domain);
+      return found.length >= 2 ? found : null;
+    },
+    "both of the other agent's Claims",
+  );
+  const replacementEntry = otherClaims
+    .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+               === Buffer.from(replacementAction).toString('base64'))
+    .signed_action.hashed.content.data.entry_hash;
+  const retractionAction = await callOther('create_retraction', {
+    target_claim: claimEntry,
+    reason: 'corpus retraction, by the OTHER agent',
+    replacement_claim: replacementEntry,
+    author: otherKey,
+    timestamp: nowMicros(),
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const rs = await call('get_retractions_for_claim', claimEntry);
+      return rs.length ? true : null;
+    },
+    "the other agent's Retraction",
+  );
+
+  // Agent 2's promotion and import chains, for MewToClaim's and
+  // ClaimToExternalCritique's owner rules. The Mew's ENTRY hash is needed as
+  // well as its action, because a promoted Claim names its source by entry.
+  const otherMewEntry = (await call('get_mews_by_agent', otherKey))
+    .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+               === Buffer.from(mewAction).toString('base64'))
+    .signed_action.hashed.content.data.entry_hash;
+  const promotedAction = await callOther('create_claim', {
+    content: 'corpus claim, the OTHER agent\'s promotion of its own Mew',
+    domain, author: otherKey, timestamp: nowMicros(),
+    evidence_hashes: [], confidence: 'Moderate', semantic_tags: [],
+    source_mew: otherMewEntry,
+  });
+  // `importer` is taken from agent_info and cannot be supplied, so agent 2
+  // importing is the only way to get an ExternalCritique that is agent 2's.
+  const externalCritiqueAction = await callOther('import_twitter_reply', {
+    twitter_id: `corpus-other-${Date.now()}`,
+    author_handle: 'corpus_other_handle',
+    content: 'corpus external critique, imported by the OTHER agent',
+    linked_holochain_claim: claimEntry,
+    imported_at: nowSecs(),
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_claims_by_domain', domain);
+      return found.length >= 3 ? true : null;
+    },
+    "the other agent's promoted Claim",
+  );
+
+  // Agent 2 federates its own Membrane, for MembraneToFederationRecord's owner
+  // rule. §5.18 already requires the author to be the membrane's founder, so
+  // only agent 2 can produce this one — the same unforgeable-by-construction
+  // shape as ExternalCritique's importer.
+  const otherFederationAction = await callOther('record_federation', {
+    local_membrane: membraneEntry,
+    remote_network_label: 'corpus-remote-net-other',
+    remote_membrane_ref: 'corpus-remote-ref-other',
+    author: otherKey,
+    created_at: nowSecs(),
+  });
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
     mewAction, traceAction, preRegAction, revelationAction,
+    replacementAction, replacementEntry, retractionAction,
+    mewEntry: otherMewEntry, promotedAction, externalCritiqueAction,
+    federationAction: otherFederationAction,
   };
   return _others;
 }
@@ -1049,7 +1129,9 @@ async function drive(spec) {
 // clears `anchor_of` to take control of the field.
 const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry',
   'AgentToMew', 'AgentToWorldlineTrace', 'AgentToPreRegistration',
-  'QuestionToPreRegistration', 'PreRegistrationToRevelation'];
+  'QuestionToPreRegistration', 'PreRegistrationToRevelation',
+  'ClaimToRetraction', 'RetractionToReplacement',
+  'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord'];
 
 const linkEntries = [
   {
@@ -1475,6 +1557,286 @@ const linkEntries = [
       {
         rule: 'A PreRegistrationToRevelation link may only be created by the revealing agent.',
         mutate: (l, ctx) => { l.base = ctx.others.preRegAction; l.target = ctx.others.revelationAction; },
+      },
+    ],
+  },
+  // --- THE RETRACTION INDEX PAIR, and the same shape as the pre-registration
+  // one: both rules that matter are "this link must name what the ENTRY names".
+  // `ClaimToRetraction` says a retraction of one claim may not be filed against
+  // another; `RetractionToReplacement` says the replacement recorded must be
+  // the one the Retraction itself declares. An unbound index here would let a
+  // reader of `get_retractions_for_claim` see a claim as withdrawn that its
+  // author still stands by — §2.3's remedy inverted.
+  //
+  // RetractionToReplacement carries one rule the others do not: a Retraction
+  // with no `replacement_claim` has nothing for the link to record, so the
+  // setup publishes a SECOND retraction without one purely to drive it.
+  {
+    linkType: 'ClaimToRetraction',
+    label: 'ClaimToRetraction',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'two Claims and a Retraction of the first, so the mis-filing case has a real other claim',
+    setup: async () => {
+      const domain = `CorpusLinkC2R${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimAction = await mk('corpus claim, the one being retracted');
+      const otherClaimAction = await mk('corpus claim, NOT the one the retraction names');
+      const rows = await call('get_claims_by_domain', domain);
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const claimEntry = entryFor(claimAction);
+      const otherClaimEntry = entryFor(otherClaimAction);
+      const retractionAction = await call('create_retraction', {
+        target_claim: claimEntry, reason: 'corpus retraction, for the claim index',
+        replacement_claim: null, author: myKey, timestamp: nowMicros(),
+      });
+      return { claimAction, claimEntry, otherClaimEntry, retractionAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'ClaimToRetraction',
+      base: ctx.claimEntry,
+      target: ctx.retractionAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'ClaimToRetraction target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'ClaimToRetraction target is not a Retraction.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      { rule: "ClaimToRetraction base must be a Claim's EntryHash.", mutate: (l, ctx) => { l.base = ctx.claimAction; } },
+      { rule: 'A ClaimToRetraction link must hang from the Claim the Retraction itself names in target_claim. A retraction of one claim may not be filed against another.', mutate: (l, ctx) => { l.base = ctx.otherClaimEntry; } },
+      {
+        rule: "A ClaimToRetraction link may only be created by the Retraction's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.claimEntry; l.target = ctx.others.retractionAction; },
+      },
+    ],
+  },
+  {
+    linkType: 'RetractionToReplacement',
+    label: 'RetractionToReplacement',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Retraction naming a replacement, a second naming none, and a third Claim to point at wrongly',
+    setup: async () => {
+      const domain = `CorpusLinkR2Rep${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimAction = await mk('corpus claim, retracted with a replacement');
+      const replacementAction = await mk('corpus claim, the declared replacement');
+      const strayAction = await mk('corpus claim, NOT the declared replacement');
+      const bareAction = await mk('corpus claim, retracted with NO replacement');
+      const rows = await call('get_claims_by_domain', domain);
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const claimEntry = entryFor(claimAction);
+      const replacementEntry = entryFor(replacementAction);
+      const strayEntry = entryFor(strayAction);
+      const retractionAction = await call('create_retraction', {
+        target_claim: claimEntry, reason: 'corpus retraction, naming a replacement',
+        replacement_claim: replacementEntry, author: myKey, timestamp: nowMicros(),
+      });
+      // The one rule that needs a DIFFERENT retraction rather than a different
+      // hash: "names no replacement_claim, so there is no replacement for this
+      // link to record" can only be driven by a Retraction that declares none.
+      const bareRetraction = await call('create_retraction', {
+        target_claim: entryFor(bareAction), reason: 'corpus retraction, naming no replacement',
+        replacement_claim: null, author: myKey, timestamp: nowMicros(),
+      });
+      return {
+        retractionAction, bareRetraction, replacementEntry, strayEntry, claimAction,
+        others: await otherAgentFixtures(),
+      };
+    },
+    baseline: (ctx) => ({
+      kind: 'RetractionToReplacement',
+      base: ctx.retractionAction,
+      target: ctx.replacementEntry,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: "RetractionToReplacement base must be the Retraction's ActionHash.", mutate: (l, ctx) => { l.base = ctx.replacementEntry; } },
+      { rule: 'RetractionToReplacement base is not a Retraction.', mutate: (l, ctx) => { l.base = ctx.claimAction; } },
+      { rule: 'RetractionToReplacement base Retraction names no replacement_claim, so there is no replacement for this link to record.', mutate: (l, ctx) => { l.base = ctx.bareRetraction; } },
+      { rule: "RetractionToReplacement target must be a Claim's EntryHash.", mutate: (l, ctx) => { l.target = ctx.retractionAction; } },
+      { rule: 'A RetractionToReplacement link must point at the Claim the Retraction itself names in replacement_claim.', mutate: (l, ctx) => { l.target = ctx.strayEntry; } },
+      {
+        rule: "A RetractionToReplacement link may only be created by the Retraction's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.retractionAction; l.target = ctx.others.replacementEntry; },
+      },
+    ],
+  },
+  // --- THE PROMOTION AND IMPORT INDEXES. Both answer "where did this come
+  // from", and both carry a rule the others do not: MewToClaim has to refuse a
+  // link recording a promotion the Claim DOES NOT CLAIM — `source_mew: None` —
+  // which needs a second, unpromoted Claim to drive rather than a wrong hash.
+  {
+    linkType: 'MewToClaim',
+    label: 'MewToClaim',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'two Mews, a Claim promoted from the first, and a Claim promoted from neither',
+    setup: async () => {
+      const domain = `CorpusLinkM2C${Date.now()}`;
+      const mkMew = (content) => call('create_mew', {
+        content, author: myKey, timestamp: nowMicros(),
+        reply_to: null, semantic_tags: ['corpus'], linked_claim: null,
+      });
+      const mewAction = await mkMew('corpus mew, the one promoted');
+      const otherMewAction = await mkMew('corpus mew, promoted by nothing');
+      const mews = await call('get_mews_by_agent', myKey);
+      const mewEntryFor = (a) => mews
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const mewEntry = mewEntryFor(mewAction);
+      const otherMewEntry = mewEntryFor(otherMewAction);
+      const promotedAction = await call('create_claim', {
+        content: 'corpus claim, promoted from a Mew', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: mewEntry,
+      });
+      // The Claim that claims no promotion, for the source_mew: None rule.
+      const unpromotedAction = await call('create_claim', {
+        content: 'corpus claim, promoted from nothing', domain,
+        author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { mewEntry, otherMewEntry, mewAction, promotedAction, unpromotedAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'MewToClaim',
+      base: ctx.mewEntry,
+      target: ctx.promotedAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'MewToClaim target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.mewEntry; } },
+      { rule: 'MewToClaim target is not a Claim.', mutate: (l, ctx) => { l.target = ctx.mewAction; } },
+      { rule: "MewToClaim base must be a Mew's EntryHash.", mutate: (l, ctx) => { l.base = ctx.mewAction; } },
+      { rule: 'A MewToClaim link must hang from the Mew the Claim itself names in source_mew.', mutate: (l, ctx) => { l.base = ctx.otherMewEntry; } },
+      { rule: 'A MewToClaim link cannot record a promotion the Claim does not claim: its source_mew is None.', mutate: (l, ctx) => { l.target = ctx.unpromotedAction; } },
+      {
+        rule: "A MewToClaim link may only be created by the promoted Claim's own author.",
+        mutate: (l, ctx) => { l.base = ctx.others.mewEntry; l.target = ctx.others.promotedAction; },
+      },
+    ],
+  },
+  {
+    linkType: 'ClaimToExternalCritique',
+    label: 'ClaimToExternalCritique',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Claim, an imported reply naming it, and a second Claim it does not name',
+    setup: async () => {
+      const domain = `CorpusLinkC2EC${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claimAction = await mk('corpus claim, the one critiqued externally');
+      const strayAction = await mk('corpus claim, named by no external critique');
+      const rows = await call('get_claims_by_domain', domain);
+      const entryFor = (a) => rows
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const claimEntry = entryFor(claimAction);
+      const strayEntry = entryFor(strayAction);
+      const externalCritiqueAction = await call('import_twitter_reply', {
+        twitter_id: `corpus-${Date.now()}`,
+        author_handle: 'corpus_handle',
+        content: 'corpus external critique, imported for the index',
+        linked_holochain_claim: claimEntry,
+        imported_at: nowSecs(),
+      });
+      return { claimEntry, strayEntry, claimAction, externalCritiqueAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'ClaimToExternalCritique',
+      base: ctx.claimEntry,
+      target: ctx.externalCritiqueAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'ClaimToExternalCritique target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.claimEntry; } },
+      { rule: 'ClaimToExternalCritique target is not an ExternalCritique.', mutate: (l, ctx) => { l.target = ctx.claimAction; } },
+      { rule: "ClaimToExternalCritique base must be a Claim's EntryHash.", mutate: (l, ctx) => { l.base = ctx.claimAction; } },
+      { rule: 'A ClaimToExternalCritique link must hang from the Claim the ExternalCritique itself names in linked_holochain_claim.', mutate: (l, ctx) => { l.base = ctx.strayEntry; } },
+      {
+        rule: 'A ClaimToExternalCritique link may only be created by the importing agent.',
+        mutate: (l, ctx) => { l.base = ctx.others.claimEntry; l.target = ctx.others.externalCritiqueAction; },
+      },
+    ],
+  },
+  // --- THE FEDERATION INDEX, and the deepest chain in the directory:
+  // Constitution -> Membrane -> FederationRecord -> the link about it. Its
+  // owner rule is the second one in this corpus that is unforgeable by
+  // construction rather than by a guard — §5.18 already requires a
+  // FederationRecord's author to be the membrane's founder, so only the
+  // founder can produce one to be mis-indexed, and the second agent is the
+  // only way to have one that is not ours.
+  {
+    linkType: 'MembraneToFederationRecord',
+    label: 'MembraneToFederationRecord',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a Constitution, two Membranes under it, and a FederationRecord naming the first',
+    setup: async () => {
+      const domain = `CorpusLinkM2F${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'recognise peer networks honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const mkMembrane = (d, desc) => call('create_membrane', {
+        domain: d, description: desc,
+        required_promises: ['recognise peer networks honestly'],
+        validation_rules_hash: null, creator: myKey, created_at: nowSecs(), constitution,
+      });
+      const membraneAction = await mkMembrane(domain, 'corpus membrane, the one federated');
+      const strayAction = await mkMembrane(`${domain}Stray`, 'corpus membrane, federated by nothing');
+      const membranes = await call('get_membranes');
+      const entryFor = (a) => membranes
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                   === Buffer.from(a).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const membraneEntry = entryFor(membraneAction);
+      const strayEntry = entryFor(strayAction);
+      const federationAction = await call('record_federation', {
+        local_membrane: membraneEntry,
+        remote_network_label: 'corpus-remote-net',
+        remote_membrane_ref: 'corpus-remote-ref',
+        author: myKey, created_at: nowSecs(),
+      });
+      return { membraneEntry, strayEntry, membraneAction, federationAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'MembraneToFederationRecord',
+      base: ctx.membraneEntry,
+      target: ctx.federationAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'MembraneToFederationRecord target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.membraneEntry; } },
+      { rule: 'MembraneToFederationRecord target is not a FederationRecord.', mutate: (l, ctx) => { l.target = ctx.membraneAction; } },
+      { rule: "MembraneToFederationRecord base must be a Membrane's EntryHash.", mutate: (l, ctx) => { l.base = ctx.membraneAction; } },
+      { rule: 'A MembraneToFederationRecord link must hang from the Membrane the FederationRecord itself names in local_membrane.', mutate: (l, ctx) => { l.base = ctx.strayEntry; } },
+      {
+        rule: "A MembraneToFederationRecord link may only be created by the FederationRecord's own author — who §5.18 already requires to be the membrane's founder.",
+        mutate: (l, ctx) => { l.base = ctx.others.membraneEntry; l.target = ctx.others.federationAction; },
       },
     ],
   },
