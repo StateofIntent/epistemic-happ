@@ -98,9 +98,10 @@ cannot be reached by the thing that would need to reach them.
 | class | count | what it means |
 |---|---|---|
 | `honest` | 19 | reachable through the SDK's typed methods or the MCP tools, by a client doing nothing special |
-| `crafted` | 130 | reachable only by calling the coordinator with a payload the typed methods never produce |
+| `crafted` | 120 | reachable only by calling the coordinator with a payload the typed methods never produce |
 | `deferred` | 15 | a `must_get_*` guard — **the message never fires**; see below |
 | `needs_prober` | 14 | link rules with no `attempt_*` path, so unreachable from JavaScript at all |
+| `needs_extern` | 10 | entry rules whose field the coordinator **derives** rather than accepting — same cost as `needs_prober` |
 | `remote` | 4 | needs a bad DNA build or a `Delete` action the coordinator never emits |
 | `passthrough` | 12 | forwards another validator's result; no message of its own |
 
@@ -111,18 +112,27 @@ corrected ones; what the correction found is finding 4.
 
 ### Three findings this produced on its first run
 
-**1. An AI agent driving the MCP server can reach 24 of 194.** That is the
+**1. An AI agent driving the MCP server can reach 19 of 194.** That is the
 `honest` row, and it is a feature of the SDK rather than a gap in the tools:
 `agent-sdk` sets `author: this.agentPubKey` and `timestamp: nowMicros()`
 (`index.ts:308-309`), so every *"author must match action author"* rule and
 every self-reported-time rule is unreachable from any honest client. Pointing
 agents at `publish_claim` exercises the semantic rules and the budget path
 hard — and leaves the identity and ordering rules untouched while looking like
-validation stress. The remaining 130 need `EpistemicAgent.call()`
+validation stress. A further 120 need `EpistemicAgent.call()`
 (`index.ts:195`, public) with a hand-built payload.
 
-**2. The nine `must_get_*` rules are enforced, but not by the lines that look
-like the enforcement.** `must_get_entry` and `must_get_action` are deterministic
+*(This read 24 and 130 on the first run. Both numbers were wrong for reasons
+findings 4 and 5 record: five sites were deferrals mislabelled `honest`, and ten
+were `crafted` rules whose field the coordinator derives, so no payload reaches
+them. The counts here are regenerated rather than hand-maintained — `node
+enumerate.mjs` prints them — and the figures in this file are from the
+2026-10-17 run.)*
+
+**2. The `must_get_*` rules are enforced, but not by the lines that look
+like the enforcement.** *(This said "nine" and the count is 15 — see finding 4.
+The mechanism below is unchanged and was never in doubt; only how many sites it
+covers was.)* `must_get_entry` and `must_get_action` are deterministic
 dependency fetches: when the dependency is absent the host abandons the callback
 with unresolved dependencies, so the `Invalid("… not found.")` branch beneath
 each one is never taken. The rule still holds — the write is stopped by the
@@ -246,13 +256,43 @@ because `params.expires_at` passes straight through. The other seven need a new
 `attempt_*` extern and a DNA rebuild, which is the same cost as the
 `needs_prober` link rules.
 
-**The classification is wrong in both directions here**, which is the part worth
-keeping: `PeriodBoundary sample_action not found.` was classed `honest` and is
-not reachable at all, while `expires_at must be > created_at.` is classed
-`crafted` and is the one a plain client can trigger. `enumerate.mjs` reads only
-the integrity zome, so it cannot see any of this — teaching it to cross-check the
-coordinator's externs is the fix, and it is not done. Until it is, **24 sites
-across those five entry types are counted assertable and mostly are not.**
+**The classification was wrong in both directions here**, which is the part
+worth keeping: `PeriodBoundary sample_action not found.` was classed `honest`
+and is not reachable at all, while `expires_at must be > created_at.` sat in
+`crafted` alongside seven rules nobody can reach.
+
+**FIXED 2026-10-17 — `enumerate.mjs` now reads the coordinator too**, and the
+split of labour is the point. Mechanical half: for each extern it parses the
+struct literal that builds the entry and records, per field, whether the value
+comes from the params (`input.x`, `params.x`) or from the host. Judgement half:
+mapping a RULE to the field it guards, which most messages do themselves and
+some do not — *"Only the author of a PreRegistration may reveal it."* guards
+`pre_registration` and names no field. Those are curated in `GUARDS_FIELD`, and
+**a params-only site matching neither a field name nor the table stops the build
+with exit 1 before the inventory is written.** An unresolved site is a question
+about reachability, and answering it by default is how the wrong denominator got
+here. The gate fired twice during development, on real omissions.
+
+Of the 24 sites across those five entry types, **9 are assertable as refusals**,
+5 are deferrals and 10 are `needs_extern`:
+
+| entry type | caller-controlled fields | reachable as a refusal |
+|---|---|---|
+| `worldline_trace` | `expertise_tags`, `expires_at` | **1** of 8 |
+| `revelation` | `pre_registration`, `prediction`, `salt` | 4 of 6 |
+| `pre_registration` | `question`, `reveal_deadline` | 2 of 4 |
+| `bridge_record` | 8 fields | 1 of 3 |
+| `external_critique` | 5 fields | 1 of 3 |
+
+**Two details that decided the implementation**, both found by being wrong
+first. Matching a rule to *caller-controlled* field names only is not enough —
+`trace_payload exceeds 64KB limit.` names its field plainly and fell through to
+"unresolved" precisely BECAUSE the field is derived, so the match runs over every
+field of the entry and reachability is decided by membership afterwards. And the
+field whose name appears **earliest** in the message wins, not the longest:
+*"ExternalCritique importer must match action author. Note this is … the Twitter
+handle in `author_handle`"* names two fields and guards the first, so
+longest-match picks `author_handle` and is wrong.
 
 ## Negative evidence
 
@@ -300,6 +340,22 @@ F, G and I were taken on the six-type version, which is 38 checks.
   from one edit, the same shape as Injection D, and the reason `GAPS` cannot
   become a way to hide a missing case: an exemption that outlives its rule reds
   the file.
+
+J and K are on `enumerate.mjs` rather than `replay.mjs` — the inventory is input
+to the corpus, so a classifier that cannot go wrong loudly is the same hazard one
+level up.
+
+- **Injection J** — `Checksum must be 32 bytes.` removed from `GUARDS_FIELD`, so
+  a params-only rule has no field mapping. Result: **exit 1**, naming
+  `worldline_trace:1650`, and `corpus/inventory.json` is left untouched — the
+  guard sits above the write, so a half-classified inventory is never committed.
+- **Injection K** — the coordinator edited so `checksum` comes from
+  `params.checksum_override` instead of being derived. Result: `needs_extern`
+  **10 → 9** and that rule moves to `crafted`, with `checksum` appearing in its
+  `caller_controlled_fields`. This is the one that matters: it shows the class is
+  computed from the coordinator's own source rather than from a list of entry
+  types somebody typed, so an extern that starts accepting a field is noticed
+  instead of staying permanently unreachable in the records.
 
 ## Why one mutation at a time
 
