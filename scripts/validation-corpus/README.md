@@ -24,9 +24,8 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and NINETEEN link types — every link type a published path
-can drive — and the coverage is asserted rather than stated.** 217 checks,
-**twenty-two of which need a second agent** — see
+**Ten entry types and TWENTY link types, and the coverage is asserted rather
+than stated.** 223 checks, **twenty-three of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -500,6 +499,45 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### Item 18: a prober this corpus asked for, and what a prober cannot fix
+
+`TaxonomyToSpecies` is the first type here driven by an extern added BECAUSE
+the corpus needed it, rather than one that happened to exist. All three of its
+rules were classed `needs_prober` for a precise reason:
+`attempt_false_attachment_link` derives only an AGENT anchor and a QUESTION
+anchor, and this link's base is the TAXONOMY anchor — so no payload through
+that prober could put the base in the right place.
+`attempt_false_taxonomy_index` mirrors `attempt_false_domain_index`: it derives
+the real anchor, and `anchor_override` moves the base off it.
+
+**AND THE SCOPE OF ITEM 18 TURNED OUT TO BE SMALLER THAN ITS OWN FRAMING.** The
+row said "14 rules the corpus cannot drive", which reads as though probers
+unlock fourteen. They do not. Mapped against what a prober can actually reach:
+
+| link type | rules | reachable with a prober |
+|---|---|---|
+| `TaxonomyToSpecies` | 3 | **3 — done, here** |
+| `AgentToMembrane` | 3 | 3 — variant added, specs not yet written |
+| `Reinforcement` | 3 | 2; the SWO friction rule is the same class as this corpus's two standing gaps |
+| `SynapticLink` | 2 | 1; same friction exception |
+| `AttestationGrant` | 3 | **0, and not because of a prober** |
+
+**`AttestationGrant` cannot be driven in this harness's SHAPE at all, and that
+is the finding.** `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is
+`30 * 24 * 3600` — thirty days. A valid grant needs an `AgentToMembrane` join
+whose action timestamp is thirty days older than the grant's, so **no test run
+can construct a committing baseline for it.** Without one, every case would be
+refused for the tenure reason rather than for the rule under test, and would
+"pass" by being refused at all — exactly the trap the baseline check exists to
+stop. Closing these three needs either a fixture aged past a month, a clock
+this harness does not have in CI, or a differently shaped harness that asserts
+refusals without a valid baseline. It is not a prober problem and adding one
+would not help.
+
+So the honest arithmetic for item 18 is **9 of 14 reachable, 3 blocked by a
+thirty-day tenure and 2 by the friction exception** — and three of the nine are
+in this slice.
+
 ### The rate-limited four, and the denominator that is left
 
 `CritiqueToSpecies`, `SpeciesToParent`, `TargetToCritique` and
@@ -759,7 +797,8 @@ O, P and Q were taken on the version with link rules, which is 92 checks.
 R was taken on the 93-check version, S on the 99-check one, T on the 117-check
 version with the agent-anchor family, X on the 133-check version, Y and Z on
 the 150- and 167-check versions, AA on the 175-check one, AB on the 185-check version,
-and AC on the 217-check one.
+AC on the 217-check one, and AD on the
+223-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -834,6 +873,12 @@ and AC on the 217-check one.
   rules pointed at entries that DO declare, and all four owner cases aimed at
   agent 1's own. Result: **211 passed, 6 failed**. One run, because an
   injection run spends critique allowance too.
+
+- **Injection AD** — the taxonomy index's base-override removed and its owner
+  case aimed at agent 1's own species. Result: **221 passed, 2 failed**. It is
+  the proof that matters for item 18: the prober added for this corpus does not
+  merely compile and get called, it drives rules that fail when the payload
+  stops violating them.
 
 ## Why one mutation at a time
 
