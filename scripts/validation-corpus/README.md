@@ -24,8 +24,8 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and seven link types, and the coverage is asserted rather
-than stated.** 117 checks, **ten of which need a second agent** — see
+**Ten entry types and nine link types, and the coverage is asserted rather
+than stated.** 133 checks, **twelve of which need a second agent** — see
 *A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
@@ -499,6 +499,37 @@ L, M and N were taken on the ten-type version, which is 68 checks.
   COMMITTED`. A rule that stops firing is caught at the end of a depth-2 chain,
   not only on a flat payload.
 
+### The pre-registration index pair, and why these two rules are not bookkeeping
+
+`QuestionToPreRegistration` and `PreRegistrationToRevelation` carry the index
+rules the commit-reveal mechanism's denominator rests on. §5.19's note explains
+what the denominator is for — *"commit ten predictions, reveal the two that came
+true, stay silent on the eight that did not"* — and an unrevealed commitment is
+countable only because its question anchor and its reveal link are both bound to
+the commitment's own identity.
+
+**One of these rules says what breaks otherwise, in the zome's own words:** a
+`PreRegistrationToRevelation` link must hang from the PreRegistration the
+Revelation itself names, because *"a reveal of one commitment may not be
+recorded against another — that is how an expired commitment is made to look
+revealed."* That is the same attack item 13 confirmed by a different route: item
+13 moved the clock, this rule stops the reveal being re-pointed. **Both have to
+hold for the record to mean anything, and only one of them currently does** —
+this one is enforced and asserted here; the clock one is not enforceable at all
+(SPEC §5.22).
+
+Two implementation notes, both found by needing them:
+
+- **The mismatch cases need a REAL hash of the right kind, not a dangling one.**
+  "does not match the question it names" and "must hang from the PreRegistration
+  the Revelation names" both sit behind a `must_get`, so a dangling hash DEFERS
+  and the rule never fires. The setup therefore publishes a second question and
+  a second commitment purely to be pointed at wrongly.
+- **`base must be an EntryHash anchor` needs both anchor fields null**, because
+  `attempt_false_attachment_link` passes `base` through verbatim only when
+  neither `anchor_of` nor `question_anchor_of` is set — otherwise it derives the
+  anchor and the mutation has no effect.
+
 ### Finding 8 — a `Claim` deserialises as a `Mew`, so the type check does not separate them
 
 **Measured, and the obvious payload COMMITTED.** `AgentToMew`'s type rule is
@@ -599,8 +630,8 @@ friction rules are mirrored as coordinator pre-checks with no bypassing extern,
 which needs a new extern and a DNA rebuild.
 
 O, P and Q were taken on the version with link rules, which is 92 checks.
-R was taken on the 93-check version, S on the 99-check one, and T on the
-117-check version with the agent-anchor family.
+R was taken on the 93-check version, S on the 99-check one, T on the 117-check
+version with the agent-anchor family, and X on the 133-check version.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -643,6 +674,15 @@ R was taken on the 93-check version, S on the 99-check one, and T on the
   failed**, all three `the call COMMITTED`. Confirms the family's owner rules
   are sensitive on the same terms injection S established for the first four,
   and that nothing about the new types is passing by accident.
+
+- **Injection X** — three mutations in the pre-registration index pair
+  neutralised at once: the cross-commitment reveal pointed back at its OWN
+  commitment, and both owner cases aimed at agent 1's own entities. Result:
+  **130 passed, 3 failed**, all `the call COMMITTED`. The one worth naming is
+  the middle one — the rule whose own comment says a mis-hung reveal is "how an
+  expired commitment is made to look revealed" is proven to fire only because
+  the base really is a different commitment, so the check is not passing on the
+  mere presence of a link.
 
 ## Why one mutation at a time
 

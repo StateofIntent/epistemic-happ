@@ -278,9 +278,24 @@ async function otherAgentFixtures() {
     "the other agent's PreRegistration",
   );
 
+  // Agent 2 reveals its own commitment, which PreRegistrationToRevelation's
+  // owner rule needs: only the revealing agent may hang the link.
+  const revelationAction = await callOther('reveal_pre_registration', {
+    pre_registration: preRegAction,
+    prediction: 'corpus prediction, committed by the OTHER agent',
+    salt: 'corpus-other-salt-4a1c',
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const rec = await call('get_foresight_record', otherKey);
+      return rec.revealed.length ? true : null;
+    },
+    "the other agent's Revelation",
+  );
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
-    mewAction, traceAction, preRegAction,
+    mewAction, traceAction, preRegAction, revelationAction,
   };
   return _others;
 }
@@ -1033,7 +1048,8 @@ async function drive(spec) {
 // and lets the coordinator compute it, and any case that needs a wrong base
 // clears `anchor_of` to take control of the field.
 const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', 'MembraneRegistry',
-  'AgentToMew', 'AgentToWorldlineTrace', 'AgentToPreRegistration'];
+  'AgentToMew', 'AgentToWorldlineTrace', 'AgentToPreRegistration',
+  'QuestionToPreRegistration', 'PreRegistrationToRevelation'];
 
 const linkEntries = [
   {
@@ -1347,6 +1363,118 @@ const linkEntries = [
       {
         rule: 'An AgentToPreRegistration link may only be created by the committing agent.',
         mutate: (l, ctx) => { l.target = ctx.others.preRegAction; l.anchor_of = otherKey; },
+      },
+    ],
+  },
+  // --- THE PRE-REGISTRATION INDEX PAIR.
+  //
+  // These two carry the commit-reveal mechanism's INDEX rules, and §5.19's
+  // denominator note is why they matter: an unrevealed commitment is countable
+  // only because its question anchor and its reveal link are both bound. The
+  // second rule of PreRegistrationToRevelation says what breaks otherwise, in
+  // the zome's own words — "that is how an expired commitment is made to look
+  // revealed."
+  //
+  // Both reuse the chain AgentToPreRegistration already needed, plus one extra
+  // of each thing for the mismatch cases: a SECOND question and a SECOND
+  // commitment, so "does not match the question it names" and "must hang from
+  // the PreRegistration the Revelation names" can be driven with a real hash
+  // of the right kind rather than a dangling one, which would defer instead.
+  {
+    linkType: 'QuestionToPreRegistration',
+    label: 'QuestionToPreRegistration',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'two question Claims and a commitment about the first of them',
+    setup: async () => {
+      const domain = `CorpusLinkQ2PR${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const question = await mk('corpus question, the one the commitment names');
+      const otherQuestion = await mk('corpus question, deliberately NOT the one named');
+      const claims = await call('get_claims_by_domain', domain);
+      const anyEntryHash = claims[0].signed_action.hashed.content.data.entry_hash;
+      await new Promise((r) => setTimeout(r, 1500));
+      const preRegAction = await call('pre_register', {
+        question,
+        prediction: 'corpus prediction, for the question index',
+        salt: 'corpus-q2pr-salt-3b7d',
+        reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      return { question, otherQuestion, preRegAction, anyEntryHash, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'QuestionToPreRegistration',
+      base: ctx.preRegAction,
+      target: ctx.preRegAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: ctx.question,
+    }),
+    cases: [
+      { rule: 'QuestionToPreRegistration target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.anyEntryHash; } },
+      { rule: 'QuestionToPreRegistration target is not a PreRegistration.', mutate: (l, ctx) => { l.target = ctx.question; } },
+      // anchor_of and question_anchor_of both null means the extern passes
+      // `base` through verbatim, so an ActionHash lands where the anchor
+      // EntryHash is required.
+      { rule: 'QuestionToPreRegistration base must be an EntryHash anchor.', mutate: (l, ctx) => { l.question_anchor_of = null; l.base = ctx.preRegAction; } },
+      { rule: 'QuestionToPreRegistration base anchor does not match the question the PreRegistration itself names. A commitment may only be indexed under the question it was made about.', mutate: (l, ctx) => { l.question_anchor_of = ctx.otherQuestion; } },
+      {
+        rule: 'A QuestionToPreRegistration link may only be created by the committing agent.',
+        mutate: (l, ctx) => { l.target = ctx.others.preRegAction; l.question_anchor_of = ctx.others.claimAction; },
+      },
+    ],
+  },
+  {
+    linkType: 'PreRegistrationToRevelation',
+    label: 'PreRegistrationToRevelation',
+    fn: 'attempt_false_attachment_link',
+    chainNote: 'a commitment, its reveal, and a second commitment to hang it from wrongly',
+    setup: async () => {
+      const domain = `CorpusLinkPR2R${Date.now()}`;
+      const mk = (content) => call('create_claim', {
+        content, domain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const question = await mk('corpus question, for the reveal index');
+      const claims = await call('get_claims_by_domain', domain);
+      const anyEntryHash = claims[0].signed_action.hashed.content.data.entry_hash;
+      await new Promise((r) => setTimeout(r, 1500));
+      const PREDICTION = 'corpus prediction, committed in order to be revealed';
+      const SALT = 'corpus-pr2r-salt-8e2a';
+      const preRegAction = await call('pre_register', {
+        question, prediction: PREDICTION, salt: SALT,
+        reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      // A SECOND commitment, so the "must hang from the PreRegistration the
+      // Revelation names" rule has a real PreRegistration of the wrong
+      // identity to be pointed at. A dangling hash would defer instead.
+      const otherPreReg = await call('pre_register', {
+        question, prediction: 'corpus prediction, never revealed', salt: 'corpus-pr2r-salt-other',
+        reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      const revelationAction = await call('reveal_pre_registration', {
+        pre_registration: preRegAction, prediction: PREDICTION, salt: SALT,
+      });
+      return { preRegAction, otherPreReg, revelationAction, question, anyEntryHash, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'PreRegistrationToRevelation',
+      base: ctx.preRegAction,
+      target: ctx.revelationAction,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      { rule: 'PreRegistrationToRevelation target must be an ActionHash.', mutate: (l, ctx) => { l.target = ctx.anyEntryHash; } },
+      { rule: 'PreRegistrationToRevelation target is not a Revelation.', mutate: (l, ctx) => { l.target = ctx.question; } },
+      { rule: "PreRegistrationToRevelation base must be the PreRegistration's ActionHash.", mutate: (l, ctx) => { l.base = ctx.anyEntryHash; } },
+      { rule: 'A PreRegistrationToRevelation link must hang from the PreRegistration the Revelation itself names. A reveal of one commitment may not be recorded against another — that is how an expired commitment is made to look revealed.', mutate: (l, ctx) => { l.base = ctx.otherPreReg; } },
+      {
+        rule: 'A PreRegistrationToRevelation link may only be created by the revealing agent.',
+        mutate: (l, ctx) => { l.base = ctx.others.preRegAction; l.target = ctx.others.revelationAction; },
       },
     ],
   },
