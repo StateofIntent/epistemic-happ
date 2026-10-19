@@ -5,6 +5,16 @@
   ],
   "protocol_version": "9",
   "total_sites": 194,
+  "confusable_entry_reads": [
+    {
+      "from": "Claim",
+      "to": "Mew"
+    },
+    {
+      "from": "Revelation",
+      "to": "SealedPrediction"
+    }
+  ],
   "by_class": {
     "honest": 19,
     "crafted": 134,
@@ -1041,6 +1051,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if must_get_entry(membrane_hash).is_err()",
+      "link_type": "AgentToMembrane",
       "class": "deferred",
       "entry": "create_link"
     },
@@ -1106,6 +1117,7 @@
       "passthrough": null,
       "formatted": false,
       "guard": "Err(_) =>",
+      "link_type": "AttestationGrant",
       "class": "deferred",
       "entry": "create_link"
     },
@@ -1600,6 +1612,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToConstitution",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1610,6 +1623,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToConstitution",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1653,6 +1667,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToWorldlineTrace",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1663,6 +1678,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToWorldlineTrace",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1697,7 +1713,12 @@
       "guard": "_ =>",
       "link_type": "AgentToMew",
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "guard_reads": "Mew",
+      "confusable_from": [
+        "Claim"
+      ],
+      "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
       "line": 2808,
@@ -1706,6 +1727,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToMew",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1716,6 +1738,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToMew",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1880,6 +1903,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToPreRegistration",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1890,6 +1914,7 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToPreRegistration",
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -2144,7 +2169,12 @@
       "guard": "if !wanted_claim && !is_mew",
       "link_type": "MewToBridgeRecord",
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "guard_reads": "Mew",
+      "confusable_from": [
+        "Claim"
+      ],
+      "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
       "line": 3226,

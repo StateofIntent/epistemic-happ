@@ -111,8 +111,11 @@ const KNOWN = [
        + 'names ("would make get_unbridged_claims answer about the wrong entry"). The sibling holds '
        + 'because this confusion is ONE-DIRECTIONAL: Claim carries domain/confidence/evidence_hashes/'
        + 'attestation_policy, which Mew does not, so a Mew never passes as a Claim. Both sites are '
-       + 'bounded by their ownership rules, so neither is cross-agent. READINESS item 17 carries the '
-       + 'decision on whether to tighten it; item 16 was the sweep that found the second site.',
+       + 'bounded by their ownership rules, so neither is cross-agent. READINESS item 17 TOOK the '
+       + 'decision on 2026-10-19: accept the confusion rather than add a discriminant field, which '
+       + 'would change the DNA hash and force a protocol bump. So this pair is permanent, and both '
+       + 'affected rules now carry an `enforcement_caveat` in corpus/inventory.json saying what the '
+       + 'guard does not cover. Item 16 was the sweep that found the second site.',
   },
   {
     from: 'Revelation', to: 'SealedPrediction', status: 'LATENT',
@@ -171,6 +174,39 @@ for (const p of found) {
     fail(`${key(p)} was LATENT and is now LIVE`,
       `something now reads ${p.to} via to_app_option. The ledger says why this was tolerable while nothing read it; that reason no longer holds.`);
   }
+}
+
+// --- AND AGAINST THE INVENTORY, which derives the same pairs from the same
+// zome by its own parse. Two independent derivations that must agree is
+// stronger than one shared copy: this file gates a NEW pair, the inventory
+// annotates the rules an existing pair costs, and if the two ever disagree then
+// one of the parsers is wrong and NEITHER conclusion can be relied on. Soft
+// skipped when the inventory is absent, so this gate stays runnable alone.
+try {
+  const invPath = new URL('validation-corpus/corpus/inventory.json', import.meta.url).pathname;
+  const inv = JSON.parse(readFileSync(invPath, 'utf8'));
+  if (!Array.isArray(inv.confusable_entry_reads)) {
+    fail('the inventory publishes no confusable_entry_reads',
+      'enumerate.mjs is older than this check — regenerate the inventory, or the enforcement_caveat on the affected rules is missing');
+  } else {
+    const mine = new Set(found.map(key));
+    const theirs = new Set(inv.confusable_entry_reads.map(key));
+    const onlyMine = [...mine].filter((k) => !theirs.has(k));
+    const onlyTheirs = [...theirs].filter((k) => !mine.has(k));
+    if (onlyMine.length || onlyTheirs.length) {
+      fail('this check and the inventory disagree about which pairs are confusable',
+        `only here: ${onlyMine.join(', ') || '(none)'} | only in the inventory: `
+        + `${onlyTheirs.join(', ') || '(none)'} — two parsers of the same structs reached `
+        + 'different answers, so neither conclusion can be relied on. FIRST suspect a STALE '
+        + 'inventory rather than a parser bug: run `node scripts/validation-corpus/enumerate.mjs` '
+        + 'and re-run this. In CI the inventory-drift step above has already ruled that out.');
+    } else {
+      pass(`the inventory's independently-derived pairs agree (${theirs.size})`);
+    }
+  }
+} catch (e) {
+  if (e?.code !== 'ENOENT') throw e;
+  console.log('  skip: corpus/inventory.json not present, so the cross-derivation check did not run');
 }
 
 console.log('');

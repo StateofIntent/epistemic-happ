@@ -24,15 +24,25 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and TWENTY-THREE link types — every link type in the zome,
-with every rule either asserted or declared unreachable with its reason.** 238
-checks, **twenty-three of which need a second agent** — see
-*A second agent* below. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
+**Ten entry types and TWENTY-FOUR link types — every link type in the zome,
+with every rule either asserted or declared unreachable with its reason.** 244
+checks, **twenty-three of which need a second agent** — see *A second agent*
+below — and **three of which are driven with no baseline at all**, because a
+valid `AttestationGrant` needs thirty days of prior membership: see *Refusals
+with no baseline*. Every link type here is 3 of 3 (AgentToClaim 6 of 6):
 nothing in this slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
 than `entry`, because every link site shares `entry: "create_link"` and
 grouping them by entry would collapse nineteen rule sets into one meaningless
 denominator.
+
+***The table immediately below is the ORIGINAL four-type slice and is not the
+current denominator*** — the figure above is. It is kept because the three-prober
+argument under it is still the reason the slice was chosen that way, but items
+5c and 18 took coverage to every link type in the zome, and item 19 added
+`AttestationGrant` with no baseline at all. Noted rather than rewritten: a table
+of twenty-four rows would restate what `node replay.mjs` prints per type on
+every run.
 
 | link type | prober | assertable rules | asserted | declared unreachable |
 |---|---|---|---|---|
@@ -48,8 +58,10 @@ domain or an override, so the rules they can reach are bounded by their
 parameters rather than by the validator. A slice using only the generic prober
 would have proved nothing about the other two.
 
-**15 of 19 link types remain.** What is done is the driver, the three prober
-shapes, and both anchor forms.
+~~**15 of 19 link types remain.**~~ **None remain**, as of item 18 — and item 19
+added the one link type that needs a second driver shape, because its baseline
+cannot exist. What is done is both drivers, the three prober shapes, and both
+anchor forms.
 
 | entry type | assertable rules | refusals | deferrals | declared unreachable |
 |---|---|---|---|---|
@@ -381,6 +393,16 @@ be fetched.
 message reads as the enforcement, whose obvious trigger produces something else
 entirely, and which is reachable only by a payload nobody would guess. It is
 asserted now rather than assumed.
+
+**A WARNING ABOUT THE NUMBERS, because they are not unique and that has already
+cost a session.** The two findings below are 8 and 9 of this first-run series,
+and there are a SECOND finding 8 and finding 9 further down — the `Claim`
+deserialises as a `Mew` pair, written when item 16 and the BridgeRecord sweep
+found them. Four findings, two numbers. When something cites "findings 8 and 9"
+it almost always means the Claim/Mew pair, since that is the pair with
+consequences still open. New findings from here are numbered 10 up, and the
+duplicates are left alone rather than renumbered because
+`check-entry-type-confusion.mjs` and READINESS rows both cite them by number.
 
 ### Finding 8 — 23 rules are waiting on one piece of work, and it is a second agent
 
@@ -857,7 +879,8 @@ R was taken on the 93-check version, S on the 99-check one, T on the 117-check
 version with the agent-anchor family, X on the 133-check version, Y and Z on
 the 150- and 167-check versions, AA on the 175-check one, AB on the 185-check version,
 AC on the 217-check one, AD on the
-223-check one, and AE on the 238-check one.
+223-check one, and AE on the 238-check one. AF and AG are on the 244-check one
+— see *Refusals with no baseline*.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
   passed, 1 failed**, `the call COMMITTED`. A LINK rule that stops firing is
@@ -943,6 +966,126 @@ AC on the 217-check one, AD on the
   restored to the author's own key, `Reinforcement`'s target likewise, and
   `SynapticLink`'s short tag padded back to four bytes. Result: **235 passed, 3
   failed**.
+
+### Refusals with no baseline — the harness item 18's declarations asked for
+
+**Every case in this corpus starts from a payload asserted to COMMIT and
+changes one field**, and *Why one mutation at a time* below is the argument for
+it. `AttestationGrant` cannot be driven that way. A valid grant needs the
+granter's own `AgentToMembrane` join to be at least
+`ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` old — **thirty days** — and a run
+makes both actions seconds apart. The only things that would produce one are
+waiting a month or moving `CLOCK_REALTIME`, and the clock probe is deliberately
+not a CI check. **So a valid `AttestationGrant` has never been committed by
+anything in this repository, and cannot be.**
+
+That is why item 18 declared all three of its rules, and the note closing that
+declaration said what was missing: *"these need a harness that asserts refusals
+WITHOUT a valid baseline, which is a different shape from this one — not another
+extern."* `driveUnbaselined` is that shape. Finding 11 is why two of the three
+rules did not need the baseline at all.
+
+**WHAT REPLACES THE BASELINE WAS ALREADY IN THE EVIDENCE.** Each link branch of
+`validate_create_link` is a straight-line sequence that RETURNS at the first
+failure, so a refusal naming rule N is itself proof that every check above N
+passed on that payload — exactly what the baseline supplies from outside. The
+message carries it instead.
+
+**WHAT IS LOST, stated rather than glossed**, because a driver that quietly
+asserts less than its neighbour is the failure mode this corpus exists to find:
+
+- **A deleted rule is still caught, both ways.** With the rule gone the call
+  either commits — reported as `the call COMMITTED` — or is refused by a LATER
+  check, and the assertion requires THIS rule's own prefix, so a different
+  message reds as `stopped for a different reason`. Both drivers share ONE copy
+  of that discipline (`assertStopped`, extracted rather than duplicated),
+  because a second copy of the prefix rule is a second place for it to be
+  loosened into "did it throw" — which is what injections P and Q protect.
+- **What is genuinely lost** is the proof that nothing BELOW the rule would also
+  have refused the payload. These cases assert the rule fires FIRST among those
+  they violate, not that it is the only one. Here that is visible rather than
+  hidden: the three cases are the branch's first three checks in order, and the
+  only check below all three is the friction rule still declared above.
+
+**THIS MUST NOT SPREAD.** Where a baseline CAN commit, `drive` is strictly
+stronger, because two signals beat one. The test for belonging here is "a
+baseline is impossible", not "a baseline is inconvenient" — and for every other
+link type in this corpus, the four `AttachmentLinkKind` variants item 18 added
+included, a baseline commits. One link type qualifies.
+
+**238 → 244 checks, 0 failed**, against a sandbox conductor.
+
+- **Injection AF** — the tag-length case given a VALID 36-byte tag (the real
+  join action). Result: **243 passed, 1 failed**, and the detail is the thing
+  worth having: `stopped for a different reason: … AttestationGrant requires
+  proof of sufficiently tenured membership …`. **This is the ordering argument
+  measured rather than asserted** — with check 1 satisfied the refusal comes
+  from check 3, so the tag case's green tick is attributable to the tag rule and
+  to nothing else.
+- **Injection AG** — the tenure case given a dangling 36-byte tag. Result:
+  **fails** with `stopped for a different reason: … DepMissingFromDht`. The
+  payload defers rather than being refused, so the tenure assertion cannot be
+  satisfied by any refusal, and the real join action is load-bearing: the rule
+  is reached only because the referenced action RESOLVES and is then found too
+  young.
+- Both also confirm the deferral case is not a tautology: it is the only one of
+  the three that expects a stall, and `assertStopped` fails it if the rule's
+  message appears instead.
+
+### Finding 10 — a deferred link rule was keyed to no link type, so it was in no denominator
+
+**The same family as item 18's own finding, found one gate over.** `classify()`
+returns `deferred` BEFORE the branch that records `link_type`, and the per-type
+coverage loop keys on exactly that field — so a deferred LINK site came out of
+the classifier with no link type at all and was in **no type's denominator and
+no total**. Two sites: `AgentToMembrane base is not a valid Membrane.` and
+`AttestationGrant's referenced membership action not found.`
+
+**Found by the orphan check, and it is the only gate that could have found it.**
+The coverage loop cannot miss a rule it never iterates; the inventory drift gate
+passes because regeneration is identical; and the per-type denominators looked
+right. What reported it was the other direction — a corpus case naming a rule
+the inventory did not list — which is the check that exists for a rule whose
+wording changed, doing a job it was not written for.
+
+The link type is now recorded before any class is decided. **And fixing it
+surfaced an uncovered rule**, which is what a denominator is for:
+`AgentToMembrane base is not a valid Membrane.` moved into its type's count at
+4 of 4 with no case, and now has one — a deferral, since a well-formed EntryHash
+that resolves to nothing reaches `must_get_entry` and abandons the callback.
+
+### Finding 11 — a declaration's reason was stronger than the declaration, and two of three rules needed no baseline
+
+Item 18 declared all three `AttestationGrant` rules unreachable from this
+harness, on reasoning that is correct as far as it goes: a valid grant needs an
+`AgentToMembrane` join thirty days older than it, so **no run can construct a
+committing baseline**, and without one every case would be refused for tenure
+rather than for the rule under test.
+
+**Both steps hold. The conclusion does not follow for two of the three**, and
+the thing that makes it not follow is the order of the checks in the branch:
+
+| # | check | needs a baseline? |
+|---|---|---|
+| 1 | `tag.0.len() != 36` | **no — nothing above it can preempt it.** It is the first check in the branch, so the payload can hit nothing else |
+| 2 | `must_get_valid_record(..)` fails | **no** — a refusal at 1 would prove 1 had stopped firing, and 2 is asserted as a DEFERRAL |
+| 3 | tenure | **no** — a refusal here is itself proof 1 and 2 passed on this payload |
+| 4 | friction | n/a — still declared, and its reason was never the baseline |
+
+**A refusal naming rule N is proof that every check above N passed**, because
+the branch returns at the first failure. That is exactly what a baseline
+supplies from outside, so for a straight-line validator the message carries its
+own isolation. The three cases above are the first three checks in order, each
+one passing the ones above it, and they are driven by `driveUnbaselined` rather
+than `drive`.
+
+**What the friction rule's declaration should have said**, and now does: not the
+baseline, but the coordinator. `check_attestation_grant_friction` pre-checks at
+the same limit (`ATTESTATION_GRANT_MAX_PER_WINDOW` 5 = `..._VALIDATION` 5), so
+`grant_attestation` refuses in the coordinator's own wording — the shape the
+`Critique` and `AntibodyPattern` gaps already take. Reaching it through the
+prober would additionally need five grants that PASS the tenure bar, which is
+the thing no run can produce.
 
 ## Why one mutation at a time
 
