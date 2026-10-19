@@ -116,6 +116,23 @@ jobs:
             exit 1
           }
 
+      # Fifth in the family, and it runs AFTER inventory-drift deliberately:
+      # this gate derives the confusable entry-type pairs from the zome by its
+      # own parse and then checks them against the ones `enumerate.mjs`
+      # published in the inventory, so it needs an inventory that is already
+      # known to be current. Two independent derivations that must agree —
+      # because the thing being gated is a conclusion about deserialisation,
+      # and one parser agreeing with itself proves nothing.
+      #
+      # WHAT IT CATCHES. A `to_app_option::<T>()` guard reads as a type check
+      # and is one only while no other entry type's bytes deserialise as `T`.
+      # A Claim's do read as a Mew, which disables two such guards (corpus
+      # finding 10, READINESS items 16 and 17). That pair is accepted and
+      # ledgered; what must not happen silently is a NEW one, and it would
+      # arrive as an innocent-looking field added to an entry struct.
+      - name: entry-type-confusion — no new pair of entry types reads as the other
+        run: node scripts/check-entry-type-confusion.mjs
+
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.
       - name: Install and build the notes service

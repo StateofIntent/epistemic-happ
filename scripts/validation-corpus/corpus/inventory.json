@@ -5,11 +5,21 @@
   ],
   "protocol_version": "9",
   "total_sites": 194,
+  "confusable_entry_reads": [
+    {
+      "from": "Claim",
+      "to": "Mew"
+    },
+    {
+      "from": "Revelation",
+      "to": "SealedPrediction"
+    }
+  ],
   "by_class": {
     "honest": 19,
-    "crafted": 120,
-    "deferred": 15,
-    "needs_prober": 14,
+    "crafted": 122,
+    "deferred": 14,
+    "needs_prober": 13,
     "needs_extern": 10,
     "remote": 4,
     "passthrough": 12
@@ -998,6 +1008,10 @@
       "formatted": false,
       "guard": "if tag.0.len() < 4",
       "link_type": "SynapticLink",
+      "link_write_paths": [
+        "create_synaptic_link (private)"
+      ],
+      "unreachable_why": "the tag is `conductance.to_le_bytes()` of an f32, so it is always exactly 4 bytes; no extern passes raw tag bytes for this type",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1009,6 +1023,10 @@
       "formatted": true,
       "guard": "if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION",
       "link_type": "SynapticLink",
+      "link_write_paths": [
+        "create_synaptic_link (private)"
+      ],
+      "unreachable_why": "create_synaptic_link calls check_synaptic_link_friction() first at the same limit (20), so the coordinator refuses in its own wording",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1020,6 +1038,10 @@
       "formatted": false,
       "guard": "if tag.0.len() != 36",
       "link_type": "AgentToMembrane",
+      "link_write_paths": [
+        "join_membrane"
+      ],
+      "unreachable_why": "join_membrane builds the tag from `agent.get_raw_36()`, which is always 36 bytes",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1031,6 +1053,10 @@
       "formatted": false,
       "guard": "if &claimed_agent != action.author()",
       "link_type": "AgentToMembrane",
+      "link_write_paths": [
+        "join_membrane"
+      ],
+      "unreachable_why": "join_membrane takes the agent from agent_info(), so the joining agent is always the author",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1041,7 +1067,12 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if must_get_entry(membrane_hash).is_err()",
-      "class": "deferred",
+      "link_type": "AgentToMembrane",
+      "link_write_paths": [
+        "join_membrane"
+      ],
+      "unreachable_why": "join_membrane resolves the membrane through membrane_entry_hash, which `get()`s it and fails with \"Membrane not found.\" before create_link — so a base that is not a Membrane is never authored and this guard is never reached, deferral or otherwise",
+      "class": "needs_prober",
       "entry": "create_link"
     },
     {
@@ -1052,6 +1083,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToMembrane",
+      "link_write_paths": [
+        "join_membrane"
+      ],
+      "unreachable_why": "the base is membrane_entry_hash(..), whose return type is EntryHash — the caller chooses WHICH membrane, never the hash kind",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1063,6 +1098,10 @@
       "formatted": false,
       "guard": "if &claimed_reinforcer != action.author()",
       "link_type": "Reinforcement",
+      "link_write_paths": [
+        "reinforce_synaptic_link"
+      ],
+      "unreachable_why": "reinforce_synaptic_link sets the target from agent_info(), so the reinforcer is always the author",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1074,7 +1113,12 @@
       "formatted": false,
       "guard": "if !is_synaptic_link",
       "link_type": "Reinforcement",
-      "class": "needs_prober",
+      "link_write_paths": [
+        "reinforce_synaptic_link"
+      ],
+      "unreachable_why": null,
+      "reached_via": "reinforce_synaptic_link",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1085,6 +1129,10 @@
       "formatted": true,
       "guard": "if recent_count >= REINFORCEMENT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "Reinforcement",
+      "link_write_paths": [
+        "reinforce_synaptic_link"
+      ],
+      "unreachable_why": "reinforce_synaptic_link calls check_reinforcement_friction() first at the same limit (40), so the coordinator refuses in its own wording",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1096,6 +1144,10 @@
       "formatted": false,
       "guard": "if tag.0.len() != 36",
       "link_type": "AttestationGrant",
+      "link_write_paths": [
+        "grant_attestation"
+      ],
+      "unreachable_why": "grant_attestation builds the tag from `my_membership_action.get_raw_36()`, and an ActionHash is always 36 bytes",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1106,6 +1158,12 @@
       "passthrough": null,
       "formatted": false,
       "guard": "Err(_) =>",
+      "link_type": "AttestationGrant",
+      "link_write_paths": [
+        "grant_attestation"
+      ],
+      "unreachable_why": null,
+      "reached_via": "grant_attestation",
       "class": "deferred",
       "entry": "create_link"
     },
@@ -1117,7 +1175,12 @@
       "formatted": false,
       "guard": "if !tenure_ok",
       "link_type": "AttestationGrant",
-      "class": "needs_prober",
+      "link_write_paths": [
+        "grant_attestation"
+      ],
+      "unreachable_why": null,
+      "reached_via": "grant_attestation",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -1128,6 +1191,10 @@
       "formatted": true,
       "guard": "if recent_count >= ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "AttestationGrant",
+      "link_write_paths": [
+        "grant_attestation"
+      ],
+      "unreachable_why": "grant_attestation calls check_attestation_grant_friction() first at the same limit (5), and reaching the limit would need five grants that PASS the 30-day tenure bar",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1139,6 +1206,12 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "DomainToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_domain_index (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1150,6 +1223,12 @@
       "formatted": true,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "DomainToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_domain_index (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1161,6 +1240,12 @@
       "formatted": false,
       "guard": "if &claim.author != action.author()",
       "link_type": "DomainToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_domain_index (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1172,6 +1257,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "TaxonomyToSpecies",
+      "link_write_paths": [
+        "create_critique_species"
+      ],
+      "unreachable_why": "the target is the ActionHash create_critique_species just returned from create_entry, so it is always a CritiqueSpecies creation",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1183,6 +1272,10 @@
       "formatted": false,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "TaxonomyToSpecies",
+      "link_write_paths": [
+        "create_critique_species"
+      ],
+      "unreachable_why": "the base is taxonomy_anchor_hash(), which takes no argument",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1194,6 +1287,10 @@
       "formatted": false,
       "guard": "if &species.proposer != action.author()",
       "link_type": "TaxonomyToSpecies",
+      "link_write_paths": [
+        "create_critique_species"
+      ],
+      "unreachable_why": "the species is created by the same call, so its proposer is always the author",
       "class": "needs_prober",
       "entry": "create_link"
     },
@@ -1205,6 +1302,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "MembraneRegistry",
+      "link_write_paths": [
+        "create_membrane",
+        "attempt_false_membrane_registry (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1216,6 +1317,10 @@
       "formatted": false,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "MembraneRegistry",
+      "link_write_paths": [
+        "create_membrane",
+        "attempt_false_membrane_registry (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1227,6 +1332,10 @@
       "formatted": false,
       "guard": "if &membrane.creator != action.author()",
       "link_type": "MembraneRegistry",
+      "link_write_paths": [
+        "create_membrane",
+        "attempt_false_membrane_registry (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1238,6 +1347,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "ClaimToRetraction",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1249,6 +1362,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "ClaimToRetraction",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1260,6 +1377,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "ClaimToRetraction",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1271,6 +1392,10 @@
       "formatted": false,
       "guard": "if retraction.target_claim != declared_claim",
       "link_type": "ClaimToRetraction",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1282,6 +1407,10 @@
       "formatted": false,
       "guard": "if &retraction.author != action.author()",
       "link_type": "ClaimToRetraction",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1293,6 +1422,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1304,6 +1437,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1315,6 +1452,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1326,6 +1467,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1337,6 +1482,10 @@
       "formatted": false,
       "guard": "if replacement != declared_replacement",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1348,6 +1497,10 @@
       "formatted": false,
       "guard": "if &retraction.author != action.author()",
       "link_type": "RetractionToReplacement",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_retraction"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1359,6 +1512,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "TargetToCritique",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1370,6 +1527,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "TargetToCritique",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1381,6 +1542,10 @@
       "formatted": false,
       "guard": "if critique.target != base_address",
       "link_type": "TargetToCritique",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1392,6 +1557,10 @@
       "formatted": false,
       "guard": "if &critique.author != action.author()",
       "link_type": "TargetToCritique",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1403,6 +1572,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "TargetToAntibody",
+      "link_write_paths": [
+        "publish_antibody_pattern",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1414,6 +1587,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "TargetToAntibody",
+      "link_write_paths": [
+        "publish_antibody_pattern",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1425,6 +1602,10 @@
       "formatted": false,
       "guard": "if pattern.target != base_address",
       "link_type": "TargetToAntibody",
+      "link_write_paths": [
+        "publish_antibody_pattern",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1436,6 +1617,10 @@
       "formatted": false,
       "guard": "if &pattern.author != action.author()",
       "link_type": "TargetToAntibody",
+      "link_write_paths": [
+        "publish_antibody_pattern",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1447,6 +1632,12 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1458,6 +1649,12 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1469,6 +1666,12 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1480,6 +1683,12 @@
       "formatted": false,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1491,6 +1700,12 @@
       "formatted": false,
       "guard": "if tag.0.as_slice() != claim.domain.as_bytes()",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1502,6 +1717,12 @@
       "formatted": false,
       "guard": "if &claim.author != action.author()",
       "link_type": "AgentToClaim",
+      "link_write_paths": [
+        "create_claim",
+        "attempt_false_attachment_link (prober)",
+        "assert_expertise",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1513,6 +1734,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1524,6 +1749,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1535,6 +1764,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1546,6 +1779,10 @@
       "formatted": false,
       "guard": "Some(_) =>",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1557,6 +1794,10 @@
       "formatted": false,
       "guard": "None =>",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1568,6 +1809,10 @@
       "formatted": false,
       "guard": "if &critique.author != action.author()",
       "link_type": "CritiqueToSpecies",
+      "link_write_paths": [
+        "create_critique",
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1579,6 +1824,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToConstitution",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "publish_constitution"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1590,6 +1839,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "AgentToConstitution",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "publish_constitution"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1600,6 +1853,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToConstitution",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "publish_constitution"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1610,6 +1868,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToConstitution",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "publish_constitution"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1621,6 +1884,10 @@
       "formatted": false,
       "guard": "if &constitution.agent != action.author()",
       "link_type": "AgentToConstitution",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "publish_constitution"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1632,6 +1899,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToWorldlineTrace",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "generate_worldline_trace"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1643,6 +1914,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "AgentToWorldlineTrace",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "generate_worldline_trace"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1653,6 +1928,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToWorldlineTrace",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "generate_worldline_trace"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1663,6 +1943,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToWorldlineTrace",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "generate_worldline_trace"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1674,6 +1959,10 @@
       "formatted": false,
       "guard": "if &trace.agent != action.author()",
       "link_type": "AgentToWorldlineTrace",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "generate_worldline_trace"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1685,6 +1974,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToMew",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_mew"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1696,8 +1989,17 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "AgentToMew",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_mew"
+      ],
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "guard_reads": "Mew",
+      "confusable_from": [
+        "Claim"
+      ],
+      "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
       "line": 2808,
@@ -1706,6 +2008,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToMew",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_mew"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1716,6 +2023,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToMew",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_mew"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1727,6 +2039,10 @@
       "formatted": false,
       "guard": "if &mew.author != action.author()",
       "link_type": "AgentToMew",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_mew"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1738,6 +2054,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1749,6 +2069,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1760,6 +2084,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1771,6 +2099,10 @@
       "formatted": false,
       "guard": "Some(_) =>",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1782,6 +2114,10 @@
       "formatted": false,
       "guard": "None =>",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1793,6 +2129,10 @@
       "formatted": false,
       "guard": "if &child.proposer != action.author()",
       "link_type": "SpeciesToParent",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "create_critique_species"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1804,6 +2144,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "PreRegistrationToRevelation",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "reveal_pre_registration"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1815,6 +2159,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "PreRegistrationToRevelation",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "reveal_pre_registration"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1826,6 +2174,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "PreRegistrationToRevelation",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "reveal_pre_registration"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1837,6 +2189,10 @@
       "formatted": false,
       "guard": "if revelation.pre_registration != declared_pr",
       "link_type": "PreRegistrationToRevelation",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "reveal_pre_registration"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1848,6 +2204,10 @@
       "formatted": false,
       "guard": "if &revelation.author != action.author()",
       "link_type": "PreRegistrationToRevelation",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "reveal_pre_registration"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1859,6 +2219,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "AgentToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1870,6 +2234,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "AgentToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1880,6 +2248,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "_ =>",
+      "link_type": "AgentToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1890,6 +2263,11 @@
       "passthrough": "reason",
       "formatted": false,
       "guard": "if let ValidateCallbackResult::Invalid(reason) =",
+      "link_type": "AgentToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "passthrough",
       "entry": "create_link"
     },
@@ -1901,6 +2279,10 @@
       "formatted": false,
       "guard": "if &pr.author != action.author()",
       "link_type": "AgentToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1912,6 +2294,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "QuestionToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1923,6 +2309,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "QuestionToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1934,6 +2324,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "QuestionToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1945,6 +2339,10 @@
       "formatted": false,
       "guard": "if declared_anchor != expected_anchor",
       "link_type": "QuestionToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1956,6 +2354,10 @@
       "formatted": false,
       "guard": "if &pr.author != action.author()",
       "link_type": "QuestionToPreRegistration",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "pre_register"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1967,6 +2369,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1978,6 +2384,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -1989,6 +2399,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2000,6 +2414,10 @@
       "formatted": false,
       "guard": "Some(_) =>",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2011,6 +2429,10 @@
       "formatted": false,
       "guard": "None =>",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2022,6 +2444,10 @@
       "formatted": false,
       "guard": "if &claim.author != action.author()",
       "link_type": "MewToClaim",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "promote_mew_to_claim"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2033,6 +2459,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MembraneToFederationRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "record_federation"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2044,6 +2474,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "MembraneToFederationRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "record_federation"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2055,6 +2489,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MembraneToFederationRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "record_federation"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2066,6 +2504,10 @@
       "formatted": false,
       "guard": "if federation.local_membrane != declared_membrane",
       "link_type": "MembraneToFederationRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "record_federation"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2077,6 +2519,10 @@
       "formatted": false,
       "guard": "if &federation.author != action.author()",
       "link_type": "MembraneToFederationRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "record_federation"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2088,6 +2534,9 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2099,6 +2548,9 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2110,6 +2562,9 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2121,6 +2576,9 @@
       "formatted": false,
       "guard": "if bridge.mew_hash != declared_subject",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2132,6 +2590,9 @@
       "formatted": false,
       "guard": "if wanted_claim && !is_claim",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2143,8 +2604,16 @@
       "formatted": false,
       "guard": "if !wanted_claim && !is_mew",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "guard_reads": "Mew",
+      "confusable_from": [
+        "Claim"
+      ],
+      "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
       "line": 3226,
@@ -2154,6 +2623,9 @@
       "formatted": false,
       "guard": "if &bridge.author != action.author()",
       "link_type": "MewToBridgeRecord",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2165,6 +2637,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "ClaimToExternalCritique",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "import_twitter_reply"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2176,6 +2652,10 @@
       "formatted": false,
       "guard": "_ =>",
       "link_type": "ClaimToExternalCritique",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "import_twitter_reply"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2187,6 +2667,10 @@
       "formatted": false,
       "guard": "Err(_) =>",
       "link_type": "ClaimToExternalCritique",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "import_twitter_reply"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2198,6 +2682,10 @@
       "formatted": false,
       "guard": "if ext.linked_holochain_claim != declared_claim",
       "link_type": "ClaimToExternalCritique",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "import_twitter_reply"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },
@@ -2209,6 +2697,10 @@
       "formatted": false,
       "guard": "if &ext.importer != action.author()",
       "link_type": "ClaimToExternalCritique",
+      "link_write_paths": [
+        "attempt_false_attachment_link (prober)",
+        "import_twitter_reply"
+      ],
       "class": "crafted",
       "entry": "create_link"
     },

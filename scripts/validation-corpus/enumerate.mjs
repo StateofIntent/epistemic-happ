@@ -357,32 +357,261 @@ const GUARDS_FIELD = {
   'BridgeRecord {}.': 'carried_fields',
 };
 
-// --- Which LinkTypes a client can author with attacker-controlled fields.
-// Link ops ARE authored locally — every create_claim writes index links — so a
-// link rule is not "remote" merely for being a link rule. What decides whether
-// its REJECTION can be observed is whether the coordinator exposes a path that
-// writes that link type with a base, target or tag the caller chooses. Those
-// paths are the `attempt_*` probers, and they are deliberate: see
-// attachment-links.mjs's header on the link types "nobody probed".
+// ============================================================================
+// --- ONE ENTRY TYPE'S BYTES READ AS ANOTHER'S, and which rules that costs.
 //
-// A link rule whose type has no prober is not untestable in principle — it is
-// untestable from JavaScript alone. Reaching it needs a new `attempt_*` function
-// in the coordinator, which means rebuilding and repacking the DNA. That is a
-// different and much larger job than adding a payload to a corpus, which is why
-// those sites get their own class instead of being counted as reachable.
-const PROBED_LINK_TYPES = new Set([
-  // attempt_false_attachment_link — generic over AttachmentLinkKind, with
-  // caller-chosen base, target and raw tag bytes.
-  'ClaimToRetraction', 'RetractionToReplacement', 'TargetToCritique',
-  'TargetToAntibody', 'AgentToClaim', 'CritiqueToSpecies',
-  'AgentToConstitution', 'AgentToWorldlineTrace', 'AgentToMew',
-  'SpeciesToParent', 'PreRegistrationToRevelation', 'AgentToPreRegistration',
-  'QuestionToPreRegistration', 'MewToClaim', 'MembraneToFederationRecord',
-  'MewToBridgeRecord', 'ClaimToBridgeRecord', 'ClaimToExternalCritique',
-  // single-purpose probers
-  'DomainToClaim',        // attempt_false_domain_index
-  'MembraneRegistry',     // attempt_false_membrane_registry
-]);
+// A `to_app_option::<T>()` guard reads as a type check. It is one only if no
+// OTHER entry type's bytes deserialise as `T`. A `Claim`'s do deserialise as a
+// `Mew` — `Mew`'s non-Option fields are content/author/timestamp/semantic_tags,
+// a `Claim` carries all four at the same declared types, and serde ignores the
+// extra ones — so two guards that read as type checks cannot fire for a Claim.
+// READINESS item 17 took the decision to ACCEPT that rather than add a
+// discriminant field (which would change the DNA hash and force a protocol
+// bump), on the condition that the affected rules stop reading as enforcement
+// HERE, in the inventory the corpus works from.
+//
+// So this does not change a class — both rules are still reachable and both
+// still have corpus cases that pass — it records what the rule does NOT cover,
+// on the site itself, where the next person reading the inventory will see it.
+//
+// THE RULE IS THE EMPIRICAL ONE, not the one serde documents: a MISSING
+// `Option` field is tolerated, which is what the corpus measured rather than
+// assumed. `scripts/check-entry-type-confusion.mjs` is the GATE on the same
+// fact — it reds when a NEW confusable pair appears — and it derives the pairs
+// independently and then checks them against the ones published here, so the
+// two cannot drift apart in silence.
+const structFieldTypes = new Map();
+{
+  const enumBlock = src.slice(src.indexOf('pub enum EntryTypes'));
+  const names = [...enumBlock.slice(0, enumBlock.indexOf('\n}')).matchAll(/^\s{4}([A-Z][A-Za-z]*)\(/gm)]
+    .map((m) => m[1]);
+  for (const t of names) {
+    const m = new RegExp(`pub struct ${t} \\{([\\s\\S]*?)\\n\\}`).exec(src);
+    if (!m) continue;
+    const f = new Map();
+    for (const g of m[1].matchAll(/pub (\w+)\s*:\s*([^,\n]+)/g)) {
+      f.set(g[1], g[2].trim().replace(/,$/, '').replace(/\s+/g, ''));
+    }
+    if (f.size) structFieldTypes.set(t, f);
+  }
+}
+
+// Can A be read out of B's bytes? Every non-Option field of A must exist in B
+// at an identical declared type; extra fields in B are ignored, which is why
+// the direction matters — a bigger struct reads as a smaller one and not the
+// reverse. That asymmetry is load-bearing here: it is why the Claim-side
+// sibling rule ("A ClaimToBridgeRecord link's base is not a Claim.") still
+// enforces, since a Mew lacks domain/confidence/evidence_hashes.
+const readableFrom = (A, B) => {
+  if (A === B || !structFieldTypes.has(A) || !structFieldTypes.has(B)) return false;
+  for (const [name, ty] of structFieldTypes.get(A)) {
+    if (ty.startsWith('Option<')) continue;
+    if (structFieldTypes.get(B).get(name) !== ty) return false;
+  }
+  return true;
+};
+
+const confusableEntryReads = [];
+for (const B of structFieldTypes.keys()) {
+  for (const A of structFieldTypes.keys()) {
+    if (readableFrom(A, B)) confusableEntryReads.push({ from: B, to: A });
+  }
+}
+
+// Where validation actually READS a type out of a record. The line is the
+// anchor: a rule affected by a confusable read sits inside the branch that
+// tests the result, so it is below the read and names the type it wanted.
+// Both conditions are needed and each excludes a real site that the other
+// would have let through — `A ClaimToBridgeRecord link's base is not a Claim.`
+// sits three lines under the `is_mew` read and names Claim (which nothing is
+// confusable with), and `MewToClaim base must be a Mew's EntryHash.` names Mew
+// but is an EntryHash downcast with no type read above it at all.
+const typeReads = [...src.matchAll(/to_app_option::<([A-Za-z]+)>/g)].map((m) => ({
+  line: src.slice(0, m.index).split('\n').length,
+  type: m[1],
+}));
+
+// --- WHICH LINK RULES A CLIENT CAN REACH. Link ops ARE authored locally —
+// every create_claim writes index links — so a link rule is not "remote"
+// merely for being a link rule. What decides whether its REJECTION can be
+// observed is whether some published path writes that link type with a base,
+// target or tag the caller chooses.
+//
+// THIS WAS A HAND-MAINTAINED LIST OF TWENTY PROBER NAMES AND IT WAS GATING
+// NOTHING FOR TWO LINK TYPES. `PROBED_LINK_TYPES` named the types reachable
+// through an `attempt_*` prober, and everything else was classed
+// `needs_prober` — "needs a coordinator change + DNA rebuild". That inference
+// is wrong in one direction: a prober is not the only path with
+// caller-chosen fields. `reinforce_synaptic_link(ActionHash)` takes the link's
+// entire BASE as its only argument, and `grant_attestation` takes the base,
+// the target and the bytes of the tag. So three rules on those two types were
+// reachable from JavaScript today, were labelled as needing a DNA rebuild, and
+// were therefore excluded from the coverage denominator in replay.mjs — a rule
+// nobody would notice losing, which is the one defect this whole corpus exists
+// to find. It had the shape its own header warned about: "a prober proves the
+// rule it probes and silently flatters the rules it does not."
+//
+// THE SPLIT OF LABOUR IS THE SAME ONE THE ENTRY CROSS-CHECK USES, for the same
+// reason — a machine should own what is mechanical and a human should be forced
+// to answer what is not.
+//
+// MECHANICAL: which link types any path writes at all, read off the
+// coordinator's own source. The eighteen attachment kinds come from
+// `attempt_false_attachment_link`'s match arms rather than from a list retyped
+// here, so a new kind is probed the moment the arm is added, and a prober
+// deleted stops flattering its rules the moment it goes.
+//
+// JUDGEMENT: for a type with no prober, whether a rule is reachable depends on
+// the rule — `grant_attestation` makes the tenure rule reachable and cannot
+// make the tag-length rule fire at all, because it builds the tag from an
+// ActionHash and an ActionHash is always 36 bytes. Those verdicts are curated
+// in UNPROBED_LINK_RULES below, with the reason, and **a link rule on an
+// unprobed type that is missing from that table exits 1 before the inventory is
+// written.** The old list could omit a whole type in silence; this cannot omit
+// a single rule.
+
+// Mechanical (1) — every top-level fn in the coordinator, so a `create_link`
+// is attributed to the function CONTAINING it. `externAt` above finds the
+// nearest extern above a line, which is wrong here: `create_synaptic_link` is
+// a private fn and its create_link would be charged to whatever extern happens
+// to precede it in the file.
+const coordFns = [];
+for (let i = 0; i < coordLines.length; i++) {
+  const m = /^(?:pub )?(?:async )?fn ([a-z_0-9]+)/.exec(coordLines[i]);
+  if (!m) continue;
+  coordFns.push({
+    name: m[1],
+    start: i + 1,
+    isExtern: coordLines.slice(Math.max(0, i - 6), i).some((l) => /#\[hdk_extern\]/.test(l)),
+  });
+}
+for (let i = 0; i < coordFns.length; i++) {
+  coordFns[i].end = i + 1 < coordFns.length ? coordFns[i + 1].start - 1 : coordLines.length;
+}
+
+// Mechanical (2) — every create_link site, with the link types its enclosing fn
+// can write. The type named in the call wins; a prober computes it from a
+// `match payload.kind` into a local, so for an `attempt_*` extern every
+// LinkTypes:: in the body counts. That widening is deliberate and is confined
+// to the probers, where over-collecting is the correct answer: each arm IS a
+// reachable type. Applying it everywhere would invent write paths out of a
+// get_links query that happens to share a function with an unrelated write.
+const linkWritePaths = new Map();   // LinkTypes name -> [{fn, isExtern, prober}]
+for (const f of coordFns) {
+  const body = coordLines.slice(f.start - 1, f.end);
+  const prober = f.isExtern && /^attempt_/.test(f.name);
+  const types = new Set();
+  body.forEach((line, k) => {
+    if (!/create_link\(/.test(line)) return;
+    const callText = body.slice(k, k + 8).join('\n');
+    for (const m of callText.matchAll(/LinkTypes::([A-Za-z_0-9]+)/g)) types.add(m[1]);
+  });
+  if (!types.size && !/create_link\(/.test(body.join('\n'))) continue;
+  if (prober) for (const m of body.join('\n').matchAll(/LinkTypes::([A-Za-z_0-9]+)/g)) types.add(m[1]);
+  for (const t of types) {
+    if (!linkWritePaths.has(t)) linkWritePaths.set(t, []);
+    linkWritePaths.get(t).push({ fn: f.name, isExtern: f.isExtern, prober });
+  }
+}
+
+const probedLinkTypes = new Set(
+  [...linkWritePaths].filter(([, ps]) => ps.some((p) => p.prober)).map(([t]) => t),
+);
+
+// JUDGEMENT — the fourteen link rules on the five types with no prober, each
+// with a verdict and the evidence for it. `via` names the published extern that
+// reaches it, and is what a corpus case should call.
+//
+// The three friction rules are the `GAPS` shape replay.mjs already records for
+// Critique and AntibodyPattern, and the constants are the evidence: the
+// coordinator's limit EQUALS validation's in all three cases
+// (`SYNAPTIC_LINK_MAX_PER_WINDOW` 20 = `..._VALIDATION` 20,
+// `REINFORCEMENT_MAX_PER_WINDOW` 40 = 40, `ATTESTATION_GRANT_MAX_PER_WINDOW`
+// 5 = 5), and the coordinator checks BEFORE create_link — so the published
+// path always refuses in the coordinator's own wording and the integrity
+// zome's message cannot be the one that comes back.
+const UNPROBED_LINK_RULES = {
+  // --- SynapticLink: written only by the private `create_synaptic_link`,
+  // which no extern exposes and whose every field it derives.
+  'SynapticLink tag must contain at least 4 bytes (f32 conductance).': {
+    reachable: false,
+    why: 'the tag is `conductance.to_le_bytes()` of an f32, so it is always exactly 4 bytes; no extern passes raw tag bytes for this type',
+  },
+  'SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). This is an absolute limit, enforced by DHT validation, not a client-side courtesy.': {
+    reachable: false,
+    why: 'create_synaptic_link calls check_synaptic_link_friction() first at the same limit (20), so the coordinator refuses in its own wording',
+  },
+  // --- AgentToMembrane: `join_membrane(AnyDhtHash)` derives all three fields.
+  'AgentToMembrane tag must be exactly 36 bytes (a raw AgentPubKey).': {
+    reachable: false,
+    why: 'join_membrane builds the tag from `agent.get_raw_36()`, which is always 36 bytes',
+  },
+  'AgentToMembrane links can only be created by the agent joining, not on someone else\'s behalf.': {
+    reachable: false,
+    why: 'join_membrane takes the agent from agent_info(), so the joining agent is always the author',
+  },
+  'AgentToMembrane base is not a valid Membrane.': {
+    reachable: false,
+    why: 'join_membrane resolves the membrane through membrane_entry_hash, which `get()`s it and fails with "Membrane not found." before create_link — so a base that is not a Membrane is never authored and this guard is never reached, deferral or otherwise',
+  },
+  'AgentToMembrane base must be an EntryHash.': {
+    reachable: false,
+    why: 'the base is membrane_entry_hash(..), whose return type is EntryHash — the caller chooses WHICH membrane, never the hash kind',
+  },
+  // --- Reinforcement: `reinforce_synaptic_link(ActionHash)` is a published
+  // extern whose ONE argument is the link's base, unmodified.
+  'Reinforcement links can only be created by the agent doing the reinforcing, not on someone else\'s behalf.': {
+    reachable: false,
+    why: 'reinforce_synaptic_link sets the target from agent_info(), so the reinforcer is always the author',
+  },
+  'Reinforcement base is not a SynapticLink creation.': {
+    reachable: true,
+    via: 'reinforce_synaptic_link',
+    why: 'the extern passes its ActionHash argument straight through as the link base, so any resolvable action that is not a SynapticLink CreateLink reaches this rule — a Claim creation does it',
+  },
+  'SWO temporal friction: author has {} Reinforcements in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.': {
+    reachable: false,
+    why: 'reinforce_synaptic_link calls check_reinforcement_friction() first at the same limit (40), so the coordinator refuses in its own wording',
+  },
+  // --- AttestationGrant: `grant_attestation(GrantAttestationPayload)` is a
+  // published extern carrying the base, the target and the tag's bytes.
+  'AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).': {
+    reachable: false,
+    why: 'grant_attestation builds the tag from `my_membership_action.get_raw_36()`, and an ActionHash is always 36 bytes',
+  },
+  'AttestationGrant\'s referenced membership action not found.': {
+    reachable: true,
+    via: 'grant_attestation',
+    why: 'a well-formed my_membership_action that resolves to nothing reaches must_get_valid_record, which defers the commit — so this is assertable as a DEFERRAL and never as this message, which is what the corpus case asserts',
+  },
+  'AttestationGrant requires proof of sufficiently tenured membership in this membrane — the referenced action must be the granter\'s own AgentToMembrane join for this same membrane, created at least the required tenure period ago.': {
+    reachable: true,
+    via: 'grant_attestation',
+    why: 'my_membership_action is the caller\'s, so any resolvable action of theirs that is not a 30-day-old AgentToMembrane join for this membrane reaches this rule — including their own join made a moment ago, which fails on tenure alone',
+  },
+  'SWO temporal friction: author has granted attestation {} times in the last {} seconds (limit {}). This bounds how fast the right to vouch can be spent, not just how fast links can be created.': {
+    reachable: false,
+    why: 'grant_attestation calls check_attestation_grant_friction() first at the same limit (5), and reaching the limit would need five grants that PASS the 30-day tenure bar',
+  },
+  // --- TaxonomyToSpecies: written by create_critique_species, which derives
+  // the anchor and uses the entry it just created as the target.
+  'TaxonomyToSpecies target is not a CritiqueSpecies.': {
+    reachable: false,
+    why: 'the target is the ActionHash create_critique_species just returned from create_entry, so it is always a CritiqueSpecies creation',
+  },
+  'TaxonomyToSpecies base is not the taxonomy anchor.': {
+    reachable: false,
+    why: 'the base is taxonomy_anchor_hash(), which takes no argument',
+  },
+  'A TaxonomyToSpecies link may only be created by the species\' own proposer.': {
+    reachable: false,
+    why: 'the species is created by the same call, so its proposer is always the author',
+  },
+};
+
+// A link rule on an unprobed type with no verdict: collected during classify
+// and fatal before the inventory is written.
+const unresolvedLinks = [];
 
 // The link validators are one long if / else-if chain over `link_type`, so the
 // branch a site sits in is the last such comparison above it.
@@ -412,6 +641,25 @@ const REMOTE_VALIDATORS = new Set([
 function classify(site) {
   const v = site.validator;
   const msg = site.message;
+  const isLink = /^validate_(create|delete)_link$/.test(v);
+
+  // THE LINK TYPE IS RECORDED BEFORE ANY CLASS IS DECIDED, and it used not to
+  // be. `deferred` returns below this point, so a DEFERRED LINK SITE came out
+  // of here with no `link_type` at all — and replay.mjs's per-type coverage
+  // denominator is keyed on that field, so those rules were in no type's
+  // denominator and in no total. Two sites, found by the orphan check reporting
+  // a case for a rule it said was not in the inventory:
+  // `AgentToMembrane base is not a valid Membrane.` and `AttestationGrant's
+  // referenced membership action not found.` It is the same shape as the prober
+  // list one file over — a rule that no number counted.
+  if (isLink) {
+    site.link_type = linkBranch.get(site.line) ?? null;
+    if (site.link_type) {
+      site.link_write_paths = (linkWritePaths.get(site.link_type) ?? []).map(
+        (p) => `${p.fn}${p.prober ? ' (prober)' : p.isExtern ? '' : ' (private)'}`,
+      );
+    }
+  }
 
   // A `must_get_*` guard cannot fire for the thing it is written to catch.
   // must_get_entry / must_get_action are DETERMINISTIC DEPENDENCY FETCHES: when
@@ -436,20 +684,45 @@ function classify(site) {
   // assert the deferral. Asserting the message would fail forever; asserting
   // only "it threw" would pass for the wrong reason, which is the failure mode
   // this whole corpus exists to stop.
-  if (inDeferralBranch(site.line)) return 'deferred';
+  if (inDeferralBranch(site.line)) {
+    // DEFERRED STILL PRESUMES SOMETHING REACHES THE VALIDATOR. `deferred` says
+    // the message never fires because the host abandons the callback first —
+    // but that is a statement about what happens WHEN the op is authored, and
+    // on an unprobed link type whether it can be authored at all is the same
+    // judgement call UNPROBED_LINK_RULES answers. Taking the early return
+    // without asking put `AgentToMembrane base is not a valid Membrane.` in the
+    // assertable-as-a-deferral count, where it does not belong: join_membrane
+    // resolves the membrane with `get()` BEFORE create_link, so a base that is
+    // not a Membrane is refused by the coordinator and the link is never
+    // authored. The verdict can only make the class STRICTER here, never
+    // reachable.
+    if (isLink && site.link_type && !probedLinkTypes.has(site.link_type)) {
+      const verdict = UNPROBED_LINK_RULES[msg];
+      if (!verdict) { unresolvedLinks.push(site); return 'deferred'; }
+      site.unreachable_why = verdict.reachable ? null : verdict.why;
+      if (verdict.reachable) site.reached_via = verdict.via;
+      return verdict.reachable ? 'deferred' : 'needs_prober';
+    }
+    return 'deferred';
+  }
 
   // A pass-through returns whatever the validator it delegated to returned. It
   // is a real site but has no message and no payload of its own, so it is not
   // separately testable: the site it forwards from is what a test would target.
   if (msg === null) return 'passthrough';
 
-  // Link rules: decided by whether the link type has a prober, not by being a
-  // link rule. `attempt_entry_update` exists, so the update refusal is probed.
-  if (/^validate_(create|delete)_link$/.test(v)) {
-    const lt = linkBranch.get(site.line) ?? null;
-    site.link_type = lt;
+  // Link rules: decided by whether a PUBLISHED PATH can make this rule fire,
+  // not by whether the type has a prober — see UNPROBED_LINK_RULES on the two
+  // types where those two questions had different answers.
+  if (isLink) {
+    const lt = site.link_type;
     if (lt === null) return 'remote';                      // the chain's fallthrough
-    return PROBED_LINK_TYPES.has(lt) ? 'crafted' : 'needs_prober';
+    if (probedLinkTypes.has(lt)) return 'crafted';
+    const verdict = UNPROBED_LINK_RULES[msg];
+    if (!verdict) { unresolvedLinks.push(site); return 'needs_prober'; }
+    site.unreachable_why = verdict.reachable ? null : verdict.why;
+    if (verdict.reachable) site.reached_via = verdict.via;
+    return verdict.reachable ? 'crafted' : 'needs_prober';
   }
   if (/updates are not permitted/i.test(msg)) return 'crafted';   // attempt_entry_update
   if (/deletes are not permitted/i.test(msg)) return 'remote';
@@ -476,6 +749,34 @@ for (const s of sites) {
 for (const s of sites) {
   const m2 = /^validate_(.+)$/.exec(s.validator);
   s.entry = m2 ? m2[1] : null;
+}
+
+// --- THE CONFUSABLE-READ ANNOTATION APPLIED. Changes no class — these rules
+// are reachable and asserted — and records what each one does not cover.
+for (const s of sites) {
+  if (!s.message) continue;
+  // THE MESSAGE MUST ASSERT THE TYPE, not merely mention it. The first cut
+  // matched any message naming the type within range and caught one rule too
+  // many: `An AgentToMew link may only be created by the Mew's own author.`
+  // sits in the same branch and is NOT disabled by the confusion — it compares
+  // the deserialised `author` to the action author, and a Claim carries an
+  // `author` too, so it still fires. What it loses is narrower and is not an
+  // enforcement gap: the entry it calls a Mew may be a Claim.
+  const read = typeReads.find(
+    (r) => s.line >= r.line && s.line <= r.line + 25
+      && new RegExp(`(?:is not|must be|does not resolve to) an? ${r.type}\\b`).test(s.message),
+  );
+  if (!read) continue;
+  const from = confusableEntryReads.filter((p) => p.to === read.type).map((p) => p.from);
+  if (!from.length) continue;
+  s.guard_reads = read.type;
+  s.confusable_from = from;
+  s.enforcement_caveat =
+    `reads as a type check and is only a partial one: ${from.join('/')} bytes deserialise as `
+    + `${read.type}, so this guard returns Ok(Some(..)) for ${from.join('/')} and the message `
+    + `cannot fire for one. It DOES still fire for an entry of any other type (the deserialise `
+    + `fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than `
+    + `adding a discriminant field, which would change the DNA hash.`;
 }
 
 // --- THE CROSS-CHECK APPLIED. Runs last and only ever makes a class STRICTER,
@@ -523,6 +824,37 @@ for (const s of sites) {
   if (!caller.has(field)) s.class = 'needs_extern';
 }
 
+// The same discipline for link rules on a type with no prober. A missing
+// verdict is a question about reachability, and the old prober list answered it
+// by default for every rule at once — which is how three reachable rules came
+// to sit in `needs_prober`. Fatal, and before the inventory is written.
+// AND THE OTHER DIRECTION, on the same discipline replay.mjs applies to its
+// declared-unreachable rules: a verdict whose rule the zome no longer has is an
+// exemption outliving its subject. It would go on excluding a rule that does
+// not exist, which is harmless today and is exactly how a stale list starts.
+{
+  const allMessages = new Set(sites.filter((s) => s.message).map((s) => s.message));
+  const stale = Object.keys(UNPROBED_LINK_RULES).filter((m) => !allMessages.has(m));
+  if (stale.length) {
+    console.error('\nSTALE: UNPROBED_LINK_RULES carries a verdict for a rule the integrity zome');
+    console.error('no longer has. Delete each — a verdict that outlives its rule is not coverage.\n');
+    for (const m of stale) console.error(`  ${JSON.stringify(m)}`);
+    process.exit(1);
+  }
+}
+
+if (unresolvedLinks.length) {
+  console.error('\nUNRESOLVED: these link rules are on a type no `attempt_*` prober writes,');
+  console.error('so whether a published extern can make each one FIRE is a judgement call.');
+  console.error('Add each to UNPROBED_LINK_RULES with `reachable` and a `why`, and re-run.');
+  console.error('The write paths this tool found for the type are listed beside each.\n');
+  for (const s of unresolvedLinks) {
+    console.error(`  ${s.link_type}:${s.line}  ${JSON.stringify(s.message)}`);
+    console.error(`      write paths: ${s.link_write_paths.join(', ') || '(none found)'}`);
+  }
+  process.exit(1);
+}
+
 if (unresolved.length) {
   console.error('\nUNRESOLVED: these sites belong to an entry type whose extern builds the');
   console.error('entry, and neither the message nor GUARDS_FIELD says which field they guard.');
@@ -544,6 +876,10 @@ writeFileSync(OUT, JSON.stringify({
   generated_from: ['dna/integrity/src/lib.rs', 'dna/coordinator/src/lib.rs'],
   protocol_version: (/pub const PROTOCOL_VERSION: u16 = (\d+)/.exec(src) || [])[1] ?? null,
   total_sites: sites.length,
+  // Published so `check-entry-type-confusion.mjs` can check its own
+  // independently-derived pairs against these, and so a reader of the
+  // inventory can see why two rules carry an `enforcement_caveat`.
+  confusable_entry_reads: confusableEntryReads,
   by_class: byClass,
   sites,
 }, null, 2) + '\n');

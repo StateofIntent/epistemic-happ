@@ -24,9 +24,10 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and four link types, and the coverage is asserted rather
-than stated.** 99 checks, **seven of which need a second agent** — see
-*A second agent* below. Every link type here is now 3 of 3: nothing in this
+**Ten entry types and six link types, and the coverage is asserted rather
+than stated.** 106 checks, **seven of which need a second agent** — see
+*A second agent* below, and three of which are driven with no baseline at all,
+because a valid `AttestationGrant` needs thirty days of prior membership. Every link type here is now 3 of 3: nothing in this
 slice is declared unreachable any more. Link rules use the same driver — a link case is still
 a valid thing with one field broken — but they are keyed on `link_type` rather
 than `entry`, because every link site shares `entry: "create_link"` and
@@ -39,6 +40,8 @@ denominator.
 | `AgentToConstitution` | `attempt_false_attachment_link` | 3 | 2 | 1 |
 | `DomainToClaim` | `attempt_false_domain_index` | 3 | 2 | 1 |
 | `MembraneRegistry` | `attempt_false_membrane_registry` | 3 | 2 | 1 |
+| `AttestationGrant` | **none — `grant_attestation`** | 2 | 2 | 0 |
+| `Reinforcement` | **none — `reinforce_synaptic_link`** | 1 | 1 | 0 |
 
 **The slice covers all three probers on purpose.** The generic one carries 18 of
 the 19 link types and lets the caller choose base, target and raw tag bytes; the
@@ -47,8 +50,16 @@ domain or an override, so the rules they can reach are bounded by their
 parameters rather than by the validator. A slice using only the generic prober
 would have proved nothing about the other two.
 
-**15 of 19 link types remain.** What is done is the driver, the three prober
-shapes, and both anchor forms.
+**The last two rows have no prober, and that is finding 11.** Reachability was
+decided per TYPE from a hand-maintained list of prober names, so one rule on
+each of those two types sat in `needs_prober` — "needs a DNA rebuild" — while an
+ordinary published extern could make it fire, and `COVERED_LINKS` never listed
+the type, so no denominator counted it either. It is now decided per RULE, with
+the probed set read off the coordinator's own match arms.
+
+**13 of 19 link types remain.** What is done is the driver, the three prober
+shapes, both anchor forms, and a second driver shape for rules whose baseline
+cannot exist.
 
 | entry type | assertable rules | refusals | deferrals | declared unreachable |
 |---|---|---|---|---|
@@ -123,9 +134,9 @@ cannot be reached by the thing that would need to reach them.
 | class | count | what it means |
 |---|---|---|
 | `honest` | 19 | reachable through the SDK's typed methods or the MCP tools, by a client doing nothing special |
-| `crafted` | 120 | reachable only by calling the coordinator with a payload the typed methods never produce |
-| `deferred` | 15 | a `must_get_*` guard — **the message never fires**; see below |
-| `needs_prober` | 14 | link rules with no `attempt_*` path, so unreachable from JavaScript at all |
+| `crafted` | 122 | reachable only by calling the coordinator with a payload the typed methods never produce |
+| `deferred` | 14 | a `must_get_*` guard — **the message never fires**; see below |
+| `needs_prober` | 13 | link rules **no published path can make fire**, so unreachable from JavaScript at all — decided per rule, not per link type, since finding 11 |
 | `needs_extern` | 10 | entry rules whose field the coordinator **derives** rather than accepting — same cost as `needs_prober` |
 | `remote` | 4 | needs a bad DNA build or a `Delete` action the coordinator never emits |
 | `passthrough` | 12 | forwards another validator's result; no message of its own |
@@ -134,6 +145,15 @@ cannot be reached by the thing that would need to reach them.
 in the same direction, because the classifier could only see one of the four
 shapes this zome writes a `must_get_*` guard in. The counts below are the
 corrected ones; what the correction found is finding 4.
+
+**And `needs_prober` was 14, `crafted` 120 and `deferred` 15 until 2026-10-19.**
+Three more sites moved, in both directions this time: two rules were reachable
+through an ordinary extern while the inventory said they needed a DNA rebuild
+(finding 11), and one deferred link rule was keyed to no link type at all and
+turned out to be unreachable on a closer look (finding 12). **Every one of the
+three was invisible to every denominator in this directory**, which is the
+property these two findings share with finding 4 and is why they are worth more
+than the three rules they moved.
 
 ### Three findings this produced on its first run
 
@@ -144,7 +164,7 @@ corrected ones; what the correction found is finding 4.
 every self-reported-time rule is unreachable from any honest client. Pointing
 agents at `publish_claim` exercises the semantic rules and the budget path
 hard — and leaves the identity and ordering rules untouched while looking like
-validation stress. A further 120 need `EpistemicAgent.call()`
+validation stress. A further 122 need `EpistemicAgent.call()`
 (`index.ts:195`, public) with a hand-built payload.
 
 *(This read 24 and 130 on the first run. Both numbers were wrong for reasons
@@ -211,9 +231,15 @@ that writes that link type with a caller-chosen base, target or tag. Those paths
 are the `attempt_*` probers, and twenty link types have one.
 **`AgentToMembrane`, `AttestationGrant`, `Reinforcement`, `TaxonomyToSpecies`
 and `SynapticLink` do not** — the same list `attachment-links.mjs`'s header
-calls "the link types nobody probed". Reaching their 15 rules means adding an
-`attempt_*` function and rebuilding the DNA, which is a different and much
-larger job than adding a payload here.
+calls "the link types nobody probed".
+
+***Corrected 2026-10-19 — this said "reaching their 15 rules means adding an
+`attempt_*` function and rebuilding the DNA", and for two of them it was not
+true.*** A prober is not the only path with caller-chosen fields:
+`reinforce_synaptic_link` passes its only argument through as the link's base
+and `grant_attestation` carries base, target and tag. **Two of those 15 rules
+were reachable all along**, and the figure is now 13 — see finding 11, which is
+also why the question is asked per rule rather than per link type.
 
 ### Finding 4 — the deferral classifier found one shape out of four, and two rules it mislabelled are measured
 
@@ -418,6 +444,125 @@ everything the zome wrote verbatim, and **a prefix too short to identify a rule
 is refused outright rather than silently weakened** (under 20 characters). That
 guard is tested, not assumed — see Injection Q.
 
+### Finding 10 — a `Claim` deserialises as a `Mew`, and two type checks cannot fire
+
+**Found by driving the obvious payload and watching it pass.** `AgentToMew target
+is not a Mew.` guards `target_record.entry().to_app_option::<Mew>()`, so the
+payload that should trigger it is a link whose target is not a Mew. A `Claim`
+was the nearest thing to hand — and the call COMMITTED.
+
+| `Mew`'s non-Option fields | `Claim` carries |
+|---|---|
+| `content: String` | yes, same type |
+| `author: AgentPubKey` | yes, same type |
+| `timestamp: u64` | yes, same type |
+| `semantic_tags: Vec<String>` | yes, same type |
+| `reply_to`, `linked_claim` (both `Option`) | **neither** — and the deserialise still succeeded |
+
+So the empirical rule, which is the one worth writing down because it is
+stronger than the obvious guess: **A reads from B iff every NON-Option field of
+A exists in B at an identical declared type.** A missing `Option` is tolerated;
+extra fields in B are ignored. The direction therefore matters, and here it is
+everything — `Claim` carries `domain`, `confidence` and `evidence_hashes`, which
+`Mew` does not, so **a Mew never passes as a Claim.**
+
+**The sweep found a SECOND live site the original finding had missed** (item 16,
+`scripts/check-entry-type-confusion.mjs`): the shared BridgeRecord guard
+computes `is_mew` with the same call, so a **Claim** base passes as a Mew and
+`A MewToBridgeRecord link's base is not a Mew.` cannot fire either — a claim's
+mirror can be filed under the Mew link type, which is the mirror image of the
+harm its sibling rule names. The sibling, `A ClaimToBridgeRecord link's base is
+not a Claim.`, holds for the one-directionality reason above.
+
+**WHAT IS NOT BROKEN, because the exposure is what decided the response.** Both
+sites are bounded by their own ownership rules, so neither is cross-agent: the
+worst available is an agent filing its OWN Claim where a reader expects a Mew.
+And `An AgentToMew link may only be created by the Mew's own author.` still
+fires, because it compares the deserialised `author` to the action author and a
+Claim carries an `author` too — what it loses is only that the entry it calls a
+Mew may be a Claim.
+
+**READINESS item 17 decided to accept it.** The repair is a discriminant field
+on `Mew`, which changes the integrity zome and therefore the DNA hash — a
+`protocol_version` bump and a network reset for every installed hApp, this
+repository's most expensive change class, for two guards with that exposure. So
+the rules stop READING as enforcement instead: both sites now carry an
+`enforcement_caveat` in `corpus/inventory.json`, derived from the entry structs
+by `enumerate.mjs` rather than hand-noted, saying what the guard does not cover
+and what it still does — it fires for an entry of any other type (the
+deserialise fails) and for a non-entry action (`Ok(None)`).
+
+**Two independent derivations that must agree.** `enumerate.mjs` publishes the
+confusable pairs in the inventory and `check-entry-type-confusion.mjs` derives
+them again from the zome and fails if the two sets differ. One parser agreeing
+with itself proves nothing about a conclusion this specific.
+
+### Finding 11 — the drivability list was hand-maintained, and for two link types it was gating nothing
+
+**`enumerate.mjs` decided whether a link rule was reachable by asking whether
+its link type had an `attempt_*` prober**, from a `PROBED_LINK_TYPES` set of
+twenty names typed into the file. Everything else was `needs_prober` — "needs a
+coordinator change + DNA rebuild". That inference is wrong in one direction: **a
+prober is not the only published path with caller-chosen fields.**
+
+| extern | what the caller controls | the rule it reaches |
+|---|---|---|
+| `reinforce_synaptic_link(ActionHash)` | the link's entire BASE — it is the only argument | `Reinforcement base is not a SynapticLink creation.` |
+| `grant_attestation(GrantAttestationPayload)` | base, target, and the tag's bytes | `AttestationGrant requires proof of sufficiently tenured membership …` |
+
+Both rules were reachable from JavaScript, were labelled as needing a DNA
+rebuild, and — because `replay.mjs`'s coverage loop iterates a hand-maintained
+`COVERED_LINKS` — **were in no denominator anywhere.** Nobody would have noticed
+either of them being deleted. The file's own header had warned about the shape:
+*"a prober proves the rule it probes and silently flatters the rules it does
+not."*
+
+**THE FIX IS THE SPLIT OF LABOUR 5d ALREADY USED FOR ENTRY TYPES.** Mechanical:
+which link types any path writes at all, read off the coordinator — the eighteen
+attachment kinds come from `attempt_false_attachment_link`'s own match arms, so a
+new kind is probed the moment the arm is added and a deleted prober stops
+flattering its rules the moment it goes. Judgement: for a type with no prober,
+reachability is per-RULE and not per-type — `grant_attestation` makes the tenure
+rule reachable and **cannot** make `AttestationGrant tag must be exactly 36
+bytes.` fire at all, because it builds the tag from an `ActionHash` and an
+`ActionHash` is always 36 bytes. Those thirteen verdicts are curated in
+`UNPROBED_LINK_RULES` with their reasons, and **a link rule on an unprobed type
+that is missing from the table exits 1 before the inventory is written.** The
+old list could omit a whole type in silence; this cannot omit one rule.
+
+`needs_prober` 14 → 13 and `crafted` 120 → 122, which is the whole of the
+correction: two rules, and the third class change below.
+
+**Also recorded: the three friction rules on these types are NOT reachable, and
+the evidence is a pair of constants.** The coordinator's limit equals
+validation's in all three cases (`SYNAPTIC_LINK_MAX_PER_WINDOW` 20 = 20,
+`REINFORCEMENT_MAX_PER_WINDOW` 40 = 40, `ATTESTATION_GRANT_MAX_PER_WINDOW`
+5 = 5) and the coordinator checks before `create_link`, so the published path
+always refuses in the coordinator's own wording — the same shape as the two
+`GAPS` rows for `Critique` and `AntibodyPattern`, now stated per rule instead of
+hidden inside a per-type class.
+
+### Finding 12 — a deferred link rule was keyed to no link type, so it was in no denominator
+
+Found by the orphan check, which reported a corpus case naming a rule it said
+was not in the inventory. `classify()` returns `deferred` BEFORE the link branch
+runs, and the link branch is where `link_type` was set — so **a deferred LINK
+site came out with no `link_type` at all**, and `replay.mjs`'s per-type coverage
+loop keys on exactly that field. Two sites: `AgentToMembrane base is not a valid
+Membrane.` and `AttestationGrant's referenced membership action not found.`
+Neither was in any type's denominator or in any total.
+
+The link type is now recorded before any class is decided. **And the fix exposed
+a second question the early return had been skipping:** `deferred` says the
+message never fires *when the op is authored*, which still presumes something
+can author it. On an unprobed type that is the same judgement
+`UNPROBED_LINK_RULES` answers, so it is consulted for deferred sites too — and
+`AgentToMembrane base is not a valid Membrane.` turns out to be unreachable
+either way, because `join_membrane` resolves the membrane with `get()` and fails
+with `Membrane not found.` before `create_link`. It moved to `needs_prober`;
+`deferred` 15 → 14. `AttestationGrant`'s deferral IS reachable, is asserted, and
+is the first deferred LINK rule this corpus drives.
+
 ## Negative evidence
 
 Every assertion in `replay.mjs` has been watched failing, against an otherwise
@@ -552,7 +697,7 @@ has not arrived DEFERS rather than refusing.
 friction rules are mirrored as coordinator pre-checks with no bypassing extern,
 which needs a new extern and a DNA rebuild.
 
-O, P and Q were taken on the version with link rules, which is 92 checks.
+O, P and Q were taken on the version with link rules, which is 92 checks. T, U and V are below, on the 106-check version.
 R was taken on the 93-check version and S on the 99-check one.
 
 - **Injection O** — the `AgentToClaim` tag mutation removed. Result: **91
@@ -590,6 +735,84 @@ R was taken on the 93-check version and S on the 99-check one.
   holding on a second family of rules. `Retraction` is unaffected because it
   seeds its own target rather than using the shared fixtures — injection R
   covers it.
+
+### Refusals with no baseline — `AttestationGrant`, and why a thirty-day tenure makes one impossible
+
+**Every case in this corpus starts from a payload asserted to COMMIT and changes
+one field** — the argument for that is at the bottom of this file. Three rules
+cannot be driven that way, and it is not a shortcoming of the harness. It is
+arithmetic in the zome.
+
+`AttestationGrant` validation requires the granter's own `AgentToMembrane` join
+action to be at least `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` old, which
+is **30 days** (`dna/integrity/src/lib.rs:1773`). Both actions are this agent's
+own and on a sandbox chain they are minutes apart. No payload, no fixture and no
+second agent produces a valid one: the only things that would are waiting a
+month or moving `CLOCK_REALTIME`, and the clock probe is deliberately not a CI
+check (READINESS item 13). **So a valid `AttestationGrant` has never been
+committed by anything in this repository, and cannot be.**
+
+**WHAT REPLACES THE BASELINE WAS ALREADY IN THE EVIDENCE.** Each link branch of
+`validate_create_link` is a straight-line sequence of checks that RETURNS at the
+first failure. So a refusal naming rule N is itself proof that every check above
+N passed on that payload — exactly what the baseline was supplying from outside.
+The message carries it instead.
+
+**WHAT IS LOST, stated rather than glossed**, because a driver that quietly
+asserts less than its neighbour is the failure mode this corpus exists to find:
+
+- **A deleted rule is still caught, both ways.** With the rule gone the call
+  either commits — reported as `the call COMMITTED` — or is refused by a LATER
+  check, and since the assertion requires THIS rule's own prefix a different
+  message reds as `stopped for a different reason`. Both drivers share one copy
+  of that discipline (`assertStopped`), extracted rather than duplicated because
+  a second copy of the prefix rule is a second place for it to be loosened into
+  "did it throw", which is what injections P and Q exist to prevent.
+- **What is genuinely lost** is the proof that nothing BELOW the rule would also
+  have refused the payload. These cases assert the rule fires FIRST among the
+  ones they violate, not that it is the only one they violate. For the tenure
+  case the distinction is empty: the only check below it is the friction rule,
+  which needs five grants that passed the tenure bar.
+
+**IT MUST NOT SPREAD, and the one exception says why it is one.** Where a
+baseline CAN commit, `drive` is strictly stronger — two signals beat one — so
+the test for belonging here is "a baseline is impossible", not "a baseline is
+inconvenient". `Reinforcement` is the exception: a baseline is possible
+(`create_critique` writes a real SynapticLink), but the one reachable rule needs
+only the base, the check above it is satisfied by construction, and a baseline
+would spend a Critique from the 20-per-hour budget this harness has so far never
+touched. A case for anything BELOW that rule must build the real SynapticLink
+and use `drive`.
+
+**Three rules, three different answers, which is the honest outcome** rather
+than "AttestationGrant is covered":
+
+| rule | how it ends up |
+|---|---|
+| `AttestationGrant requires proof of sufficiently tenured membership …` | **ASSERTED** as a refusal. The referenced action is this agent's own join for this same membrane and fails on AGE alone, which exercises `tenure_satisfied`'s arithmetic rather than the type check in front of it |
+| `AttestationGrant's referenced membership action not found.` | **ASSERTED as a DEFERRAL** — a well-formed hash that resolves to nothing abandons the callback, so the message never appears. The first deferred LINK rule this corpus drives (finding 12) |
+| `AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).` | **`needs_prober`, and permanently so through this extern**: `grant_attestation` builds the tag from `my_membership_action.get_raw_36()` and an `ActionHash` is always 36 bytes |
+| `SWO temporal friction: author has granted attestation {} times …` | **`needs_prober`**: the coordinator pre-checks at the same limit (5 = 5) and reaching it would need five grants that passed the tenure bar |
+
+99 → 106 checks, 0 failed, against a sandbox conductor.
+
+- **Injection T** — the tenure case aimed at a dangling ActionHash instead of
+  the real join action. Result: **FAIL, `stopped for a different reason:
+  DepMissingFromDht`**. The payload defers rather than being refused, so this
+  proves two things at once: the assertion does not pass on any refusal, and the
+  real join action is load-bearing — the rule is reached only because the
+  referenced action RESOLVES and is then found too young.
+- **Injection U** — the deferral case pointed at the real join action instead of
+  a dangling one. Result: **105 passed, 1 failed**, the deferral assertion
+  reporting that it got a refusal where it expected a retryable stall. A
+  deferral case cannot be satisfied by "it threw".
+- **Injection V** — one verdict deleted from `UNPROBED_LINK_RULES`. Result: the
+  build **exits 1 and writes no inventory** (`md5sum` unchanged), naming the
+  rule AND the write path it found for the type — `Reinforcement:2074 … write
+  paths: reinforce_synaptic_link`, which is the evidence that answers the
+  question rather than just reporting it unanswered. The same gate fired
+  unprompted during development on a mistyped message string, which is how the
+  SynapticLink friction rule's exact wording got checked.
 
 ## Why one mutation at a time
 
