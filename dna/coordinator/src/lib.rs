@@ -1274,6 +1274,64 @@ pub fn get_grounding_path(claim: AnyDhtHash) -> ExternResult<GroundingPath> {
 }
 
 // ============================================================================
+// CLOSURE, which is what a client needs instead of a timer.
+//
+// WHY THIS EXISTS. SPEC §5.3 enforces referential integrity on
+// `Claim.evidence_hashes` through `must_get_entry`, so a claim citing evidence
+// that has not propagated yet is REFUSED at commit time with
+// `DepMissingFromDht` — nothing written, same payload still valid. The
+// reference SDK absorbs that by retrying for `dependencyWaitMs`, default
+// twenty minutes, chosen to exceed the slowest crossing this project has
+// measured. §5.3 calls that number what it is: a closure dial with a guessed
+// value. In an observer-centric consistency model the question is not how long
+// to wait but WHAT THIS OBSERVER MUST HAVE SEEN before it may act, and a timer
+// cannot tell "three of four citations already resolve" from "none of them do".
+//
+// WHY THE CLIENT COULD NOT ALREADY DO THIS, which is the part that was wrong
+// in both §5.3 and READINESS item 12. Both said the SDK's
+// `onPendingDependency` callback "already carries enough" to report closure.
+// It does not, and the reason is measurable rather than arguable: **the
+// refusal names exactly ONE hash however many are missing.** Measured
+// 2026-10-19 against a sandbox conductor — a claim citing two dangling hashes,
+// then three, then three with a resolvable one first and then last, produced
+// `DepMissingFromDht([AnyDhtHash(..)])` with a single element every time. The
+// validator loops `must_get_entry` over `evidence_hashes` and the host
+// abandons the callback at the first unresolved dependency, so the refusal is
+// a report about one hash, not a set. A client subtracting it from what it
+// cited would compute "3 of 4 resolve" for a claim where none of the other
+// three do.
+//
+// WHAT THIS IS. One read, type-agnostic and local-only, answering per hash the
+// same question `must_get_entry` asks. `GetOptions::local()` is "local
+// databases only, no network call", which is exactly §5.3's "resolve locally"
+// and is also why this cannot be turned into an amplification lever: it never
+// causes a network fetch, whatever it is passed.
+//
+// WHAT THIS IS NOT, and the distinction is the whole value of it:
+//
+//   - NOT a validation check. Validation is the integrity zome's and resolves
+//     dependencies through the conductor's own cascade. This is a coordinator
+//     read, and a `true` here is not a promise that the commit will succeed —
+//     propagation is not transactional, and the answer can change between this
+//     call and the next commit attempt either way.
+//   - NOT type-aware, deliberately. `must_get_entry` does not care what an
+//     evidence hash points at, so neither does this. A typed probe through
+//     `get_evidence` or `get_claim` would read "unresolved" for a cited Mew or
+//     Constitution that resolves perfectly well — an indicator that goes amber
+//     on a healthy write, which is the failure mode this repository keeps
+//     finding in its own gates.
+//   - NOT a bound. It reports what is true now; it promises nothing about when
+//     the rest will arrive, which is the promise §5.3 declines to make and
+//     README §9's propagation row accepts not having.
+#[hdk_extern]
+pub fn which_entries_resolve_locally(hashes: Vec<AnyDhtHash>) -> ExternResult<Vec<bool>> {
+    hashes
+        .into_iter()
+        .map(|hash| Ok(get(hash, GetOptions::local())?.is_some()))
+        .collect()
+}
+
+// ============================================================================
 // MEMBRANE FUNCTIONS
 // ============================================================================
 

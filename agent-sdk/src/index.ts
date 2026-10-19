@@ -104,6 +104,33 @@ export interface PendingDependencyInfo {
   readonly waitedMs: number;
   /** Milliseconds left before `dependencyWaitMs` is exhausted. */
   readonly remainingMs: number;
+  /** CLOSURE: how much of what this write cites the local observer can
+   * actually see, which is the question a timer cannot answer.
+   *
+   * `null` when it could not be determined — nothing was cited, or the
+   * conductor has no `which_entries_resolve_locally` (a happ older than this
+   * SDK). Null means UNKNOWN and must not be rendered as zero. */
+  readonly closure: ClosureState | null;
+}
+
+/** What the local observer can see of a pending write's citations.
+ *
+ * WHY THIS IS NOT DERIVED FROM `missingHashes`, which is what both SPEC §5.3
+ * and READINESS item 12 assumed could be done: **the refusal names exactly one
+ * hash however many are missing.** Measured 2026-10-19 — a claim citing two
+ * dangling hashes, then three, then three with a resolvable one first and then
+ * last, each produced a `DepMissingFromDht` naming a single hash, because the
+ * validator loops `must_get_entry` and the host abandons the callback at the
+ * first unresolved dependency. Subtracting that one hash from the citation
+ * list would report "3 of 4 resolve" for a claim where none of the other three
+ * do. So closure is asked for directly instead. */
+export interface ClosureState {
+  /** How many hashes this write cites and therefore needs resolvable. */
+  readonly cited: number;
+  /** How many of them the local databases can serve right now. */
+  readonly resolvedLocally: number;
+  /** The ones they cannot — the whole set, not the one the refusal named. */
+  readonly unresolved: readonly Uint8Array[];
 }
 
 const DEFAULTS = {
@@ -126,6 +153,15 @@ function missingHashesIn(message: string): string[] {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** One phrase for a progress message, saying what is known and no more.
+ * UNKNOWN is spelled out rather than shown as 0 of 0: a client that printed
+ * "0 of 0 resolve" for an unknown closure would be reporting a false green. */
+function describeClosure(c: ClosureState | null): string {
+  if (!c) return 'closure is unknown (nothing cited, or the conductor predates which_entries_resolve_locally)';
+  if (c.cited === 0) return 'cites nothing, so there is nothing to wait for';
+  return `${c.resolvedLocally} of ${c.cited} citation${c.cited === 1 ? '' : 's'} resolve locally`;
+}
 
 function nowMicros(): number { return Date.now() * 1000; }
 function nowSecs(): number { return Math.floor(Date.now() / 1000); }
@@ -160,16 +196,21 @@ export class FrictionLimitError extends Error {
  * arrived. The write was never committed, and retrying later with the same
  * payload is valid — this is a propagation timeout, not a rejection. */
 export class PendingDependencyError extends Error {
-  /** Hashes the conductor could not resolve. */
+  /** Hashes the conductor could not resolve. NOTE: the conductor names ONE
+   * hash per refusal however many are missing, so this is not a count of what
+   * is outstanding — `closure` is. */
   readonly missingHashes: readonly string[];
   readonly waitedMs: number;
   readonly attempts: number;
-  constructor(message: string, info: { missingHashes: readonly string[]; waitedMs: number; attempts: number }) {
+  /** Closure at the moment the budget ran out, or `null` if unknown. */
+  readonly closure: ClosureState | null;
+  constructor(message: string, info: { missingHashes: readonly string[]; waitedMs: number; attempts: number; closure?: ClosureState | null }) {
     super(message);
     this.name = 'PendingDependencyError';
     this.missingHashes = info.missingHashes;
     this.waitedMs = info.waitedMs;
     this.attempts = info.attempts;
+    this.closure = info.closure ?? null;
   }
 }
 
@@ -292,12 +333,47 @@ export class EpistemicAgent {
    * Nothing is retried but a dependency stall. A validation rejection, a
    * friction refusal, a transport fault — all rethrown untouched on the first
    * attempt. */
-  private async commitWaitingForDeps<T>(fnName: string, payload: unknown): Promise<T> {
+  /** CLOSURE for a set of hashes: how many a write citing them would find
+   * resolvable right now, and which it would not.
+   *
+   * Public because the useful moment is often BEFORE the write. A composer
+   * holding four evidence hashes can show "3 of 4 have arrived" while the
+   * author is still typing, rather than discovering it during a twenty-minute
+   * retry — which is §5.3's point about closure versus a timer.
+   *
+   * RETURNS NULL RATHER THAN THROWING, in two cases that are not errors:
+   * nothing was cited, and the conductor does not have
+   * `which_entries_resolve_locally` because its happ predates this SDK. The
+   * second is why this is caught rather than propagated — closure is a
+   * progress indicator, and a client that lost the ability to WRITE because it
+   * could not report progress would be strictly worse off than before this
+   * existed. Null means unknown; `describeClosure` says so in words.
+   *
+   * A `true` is not a promise that the commit will succeed. Propagation is not
+   * transactional and the answer can change in either direction between this
+   * call and the next attempt. */
+  async closureOf(cited: readonly Uint8Array[]): Promise<ClosureState | null> {
+    if (!cited.length) return null;
+    try {
+      const resolved = await this.call<boolean[]>('which_entries_resolve_locally', cited);
+      if (!Array.isArray(resolved) || resolved.length !== cited.length) return null;
+      return {
+        cited: cited.length,
+        resolvedLocally: resolved.filter(Boolean).length,
+        unresolved: cited.filter((_, i) => !resolved[i]),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async commitWaitingForDeps<T>(fnName: string, payload: unknown, cited: readonly Uint8Array[] = []): Promise<T> {
     const budgetMs = this.cfg.dependencyWaitMs;
     const startedAt = Date.now();
     let attempt = 0;
     let backoffMs = 2_000;
     let lastMissing: string[] = [];
+    let closure: ClosureState | null = null;
 
     for (;;) {
       try {
@@ -307,21 +383,21 @@ export class EpistemicAgent {
         if (!DEPENDENCY_STALL.test(message)) throw cause;
 
         lastMissing = missingHashesIn(message);
+        closure = await this.closureOf(cited);
         const waitedMs = Date.now() - startedAt;
         const remainingMs = budgetMs - waitedMs;
         if (remainingMs <= 0) {
           throw new PendingDependencyError(
-            `${fnName} cites ${lastMissing.length || 'an'} entr${lastMissing.length === 1 ? 'y' : 'ies'} ` +
-            `that had not propagated within ${(budgetMs / 1000).toFixed(0)}s. Nothing was written, and the ` +
-            `same payload is still valid — this is a propagation timeout, not a rejection. ` +
-            `Unresolved: ${lastMissing.join(', ') || '(none reported)'}`,
-            { missingHashes: lastMissing, waitedMs, attempts: attempt + 1 },
+            `${fnName} waited ${(budgetMs / 1000).toFixed(0)}s for what it cites and ` +
+            `${describeClosure(closure)}. Nothing was written, and the same payload is still ` +
+            `valid — this is a propagation timeout, not a rejection.`,
+            { missingHashes: lastMissing, waitedMs, attempts: attempt + 1, closure },
           );
         }
 
         attempt++;
         this.cfg.onPendingDependency({
-          fnName, missingHashes: lastMissing, attempt, waitedMs, remainingMs,
+          fnName, missingHashes: lastMissing, attempt, waitedMs, remainingMs, closure,
         });
         await sleep(Math.min(backoffMs, remainingMs));
         backoffMs = Math.min(backoffMs * 2, 30_000);
@@ -440,7 +516,7 @@ export class EpistemicAgent {
       confidence: input.confidence,
       semantic_tags: input.semanticTags ?? [],
       source_mew: null,
-    });
+    }, input.evidenceHashes ?? []);
   }
 
   /** Publish a typed critique.
@@ -474,7 +550,7 @@ export class EpistemicAgent {
         replication_attempted: input.replicationAttempted ?? false,
         evidence_hashes: input.evidenceHashes ?? [],
         species: null,
-      });
+      }, [input.target, ...(input.evidenceHashes ?? [])]);
     } catch (cause) {
       const message = String((cause as any)?.data?.data ?? (cause as any)?.message ?? cause);
       if (/temporal friction/i.test(message)) {
@@ -491,7 +567,7 @@ export class EpistemicAgent {
   }
 
   async joinMembrane(membraneHash: Uint8Array): Promise<Uint8Array> {
-    return this.commitWaitingForDeps<Uint8Array>('join_membrane', membraneHash);
+    return this.commitWaitingForDeps<Uint8Array>('join_membrane', membraneHash, [membraneHash]);
   }
 
   async retract(input: {
@@ -505,7 +581,7 @@ export class EpistemicAgent {
       replacement_claim: input.replacementClaim ?? null,
       author: this.agentPubKey,
       timestamp: nowSecs(),
-    });
+    }, [input.claimEntryHash, ...(input.replacementClaim ? [input.replacementClaim] : [])]);
   }
 
   // --- Agent-loop helper ---------------------------------------------

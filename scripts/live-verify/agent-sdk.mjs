@@ -218,6 +218,52 @@ try {
     check('nothing was written while it waited',
       (await waiter.claimsInDomain(PENDING_DOMAIN)).length === 0);
 
+    // --- CLOSURE, item 12. The timer says how long it has waited; closure says
+    // what this observer can actually see of what the write cites. The case
+    // worth asserting is the one §5.3 says a timer cannot distinguish: SOME of
+    // the citations resolving.
+    //
+    // NOT DERIVED FROM `missingHashes`, which is the thing that was measured
+    // and found false: the refusal names exactly ONE hash however many are
+    // missing, so the two cases below — one unresolved of one, and one
+    // unresolved of three — produce the SAME `missingHashes` and must be told
+    // apart by closure or not at all.
+    check('progress carries closure, not just a timer',
+      progress[0]?.closure != null);
+    check('closure counts every citation, not the one the refusal named',
+      progress[0]?.closure?.cited === 1 && progress[0]?.closure?.resolvedLocally === 0);
+    check('the error carries closure at the moment the budget ran out',
+      caught?.closure?.cited === 1 && caught?.closure?.resolvedLocally === 0);
+    check('the error message states closure in words',
+      /0 of 1 citation resolve locally/.test(caught?.message ?? ''));
+
+    // THE DISTINCTION A TIMER CANNOT MAKE. Three citations, two of them real,
+    // one that will never arrive — and the refusal still names one hash, so
+    // `missingHashes` is identical to the single-citation case above.
+    const realOne = (await waiter.claimsInDomain(DOMAIN))[0]?.entryHash;
+    check('a real entry hash is in hand for the mixed-closure case',
+      realOne instanceof Uint8Array);
+    const mixed = await waiter.closureOf([realOne, realOne, danglingEntryHash]);
+    check('closure distinguishes "2 of 3 resolve" from "none do"',
+      mixed?.cited === 3 && mixed?.resolvedLocally === 2 && mixed?.unresolved.length === 1);
+    check('closure reports WHICH citation is outstanding, in order',
+      mixed?.unresolved[0]?.length === danglingEntryHash.length
+      && mixed.unresolved[0].every((b, i) => b === danglingEntryHash[i]));
+    check('closure of nothing is null rather than a false zero',
+      (await waiter.closureOf([])) === null);
+
+    // THE CASE THAT PINS THE MECHANISM RATHER THAN THE NUMBER. With three
+    // citations and ONE missing, deriving closure from the refusal — cited
+    // minus the one hash it names — gives 2 of 3 and is right by coincidence.
+    // With TWO missing it gives 2 of 3 and the truth is 1 of 3. So this is the
+    // case that fails if closure is ever reimplemented by subtraction, which
+    // is how both SPEC §5.3 and READINESS item 12 assumed it would work.
+    const twoMissing = new Uint8Array(danglingEntryHash);
+    twoMissing[34] = (twoMissing[34] + 1) & 0xff;
+    const worse = await waiter.closureOf([realOne, danglingEntryHash, twoMissing]);
+    check('closure is probed rather than subtracted from the one named hash',
+      worse?.cited === 3 && worse?.resolvedLocally === 1 && worse?.unresolved.length === 2);
+
     // The escape hatch the corpus and any dependency prober depends on.
     const immediate = await EpistemicAgent.connect({ dependencyWaitMs: 0 });
     let raw = null;
