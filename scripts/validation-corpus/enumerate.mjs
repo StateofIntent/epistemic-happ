@@ -357,6 +357,81 @@ const GUARDS_FIELD = {
   'BridgeRecord {}.': 'carried_fields',
 };
 
+
+// ============================================================================
+// --- ONE ENTRY TYPE'S BYTES READ AS ANOTHER'S, and which rules that costs.
+//
+// A `to_app_option::<T>()` guard reads as a type check. It is one only if no
+// OTHER entry type's bytes deserialise as `T`. A `Claim`'s do deserialise as a
+// `Mew` — `Mew`'s non-Option fields are content/author/timestamp/semantic_tags,
+// a `Claim` carries all four at the same declared types, and serde ignores the
+// extra ones — so two guards that read as type checks cannot fire for a Claim.
+// READINESS item 17 took the decision on 2026-10-19 to ACCEPT that rather than
+// add a discriminant field (which would change the DNA hash and force a
+// protocol bump), on the condition that the affected rules stop reading as
+// enforcement HERE, in the inventory the corpus works from. Corpus findings 8
+// and 9 are the two live sites; item 16's sweep is the gate on new pairs.
+//
+// So this does not change a class — both rules are still reachable and both
+// still have corpus cases that pass — it records what the rule does NOT cover,
+// on the site itself, where the next person reading the inventory will see it.
+//
+// THE RULE IS THE EMPIRICAL ONE, not the one serde documents: a MISSING
+// `Option` field is tolerated, which is what the corpus measured rather than
+// assumed. `scripts/check-entry-type-confusion.mjs` is the GATE on the same
+// fact — it reds when a NEW confusable pair appears — and it derives the pairs
+// independently and then checks them against the ones published here, so the
+// two cannot drift apart in silence.
+const structFieldTypes = new Map();
+{
+  const enumBlock = src.slice(src.indexOf('pub enum EntryTypes'));
+  const names = [...enumBlock.slice(0, enumBlock.indexOf('\n}')).matchAll(/^\s{4}([A-Z][A-Za-z]*)\(/gm)]
+    .map((m) => m[1]);
+  for (const t of names) {
+    const m = new RegExp(`pub struct ${t} \\{([\\s\\S]*?)\\n\\}`).exec(src);
+    if (!m) continue;
+    const f = new Map();
+    for (const g of m[1].matchAll(/pub (\w+)\s*:\s*([^,\n]+)/g)) {
+      f.set(g[1], g[2].trim().replace(/,$/, '').replace(/\s+/g, ''));
+    }
+    if (f.size) structFieldTypes.set(t, f);
+  }
+}
+
+// Can A be read out of B's bytes? Every non-Option field of A must exist in B
+// at an identical declared type; extra fields in B are ignored, which is why
+// the direction matters — a bigger struct reads as a smaller one and not the
+// reverse. That asymmetry is load-bearing here: it is why the Claim-side
+// sibling rule ("A ClaimToBridgeRecord link's base is not a Claim.") still
+// enforces, since a Mew lacks domain/confidence/evidence_hashes.
+const readableFrom = (A, B) => {
+  if (A === B || !structFieldTypes.has(A) || !structFieldTypes.has(B)) return false;
+  for (const [name, ty] of structFieldTypes.get(A)) {
+    if (ty.startsWith('Option<')) continue;
+    if (structFieldTypes.get(B).get(name) !== ty) return false;
+  }
+  return true;
+};
+
+const confusableEntryReads = [];
+for (const B of structFieldTypes.keys()) {
+  for (const A of structFieldTypes.keys()) {
+    if (readableFrom(A, B)) confusableEntryReads.push({ from: B, to: A });
+  }
+}
+
+// Where validation actually READS a type out of a record. The line is the
+// anchor: a rule affected by a confusable read sits inside the branch that
+// tests the result, so it is below the read and names the type it wanted.
+// Both conditions are needed and each excludes a real site that the other
+// would have let through — `A ClaimToBridgeRecord link's base is not a Claim.`
+// sits three lines under the `is_mew` read and names Claim (which nothing is
+// confusable with), and `MewToClaim base must be a Mew's EntryHash.` names Mew
+// but is an EntryHash downcast with no type read above it at all.
+const typeReads = [...src.matchAll(/to_app_option::<([A-Za-z]+)>/g)].map((m) => ({
+  line: src.slice(0, m.index).split('\n').length,
+  type: m[1],
+}));
 // --- Which LinkTypes a client can author with attacker-controlled fields.
 // Link ops ARE authored locally — every create_claim writes index links — so a
 // link rule is not "remote" merely for being a link rule. What decides whether
@@ -437,6 +512,21 @@ const REMOTE_VALIDATORS = new Set([
 function classify(site) {
   const v = site.validator;
   const msg = site.message;
+  const isLink = /^validate_(create|delete)_link$/.test(v);
+
+  // THE LINK TYPE IS RECORDED BEFORE ANY CLASS IS DECIDED, and it used not to
+  // be. `deferred` returns below this point and the link branch further down is
+  // where `link_type` was set — so a DEFERRED LINK SITE came out of here with
+  // no `link_type` at all, and replay.mjs's per-type coverage denominator is
+  // keyed on exactly that field. Those rules were therefore in no type's
+  // denominator and in no total: `AgentToMembrane base is not a valid
+  // Membrane.` and `AttestationGrant's referenced membership action not found.`
+  //
+  // Found by the orphan check reporting a corpus case for a rule it said was
+  // not in the inventory — the only one of these gates that could have seen it,
+  // because the coverage loop cannot miss a rule it never iterates. Same shape
+  // as item 18's finding one file over: a rule no number counted.
+  if (isLink) site.link_type = linkBranch.get(site.line) ?? null;
 
   // A `must_get_*` guard cannot fire for the thing it is written to catch.
   // must_get_entry / must_get_action are DETERMINISTIC DEPENDENCY FETCHES: when
@@ -470,11 +560,9 @@ function classify(site) {
 
   // Link rules: decided by whether the link type has a prober, not by being a
   // link rule. `attempt_entry_update` exists, so the update refusal is probed.
-  if (/^validate_(create|delete)_link$/.test(v)) {
-    const lt = linkBranch.get(site.line) ?? null;
-    site.link_type = lt;
-    if (lt === null) return 'remote';                      // the chain's fallthrough
-    return PROBED_LINK_TYPES.has(lt) ? 'crafted' : 'needs_prober';
+  if (isLink) {
+    if (site.link_type === null) return 'remote';          // the chain's fallthrough
+    return PROBED_LINK_TYPES.has(site.link_type) ? 'crafted' : 'needs_prober';
   }
   if (/updates are not permitted/i.test(msg)) return 'crafted';   // attempt_entry_update
   if (/deletes are not permitted/i.test(msg)) return 'remote';
@@ -501,6 +589,36 @@ for (const s of sites) {
 for (const s of sites) {
   const m2 = /^validate_(.+)$/.exec(s.validator);
   s.entry = m2 ? m2[1] : null;
+}
+
+// --- THE CONFUSABLE-READ ANNOTATION APPLIED. Changes no class — both affected
+// rules are reachable and both have passing corpus cases — and records what
+// each one does not cover, on the site itself, where the inventory's next
+// reader will see it. READINESS item 17.
+for (const s of sites) {
+  if (!s.message) continue;
+  // THE MESSAGE MUST ASSERT THE TYPE, not merely mention it. The first cut
+  // matched any message naming the type within range and caught one rule too
+  // many: `An AgentToMew link may only be created by the Mew's own author.`
+  // sits in the same branch and is NOT disabled by the confusion — it compares
+  // the deserialised `author` to the action author, and a Claim carries an
+  // `author` too, so it still fires. What it loses is narrower and is not an
+  // enforcement gap: the entry it calls a Mew may be a Claim.
+  const read = typeReads.find(
+    (r) => s.line >= r.line && s.line <= r.line + 25
+      && new RegExp(`(?:is not|must be|does not resolve to) an? ${r.type}\\b`).test(s.message),
+  );
+  if (!read) continue;
+  const from = confusableEntryReads.filter((p) => p.to === read.type).map((p) => p.from);
+  if (!from.length) continue;
+  s.guard_reads = read.type;
+  s.confusable_from = from;
+  s.enforcement_caveat =
+    `reads as a type check and is only a partial one: ${from.join('/')} bytes deserialise as `
+    + `${read.type}, so this guard returns Ok(Some(..)) for ${from.join('/')} and the message `
+    + `cannot fire for one. It DOES still fire for an entry of any other type (the deserialise `
+    + `fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than `
+    + `adding a discriminant field, which would change the DNA hash.`;
 }
 
 // --- THE CROSS-CHECK APPLIED. Runs last and only ever makes a class STRICTER,
@@ -569,6 +687,10 @@ writeFileSync(OUT, JSON.stringify({
   generated_from: ['dna/integrity/src/lib.rs', 'dna/coordinator/src/lib.rs'],
   protocol_version: (/pub const PROTOCOL_VERSION: u16 = (\d+)/.exec(src) || [])[1] ?? null,
   total_sites: sites.length,
+  // Published so `scripts/check-entry-type-confusion.mjs` can check its own
+  // independently-derived pairs against these, and so a reader of the
+  // inventory can see why two rules carry an `enforcement_caveat`.
+  confusable_entry_reads: confusableEntryReads,
   by_class: byClass,
   sites,
 }, null, 2) + '\n');

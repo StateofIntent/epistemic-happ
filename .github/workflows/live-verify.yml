@@ -79,16 +79,6 @@ jobs:
       - name: workflow-setup-drift — network.yml's two jobs still share one setup
         run: node scripts/check-workflow-setup-drift.mjs
 
-      # The fifth, and the only one in this family that guards a property of
-      # the TYPES rather than of a document. `scripts/validation-corpus/`
-      # finding 8 found by probe that a `Claim`'s bytes deserialise into `Mew`,
-      # so `AgentToMew`'s type check does not separate the two. That was one
-      # payload on one link type; this sweeps every pair of entry structs for
-      # the same overlap, and distinguishes a pair a guard can REACH from one
-      # that is merely waiting for a future guard. Milliseconds, nothing built.
-      - name: entry-type-confusion — no entry type's bytes can be read as another's, beyond the known two
-        run: node scripts/check-entry-type-confusion.mjs
-
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in
@@ -125,6 +115,29 @@ jobs:
             echo "::error::The inventory is stale. Either the integrity zome's Invalid sites moved, or the coordinator changed which fields an extern accepts rather than derives (that decides the honest/crafted/needs_extern class). The diff above is what moved. Run: node scripts/validation-corpus/enumerate.mjs && git add scripts/validation-corpus/corpus/inventory.json"
             exit 1
           }
+
+      # MOVED BELOW inventory-drift ON 2026-10-19, and the order is now load
+      # bearing rather than arbitrary. Since item 17 this check does two things:
+      # it sweeps the entry structs itself, and it compares its own pairs
+      # against the ones `enumerate.mjs` publishes in the inventory — two
+      # independent derivations that must agree, because one parser agreeing
+      # with itself proves nothing about a conclusion this specific. That
+      # comparison is only meaningful against an inventory already known to be
+      # CURRENT, which is what the step above establishes. Run first, a stale
+      # inventory would red here as "the two disagree" when the real fault is
+      # staleness, and send the next person to the wrong file.
+      #
+      # What it guards is a property of the TYPES rather than of a document.
+      # `scripts/validation-corpus/` finding 8 found by probe that a `Claim`'s
+      # bytes deserialise into `Mew`, so `AgentToMew`'s type check does not
+      # separate the two. That was one payload on one link type; this sweeps
+      # every pair of entry structs for the same overlap, and distinguishes a
+      # pair a guard can REACH from one merely waiting for a future guard.
+      # Item 17 accepted the known pair rather than changing the DNA hash, so
+      # what must not happen silently is a NEW one — and it would arrive as an
+      # innocent-looking field added to an entry struct.
+      - name: entry-type-confusion — no entry type's bytes can be read as another's, beyond the known two
+        run: node scripts/check-entry-type-confusion.mjs
 
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.

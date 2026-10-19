@@ -575,29 +575,25 @@ const GAPS = [
   // either: there was nothing to be exempt from. Now that the classifier reads
   // the Rust, all five are `crafted` and have to be accounted for here.
   //
-  // (a) ATTESTATION GRANT — ALL THREE, AND NO PROBER FIXES IT.
-  // `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is 30 * 24 * 3600 — thirty
-  // days. A VALID grant needs an AgentToMembrane join whose action timestamp is
-  // thirty days older than the grant's, so no test run can construct a
-  // committing baseline. Without one every case below it would be refused for
-  // the tenure reason rather than for the rule under test and would "pass" by
-  // being refused at all, which is precisely what the baseline check exists to
-  // stop. These need a harness that asserts refusals WITHOUT a valid baseline,
-  // which is a different shape from this one — not another extern.
-  {
-    linkType: 'AttestationGrant',
-    rule: 'AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).',
-    why: 'no committing baseline is constructible: a valid AttestationGrant needs an AgentToMembrane join thirty days older than it (ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION), so every case would be refused for tenure rather than for this rule',
-  },
-  {
-    linkType: 'AttestationGrant',
-    rule: "AttestationGrant requires proof of sufficiently tenured membership in this membrane — the referenced action must be the granter's own AgentToMembrane join for this same membrane, created at least the required tenure period ago.",
-    why: 'the rule IS the thirty-day tenure, and a run cannot age a fixture past a month; asserting it would need a clock this harness does not have in CI',
-  },
+  // (a) ATTESTATION GRANT — ONE OF THE THREE, NOT ALL THREE ANY MORE.
+  //
+  // This block used to gap all three, on the reasoning that
+  // `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is thirty days, so no run
+  // can construct a committing baseline, so every case would be refused for
+  // tenure rather than for the rule under test. The first two steps are
+  // correct and still are. The conclusion was too strong, and the note that
+  // used to close this comment said what was missing: *"these need a harness
+  // that asserts refusals WITHOUT a valid baseline, which is a different shape
+  // from this one — not another extern."* That harness is now at the bottom of
+  // this file, and two of the three rules are asserted rather than gapped.
+  //
+  // What remains gapped is the friction rule, and the reason is no longer the
+  // baseline — it is the coordinator, the same shape as the two entry-type
+  // gaps above.
   {
     linkType: 'AttestationGrant',
     rule: 'SWO temporal friction: author has granted attestation {} times in the last {} seconds (limit {}). This bounds how fast the right to vouch can be spent, not just how fast links can be created.',
-    why: 'friction, and unreachable twice over — it sits behind the tenure gate that no baseline can pass',
+    why: 'unreachable twice over, and neither reason is the baseline. `check_attestation_grant_friction` pre-checks at the SAME limit (ATTESTATION_GRANT_MAX_PER_WINDOW 5 = ..._VALIDATION 5) so grant_attestation refuses in the coordinator\'s wording; and reaching the limit through the prober would need five grants that PASS the thirty-day tenure bar, which is the thing no run can produce',
   },
   // (b) TWO FRICTION RULES, the same exception the two entry-type gaps above
   // take: a limit reached only by committing the whole window's allowance,
@@ -1090,6 +1086,55 @@ const entries = [
 // --- One driver for all five, rather than the Claim block copied four times.
 // The baseline-first rule and the refused-for-a-different-reason rule are the
 // two things this harness is actually about, and they are now written once.
+// THE ASSERTION ITSELF, SHARED BY BOTH DRIVERS. Extracted when
+// `driveUnbaselined` arrived at the bottom of this file, and extracted rather
+// than copied for one reason: the prefix discipline below is what injections P
+// and Q exist to protect, and a second copy of it is a second place for it to
+// be quietly loosened into "did it throw". One copy, two callers.
+//
+// `commitDetail` is the only thing the two drivers say differently, because a
+// commit means something different when there was no baseline to compare it
+// against — see driveUnbaselined.
+function assertStopped(c, err, commitDetail = 'the call COMMITTED — nothing stopped this payload') {
+  const kind = c.expect ?? 'refusal';
+
+  if (err === null) {
+    check(false, `${kind}: ${c.rule}`, commitDetail);
+    return;
+  }
+  if (kind === 'refusal') {
+    // A `format!` RULE CANNOT BE MATCHED LITERALLY, and the first one to be
+    // asserted rather than gapped found this: the inventory records the zome's
+    // source string, so `DomainToClaim ... own domain ({:?})` is what the rule
+    // says while the conductor returns the domain substituted in. Matching on
+    // the literal would fail forever, and loosening it to "did it throw"
+    // would pass for any reason at all. So the comparison is the stable
+    // PREFIX up to the first interpolation — everything the zome wrote
+    // verbatim — and a prefix too short to identify a rule is refused outright
+    // rather than silently weakened.
+    const brace = c.rule.indexOf('{');
+    const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
+    if (brace !== -1 && expect.length < 20) {
+      check(false, `refused: ${c.rule}`,
+        `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
+      return;
+    }
+    const hit = err.includes(expect);
+    check(hit, `refused: ${c.rule}`,
+      hit ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
+    return;
+  }
+  // kind === 'deferral'
+  const deferred = /DepMissingFromDht|may be retried|unresolved dependenc/i.test(err);
+  const messageAppeared = err.includes(c.rule);
+  check(deferred && !messageAppeared,
+    `deferred (not refused): ${c.rule}`,
+    deferred && !messageAppeared ? null
+      : messageAppeared
+        ? `the Invalid branch FIRED — must_get_* semantics have changed, update SPEC §5.3 and this corpus`
+        : `expected a retryable dependency stall, got: ${err.slice(0, 180)}`);
+}
+
 async function drive(spec) {
   log(`--- ${spec.label}: baseline, then one mutation per rule ---`);
 
@@ -1162,43 +1207,7 @@ async function drive(spec) {
     const p = spec.baseline(ctx);
     c.mutate(p, ctx);
     const err = await refusal(spec.fn, p);
-    const kind = c.expect ?? 'refusal';
-
-    if (err === null) {
-      check(false, `${kind}: ${c.rule}`, 'the call COMMITTED — nothing stopped this payload');
-      continue;
-    }
-    if (kind === 'refusal') {
-      // A `format!` RULE CANNOT BE MATCHED LITERALLY, and the first one to be
-      // asserted rather than gapped found this: the inventory records the zome's
-      // source string, so `DomainToClaim ... own domain ({:?})` is what the rule
-      // says while the conductor returns the domain substituted in. Matching on
-      // the literal would fail forever, and loosening it to "did it throw"
-      // would pass for any reason at all. So the comparison is the stable
-      // PREFIX up to the first interpolation — everything the zome wrote
-      // verbatim — and a prefix too short to identify a rule is refused outright
-      // rather than silently weakened.
-      const brace = c.rule.indexOf('{');
-      const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
-      if (brace !== -1 && expect.length < 20) {
-        check(false, `refused: ${c.rule}`,
-          `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
-        continue;
-      }
-      const hit = err.includes(expect);
-      check(hit, `refused: ${c.rule}`,
-        hit ? null : `stopped for a different reason: ${err.slice(0, 180)}`);
-      continue;
-    }
-    // kind === 'deferral'
-    const deferred = /DepMissingFromDht|may be retried|unresolved dependenc/i.test(err);
-    const messageAppeared = err.includes(c.rule);
-    check(deferred && !messageAppeared,
-      `deferred (not refused): ${c.rule}`,
-      deferred && !messageAppeared ? null
-        : messageAppeared
-          ? `the Invalid branch FIRED — must_get_* semantics have changed, update SPEC §5.3 and this corpus`
-          : `expected a retryable dependency stall, got: ${err.slice(0, 180)}`);
+    assertStopped(c, err);
   }
   log('');
 }
@@ -1233,7 +1242,8 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'MewToClaim', 'ClaimToExternalCritique', 'MembraneToFederationRecord',
   'MewToBridgeRecord',
   'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody',
-  'TaxonomyToSpecies', 'AgentToMembrane', 'Reinforcement', 'SynapticLink'];
+  'TaxonomyToSpecies', 'AgentToMembrane', 'Reinforcement', 'SynapticLink',
+  'AttestationGrant'];
 
 const linkEntries = [
   {
@@ -2327,6 +2337,19 @@ const linkEntries = [
       // else's behalf" stated exactly.
       { rule: "AgentToMembrane links can only be created by the agent joining, not on someone else's behalf.", mutate: (l) => { l.tag = Array.from(otherKey.slice(3)); } },
       { rule: 'AgentToMembrane base must be an EntryHash.', mutate: (l, ctx) => { l.base = ctx.membraneAction; } },
+      // A DEFERRAL, AND THE RULE THAT WAS IN NO DENOMINATOR UNTIL 2026-10-19.
+      // `classify()` returned `deferred` before the branch that records
+      // `link_type`, so this site carried none — and the coverage loop above
+      // keys on exactly that field, so it was in no type's count and no total.
+      // A well-formed EntryHash that resolves to nothing reaches
+      // `must_get_entry`, which abandons the callback: the message never
+      // appears, and a REFUSAL here would mean the two rules above it had
+      // stopped firing.
+      {
+        rule: 'AgentToMembrane base is not a valid Membrane.',
+        expect: 'deferral',
+        mutate: (l) => { l.base = danglingHash('entry', 31); },
+      },
     ],
   },
 
@@ -2426,8 +2449,183 @@ const linkEntries = [
   },
 ];
 
+
+// ============================================================================
+// --- RULES WHOSE BASELINE CANNOT EXIST.
+//
+// Every case above starts from a payload asserted to COMMIT and changes one
+// field, and *Why one mutation at a time* in README.md is the argument for
+// that. `AttestationGrant` cannot be driven that way, and it is not a
+// shortcoming of the harness — it is arithmetic in the zome.
+//
+// A valid grant needs the granter's own `AgentToMembrane` join to be at least
+// `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` old, which is **30 days**
+// (`dna/integrity/src/lib.rs:1773`). Both actions are this agent's own and a
+// run makes them seconds apart. No payload, no prober and no second agent
+// produces one: the only things that would are waiting a month or moving
+// `CLOCK_REALTIME`, and the clock probe is deliberately not a CI check
+// (READINESS item 13). **So a valid AttestationGrant has never been committed
+// by anything in this repository, and cannot be.** The GAPS block above gapped
+// all three of its rules for that reason and asked for this driver by name.
+//
+// WHAT REPLACES THE BASELINE WAS ALREADY IN THE EVIDENCE. Each link branch of
+// `validate_create_link` is a straight-line sequence of checks that RETURNS at
+// the first failure. So a refusal naming rule N is itself proof that every
+// check above N passed on that payload — which is exactly what the baseline
+// was supplying from outside. The message carries it instead.
+//
+// WHAT IS LOST, stated rather than glossed, because a driver that quietly
+// asserts less than its neighbour is the failure mode this corpus exists to
+// find:
+//
+//   - A DELETED RULE IS STILL CAUGHT, both ways. With the rule gone the call
+//     either commits — reported as `the call COMMITTED` — or is refused by a
+//     LATER check, and since the assertion requires THIS rule's own prefix a
+//     different message reds as `stopped for a different reason`.
+//   - WHAT IS GENUINELY LOST is the proof that nothing BELOW the rule would
+//     also have refused the payload. These cases assert that the rule fires
+//     FIRST among the ones they violate, not that it is the only one they
+//     violate. Here that is visible rather than hidden: the three cases are
+//     the first three checks of the branch IN ORDER, each one passing the ones
+//     above it, and the only check below all three is the friction rule the
+//     GAPS block still carries.
+//
+// THIS MUST NOT SPREAD. Where a baseline CAN commit, `drive` is strictly
+// stronger, because two signals beat one. The test for belonging here is not
+// "a baseline is inconvenient" but "a baseline is impossible" — and for every
+// other link type in this corpus, including the four `AttachmentLinkKind`
+// variants item 18 added, a baseline commits.
+async function driveUnbaselined(spec) {
+  log(`--- ${spec.label}: refusals with NO baseline — ${spec.whyNoBaseline} ---`);
+
+  let ctx = null;
+  try {
+    ctx = await spec.setup();
+    check(true, `${spec.label} dependency chain builds — ${spec.chainNote}`);
+  } catch (e) {
+    check(false, `${spec.label} dependency chain builds`, String(e?.message ?? e).slice(0, 300));
+    for (const c of spec.cases) { skip++; log(`  SKIP: ${c.rule} — dependency chain did not build`); }
+    log('');
+    return;
+  }
+
+  for (const c of spec.cases) {
+    const err = await refusal(spec.fn, c.payload(ctx));
+    // The commit detail differs from `drive`'s, and the difference is the whole
+    // point of this driver: with no baseline there is no second signal to weigh
+    // a commit against.
+    assertStopped(c, err,
+      'the call COMMITTED — and with no baseline there is no second signal to weigh that '
+      + 'against: every check in this branch above the rule passed, and the rule itself did '
+      + 'not stop the payload, so it is gone');
+  }
+  log('');
+}
+
+const unbaselinedLinks = [
+  {
+    linkType: 'AttestationGrant',
+    label: 'AttestationGrant',
+    // THE PROBER, not `grant_attestation`, and the tag is why. The extern
+    // builds its tag from `my_membership_action.get_raw_36()`, so it is always
+    // 36 bytes and the length rule is unreachable through it. Item 18's
+    // `AttachmentLinkKind::AttestationGrant` passes RAW tag bytes, which makes
+    // the first check in the branch drivable — and the first check needs no
+    // baseline by construction, since nothing above it can preempt it.
+    fn: 'attempt_false_attachment_link',
+    whyNoBaseline: 'a valid grant needs thirty days of prior membership',
+    chainNote: 'a Membrane of this agent\'s own and its own join action, waited for through get_my_membership_action',
+    setup: async () => {
+      const domain = `CorpusGrant${Date.now()}`;
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'own what it publishes', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      const membraneAction = await call('create_membrane', {
+        domain,
+        description: 'corpus membrane for the AttestationGrant rules',
+        required_promises: ['own what it publishes'],
+        validation_rules_hash: null,
+        creator: myKey,
+        created_at: nowSecs(),
+        constitution,
+      });
+      // The link's base must be the membrane's ENTRY hash, because the tenure
+      // check compares the join link's own `base_address` against this one and
+      // `join_membrane` links from `membrane_entry_hash(..)`.
+      const membraneEntry = (await call('get_membranes'))
+        .find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                  === Buffer.from(membraneAction).toString('base64'))
+        .signed_action.hashed.content.data.entry_hash;
+      const joinAction = await call('join_membrane', membraneAction);
+
+      // WAITED FOR, not assumed, for the same reason `awaitVisibleToMe` exists
+      // one agent over: validation `must_get_valid_record`s this join action,
+      // and until it resolves the commit DEFERS instead of being refused by the
+      // tenure rule — which would read as a rule that does not fire. It is this
+      // agent's own write, so this is fast, but "own" is not "instant".
+      await awaitVisibleToMe(
+        async () => (await call('get_my_membership_action', membraneAction)) ?? null,
+        'this agent\'s own AgentToMembrane join action',
+      );
+      return { membraneEntry, joinAction };
+    },
+    // One payload shape, three tags. `base` and `target` are constant across
+    // all three, so the tag is the only thing any case varies — which is the
+    // one-mutation discipline holding even without a baseline to mutate FROM.
+    cases: [
+      // 1. THE FIRST CHECK IN THE BRANCH, `tag.0.len() != 36`. Nothing above it
+      //    can preempt it, so this case needs no baseline in the strongest
+      //    sense available: the rule is the only thing the payload can hit.
+      {
+        rule: 'AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).',
+        payload: (ctx) => grantPayload(ctx, new Uint8Array(35).fill(7)),
+      },
+      // 2. The second, and a DEFERRAL rather than a refusal: 36 well-formed
+      //    bytes that resolve to nothing reach `must_get_valid_record`, which
+      //    abandons the callback, so the message never appears. A refusal here
+      //    would mean the tag check above it had stopped firing.
+      {
+        rule: 'AttestationGrant\'s referenced membership action not found.',
+        expect: 'deferral',
+        payload: (ctx) => grantPayload(ctx, danglingHash('action', 21).slice(3)),
+      },
+      // 3. The third. Everything about the referenced action is RIGHT — it is
+      //    this agent's own AgentToMembrane join for this same membrane — and
+      //    it fails on age alone, which is the strongest shape available: it
+      //    exercises `tenure_satisfied`'s arithmetic rather than the type and
+      //    ownership tests in front of it. The refusal is also what proves
+      //    cases 1 and 2 passed on this payload.
+      {
+        rule: 'AttestationGrant requires proof of sufficiently tenured membership in this '
+            + 'membrane — the referenced action must be the granter\'s own AgentToMembrane '
+            + 'join for this same membrane, created at least the required tenure period ago.',
+        payload: (ctx) => grantPayload(ctx, ctx.joinAction.slice(3)),
+      },
+    ],
+  },
+];
+
+// The tag is `ActionHash::from_raw_36(tag.0)`, so it carries the 36 bytes AFTER
+// an ActionHash's 3-byte prefix — hence `.slice(3)` at every call site above.
+// The target is entry-prefixed for the reason the Reinforcement baseline
+// records at length: `create_link(base, agent, ..)` reaches AnyLinkableHash via
+// `EntryHash::from(AgentPubKey)`, which rewrites those three bytes, and the
+// agent-prefixed form is refused by the deserialiser before any rule runs.
+// Nothing in this branch reads the target, so any agent does.
+const grantPayload = (ctx, tag) => ({
+  kind: 'AttestationGrant',
+  base: ctx.membraneEntry,
+  target: new Uint8Array([0x84, 0x21, 0x24, ...otherKey.slice(3)]),
+  tag: Array.from(tag),
+  anchor_of: null,
+  question_anchor_of: null,
+});
+
 for (const spec of entries) await drive(spec);
 for (const spec of linkEntries) await drive(spec);
+for (const spec of unbaselinedLinks) await driveUnbaselined(spec);
 
 // ---------------------------------------------------------------- coverage
 // WHY THIS IS A CHECK AND NOT A PRINTOUT. The inventory drift gate in
@@ -2482,7 +2680,9 @@ if (GAPS.length) {
 log('');
 log('--- coverage: every inventoried rule for these link types has a case ---');
 
-const namedLinks = new Set(linkEntries.flatMap((s) => s.cases.map((c) => c.rule)));
+const namedLinks = new Set(
+  [...linkEntries, ...unbaselinedLinks].flatMap((s) => s.cases.map((c) => c.rule)),
+);
 
 for (const lt of COVERED_LINKS) {
   const sites = inv.sites.filter(
