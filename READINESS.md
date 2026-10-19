@@ -855,3 +855,99 @@ like one to a person writing an ad-hoc probe, too.
 
 **Yours rather than anyone else's, and unchanged by any of today:** §3's
 two-machine measurement, and the `0.1.4` publish.
+
+### Where this session stopped — 2026-10-19 (two decisions taken, and a branch thrown away)
+
+**Queue items 14, 17 and 19 closed, plus corpus finding 10. Merged as #290
+(`160e1ca`), 238 → 244 checks, 0 failed, all six CI jobs green.** The two
+decisions are the part worth reading, because neither was blocked on technique
+and both are now permanent.
+
+**Item 14 — `reveal_deadline` stays unenforceable, by decision, so §5.22's MUST
+is permanent rather than interim.** It had been written as a caveat pending a
+repair. Every available repair names a clock, and countersigning — the
+in-platform one, already built — buys the deadline by requiring a witness online
+at reveal time, so an agent could no longer complete a foresight commitment
+alone. That changes what the protocol promises rather than adding a check, and
+Invariant #2 prefers a read-layer observation. **The position taken: this
+protocol records foresight commitments and does not audit them.** §5.22 carries
+the full reasoning, what would reopen it (any surface granting the timestamp
+authority — an accuracy figure, a reputation weight), and the order to do it in
+if that day comes: repair 3 first, because the chain-gap signature is free,
+read-layer and already permitted, and countersigning only if detection proves
+insufficient.
+
+**Item 17 — the `Claim`-reads-as-`Mew` confusion is accepted, not repaired.** A
+discriminant field changes the integrity zome and therefore the DNA hash, which
+is a `protocol_version` bump and a network reset for every installed hApp, for
+two guards that findings 8 and 9 had already bounded to one agent's own entries.
+So the inventory says so instead: both sites carry an `enforcement_caveat`
+derived mechanically from the entry structs, stating what the guard misses **and
+what it still does** — it fires for an entry of any other type and for a
+non-entry action — so the rule reads as narrower rather than vacuous.
+`check-entry-type-confusion.mjs` now also compares its pairs against the ones
+the inventory publishes, and its CI step moved below `inventory-drift`, because
+that comparison only means anything against an inventory already known current.
+
+**Item 19 — the harness item 18 asked for by name.** Item 18 declared all three
+`AttestationGrant` rules because thirty days of tenure makes a committing
+baseline impossible. That is true and the conclusion was still too strong for
+two of the three: each link branch returns at the first failing check, so a
+refusal naming rule N is itself proof every check above it passed — which is
+what a baseline supplies from outside. The tag-length rule needed no baseline in
+the strongest sense, being the branch's first check. All three now assert; only
+the friction rule stays declared, and its reason changed from the baseline to
+the coordinator pre-check.
+
+**THE TRAP THAT COST THE SESSION, and it will recur because nothing warns about
+it.** The first version of this work was branched off a local `main` sitting at
+**#279 while origin was at #288** — nine merged PRs behind. Everything looked
+consistent: `git log` read as plausible history, and `README.md`, `READINESS.md`
+and the corpus README were all stale in the same matching way, so a stale
+checkout is internally coherent and gives no signal. What it produced was a PR
+(#289, closed) that would have reverted nine PRs on four files, re-"discovered" a
+rule item 18 had already made drivable, treated the already-merged
+`check-entry-type-confusion.mjs` as an uncommitted loose end, and renumbered two
+findings whose numbers were correct upstream all along. **`git fetch origin`
+before branching, and branch from `origin/main` explicitly.** Before calling
+anything unfinished, new, or a finding, check it against `origin/main` rather
+than the working copy.
+
+**Two smaller traps from the same day.** The `.happ` bundle is **gitignored and
+built from whatever the tree was at build time**, so after syncing `main` it is
+stale and a corpus run tests the old coordinator — item 18's prober simply was
+not in the installed app until the zomes were rebuilt (two `cargo build
+--release --target wasm32-unknown-unknown`, `hc dna pack dna/`, `hc app pack .`;
+the UI steps in `pack-webhapp.sh` are not needed for corpus work). And
+**repeated corpus runs saturate the 20-per-hour SynapticLink friction budget**,
+which surfaces as `dependency chain builds` failures rather than as rule
+failures — the harness separates them correctly, and the fix is
+`scripts/sandbox.sh clean && scripts/sandbox.sh start`, since the window is per
+agent.
+
+**One thing left untidy on purpose, and one by accident.** On purpose: the
+corpus README's link-type table is still the original four-type slice while its
+own header says every link type is covered — flagged in place rather than
+rewritten, because a twenty-four-row table would restate what `replay.mjs`
+prints per type on every run. By accident: **`160e1ca` is a squash commit**,
+where every other PR in this repository's history landed as a merge commit.
+`--auto` fixes the merge method at the moment it is armed and GitHub refuses to
+change it afterwards, so decide the method before arming it.
+
+**Also recorded for the next reader: the corpus README has two findings numbered
+8 and two numbered 9** — the first-run pair and the Claim/Mew pair. A handoff
+citing "findings 8 and 9" means the Claim/Mew pair. The duplicates are left as
+they are, because `check-entry-type-confusion.mjs` and the rows above cite them
+by number; new findings are numbered 10 up and the collision is flagged where a
+reader meets it.
+
+**What is highest-priority now that 14 is closed:** items **12** and **10**,
+both self-contained, each closing something already written down. Then **5f**'s
+successors — **8**, then **9**, with **11** last, since it should not be built
+before 9 can measure it.
+
+**Yours rather than anyone else's, and unchanged by any of today:** §3's
+two-machine measurement, and the publish — item **6**'s `0.1.4` and item
+**15**'s `0.1.5` both need `npm login`, and item 15 needs no dependency edit at
+all, since `package.json` already declares `^1.30.0` and a plain relock picks up
+the fix.
