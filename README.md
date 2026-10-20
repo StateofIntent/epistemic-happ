@@ -1641,6 +1641,8 @@ which is part of how item 21 survived.
 | **the sybil position** | a person standing behind it before inviting a crowd. Explicitly not technical |
 | **an outside audit** | a person, and money |
 | **the live X API** | credentials. Nothing here posts a tweet, and the bridge service's `start()` is still unexercised |
+| **22** — Invariant 9's consequence | a decision, and genuinely one. What the metabolic tick WRITES, if anything. **It had no row until 2026-10-21**: SPEC §699 deferred it to item 9, item 9 closed, and the question did not move — the same fault as the four rows above, one level up. Item 9 settled the blocking half (a reading is an agent's signed promise, and the tick has a key), so what is left is Invariant 6: a permanent write, by an unattended process, that nobody can delete and nothing can stop except a restart |
+| **the raw-payload extern** | a protocol surface decision — whether this repository wants an extern existing only so tests can reach derived fields. It would close the 8 `needs_extern` foresight rules (READINESS 5g); corpus authoring will not |
 
 **The one row above that deserves the treatment the other four got is *scale
 beyond four nodes*.** Its stated blocker is "a run at tens of nodes", which
