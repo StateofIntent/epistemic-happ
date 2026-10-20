@@ -448,6 +448,28 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/friction-limits.mjs
 
+      # metabolism — READINESS item 8, and the slowest step here for a reason
+      # that is not inefficiency. `schedule()` fires once unconditionally on the
+      # host's next scheduler iteration, so a single tick is consistent with a
+      # one-shot; only a SECOND tick shows the function rescheduled itself, and
+      # that means waiting out the 60s floor compiled into the zome. About two
+      # minutes, against this job's 30-minute ceiling and its ~10-minute
+      # historical run.
+      #
+      # THE `clean` MATTERS MORE HERE THAN ELSEWHERE. This harness opens with a
+      # control that asserts no tick arrives before it starts one, and a
+      # conductor still ticking from an earlier run would make every assertion
+      # after it vacuous. The clean is what makes the control meaningful.
+      #
+      # It also leaves nothing behind for the steps after it: the tick is
+      # scheduled `Ephemeral`, so it does not survive the next step's fresh
+      # conductor. A `Persisted` schedule would have leaked a heartbeat into
+      # every subsequent harness in this job.
+      - name: metabolism — the host runs a function nothing called, twice, and writes nothing
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/metabolism.mjs
+
       # The gate itself, and the reason this whole workflow was worth building:
       # three real processes — the notes service, `vite preview` serving the
       # production bundle, and the conductor — with a real browser the only
