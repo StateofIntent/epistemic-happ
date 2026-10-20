@@ -1042,6 +1042,85 @@ for (const s of sites) {
 //
 // Deduplicated by the guard itself rather than per extern, since one helper is
 // reached by many externs and the guard is one fact.
+// PRE-CHECKS WITH NO VALIDATION TWIN THAT HAVE BEEN READ AND DECIDED.
+//
+// READINESS item 20 asked for "three readings and a decision each", and this
+// is where the readings live so they do not have to be redone on every run.
+// The list above is a CANDIDATE list — the tool reports conditions and cannot
+// read the comments beside them, which is why all three of these were flagged
+// while two already carried their reasoning in the source four lines away.
+//
+// Same discipline as `check-harness-counts.mjs`'s `EXEMPT`: carved out
+// explicitly with a stated reason rather than quietly filtered, because a
+// thing left out of a check needs a reason or it is just a gap. And a stale
+// acknowledgement is worse than none — if one of these stops matching a real
+// site, this file EXITS 1 rather than silently acknowledging nothing.
+//
+// Keyed by extern name and refusal-message prefix, NOT by line number: these
+// move whenever anything above them is edited, which is a lesson this corpus
+// has already paid for once.
+const ACKNOWLEDGED = [
+  {
+    in_fn: 'assert_expertise',
+    refuses_with: 'Can only assert expertise backed by your own WorldlineTrace.',
+    verdict: 'courtesy, deliberately — already decided in the source',
+    reading:
+      'NOT A GAP, and it was never an open question: the twelve lines above this '
+      + 'check say so explicitly ("A COURTESY, NOT AN ENFORCED RULE, and '
+      + 'deliberately so"), name the reason, and state the condition for '
+      + 'revisiting. What it builds is an ordinary Claim, so validate_claim '
+      + 'governs it and has no notion of traces; a client bypassing the extern '
+      + 'can cite anybody\'s. That is tolerable because an expertise assertion '
+      + 'carries NO STANDING — a self-asserted, critiquable Claim in a '
+      + 'non-authoritative index. SPEC §5.21. THE REVISIT TRIGGER IS WRITTEN '
+      + 'INTO THE COMMENT: any future mechanism that gives these claims weight '
+      + 'has to add the validation first.',
+  },
+  {
+    in_fn: 'pre_register',
+    refuses_with: 'prediction must not be empty',
+    verdict: 'no twin is POSSIBLE, and the condition is the wrong boundary',
+    reading:
+      'A TWIN CANNOT EXIST HERE AT ANY protocol_version. The field lives in '
+      + 'SealedPrediction, this zome\'s only private entry, and the integrity '
+      + 'zome already says at the arm where the rule would go that "a private '
+      + 'entry\'s content is not available here" — hdi delivers None for the '
+      + 'body. So no peer ever sees the prediction at commit time. The content '
+      + 'IS public at reveal, so the rule could in principle live in '
+      + 'validate_revelation instead — and should not, for two measured '
+      + 'reasons. (1) "Not empty" is a proxy for "not vacuous" and the proxy '
+      + 'does not hold: `prediction: "."` is accepted, revealed, and lands in '
+      + 'get_foresight_record\'s `revealed` list indistinguishably from a real '
+      + 'kept commitment. A rule would refuse the one input nobody would ever '
+      + 'use. (2) NOTHING COUNTS revealed commitments — no `.revealed.length` '
+      + 'anywhere in the UI, the SDK or the MCP server; every surface renders '
+      + 'the prediction\'s own text, and the foresight tab says in its intro '
+      + 'that there is no score on the page. The inflation a vacuous reveal '
+      + 'would cause has no consumer. Leave as a courtesy; spend no bump.',
+  },
+  {
+    in_fn: 'pre_register',
+    refuses_with: 'salt must not be empty',
+    verdict: 'no twin is possible, and the check\'s own purpose is not a rule',
+    reading:
+      'Same impossibility as the prediction check — private entry, content is '
+      + 'None in validation. But this one fails at its OWN STATED PURPOSE in a '
+      + 'way worth recording, because it is the item-14 shape again. The '
+      + 'message says the salt exists so "a guessable prediction is [not] '
+      + 'recoverable from its hash", and `salt: "."` is accepted: a '
+      + 'one-character salt is as brute-forcible as none, so the check does not '
+      + 'achieve what it claims even in the coordinator. THE ACHIEVABLE VERSION '
+      + 'IS AN ENTROPY REQUIREMENT, AND NO VALIDATION RULE CAN CHECK ONE — '
+      + 'entropy is a property of the process that generated a string, not of '
+      + 'the string, so a validator cannot tell a well-chosen salt from a badly '
+      + 'chosen one by inspection. Like reveal_deadline needing a clock hdi '
+      + 'does not have, this is a goal that is not expressible as a '
+      + 'deterministic rule over the data. And the exposure is the COMMITTER\'S '
+      + 'OWN: a weak salt makes their own commitment recoverable and misleads '
+      + 'nobody else. Leave as a courtesy; spend no bump.',
+  },
+];
+
 const prechecksWithoutValidator = [];
 {
   const byGuard = new Map();
@@ -1064,6 +1143,20 @@ const prechecksWithoutValidator = [];
   }
   prechecksWithoutValidator.push(...byGuard.values());
 }
+
+// Match each reported pre-check against ACKNOWLEDGED, and refuse to run with a
+// stale acknowledgement. The repository's rule for every other gate here: a
+// check whose subject can vanish silently is not a check.
+const ackFor = (p) => ACKNOWLEDGED.find(
+  (a) => a.in_fn === p.in_fn && p.refuses_with.startsWith(a.refuses_with));
+for (const p of prechecksWithoutValidator) {
+  const a = ackFor(p);
+  if (a) { p.acknowledged = true; p.verdict = a.verdict; p.reading = a.reading; }
+}
+const staleAck = ACKNOWLEDGED.filter(
+  (a) => !prechecksWithoutValidator.some(
+    (p) => p.in_fn === a.in_fn && p.refuses_with.startsWith(a.refuses_with)));
+const unreadPrechecks = prechecksWithoutValidator.filter((p) => !p.acknowledged);
 
 const byClass = { honest: 0, crafted: 0, deferred: 0, needs_prober: 0, needs_extern: 0, remote: 0, passthrough: 0, shadowed: 0 };
 for (const s of sites) byClass[s.class]++;
@@ -1104,13 +1197,42 @@ console.log(`  (passthrough ${byClass.passthrough} — forwards another validato
 console.log(`\n  assertable as a REFUSAL from JavaScript: ${byClass.honest + byClass.crafted}`);
 console.log(`  assertable only as a DEFERRAL:          ${byClass.deferred}`);
 console.log(`  blocked on a coordinator change:  ${byClass.needs_prober + byClass.needs_extern}`   + ` (${byClass.needs_prober} link rules + ${byClass.needs_extern} entry rules)`);
-if (prechecksWithoutValidator.length) {
-  console.log(`\n  ${prechecksWithoutValidator.length} coordinator refusal(s) on a WRITE path with no validation twin —`);
+if (unreadPrechecks.length) {
+  console.log(`\n  ${unreadPrechecks.length} coordinator refusal(s) on a WRITE path with no validation twin and NO READING —`);
   console.log('  candidates for an enforcement gap, not findings. A custom client skips these:');
-  for (const p of prechecksWithoutValidator) {
+  for (const p of unreadPrechecks) {
     console.log(`    ${p.in_fn}:${p.line}  ${JSON.stringify(p.refuses_with.slice(0, 64))}`);
     console.log(`      reached by: ${p.reached_by.join(', ')}`);
+  }
+  console.log('  Read each one and add it to ACKNOWLEDGED in this file, or act on it.');
+}
+
+// Listed every run rather than hidden, so the decisions stay visible and a
+// reader can disagree with one. READINESS item 20 carries them in full.
+const ackd = prechecksWithoutValidator.filter((p) => p.acknowledged);
+if (ackd.length) {
+  console.log(`\n  ${ackd.length} of those have been READ AND DECIDED (READINESS item 20) —`);
+  console.log('  no validation twin, on purpose, and none needs a protocol_version bump:');
+  for (const p of ackd) {
+    console.log(`    ${p.in_fn}:${p.line}  ${JSON.stringify(p.refuses_with.slice(0, 48))}`);
+    console.log(`      ${p.verdict}`);
   }
 }
 
 console.log(`\nwrote ${OUT.replace(REPO + '/', '')}`);
+
+// A STALE ACKNOWLEDGEMENT IS WORSE THAN NO ACKNOWLEDGEMENT, because it reads as
+// a decision somebody made about code that is no longer there. If a pre-check
+// was removed, or its message reworded, the entry must be removed or updated
+// deliberately — not left pointing at nothing while the report still prints a
+// reassuring verdict. Same reason check-harness-counts.mjs reds on CLAIM NOT
+// FOUND rather than skipping.
+if (staleAck.length) {
+  console.log(`\n::error::${staleAck.length} stale entr${staleAck.length === 1 ? 'y' : 'ies'} in ACKNOWLEDGED — each names a pre-check that no longer reports as having no validation twin:`);
+  for (const a of staleAck) {
+    console.log(`  ${a.in_fn}  ${JSON.stringify(a.refuses_with)}`);
+  }
+  console.log('  Either the check was removed, its message was reworded, or a validation twin now exists.');
+  console.log('  Update or delete the entry in enumerate.mjs deliberately. See READINESS item 20.');
+  process.exit(1);
+}

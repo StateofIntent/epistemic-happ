@@ -1385,7 +1385,7 @@ person, and that is a different state from any previous checkpoint.**
 
 | open | what it needs |
 |---|---|
-| **20** | three readings and a decision each. Acting costs a `protocol_version` bump, so batch it onto the next one that happens anyway — the call items 10 and 17 both made |
+| ~~**20**~~ | **CLOSED 2026-10-21, and no bump was needed.** The readings were effort, not a person — the row says so itself (*"the cost of acting is the constraint, not the analysis"*) — and they found that **two of the three cannot be enforced DHT-side at all** (both fields live in a private entry whose content validation never sees) while the third was already decided in the source and in SPEC §5.21. The row priced an action none of them needs. See READINESS item 20 |
 | ~~**21**~~ | **CLOSED 2026-10-21.** The row was right that the evidence was the work and wrong that it needed a person — building the way to watch cost effort and nothing else. It also found that the known one-line fix was a THIRD of the defect: applied alone it leaves every tweet carrying an unreadable hash. See READINESS item 21 |
 | **11** | its item-9 dependency is cleared. What remains is the measurement nobody has designed: telling exploration from degradation |
 | **the 421.1s** | a ruling on whether it reopens the frozen gossip investigation |
@@ -1460,9 +1460,34 @@ one covers the bridge's zome surface, this one covers the bridge's own code.
 **Still unverified: the live X API.** Nothing here posts a tweet, and the
 service's `start()` is still unexercised.
 
-**Where that leaves the roadmap: 20, 11 and the 421.1s ruling, all three
-genuinely needing a person** — and this time the claim has been checked against
-each row's own sentence rather than its summary.
+**And then item 20 went the same way, within the hour.** Its blocker also
+said **"Nothing technical"**, also described the work two sentences later
+(*"the cost of acting is the constraint, not the analysis"*), and the analysis
+was effort. **Three readings, and the row's expensive part — a
+`protocol_version` bump — turned out to be needed by none of them**: two of the
+three pre-checks cannot have a validation twin at all, because `prediction` and
+`salt` live in `SealedPrediction`, this zome's only private entry, and the
+integrity zome already says at the arm where a rule would go that a private
+entry's content is not available there. The third had been decided twice over,
+in the source and in SPEC §5.21, before the row existed — `enumerate.mjs`
+flagged it because a sweep reads conditions and cannot read the comment four
+lines above them.
+
+**Both readings then found something the row had not asked about, and both were
+measured rather than argued.** `prediction: "."` is accepted, revealed, and
+counted among kept commitments indistinguishably from a real one — so **"not
+empty" is a proxy for "not vacuous" and the proxy does not hold**, and a rule
+would refuse the one input nobody would ever use. And the salt check **fails at
+its own stated purpose**: it exists so a prediction is not "recoverable from
+its hash", and `salt: "."` is accepted. The achievable version is an entropy
+requirement, which **no validation rule can check** — entropy is a property of
+the process that made a string, not of the string. §5.22's shape a second time.
+
+**Two rows in one day whose blocker named a person and meant labour, both
+caught by reading the row's own next sentence.** The checkpoint above was
+written by summarising those sentences, and the summary is where both errors
+entered. **Where that leaves the roadmap: 11 and the 421.1s ruling** — and
+those two have now been read the same way rather than taken from a summary.
 
 | Open item | Blocked on |
 |---|---|
