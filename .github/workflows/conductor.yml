@@ -508,6 +508,17 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/discourse-readings.mjs
 
+      # species-adoption — READINESS item 11's measurement. THREE agents on one
+      # conductor, and none of them is optional: the question is whether anybody
+      # OTHER than a species' proposer cited it, which one agent cannot answer
+      # and two cannot distinguish from a citation count. Each agent spends its
+      # own critique budget (friction is per AgentPubKey, item 8's finding), so
+      # the six critiques here are well inside the hourly ceiling.
+      - name: species-adoption — who took a critique species up, as against who proposed it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/species-adoption.mjs
+
       - name: metabolism — the host runs a function nothing called, twice, and writes nothing
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start

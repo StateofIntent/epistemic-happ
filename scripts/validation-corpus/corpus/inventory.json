@@ -18,7 +18,7 @@
   "prechecks_without_validator": [
     {
       "in_fn": "assert_expertise",
-      "line": 2457,
+      "line": 2597,
       "condition": "if trace.agent != author",
       "refuses_with": "Can only assert expertise backed by your own WorldlineTrace.",
       "reached_by": [
@@ -30,7 +30,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6070,
+      "line": 6210,
       "condition": "if input.prediction.trim().is_empty()",
       "refuses_with": "prediction must not be empty",
       "reached_by": [
@@ -42,7 +42,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6073,
+      "line": 6213,
       "condition": "if input.salt.trim().is_empty()",
       "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
       "reached_by": [

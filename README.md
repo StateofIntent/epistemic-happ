@@ -1387,7 +1387,7 @@ person, and that is a different state from any previous checkpoint.**
 |---|---|
 | ~~**20**~~ | **CLOSED 2026-10-21, and no bump was needed.** The readings were effort, not a person — the row says so itself (*"the cost of acting is the constraint, not the analysis"*) — and they found that **two of the three cannot be enforced DHT-side at all** (both fields live in a private entry whose content validation never sees) while the third was already decided in the source and in SPEC §5.21. The row priced an action none of them needs. See READINESS item 20 |
 | ~~**21**~~ | **CLOSED 2026-10-21.** The row was right that the evidence was the work and wrong that it needed a person — building the way to watch cost effort and nothing else. It also found that the known one-line fix was a THIRD of the defect: applied alone it leaves every tweet carrying an unreadable hash. See READINESS item 21 |
-| **11** | its item-9 dependency is cleared. What remains is the measurement nobody has designed: telling exploration from degradation |
+| **11** | **BLOCKER CLEARED 2026-10-21; the row stays open on its own subject.** The measurement is built, surfaced and verified — `get_species_adoption`, `scripts/live-verify/species-adoption.mjs`, 23 checks. **Designing it was effort, not a person — the third row in two days whose blocker named a decision and meant labour.** What remains is the row's actual subject: running a deliberate minority of observers, which is an operational deployment rather than a code change. **And the measurement constrains how to run it**: classification lags adoption, so a short experiment yields the all-self case for exploration and degradation alike and proves nothing |
 | **the 421.1s** | a ruling on whether it reopens the frozen gossip investigation |
 
 **Cross-internet propagation on two consumer networks remains the highest-value
@@ -1483,11 +1483,51 @@ its hash", and `salt: "."` is accepted. The achievable version is an entropy
 requirement, which **no validation rule can check** — entropy is a property of
 the process that made a string, not of the string. §5.22's shape a second time.
 
-**Two rows in one day whose blocker named a person and meant labour, both
+**Then item 11's blocker went the same way, which makes three.** Its two
+dependencies — items 8 and 9 — had both closed the day before, leaving *"a
+measurement nobody has designed"*. **Designing a measurement is effort.**
+
+**THE DESIGN FINDING IS THAT THE DISCRIMINATOR IS NOT IN THE DIVERGENT ACT.**
+Exploration and degradation produce identical writes — same entry type, same
+modes, same thresholds — which is why the row could not find a measurement by
+looking at the write. What separates them is RECEPTION: a species proposed on
+unusual grounds is exploration if agents who did not share the proposer's
+priors take it up, and noise if nobody does. The nearest thing that existed
+could not say that — `get_critique_species_adoption_count` returns `links.len()`
+**including the proposer's own citations**, so a species one agent invented and
+then cited fifty times reported fifty, indistinguishable from fifty adopters.
+The comment that deleted the old self-declared `adoption_count` field called
+that derived count "the real, query-time replacement"; **a derived number one
+agent can drive alone is barely better than a declared one.**
+
+`get_species_adoption` decomposes the same links by author and reports
+**components and no score** — an exploration index would be the fabricated
+scalar §2.5 refuses, and would read as a verdict on an agent. A pure read, so
+per SPEC §11 it is coordinator-only: no DNA hash change, no bump.
+
+**THE HONEST LIMIT ANSWERS THE ROW RATHER THAN SATISFYING IT.** Adoption is
+visible only after others have had the chance to adopt, so **this cannot clear
+a divergent observer in advance.** Item 11 asked for a measurement that would
+make running divergent observers SAFE; what is achievable makes them
+OBSERVABLE. Nothing here can offer the first, and the remaining work should not
+be planned as though it can.
+
+**And surfacing it found a staleness defect nothing had noticed.** The taxonomy
+tab's figures were as of connect time and never moved — `loadTaxonomy()` ran on
+connect and after proposing a species and nowhere else — because the old check
+confirmed adoption through an independent zome read and never looked at the tab
+again. That mattered more once adopters were shown: "nobody has used it yet" is
+a stronger false statement than a stale 0, and adoption by another agent is
+something a session cannot learn any other way.
+
+**Three rows in two days whose blocker named a person and meant labour, each
 caught by reading the row's own next sentence.** The checkpoint above was
-written by summarising those sentences, and the summary is where both errors
-entered. **Where that leaves the roadmap: 11 and the 421.1s ruling** — and
-those two have now been read the same way rather than taken from a summary.
+written by summarising those sentences, and the summary is where all three
+errors entered. **A blocker summarised is a blocker not re-read**, and the
+practice that follows is to re-read the row, not the handover.
+
+**Where that leaves the roadmap: the 421.1s ruling, and item 11's own
+subject** — running the minority, which is a deployment rather than a build.
 
 | Open item | Blocked on |
 |---|---|
@@ -5339,7 +5379,9 @@ each of these is currently exactly that.
 
   **Two smaller things the build settled.** The picker is *hidden* when the taxonomy is empty and *disabled* when the budget is spent — §4.5's rule that structural impossibility hides while transient unavailability explains itself. And both connect paths load the taxonomy, not just the manual one: a Launcher-installed practitioner reaches the critique form without ever opening the tab, so loading it only there would have left the picker empty on precisely the path that ships.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, sixteen checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, 25 checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
+
+  **Nine checks were added on 2026-10-21, and they are READINESS item 11's measurement reaching the screen.** The count this harness verified says how many CRITIQUES used a species, and it includes the proposer's own — so a species one agent invented and then cited itself displayed identically to one others had adopted. The tab now also says *who*: "nobody has used it yet", "all by its proposer", or "including N other agents", from `get_species_adoption`. **A second agent was added to this harness for it**, because the case that matters cannot be produced by one: §3b has somebody who did not propose the species cite it, and requires the wording to change. **And adding those checks found a staleness defect nothing had noticed**, because the old check confirmed the count through an independent zome read and never looked at the tab again: `loadTaxonomy()` ran on connect and after proposing a species, and nowhere else, so this screen's figures were as of session start forever. It mattered more once adopters were shown — "nobody has used it yet" is a stronger false statement than a stale 0, and adoption by another agent is something a session cannot learn about any other way. The tab now refreshes when opened, without clearing first, so figures move from one true value to another rather than blanking to "unavailable" and back.
 
 - [x] **Opt-in trust lenses surfaced — the item §9 flagged as needing care under §4.4, and the care turned out to be the whole job.** `AttestationPolicy` is the mechanism §4.4 itself names as the honest kind of lens: aimed explicitly by the caller, so two callers legitimately get different answers because they asked different questions. Surfacing it means `is_agent_attested`, `grant_attestation` and `get_my_membership_action` now have a UI, and `get_discourse_health` can finally be asked a question rather than only a neutral one.
 
@@ -6200,7 +6242,7 @@ each of these is currently exactly that.
   **Two defects in the harness, both of the kind this directory keeps recording.** Its first summary line claimed the run proved "a question chosen afterwards" is refused, which it no longer tests — a label claiming more than its assertions. And a probe for "a commitment cannot be updated" called an extern that does not exist while asserting the error contained `"not"`, which `"function not found"` satisfies: a guard scoring a pass against a function that was never there. Verifying that a function is *absent* is `check-spec-drift.mjs`'s job, since it enumerates what exists; it is not something a live call can establish by being rejected.
 
   **And it runs directly at Invariant 1, which is the deeper reason to design it before building it.** "Who called it right" is a comparative standing, and this feature begs to become one. The invariant permits exactly what pre-registration would produce — raw history, open and queryable, a record of what someone committed and when — and forbids what everyone would immediately want computed from it. So the constraint is not on the record but on the arithmetic: no hit rate, no calibration score, no ranking of forecasters, however tempting a cryptographically verifiable one would be. A leaderboard arriving with a proof attached is *worse* than an obviously subjective one, because it is harder to argue with and no more legitimate. That is the trap this entry is parked in front of, not merely the absence of a stated need.
-- [ ] **Surface the epistemic state the backend already computes — now 43 of 70 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
+- [ ] **Surface the epistemic state the backend already computes — now 43 of 71 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
@@ -6252,6 +6294,7 @@ Three of the four remaining were called **hash-addressed getters** which a scree
   | `publish_discourse_reading` | **Unsurfaced because a screen for it has a design problem, not because nobody thought of one.** It publishes a permanent, attributed, critiquable Claim — so a button for it is a button that commits the user to a public reading under their own key. Doing that honestly means the screen must let them CHOOSE the lens and SHOW which one they chose, because §4.4 forbids an interface that filters without the user having chosen and being able to see the filter — and a reading published through a lens the user did not knowingly aim is exactly the laundering this whole mechanism exists to prevent. That is a real interaction design, not a wiring task, and it is the next increment here rather than a gap. The protocol half is done and verified |
   | `start_metabolism` | **Unsurfaced on purpose, and it is the only row here where the reason is the off switch.** It schedules the heartbeat (READINESS item 8, SPEC §10.14a) on the calling agent's own chain. A button for it would start something nobody can stop: a scheduled function's only input and output is its schedule, so it cannot be passed a flag, and a persistent stop-flag needs a new entry type and therefore a DNA hash change. Restarting the conductor IS the stop, which `Schedule::Ephemeral` makes sufficient — and a control whose off switch is "restart the conductor" does not belong on a screen. There is also nothing for a screen to show: the tick writes nothing, so it has no user-visible consequence. Same call the foresight tab made about `get_pre_registrations_for_question` — unsurfaced with a reason rather than shipped with a caveat |
   | `create_mew` | bridge-only — `bridge/` owns the Twitter surface, and the UI is not a Twitter client |
+  | `get_critique_species_adoption_count` | **Superseded on the screen, deliberately, and still a real extern.** The taxonomy tab called it until 2026-10-21 and now calls `get_species_adoption`, which returns the same link count as `total_citations` ALONGSIDE who did the citing. The bare count cannot say the one thing a reader of that screen needs — it counts the proposer's own citations, so a species one agent invented and then used fifty times displayed identically to one fifty agents had adopted (READINESS item 11). **It is not deprecated and must not be removed**: `taxonomy-ui.mjs` and `species-adoption.mjs` both call it as an INDEPENDENT read, which is how each asserts that the decomposed figures agree with the raw link count rather than replacing it with something unchecked. A surface for it would now be the misleading half of a number the screen already shows honestly |
   | `get_mew` | bridge-only |
   | `get_mews_by_agent` | bridge-only |
   | `get_twitter_replies_for_claim` | bridge-only |

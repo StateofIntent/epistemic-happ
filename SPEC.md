@@ -139,7 +139,7 @@ An evolving critique taxonomy — self-similar branching with no privileged root
 | `proposer` | `AgentPubKey` | MUST equal the creating action's author |
 | `created_at` | `u64` | |
 
-There is deliberately no stored adoption-count field — see §10.6's `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7).
+There is deliberately no stored adoption-count field — see `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7). **That count answers how many critiques, not how many agents, and it includes the proposer's own** — so `get_species_adoption` decomposes the same links by author, which is what READINESS item 11 needed to tell a species others took up from one its proposer uses alone.
 
 ### 2.10 `WorldlineTrace`
 An agent's own index of their source-chain history — a table of contents, with an optional HRR compression hook.
@@ -844,6 +844,7 @@ The consequence, for the historical record and because it explains the shape of 
 | `get_critique_species` | `hash: AnyDhtHash` | `Option<CritiqueSpecies>` |
 | `get_all_critique_species` | — | `Vec<Record>` — DHT-wide via `TaxonomyToSpecies` (§10.0) |
 | `get_critique_species_adoption_count` | `species_hash: EntryHash` | `usize` — live count of real `CritiqueToSpecies` links, not a stored field |
+| `get_species_adoption` | `species_hash: EntryHash` | `SpeciesAdoption { species, name, proposer, total_citations, proposer_citations, independent_adopters: Vec<AgentPubKey>, unattributable_citations, warning }` — the same links DECOMPOSED BY WHO CITED THEM. `total_citations` is `get_critique_species_adoption_count`'s figure, kept so the two reads cannot drift; `independent_adopters` is distinct agents OTHER than the proposer, which is the number the count above cannot express. **Components and no score**, for the reason Invariant #1 (§7) gives — a species one agent proposed and then cited fifty times is not fifty adoptions, and a single index would read as a verdict on its proposer. READINESS item 11 |
 
 ### 10.6 Worldline / HRR (worldline binding)
 | Function | Payload | Returns |

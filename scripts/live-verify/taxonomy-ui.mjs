@@ -63,6 +63,13 @@ try {
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
+// A SECOND AGENT, added 2026-10-21 for the adoption decomposition. The screen
+// now distinguishes "used by N critiques" from "by how many OTHER agents", and
+// the case that matters — somebody who did not propose the species citing it —
+// cannot be produced by one agent. Surfacing it without this would leave the
+// main case unwatched.
+const AGENT2_APP_ID = 'epistemic-resonance-happ-taxonomy-agent2';
+const HAPP_PATH = new URL('../../epistemic-resonance-happ.happ', import.meta.url).pathname;
 const PREVIEW_PORT = 4182;
 const DOMAIN = `Taxonomy${Date.now()}`;
 const ROOT = `RootCritique${Date.now()}`;
@@ -91,9 +98,13 @@ const firstOrFail = (records, fn, expected) => {
 const nowMicros = () => Date.now() * 1000;
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 
-async function zome() {
+/** A zome client for `appId`. Parameterised (it was fixed to APP_ID) so the
+ *  adoption decomposition can be driven by a SECOND agent — "used by N
+ *  critiques" and "by how many other agents" differ only when somebody other
+ *  than the proposer writes. `zome()` is the proposer, unchanged. */
+async function zomeAs(appId) {
   const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
-  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: APP_ID });
+  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
   const app = await AppWebsocket.connect({ url: new URL(APP_URL), token, wsClientOptions: { origin: 'live-verify' } });
   const info = await app.appInfo();
   const cellIds = [];
@@ -113,6 +124,8 @@ async function zome() {
     app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
   return { me: cellIds[0][1], call };
 }
+
+const zome = () => zomeAs(APP_ID);
 
 async function main() {
   const { me, call } = await zome();
@@ -215,6 +228,17 @@ async function main() {
     check('adoption is not rendered as unavailable when the read succeeded',
       !/unavailable/i.test(rootAdoption));
 
+    // WHO cited it, which the bare count could not say. Before this, the
+    // screen read "used by N critiques" and nothing else — and that number
+    // counts the PROPOSER'S OWN citations, so a species one agent invented
+    // and then used itself displayed identically to one others had taken up.
+    // READINESS item 11 needed those told apart.
+    const rootAdopters = await page.locator(`[data-species="${ROOT}"] [data-testid="species-adopters"]`).innerText();
+    check(`a species nothing has cited reads as nobody having used it (got "${rootAdopters}")`,
+      /nobody has used it yet/i.test(rootAdopters));
+    check('and it does NOT say "all by its proposer", which would assert a citation nobody made',
+      !/by its proposer/i.test(rootAdopters));
+
     log('\n=== 3. The write half: a critique can declare a species ===');
     // Before this change, Critique.species was hardcoded null at the one
     // place a critique is created, so the vocabulary was unspeakable and
@@ -249,6 +273,73 @@ async function main() {
     const adoptionAfter = await call2('get_critique_species_adoption_count', rootEntryHash);
     check(`adoption rose ${adoptionBefore} -> ${adoptionAfter}, read by an independent client`,
       adoptionAfter === adoptionBefore + 1);
+
+    // THE PAIRING IS THE POINT, and it is the display this change exists to
+    // fix: the count says "used by 1 critique" while the only agent who has
+    // used it is the one who proposed it. The old surface showed the first
+    // half alone, which reads as uptake.
+    await page.getByRole('button', { name: 'Critique Types', exact: true }).click();
+    await page.waitForSelector('[data-testid="species-tree"]', { timeout: 20000 });
+    await page.waitForFunction(
+      (sel) => /used by 1 critique/.test(document.querySelector(sel)?.textContent ?? ''),
+      `[data-species="${ROOT}"] [data-testid="species-adoption"]`,
+      { timeout: 20000 });
+    const selfOnlyCount = await page.locator(`[data-species="${ROOT}"] [data-testid="species-adoption"]`).innerText();
+    const selfOnlyAdopters = await page.locator(`[data-species="${ROOT}"] [data-testid="species-adopters"]`).innerText();
+    check(`the count reads "used by 1 critique" (got "${selfOnlyCount}")`,
+      /used by 1 critique/.test(selfOnlyCount));
+    check(`AND THE SCREEN SAYS IT IS ALL THE PROPOSER'S OWN (got "${selfOnlyAdopters}")`,
+      /all by its proposer/i.test(selfOnlyAdopters));
+    check('so a self-cited species is not displayed as having other adopters',
+      !/other agent/i.test(selfOnlyAdopters));
+
+    log('\n=== 3b. An agent who did NOT propose it cites it ===');
+    // Written by a second agent through the zome rather than the browser: the
+    // UI is logged in as the proposer and there is no agent switch in it. What
+    // is under test is the DISPLAY of independent adoption, so the write only
+    // has to be real and by somebody else.
+    const admin2 = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
+    const installed = await admin2.listApps({});
+    if (!installed.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
+      const pub2 = await admin2.generateAgentPubKey();
+      await admin2.installApp({ source: { type: 'path', value: HAPP_PATH }, agent_key: pub2, installed_app_id: AGENT2_APP_ID });
+      await admin2.enableApp({ installed_app_id: AGENT2_APP_ID });
+    }
+    const { call: callB, me: meB } = await zomeAs(AGENT2_APP_ID);
+    const claimsForCritique = await call2('get_claims_by_domain', DOMAIN);
+    const targetEntryHash = claimsForCritique[0].signed_action.hashed.content.data.entry_hash;
+    await callB('create_critique', {
+      target: targetEntryHash, target_type: 'Claim', critique_mode: 'Methodological',
+      content: 'Borrowing this distinction — it separates something real.',
+      author: meB, timestamp: nowMicros(), replication_attempted: false,
+      evidence_hashes: [], species: rootEntryHash,
+    });
+
+    // RE-OPENING THE TAB, not reloading the page — on purpose. The tab used
+    // to show the adoption state it had at connect time and never move, so a
+    // check that reloaded would have passed over the staleness instead of
+    // noticing it. Adoption by another agent is the case a session cannot
+    // learn about any other way, which is what makes this the right gesture.
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.getByRole('button', { name: 'Critique Types', exact: true }).click();
+    await page.waitForSelector('[data-testid="species-tree"]', { timeout: 20000 });
+    await page.waitForFunction(
+      (sel) => /other agent/.test(document.querySelector(sel)?.textContent ?? ''),
+      `[data-species="${ROOT}"] [data-testid="species-adopters"]`,
+      { timeout: 25000 });
+    const withOtherCount = await page.locator(`[data-species="${ROOT}"] [data-testid="species-adoption"]`).innerText();
+    const withOther = await page.locator(`[data-species="${ROOT}"] [data-testid="species-adopters"]`).innerText();
+    check(`the count rose to 2 citations (got "${withOtherCount}")`,
+      /used by 2 critiques/.test(withOtherCount));
+    check(`AND THE SCREEN NAMES ONE OTHER AGENT (got "${withOther}")`,
+      /including 1 other agent/i.test(withOther));
+    check('the self-only wording is gone once somebody else has used it',
+      !/all by its proposer/i.test(withOther));
+    // The number that could not tell these apart, read from an independent
+    // client, so the improvement is stated against the thing it replaces.
+    const oldCountNow = await call2('get_critique_species_adoption_count', rootEntryHash);
+    check(`and the old count reads ${oldCountNow} for both the self-only and the adopted case — which is why the screen no longer shows it alone`,
+      oldCountNow === 2);
 
     log('\n=== 4. Ordering stays taxonomy order after adoption changes ===');
     // The regression this guards: sorting the tree by adoption. With the

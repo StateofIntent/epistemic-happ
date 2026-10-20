@@ -1995,6 +1995,146 @@ pub fn get_critique_species_adoption_count(species_hash: EntryHash) -> ExternRes
 }
 
 // ============================================================================
+// WHO ACTUALLY TOOK A SPECIES UP — READINESS item 11's missing measurement
+// ============================================================================
+// Item 11 wants to run a deliberate minority of observers on looser thresholds
+// and unusual `CritiqueSpecies` preferences, and has been blocked for its whole
+// life on one thing: **telling exploration from degradation.** Without that,
+// a divergent observer is indistinguishable from a bug.
+//
+// THE DISCRIMINATOR IS NOT A PROPERTY OF THE DIVERGENT ACT. It is a property
+// of the act's RECEPTION: a species proposed on unusual grounds is exploration
+// if agents who did not share the proposer's priors take it up, and noise if
+// nobody does. Nothing about the critique itself separates the two — the text,
+// the mode, the evidence list and the thresholds all look identical in both
+// cases, which is precisely why the row could not find a measurement by
+// looking at the write.
+//
+// `get_critique_species_adoption_count` above is the nearest thing that
+// existed and it cannot carry this, for a reason worth stating rather than
+// patching silently: it returns `links.len()`, which COUNTS THE PROPOSER'S OWN
+// CITATIONS. An agent who proposes a species and then cites it in fifty of
+// their own critiques reports an adoption count of fifty. The comment that
+// deleted the old self-declared `adoption_count` field called a derived
+// query-time count "the real replacement" — and a derived number one agent can
+// drive alone is barely better than a declared one. The same criticism, one
+// level up.
+//
+// So this returns COMPONENTS AND NO SCORE, which is the house rule everywhere
+// else: `get_discourse_health` reports a ratio and a warning, the MCP surface
+// "offers no ranking", and the foresight tab says in as many words that there
+// is no score on the page. A single "exploration index" here would be the
+// fabricated scalar README §2.5 was built to avoid — it would also be read as
+// a verdict on an agent, which Invariant #1 is about.
+//
+// WHAT THIS MEASUREMENT CANNOT DO, stated because the row's framing assumes
+// otherwise: it cannot clear a divergent observer IN ADVANCE. Adoption is
+// visible only after other agents have had the chance to adopt, so a minority
+// deployed today is unclassifiable today and stays that way until the graph
+// responds. Item 11 asked for a measurement that would make running divergent
+// observers SAFE; what is achievable is one that makes them OBSERVABLE, and
+// those are different promises. The second is worth having and the first is
+// not on offer.
+/// `CritiqueSpecies` uptake, decomposed by who did the citing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpeciesAdoption {
+    pub species: EntryHash,
+    pub name: String,
+    pub proposer: AgentPubKey,
+    /// Every `CritiqueToSpecies` link, which is what
+    /// `get_critique_species_adoption_count` returns. Kept here so the two
+    /// reads cannot quietly disagree about the same species.
+    pub total_citations: u32,
+    /// Citations whose `Critique` was authored by the species' own proposer.
+    pub proposer_citations: u32,
+    /// Distinct agents OTHER than the proposer who have cited it. This is the
+    /// number item 11 needs; the rest is context for reading it.
+    pub independent_adopters: Vec<AgentPubKey>,
+    /// Citations this read could not attribute — the link resolved to nothing,
+    /// or to an entry that is not a `Critique`. Reported rather than dropped,
+    /// because a count that silently discards what it cannot explain is how
+    /// `get_discourse_health` once returned zero for every claim.
+    pub unattributable_citations: u32,
+    /// Describes what is and is not distinguishable here. Never a verdict.
+    pub warning: Option<String>,
+}
+
+/// Who has taken a `CritiqueSpecies` up, as against who proposed it.
+///
+/// A pure read: no writes, no friction spent, nothing scheduled. Adding it
+/// changes no entry type, no link type and no validation rule, so per SPEC
+/// §11 it is a coordinator-only change and leaves the DNA hash alone.
+#[hdk_extern]
+pub fn get_species_adoption(species_hash: EntryHash) -> ExternResult<SpeciesAdoption> {
+    let record = get(AnyDhtHash::from(species_hash.clone()), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("CritiqueSpecies not found.".into())))?;
+    let species: CritiqueSpecies = record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a CritiqueSpecies.".into())))?;
+
+    let links = get_links(
+        LinkQuery::try_new(species_hash.clone(), LinkTypes::CritiqueToSpecies)?,
+        GetStrategy::Network,
+    )?;
+    let total_citations = links.len() as u32;
+
+    let mut proposer_citations = 0u32;
+    let mut unattributable_citations = 0u32;
+    // Distinct, and a Vec rather than a HashSet because the return type has to
+    // serialize; the membership test is linear over a list this small.
+    let mut independent_adopters: Vec<AgentPubKey> = Vec::new();
+
+    for link in links {
+        // create_critique links species -> the critique's ACTION hash.
+        let Ok(critique_hash) = ActionHash::try_from(link.target) else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Some(rec) = get(critique_hash, GetOptions::default())? else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Ok(Some(critique)) = rec.entry().to_app_option::<Critique>() else {
+            unattributable_citations += 1;
+            continue;
+        };
+        // `critique.author` rather than the action's author: validation binds
+        // the two (SPEC §5.2), so they agree, and every other read here goes
+        // through the entry's own field.
+        if critique.author == species.proposer {
+            proposer_citations += 1;
+        } else if !independent_adopters.contains(&critique.author) {
+            independent_adopters.push(critique.author);
+        }
+    }
+
+    // Says what cannot be told apart, never what the figures mean. The
+    // all-self case is the one worth naming because it is the case that LOOKS
+    // like adoption in the older count.
+    let warning = if total_citations == 0 {
+        Some("No critique cites this species yet, so there is nothing to tell exploration and degradation apart with. A species with no citations is not evidence of either.".into())
+    } else if independent_adopters.is_empty() {
+        Some(format!(
+            "All {} citation(s) are the proposer's own. Adoption by other agents is 0, so this species' uptake is indistinguishable from one agent using a private vocabulary — and get_critique_species_adoption_count reports {} for it.",
+            total_citations, total_citations
+        ))
+    } else {
+        None
+    };
+
+    Ok(SpeciesAdoption {
+        species: species_hash,
+        name: species.name,
+        proposer: species.proposer,
+        total_citations,
+        proposer_citations,
+        independent_adopters,
+        unattributable_citations,
+        warning,
+    })
+}
+
+// ============================================================================
 // HOLOGRAPHIC REDUCED REPRESENTATIONS (OpenZoo / HRR) — Plate 1995
 // ============================================================================
 // See README.md §2.5. HRR compresses "who said what, when" into one

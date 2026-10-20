@@ -827,6 +827,24 @@ button:disabled { opacity: 0.6; cursor: default; }
   opacity: 0.5;
 }
 
+/* WHO cited it, beside HOW MANY cited it. Same weight as the count on
+   purpose: this is the half that distinguishes a species others took up from
+   one its proposer uses alone, and styling it as secondary would restore the
+   emphasis the bare count already had. No colour and no badge — a species
+   with one independent adopter is a fact, not a status. */
+.species-adopters {
+  font-size: 0.75rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* "all by its proposer" and "nobody has used it yet" are different facts and
+   neither is a warning. Dimmed only enough to read as context. */
+.species-adopters.self-only,
+.species-adopters.none {
+  opacity: 0.6;
+}
+
 .species-evidence {
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;
