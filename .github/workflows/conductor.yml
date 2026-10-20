@@ -465,6 +465,15 @@ jobs:
       # scheduled `Ephemeral`, so it does not survive the next step's fresh
       # conductor. A `Persisted` schedule would have leaked a heartbeat into
       # every subsequent harness in this job.
+      # discourse-readings — READINESS item 9. Two agents on one conductor,
+      # because §4's whole point is that somebody can disagree: a reading is a
+      # promise, and the decision this ships is that two contradictory readings
+      # of the same discourse both stand with nothing adjudicating between them.
+      - name: discourse-readings — an attributed reading, critiqued, and contradicted
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/discourse-readings.mjs
+
       - name: metabolism — the host runs a function nothing called, twice, and writes nothing
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
