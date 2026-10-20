@@ -921,6 +921,80 @@ The rehab hApp is the **first cell type**. The protocol generalizes to any domai
 
 ## 9. Roadmap
 
+### The protocol's present tense — READINESS item 8
+
+**This protocol had a past tense and a future tense and no present tense, and
+that was one fact rather than a family of gaps.** Append-only chains are the
+past; `PreRegistration`/`Revelation` is the future; what was missing was
+anything that reads on its own schedule. `grep -c infallible` over both zomes
+returned 0, so nothing could happen except as the synchronous consequence of an
+external call.
+
+**`metabolic_tick` is the first `#[hdk_extern(infallible)]` here**, and the
+count is now **6 in the coordinator and 0 in the integrity zome** — which is
+the split SPEC §5.22 requires rather than a coincidence. `hdi` exposes no
+`sys_time`, because every validating peer must reach the same verdict, so a
+clock cannot be reached from a validator at all. `sys_time` and `schedule` both
+exist in a coordinator, and Holochain's own zome split is the kernel/observer
+boundary this needed; it had simply never been used on the observer side.
+
+**Verified by watching something happen while nothing was calling it.**
+`scripts/live-verify/metabolism.mjs`, 11 checks against a real conductor: first
+tick **0.1s** after `start_metabolism`, second at **60.1s** against the 60s
+floor, and the DHT byte-identical throughout. The central assertion is an
+**absence of cause**, which is harder to test than a presence — a signal
+arrives whenever anybody calls `create_claim` — so the harness opens with a
+control (no tick before one is started, without which every later check passes
+vacuously on a conductor already ticking) and then makes **no zome call at all**
+between starting it and the end, because a poll would itself be the external
+call whose absence is under test. A second tick is what separates a heartbeat
+from a one-shot: `schedule()` fires once unconditionally, so one tick proves
+nothing about recurrence.
+
+**IT WRITES NOTHING, AND THAT IS A DECISION RATHER THAN A FIRST STEP.** Item 8's
+deliverable was a caller that runs on its own clock, and the row itself says
+every primitive an observer needs is already an extern — so the clock was the
+gap. What is deliberately not added is an autonomous *writer*: under Invariant 6
+every entry it wrote would be permanent, by anybody, for ever, and each tick
+would spend a real §6 friction budget. **So the observation is an ephemeral
+`emit_signal`** — it reaches a subscriber and touches neither the DHT nor the
+source chain.
+
+**What it should write is now item 9's question, and that is the ordering
+finding.** Item 9 decides whether a membrane may publish an attributed
+discourse-health reading. Decide it and the heartbeat has its content; build the
+write first and a governance question gets settled by whoever implemented the
+clock. **Invariant 9 is still not satisfied** — a tick that observes decay
+drives nothing — so what changed is which half is missing: it was the clock and
+the consequence, and it is now only the consequence. Claiming otherwise would
+be the mechanism-that-reads-as-enforcement failure this file keeps recording.
+
+**Two things the build taught, both by being wrong first.**
+
+**The harness reported the scheduler as broken when it was working perfectly.**
+`@holochain/client` 0.21 delivers a signal as `{ type: 'app', value: { cell_id,
+zome_name, payload } }`, and a filter written against the older flat shape
+(`signal.zome_name`, payload on `signal.data`) matches nothing — so it discarded
+every signal, and the absence was indistinguishable from a function that never
+ran. Isolated by calling `metabolic_tick` directly: it returned
+`Ephemeral(60s)` and emitted a signal while the harness saw nothing. **The same
+client change `bridge/src/index.ts:397` still has not had**, which is now
+READINESS item 21: the bridge's guard is `undefined !== 'epistemic_coordinator'`
+on every signal, so its real-time path has been dead since 0.21 and nothing
+noticed, because a polling fallback kept the feature working with latency
+instead of breaking it.
+
+**And an injection found a weakness in an assertion rather than confirming it,
+which is the whole reason for injecting.** Injection AO added an autonomous
+`create_entry` to the tick — and the harness **passed**. The no-write check read
+`get_claims_by_domain(DOMAIN)`, only the domain the test seeded, and an
+autonomous writer has no reason to write there: the assertion read as "the tick
+wrote nothing" and tested "the tick wrote nothing *here*". The fix uses the
+ticks' own chain-local `own_claims`, compared across ticks — a scheduled
+function runs as the author of the chain it runs for, so anything it writes
+lands on the chain the next tick counts, whatever domain it chose, and it needs
+no extra call. AO now reds with `own_claims: 1, 2`.
+
 ### Where to start next time
 
 **Four things, written here so none of them has to be reconstructed from a
@@ -5938,7 +6012,7 @@ each of these is currently exactly that.
   **Two defects in the harness, both of the kind this directory keeps recording.** Its first summary line claimed the run proved "a question chosen afterwards" is refused, which it no longer tests — a label claiming more than its assertions. And a probe for "a commitment cannot be updated" called an extern that does not exist while asserting the error contained `"not"`, which `"function not found"` satisfies: a guard scoring a pass against a function that was never there. Verifying that a function is *absent* is `check-spec-drift.mjs`'s job, since it enumerates what exists; it is not something a live call can establish by being rejected.
 
   **And it runs directly at Invariant 1, which is the deeper reason to design it before building it.** "Who called it right" is a comparative standing, and this feature begs to become one. The invariant permits exactly what pre-registration would produce — raw history, open and queryable, a record of what someone committed and when — and forbids what everyone would immediately want computed from it. So the constraint is not on the record but on the arithmetic: no hit rate, no calibration score, no ranking of forecasters, however tempting a cryptographically verifiable one would be. A leaderboard arriving with a proof attached is *worse* than an obviously subjective one, because it is harder to argue with and no more legitimate. That is the trap this entry is parked in front of, not merely the absence of a stated need.
-- [ ] **Surface the epistemic state the backend already computes — now 43 of 68 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
+- [ ] **Surface the epistemic state the backend already computes — now 43 of 69 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
@@ -5946,7 +6020,7 @@ each of these is currently exactly that.
 
   **The screen had to be built so that a plausible fake would fail it, because the fake here is very plausible indeed.** A By Author tab that filters the claims the Browse tab already loaded — client-side, by author — looks correct, is correctly scoped, and leaves `get_claims_by_agent` exactly as unsurfaced as it was. So the harness makes the agent publish into two domains, has the browser load only the first, and requires the second to appear: a filter over the browser's own memory cannot produce a claim the browser has never held. A watcher on `WebSocket.send` confirms the function name actually goes onto the wire, wrapped before the app loads rather than added as a reporting hook to the app, since a check that depends on production code cooperating is one the production code can satisfy while doing nothing else. **Injecting exactly that fake turns three checks red — and leaves both per-agent scoping checks green**, honestly, because a client-side filter by author really is scoped by author. The assertions that look like they carry the meaning are not the ones that do.
 
-  **Invariant 1 shapes the screen, and it cuts both ways.** It bars a canonical comparative score while requiring that raw history stay "open and queryable" — so an unranked list of what one agent has claimed is the shape the invariant protects rather than one it constrains. What would breach it is the framing, not the list: arriving by ranking agents, sorting by anything readable as merit, or a tally beside a person. The screen shows **no count**, deliberately, even though the per-species adoption count is precedent for showing a number as a fact rather than a position — agents are what Invariant 1 is actually about, and a claim tally next to a person is much closer to karma than an adoption tally next to a critique type. Injecting a count proves the guard is structural rather than verbal: **one check goes red, and the two that read the words stay green**, with the screen still saying "this is a record, not a ranking" and "there is no score here" immediately after the number. A screen can state the invariant it is breaching, in the same paragraph, with no contradiction a text search would find. What remains unsurfaced is the residue the caveat below itemises — bridge-only functions, HRR's two neighborhood-pipeline halves, `federation/`'s two, prober externs that exist to be watched being refused, one read that is chain-local by specification, and one hash-addressed getter a screen holding the record does not need. None is a screen anyone has asked for, so the next increment here needs a new argument rather than the next entry on a list; this item stays open because "most of it had no surface" is still true of the count, not because a queue is waiting. **Both halves of HRR now have screens, and the sentence that stood here said otherwise for long enough to be acted on.** It read "the HRR group is the one candidate with real data and no screen", which was true when written and was then falsified twice — by the worldline surface, and by the neighborhood one (`mobile-ui/src/main.ts`'s resonance panel, `scripts/live-verify/neighborhood-ui.mjs`'s 14 checks, run on every push by `.github/workflows/ui.yml`). **The correction already existed and did not help, because of where it sat.** The parenthetical in the caveat below had recounted the residue correctly — `query_neighborhood_resonance` moved to the surfaced set, the other two left with a reason — but this sentence sat above it, in bold, still naming a gap that was closed. A later session read the bold line, took it for the current state, and set out to build a screen that already shipped; the recount three paragraphs down was never reached. A correction filed underneath the claim it corrects does not reach a reader who stops at the claim, which is the same failure mode as the stale denominator recorded below, in prose rather than in arithmetic.
+  **Invariant 1 shapes the screen, and it cuts both ways.** It bars a canonical comparative score while requiring that raw history stay "open and queryable" — so an unranked list of what one agent has claimed is the shape the invariant protects rather than one it constrains. What would breach it is the framing, not the list: arriving by ranking agents, sorting by anything readable as merit, or a tally beside a person. The screen shows **no count**, deliberately, even though the per-species adoption count is precedent for showing a number as a fact rather than a position — agents are what Invariant 1 is actually about, and a claim tally next to a person is much closer to karma than an adoption tally next to a critique type. Injecting a count proves the guard is structural rather than verbal: **one check goes red, and the two that read the words stay green**, with the screen still saying "this is a record, not a ranking" and "there is no score here" immediately after the number. A screen can state the invariant it is breaching, in the same paragraph, with no contradiction a text search would find. What remains unsurfaced is the residue the caveat below itemises — bridge-only functions, HRR's two neighborhood-pipeline halves, `federation/`'s two, prober externs that exist to be watched being refused, one read that is chain-local by specification, and one hash-addressed getter a screen holding the record does not need. **The residue now also includes `start_metabolism`, accounted for in the table below.** None is a screen anyone has asked for, so the next increment here needs a new argument rather than the next entry on a list; this item stays open because "most of it had no surface" is still true of the count, not because a queue is waiting. **Both halves of HRR now have screens, and the sentence that stood here said otherwise for long enough to be acted on.** It read "the HRR group is the one candidate with real data and no screen", which was true when written and was then falsified twice — by the worldline surface, and by the neighborhood one (`mobile-ui/src/main.ts`'s resonance panel, `scripts/live-verify/neighborhood-ui.mjs`'s 14 checks, run on every push by `.github/workflows/ui.yml`). **The correction already existed and did not help, because of where it sat.** The parenthetical in the caveat below had recounted the residue correctly — `query_neighborhood_resonance` moved to the surfaced set, the other two left with a reason — but this sentence sat above it, in bold, still naming a gap that was closed. A later session read the bold line, took it for the current state, and set out to build a screen that already shipped; the recount three paragraphs down was never reached. A correction filed underneath the claim it corrects does not reach a reader who stops at the claim, which is the same failure mode as the stale denominator recorded below, in prose rather than in arithmetic.
 
   **What remains of HRR is `build_neighborhood_binding` and `recall_neighborhood`, and their reason is the coordinator's own rather than one inferred here.** `query_neighborhood_resonance` "collapses the common single-shot case" into one call any peer can make about any claim, "without first fetching and re-passing back a NeighborhoodBinding they have no other use for"; the two-step pipeline is "for a caller who wants to cache a corpus and probe it repeatedly". A screen holding a `corpus_payload` it has no other use for is precisely the caller that pipeline is not for, so surfacing these two would mean building the wrong caller to justify the call — which is what the `get_claims_by_agent` entry below warns against from the opposite direction, where a real reason was missing and got borrowed from a neighbour.
 
@@ -5987,6 +6061,7 @@ Three of the four remaining were called **hash-addressed getters** which a scree
   | Unsurfaced extern | Why it has no screen |
   |---|---|
   | `which_entries_resolve_locally` | **SDK-facing rather than screen-facing, and that is the point of it.** It answers §5.3's closure question — of the hashes a pending write cites, how many can this observer actually see — and the caller that needs it is `agent-sdk`, which reports closure through `onPendingDependency` and `closureOf()`. A screen would consume it through the SDK, not call it: the composer indicator it exists for ("3 of 4 citations have arrived") belongs to whatever client is composing, and `mobile-ui` has no claim composer that cites evidence yet. It is also the one extern here whose absence is designed to be survivable — the SDK treats a missing `which_entries_resolve_locally` as unknown closure and keeps writing, so an older happ loses the indicator and nothing else |
+  | `start_metabolism` | **Unsurfaced on purpose, and it is the only row here where the reason is the off switch.** It schedules the heartbeat (READINESS item 8, SPEC §10.14a) on the calling agent's own chain. A button for it would start something nobody can stop: a scheduled function's only input and output is its schedule, so it cannot be passed a flag, and a persistent stop-flag needs a new entry type and therefore a DNA hash change. Restarting the conductor IS the stop, which `Schedule::Ephemeral` makes sufficient — and a control whose off switch is "restart the conductor" does not belong on a screen. There is also nothing for a screen to show: the tick writes nothing, so it has no user-visible consequence. Same call the foresight tab made about `get_pre_registrations_for_question` — unsurfaced with a reason rather than shipped with a caveat |
   | `create_mew` | bridge-only — `bridge/` owns the Twitter surface, and the UI is not a Twitter client |
   | `get_mew` | bridge-only |
   | `get_mews_by_agent` | bridge-only |

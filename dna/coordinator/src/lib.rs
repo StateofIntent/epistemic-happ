@@ -2,6 +2,9 @@ use hdk::prelude::*;
 use epistemic_integrity::*;
 use sha2::{Sha256, Digest};
 use std::collections::{HashMap, HashSet};
+// `Schedule::Ephemeral` takes one; the hdk prelude re-exports `schedule` but not
+// this. READINESS item 8.
+use std::time::Duration;
 
 // ============================================================================
 // N4L SERIALIZATION
@@ -3969,6 +3972,11 @@ pub enum SignalPayload {
     NewCritique(Critique),
     NewRetraction(Retraction),
     NewBridgeRecord(BridgeRecord),
+    /// THE ONLY SIGNAL NOT CAUSED BY A CALL — READINESS item 8. Emitted by
+    /// `metabolic_tick`, which runs on the host's scheduler with no caller.
+    /// Carries an observation and nothing else: the tick writes nothing, so
+    /// this is the entire trace it leaves.
+    MetabolicTick(MetabolicObservation),
 }
 
 #[hdk_extern]
@@ -4247,6 +4255,190 @@ pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constit
 // get_unbridged_claims, get_unbridged_mews) remain untested at the
 // runtime-behavior level for that reason.
 // ============================================================================
+
+
+// ============================================================================
+// THE PROTOCOL'S PRESENT TENSE — READINESS item 8.
+//
+// WHAT WAS MISSING, stated precisely, because the gap is one fact rather than a
+// family of them. This protocol had a past tense (append-only chains) and a
+// future tense (`PreRegistration`/`Revelation`) and NOTHING that reads on its
+// own schedule: `grep -c infallible` over both zomes returned 0, so nothing
+// could happen except as the synchronous consequence of an external call.
+// `#[hdk_extern(infallible)]` with `schedule()` is the host's only mechanism
+// for a DNA to act without one, and this is the first use of it here.
+//
+// IT BELONGS IN THE COORDINATOR AND MUST NOT GO IN VALIDATION. SPEC §5.22:
+// `hdi` exposes no `sys_time` because every validating peer must reach the same
+// verdict, so a clock cannot be reached from a validator. `sys_time` and
+// `schedule` both exist here, which is what makes the coordinator the only
+// place this can live. Holochain's own zome split is the kernel/observer
+// boundary this needs; it has simply never been used on the observer side.
+//
+// ---------------------------------------------------------------------------
+// THIS TICK WRITES NOTHING, AND THAT IS A DECISION RATHER THAN A FIRST STEP.
+//
+// Item 8's deliverable is "a caller that runs on its own clock", and the row is
+// explicit that every primitive an observer would need is ALREADY an extern —
+// `get_grounding_path`, `get_effective_conductance`, `reinforce_synaptic_link`,
+// the typed critique externs. So what was missing is the clock, and the clock is
+// what this adds.
+//
+// What it deliberately does NOT add is an autonomous WRITER, for a reason that
+// is about this protocol specifically. Invariant 6 means nothing is deletable:
+// every entry a scheduled observer wrote would be permanent, by anybody, for
+// ever, and it would spend a real SWO friction budget on every tick (§6, 20 per
+// rolling hour per agent with no banking). An autonomous writer is therefore the
+// least reversible change available here, and WHAT it writes is a question about
+// what the graph should come to contain — which is a judgement about the
+// protocol's content, not an implementation detail to be settled by whoever
+// implements the clock first.
+//
+// SO THE OBSERVATION IS EMITTED AS A SIGNAL. `emit_signal` is ephemeral: it
+// reaches a subscribed client and touches neither the DHT nor the source chain.
+// That makes the heartbeat fully observable — a client can watch ticks arrive
+// with no call having been made, which is the whole claim — while spending no
+// friction and leaving no permanent record. The DHT is byte-identical before and
+// after any number of ticks.
+//
+// WHAT THIS MEANS FOR INVARIANT 9, and it is an improvement rather than a
+// closure. SPEC §7 admits Invariant 9 ("death is required — unused entry types
+// and membranes must atrophy") is the one invariant with no mechanism behind it,
+// because conductance decays only at read time and emits no events, so atrophy
+// cannot drive anything. A tick that OBSERVES decay still drives nothing, so
+// **Invariant 9 remains unsatisfied** and this does not change that. What
+// changes is that the missing half is now the consequence rather than the clock.
+// Saying otherwise would be the "mechanism that reads as enforcement" failure
+// this repository keeps finding.
+//
+// ---------------------------------------------------------------------------
+// FOUR HOST CONSTRAINTS THAT SHAPED THIS, all from `hdk::time::schedule`'s own
+// documentation rather than from experiment, and each one changed the code.
+//
+// 1. "Scheduled functions ALWAYS run as the author of the chain they run for."
+//    So "under whose key" is not a design choice — the host fixes it. The
+//    scheduling agent's provenance is lost as soon as the original zome call
+//    returns, which is also why `start_metabolism` cannot schedule on somebody
+//    else's behalf.
+// 2. "Happ devs MUST assume that malicious agents are able to trigger scheduled
+//    functions at the 'wrong time'." A cap grant on `schedule` is not a
+//    guarantee about WHEN the tick runs, so the tick must be safe at any time.
+//    Being read-only makes that trivially true here — there is no window in
+//    which an extra tick costs anything.
+// 3. "Scheduled functions are infallible... Any errors on the host side will
+//    simply be logged and otherwise ignored." So the body must never propagate
+//    an error out: a `?` that fails would silently unschedule the heartbeat on
+//    an `Ephemeral` schedule. Every fallible call below is matched, not `?`-ed,
+//    and a failed observation still returns a schedule.
+// 4. "The loop has historically ranged from once every 100ms to every 10s... do
+//    NOT assume or rely on any specific granularity." So the interval below is a
+//    floor on the gap between ticks, never a period, and nothing here derives a
+//    rate from it.
+//
+// EPHEMERAL RATHER THAN PERSISTED, deliberately, and it is the conservative
+// choice rather than the obvious one. `Schedule::Persisted(crontab)` survives a
+// conductor reboot and "continues beyond irrecoverable errors";
+// `Schedule::Ephemeral(Duration)` does neither. For the first autonomous
+// mechanism in this repository, a heartbeat that DIES on restart unless somebody
+// starts it again is the safer default: the failure mode of a persisted schedule
+// is a thing that keeps running after everyone has forgotten it exists.
+//
+// A LIMITATION, RECORDED RATHER THAN DISCOVERED LATER. There is no way to stop
+// this mid-run. A scheduled function's only input and output is its schedule, so
+// it cannot be passed a flag, and a persistent stop-flag would need an entry —
+// which means a new entry type, a DNA hash change, and a `protocol_version`
+// bump, for a stop button. So stopping it means restarting the conductor, which
+// an `Ephemeral` schedule makes sufficient. Said plainly because "how do I turn
+// it off" is the first question anybody will ask.
+// ============================================================================
+
+/// The minimum gap between ticks. A FLOOR, not a period — the host's scheduler
+/// loop has its own granularity and the docs explicitly refuse to promise one.
+const METABOLIC_TICK_SECS: u64 = 60;
+
+/// What one tick saw. Emitted as a signal and written nowhere.
+///
+/// `wrote_nothing` is carried explicitly rather than left implicit: a client
+/// reading this is entitled to know that the tick which produced it changed no
+/// state, and an observer that later DOES write should have to change this field
+/// rather than silently mean something different by the same payload.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MetabolicObservation {
+    /// Host clock at the tick, seconds. From `sys_time`, which validation
+    /// cannot reach — see SPEC §5.22 and this section's header.
+    pub at_secs: i64,
+    /// This agent's own Claims, counted chain-locally.
+    pub own_claims: u32,
+    /// This agent's own Critiques, counted chain-locally.
+    pub own_critiques: u32,
+    /// Always true in this implementation. See the header: the clock is what
+    /// item 8 delivers, and the autonomous write is deliberately not taken.
+    pub wrote_nothing: bool,
+}
+
+/// Count this agent's own entries of one type, chain-locally.
+///
+/// Chain-local on purpose. A DHT read (`must_get_*`) inside a scheduled function
+/// can defer on an unresolved dependency, and a deferral in an infallible
+/// context is indistinguishable from a tick that did nothing — so the
+/// observation is restricted to what the agent's own chain can answer without
+/// touching the network. That is a smaller observation than item 8 sketched,
+/// and it is the half that cannot fail for a reason unrelated to its subject.
+fn count_own_entries(unit: UnitEntryTypes) -> ExternResult<u32> {
+    let filter = ChainQueryFilter::new()
+        .include_entries(false)
+        .entry_type(EntryType::App(unit.try_into()?));
+    Ok(query(filter)?.len() as u32)
+}
+
+/// The observation itself, fallible, so the tick can keep its own error
+/// handling in one place rather than scattering it through `?`.
+fn observe() -> ExternResult<MetabolicObservation> {
+    Ok(MetabolicObservation {
+        at_secs: sys_time()?.as_seconds_and_nanos().0,
+        own_claims: count_own_entries(UnitEntryTypes::Claim)?,
+        own_critiques: count_own_entries(UnitEntryTypes::Critique)?,
+        wrote_nothing: true,
+    })
+}
+
+/// THE HEARTBEAT. Runs with no caller, as the author of the chain it runs for.
+///
+/// Infallible by the host's contract, so nothing here propagates an error: a
+/// failed observation emits nothing and the schedule is returned anyway, because
+/// returning `None` would unschedule the heartbeat and a transient read failure
+/// is not a reason to stop having a present tense.
+#[hdk_extern(infallible)]
+fn metabolic_tick(_: Option<Schedule>) -> Option<Schedule> {
+    match observe() {
+        Ok(observation) => {
+            // Emitted, not written. A failure to emit is also not a reason to
+            // stop ticking — a signal with no subscriber is a normal state.
+            let _ = emit_signal(&SignalPayload::MetabolicTick(observation));
+        }
+        Err(_e) => {
+            // Deliberately swallowed. The host logs and ignores errors from an
+            // infallible extern, so there is nowhere to report this, and the
+            // alternative — propagating — unschedules the heartbeat.
+        }
+    }
+    Some(Schedule::Ephemeral(Duration::from_secs(METABOLIC_TICK_SECS)))
+}
+
+/// Start the heartbeat on THIS agent's chain.
+///
+/// Needed because `init` is lazy: the host's own documentation warns that an
+/// `init` callback "may not happen immediately or ever after happ installation",
+/// so scheduling there would make the heartbeat's existence depend on whether
+/// somebody happened to make an unrelated call. An explicit extern makes
+/// starting it a decision somebody took.
+///
+/// Idempotent, by the host: "If it is already scheduled, the existing schedule
+/// will be respected and the `schedule` call is a noop."
+#[hdk_extern]
+pub fn start_metabolism(_: ()) -> ExternResult<()> {
+    schedule("metabolic_tick")
+}
 
 #[cfg(test)]
 mod tests {

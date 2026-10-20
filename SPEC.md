@@ -688,7 +688,7 @@ Three notes, since they materially affect conformance. The first two are carried
 
   **HALF THE COMPLAINT SURVIVES, AND IS RECORDED RATHER THAN QUIETLY CLOSED.** A reader who supplies no policy still gets thirty days, still with no promiser. Unlike an attestation filter, a half-life has no neutral "off" position — time passes whether or not anybody promised a rate — so "omitting it is the old behaviour" cannot mean "no threshold is applied" here the way it does there. The strict reading of the note above would be: **no promiser, no decay**, with effective conductance left as base plus reinforcements undecayed. That is a change to what every existing conductance read returns, was deliberately not taken on 2026-10-19, and is the remaining half of this tension.
 
-- **On Invariant 9, and this is an admission rather than a note.** *"Death is required — unused entry types and membranes must atrophy."* Only conductance atrophies, and only at read time: `get_effective_conductance` recomputes `decay_factor` when asked and writes nothing, so the DHT is byte-identical before and after a link has decayed to nothing. Entry types and membranes do not atrophy at all, and nothing in either zome runs on a schedule that could make them — `grep -c infallible` over both zomes' `lib.rs` returns 0, and `#[hdk_extern(infallible)]` with `schedule()` is the host's only mechanism for a DNA to act without an external call. **Invariant 9 is therefore the one invariant on this list with no mechanism behind it**, and a conforming implementation cannot presently satisfy it. What closing it would take is queued in `READINESS.md`; it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
+- **On Invariant 9, and this is an admission rather than a note.** *"Death is required — unused entry types and membranes must atrophy."* Only conductance atrophies, and only at read time: `get_effective_conductance` recomputes `decay_factor` when asked and writes nothing, so the DHT is byte-identical before and after a link has decayed to nothing. Entry types and membranes do not atrophy at all. **The schedule half of that is no longer true as of 2026-10-20 and the invariant is still not satisfied, which is worth stating in that order.** `grep -c infallible` over the two zomes now returns **6 and 0** — `metabolic_tick`, in the coordinator, is the first `#[hdk_extern(infallible)]` here, and `#[hdk_extern(infallible)]` with `schedule()` is the host's only mechanism for a DNA to act without an external call. So a DNA that acts on its own clock exists, verified against a real conductor: a tick arrives with no caller and recurs on a 60s floor (`scripts/live-verify/metabolism.mjs`, READINESS item 8). **It changes nothing about Invariant 9, because the tick OBSERVES and does not act.** Atrophy that emits no events cannot drive anything, and a tick that reports decay drives nothing either — so **Invariant 9 remains the one invariant on this list with no mechanism behind it**, and a conforming implementation still cannot satisfy it. What moved is which half is missing: it was the clock and the consequence, and it is now only the consequence. **The consequence is deliberately unbuilt rather than merely absent.** Anything a scheduled observer wrote would be permanent under Invariant 6 and would spend a §6 friction budget every tick, so what it should write is a governance question — queued as READINESS item 9 — and not an implementation detail. The observation is therefore emitted as an ephemeral signal, touching neither the DHT nor the source chain. The structural rule is unchanged and is what made this possible: it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
 
 ## 8. HRR Encoding (Holographic Reduced Representations)
 
@@ -898,7 +898,7 @@ A *graded* companion to this (`get_attestation_weight`/`WeightedAttestationPolic
 | `get_twitter_replies_for_claim` | `claim_hash: EntryHash` | `Vec<Record>` |
 
 ### 10.13 Signals
-Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts.
+Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`, `MetabolicTick(MetabolicObservation)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts. **`MetabolicTick` is the only variant not caused by a call** — it is emitted by `metabolic_tick` (§10.14a), which the host runs on its own scheduler, and it carries `MetabolicObservation { at_secs: i64, own_claims: u32, own_critiques: u32, wrote_nothing: bool }`. `wrote_nothing` is carried explicitly rather than left implied: a client is entitled to know the tick that produced the observation changed no state, and an implementation that later DOES write MUST change this field rather than mean something different by the same payload.
 
 ### 10.14 Federation
 | Function | Payload | Returns |
@@ -908,6 +908,44 @@ Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_has
 
 Two independently-run Holochain networks share no DHT — one cannot query the other's data, so a `FederationRecord` can only ever record what the *local* membrane has declared. Mutual/"federated" status is not a value either network computes or stores; it is derived externally by a bridge process (`federation/federate.mjs`) that connects to both conductors and independently checks both directions — the same correlative-witness shape §2.4/`BridgeRecord` already establishes for the Twitter bridge, applied to a second network instead of a non-Holochain platform. See `federation/README.md` for the verified, live, two-conductor account.
 
+
+### 10.14a Metabolism (the present tense)
+
+| Function | Payload | Returns |
+|---|---|---|
+| `start_metabolism` | `()` | `()` — schedules `metabolic_tick` on the CALLING agent's chain. Idempotent by the host: if already scheduled, the existing schedule is respected and the call is a noop |
+
+`metabolic_tick` is **not** in this table, because it is not callable protocol
+surface in the ordinary sense: it is `#[hdk_extern(infallible)]`, takes and
+returns only `Option<Schedule>`, and exists so the HOST can run it with no
+client and no caller. It is the first such function in this implementation.
+
+**Three properties a conforming implementation MUST preserve, because each one
+is load-bearing rather than incidental.**
+
+- **It MUST live in a coordinator zome and MUST NOT be reachable from
+  validation.** §5.22 gives the reason: `hdi` exposes no `sys_time` because
+  every validating peer must reach the same verdict, so a clock cannot be
+  reached from a validator at all. `sys_time` and `schedule` both exist in a
+  coordinator, which is what makes this possible there and nowhere else.
+- **It runs as the author of the chain it runs for, and the scheduling agent's
+  provenance is lost** as soon as the original call returns. So
+  `start_metabolism` cannot schedule on anybody else's behalf, and a conforming
+  implementation MUST NOT present it as able to.
+- **A conforming implementation MUST assume the tick can be triggered at the
+  wrong time** — the host's own guidance — and so MUST keep it safe at any
+  moment. The implementation here is read-only, which makes that trivially
+  true: there is no window in which an extra tick costs anything.
+
+**What it does NOT do, specified because the absence is deliberate.** The tick
+writes nothing: its observation is emitted as an ephemeral signal
+(§10.13's `MetabolicTick`), touching neither the DHT nor any source chain, so
+the record is byte-identical across any number of ticks and no §6 friction
+budget is spent. **An autonomous writer is a different thing and is not
+specified here.** Under Invariant 6 anything it wrote would be permanent and
+un-deletable by anyone, which makes what it should write a governance question
+rather than an implementation detail — see §7's note on Invariant 9, which this
+mechanism explicitly does NOT close.
 
 ### 10.15 Negative-path probers
 
