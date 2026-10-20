@@ -1031,7 +1031,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-18, restructured on 2026-10-10 because the single table
+**Current as of 2026-10-20, restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1071,6 +1071,61 @@ project turns to next.** The table below is kept with its single row struck
 through rather than emptied, because a section whose argument is that a closed
 item should be marked rather than deleted cannot make an exception for its own
 last row.
+
+**2026-10-20, and the day closed READINESS item 10 — the conductance
+half-life — by a route its own queued plan had ruled out as expensive.** The
+tension was real and SPEC §7 had carried it for weeks: `min_effective_conductance`
+let a reader set their own bar, but the *rate* at which elapsed time discounted
+a connection was one constant applied to every membrane, converting time into a
+number readers act on with no promiser behind it. The queued fix was to declare
+it per membrane in the `Constitution`, and that is still the better
+Promise-Theory shape — but `Constitution` is an **integrity** entry, so the
+field changes the DNA hash, and §11.1 is explicit that a different hash is a
+different network rather than an upgrade. **What shipped instead makes the
+READER the promiser**: `ConductancePolicy.half_life_secs`, where `None` is
+exactly the old thirty days and supplying it states a forgetting schedule the
+reader owns. `PROTOCOL_VERSION` stays 9, the integrity zome is untouched, and
+no installed hApp reinstalls.
+
+**Two things about it are worth carrying forward, and neither is the feature.**
+First, **the row's own "blocked on" column was wrong** — it said the work needed
+"nothing but a `protocol_version` bump and one migration judgement", and the
+resolution needed neither, because the blocker described the cost of a design
+rather than the cost of the goal. That is the second time in two days a row's
+stated blocker turned out to be the thing that was wrong (item 12 was the
+first), which is an argument for writing *what* is blocked rather than *what it
+would take* — a goal outlives the design you had in mind for it. Second,
+**half the complaint survives and is recorded rather than quietly closed**: a
+reader who supplies no policy still gets thirty days with no promiser, because
+unlike an attestation filter a half-life has no neutral "off" position — time
+passes whether or not anybody promised a rate. The strict reading of Invariant
+#1 would be *no promiser, no decay*; that changes what every existing
+conductance read returns, was deliberately not taken, and sits in SPEC §7 as
+the remaining half.
+
+**Verified live and watched failing twice, both predicted in advance.**
+`trust-lenses.mjs` 27 → 31 checks, all green against a real conductor and a
+real browser, with a setup guard that refuses to run if a short half-life
+discounts nothing. **AJ:** the non-positive fallback removed — **1 red of 31**,
+exactly the zero-half-life check and nothing else. **AK:** the reader's promise
+ignored in `get_discourse_health` — **the setup guard fired and no check ran**,
+which is the stronger of the two results, because it proves the four new
+assertions cannot pass vacuously. Coordinator tests 67 → 72.
+
+**AND THIS SECTION FOUND TWO STALE BLOCKERS WHILE LOOKING FOR SOMETHING ELSE,
+which is the case this section exists for.** Neither was touched by the work
+above. **READINESS row 6** says the `0.1.4` publish "is outstanding and needs
+credentials" — it is not: both packages are `0.1.4` on the registry, checked
+against the registry rather than inferred, and this section records the
+verification two days earlier. **READINESS row 8** says it is blocked on 5f,
+and 5f closed on 2026-10-18 by discovering it needed neither a second conductor
+nor `network.sh`; what it delivered is a second agent on one conductor for
+probing authorship rules, which is not obviously the per-agent friction budget
+row 8's arithmetic wants. Row 6 is corrected; **row 8 is flagged as a question
+rather than resolved**, because asserting it unblocked on this reading would be
+the same error in the other direction. **One genuinely open publish follows from
+it**: `agent-sdk` is `0.1.5` in this tree and `0.1.4` on the registry, so item
+12's `closureOf` is unpublished.
 
 | Open item | Blocked on |
 |---|---|
@@ -4797,6 +4852,8 @@ each of these is currently exactly that.
   **A second, deeper gap surfaced while implementing this, invisible until a real `callZome` was actually attempted:** this client's `callZome` signs every request via `getSigningCredentials(cell_id)` (`zome-call-signing.js`), which throws `NoSigningCredentialsForCell` unless `AdminWebsocket#authorizeSigningCredentials` has been called for that cell first. Fixing only the connection token would have left every `callZome()` in this file failing on its first real call regardless — the bridge would trade an authentication error for a signing error. `connect` now also reads the freshly-authenticated `AppWebsocket`'s own `appInfo()` (previously best-effort/non-fatal — now load-bearing, since `cell_info` is what gets authorized, so a failure here is now a hard startup error rather than a swallowed warning), extracts every provisioned/cloned cell's `CellId` via `CellType`, and calls `authorizeSigningCredentials` on each before the service starts listening for signals.
   **Still open:** none of this has been run against a real conductor yet — verified only by `npx tsc --noEmit` passing clean against the installed client library's own type definitions, the same verification bar the previous pass in this bullet's sibling above was held to. Live-conductor verification is the same gap Phase 2 already flags for the SSTorytime side (below) — this bridge and that integration are both blocked on the same missing piece: an actual running `hc` conductor in this environment.
 - [x] **`ConductancePolicy` shipped — `get_effective_conductance` wired into `get_discourse_health` as an actual filter, closing the gap the Conductance Atrophy note above and the "not done in this pass" line beside it both flagged as still open.** New opt-in `conductance_policy: Option<ConductancePolicy>` field on `GetDiscourseHealthPayload`, following the exact shape `attestation_policy` already established: `None` (the default a caller gets by simply omitting the field) is exactly the old, unfiltered behavior — every critique in the domain counts regardless of decay. `Some(ConductancePolicy { min_effective_conductance })` excludes a critique from every tally (`total_critiques`, `critique_mode_distribution`, the abstract/embodied ratio) whose `SynapticLink` — the one `create_critique` always creates, found the same way `find_synaptic_link` already finds it — has an effective conductance below the threshold at read time. Deliberately a threshold filter, not a weighted sum: the existing counts are plain `u32`s, and a binary "does this pass the caller's own bar" check is the same shape `AttestationPolicy`'s `min_attestations` already uses, kept consistent rather than introducing a second aggregation style. This is not a protocol default and never silently discounts anything on a caller's behalf — the same Invariant #1 reasoning `AttestationPolicy`'s own header comment gives, applied to conductance instead of attestation. The two policies are independent and stack: a critique must pass whichever of `attestation_policy`/`conductance_policy` are actually `Some` to be counted.
+
+  **The half-life became the reader's too, on 2026-10-19 — READINESS item 10, and it closed a tension SPEC §7 had carried against this very bullet.** `min_effective_conductance` let a reader choose their own bar, but the rate at which elapsed time discounted a connection was still `CONDUCTANCE_HALF_LIFE_SECS = 30 days`: one constant, applied to every membrane, converting time into a number readers act on with **no promiser behind it** — which is exactly what §7's first note on Invariant #1 rules out. `ConductancePolicy.half_life_secs: Option<u64>` fixes the shape rather than the constant. `None` is thirty days and therefore **exactly** the previous behaviour; supplying it states *"for the purposes of what I am about to count, connections are stale on this schedule"*, so the threshold has an agent behind it. A climate-science membrane's reader and a market-commentary one no longer have to forget at the same speed. **The membrane-declared version was the queued plan and was deliberately not taken**: `Constitution` is an integrity entry, so a field on it changes the DNA hash, and §11.1 is explicit that a different hash is a different network — every installed hApp reinstalls and no claim carries over. `PROTOCOL_VERSION` stays 9 and the integrity zome is untouched. **What it costs is cross-reader comparability, accepted deliberately**: two readers with different half-lives get different effective conductances for the same link and neither is wrong, because the number was never a property of the link alone — what stays byte-identical for everyone is what the DHT holds, the base conductance and the `Reinforcement` events. `get_effective_conductance`'s signature is deliberately unchanged, because `agent-sdk` 0.1.4 on the registry calls it with a bare `ActionHash`. 67 → 72 coordinator tests; the five new ones pin that every half-life halves at its own half-life, that a non-positive one falls back rather than dividing by zero, and that the reader's rate reaches the reinforcement terms and not just the base. **Half the complaint survives and is recorded rather than quietly closed**: a reader who supplies no policy still gets thirty days with no promiser, because unlike an attestation filter a half-life has no neutral "off" position — time passes whether or not anybody promised a rate. The strict reading would be *no promiser, no decay*, which changes what every existing conductance read returns; SPEC §7 carries it as the remaining half of the tension.
   **Verified live, not just wired.** The `hc`/`holochain` toolchain turned out to already be installed in this environment (at `~/.cargo/bin`, just not on the shell's default `PATH` — the earlier note above was a false negative, corrected once checked directly) — a rebuilt wasm and freshly packed `.happ` were brought up via `scripts/sandbox.sh` against a real `hc sandbox` conductor, then exercised end to end with a real `AdminWebsocket`/`AppWebsocket` client, the same admin-auth flow `bridge/src/index.ts`'s `HolochainClient#connect` already uses: `publish_constitution` → `create_membrane` → two real `create_claim`s → two real `create_critique`s (each creating its own `SynapticLink` at initial conductance 1.0) → `reinforce_synaptic_link` on only one of them. `get_effective_conductance` read back **1.0** for the untouched link and **2.0** for the reinforced one — a real, measured gap, not assumed. `get_discourse_health` with `conductance_policy: null` counted both critiques (`total_critiques: 2`), exactly the old unfiltered behavior; called again with `conductance_policy: { min_effective_conductance: 1.5 }` — a threshold placed between the two real measured values — it counted exactly one (`total_critiques: 1`, `critique_mode_distribution` dropping from `Logical: 2` to `Logical: 1`), correctly excluding the unreinforced critique and keeping the reinforced one. No new unit tests were added for the new filter's own plumbing (`critique_effective_conductance`) for the same reason `get_discourse_health` itself has never had runtime-behavior unit tests — it's real host calls end to end, not extractable pure logic the way `compute_effective_conductance`'s own nine tests already cover; this live run is that coverage. All 57 existing tests still pass unchanged; both zomes still build clean natively and for `wasm32-unknown-unknown`.
 
 ### Phase 2: SSTorytime Integration
@@ -4934,7 +4991,7 @@ each of these is currently exactly that.
 
   **A stated limit: no successful vouch has ever been observed, and none can be in a test.** Validation requires 30 days of membership tenure, so on any conductor a harness can create — minutes old by definition — `grant_attestation` cannot succeed. Confirmed directly rather than assumed: it returns "AttestationGrant requires proof of sufficiently tenured membership in this membrane". What is verified instead is the part that could regress — the affordance is offered, its cost is stated, the refusal reaches the user legibly, and an independent client confirms the refusal was genuine rather than cosmetic.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/trust-lenses.mjs`, twenty-seven checks — two agents *and* a browser, which no other harness here combines, because a lens needs somebody it legitimately excludes. It carries a **vacuity guard**: it refuses to run at all unless the seeded lens demonstrably removes something, after an earlier version seeded no critiques, filtered nothing, and passed every "the lens works" assertion while proving nothing. Then the violation it exists to catch was injected — a lens applied by default — and it failed **five** checks at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/trust-lenses.mjs`, thirty-one checks — two agents *and* a browser, which no other harness here combines, because a lens needs somebody it legitimately excludes. It carries a **vacuity guard**: it refuses to run at all unless the seeded lens demonstrably removes something, after an earlier version seeded no critiques, filtered nothing, and passed every "the lens works" assertion while proving nothing. Then the violation it exists to catch was injected — a lens applied by default — and it failed **five** checks at once.
 
 - [x] **Expertise assertions surfaced — and the claim that made them legitimate turned out not to be true yet.** `assert_expertise` justifies itself on the grounds that an expertise assertion **is** a Claim, "that anyone can critique through the existing typed CritiqueMode machinery … not a separate, unaccountable field". Surfacing it meant checking that, and the first half was false.
 

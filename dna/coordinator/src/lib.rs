@@ -763,19 +763,78 @@ pub fn reinforce_synaptic_link(synaptic_link_action: ActionHash) -> ExternResult
 // #6 and #9) but decays toward zero in any conductance-weighted read.
 // ============================================================================
 
+/// The half-life used when NO caller has promised one. Still thirty days, and
+/// still a default rather than a policy — see CONDUCTANCE HALF-LIFE below for
+/// what changed about it and what deliberately did not.
 const CONDUCTANCE_HALF_LIFE_SECS: f64 = 30.0 * 24.0 * 3600.0; // 30 days
 const REINFORCE_WEIGHT: f32 = 1.0; // comparable to typical initial conductance
 
-/// `2^(-elapsed_secs / half_life)`: exactly 1.0 at elapsed_secs <= 0,
-/// exactly 0.5 at elapsed_secs == CONDUCTANCE_HALF_LIFE_SECS,
-/// monotonically toward 0 after. Negative elapsed (clock skew, or
-/// evaluating "now" before an event's timestamp for some other reason)
-/// clamps to 1.0 rather than producing a value above 1 or panicking.
-fn decay_factor(elapsed_secs: f64) -> f32 {
+// ============================================================================
+// CONDUCTANCE HALF-LIFE, AND WHO PROMISES IT — READINESS item 10.
+//
+// WHAT THIS RESOLVES. SPEC §7 carried two notes on Invariant #1 that named
+// DIFFERENT promisers for this one number, and nobody had reconciled them.
+// The first says every caller-supplied filter here (`AttestationPolicy`,
+// `ConductancePolicy`) is deliberately never a protocol default, because an
+// automatically applied one "would itself be the kind of canonical signal this
+// invariant rules out". The second says `CONDUCTANCE_HALF_LIFE_SECS` is exactly
+// that — one constant applied to every membrane, converting elapsed time into a
+// conductance a reader acts on, with no promiser behind it — and proposed
+// declaring it per membrane in the `Constitution`.
+//
+// THE DECISION, 2026-10-19: the FIRST note governs. The half-life becomes a
+// field on `ConductancePolicy`, so the reader supplying it is the promiser,
+// and omitting it is exactly the previous behaviour. That is the shape this
+// protocol already uses for every other read-layer policy, and it costs
+// nothing beyond this file.
+//
+// WHY NOT THE CONSTITUTION, which is the more expressive design and was the
+// queued plan. `Constitution` is an INTEGRITY entry, so adding a field changes
+// the DNA hash — and §11.1 is explicit that a different hash is a different
+// network, not an upgrade: every installed hApp reinstalls and no existing
+// claim carries over. That is the price of a membrane declaring how fast its
+// own domain forgets, and it is not worth paying on its own while testers are
+// about to be invited. It stays queued for the next bump that happens anyway.
+//
+// WHAT THIS DOES NOT CLAIM TO FIX, stated because the second note's complaint
+// is only half answered. A reader who supplies no policy still gets thirty
+// days, still with no promiser — and unlike an attestation filter, a half-life
+// has no neutral "off" position, because time passes whether or not anybody
+// promised a rate. The strict reading of the first note would be: no promiser,
+// no decay. That is a change to what every existing conductance read returns
+// and was deliberately NOT taken here; it is recorded in SPEC §7 as the
+// remaining half of the tension rather than quietly closed.
+//
+// WHY `get_effective_conductance`'S SIGNATURE IS UNTOUCHED. It takes a bare
+// ActionHash and `agent-sdk` 0.1.4 — what is actually ON the registry, checked
+// rather than assumed — calls it that way. Changing the payload shape would
+// break every published client for a progress knob,
+// which is the kind of trade this repository has been bitten by before. The
+// half-life therefore arrives where the policy already lives — the aggregate
+// read that actually filters on conductance — and the standalone read stays on
+// the default. A caller wanting a custom half-life for one link composes it
+// themselves, exactly as the comment on `critique_effective_conductance`
+// already says they can.
+// ============================================================================
+
+/// `2^(-elapsed_secs / half_life_secs)`: exactly 1.0 at elapsed_secs <= 0,
+/// exactly 0.5 at elapsed_secs == half_life_secs, monotonically toward 0
+/// after. Negative elapsed (clock skew, or evaluating "now" before an event's
+/// timestamp for some other reason) clamps to 1.0 rather than producing a value
+/// above 1 or panicking.
+///
+/// A non-positive half-life would make this meaningless (division by zero, or
+/// a value that grows with elapsed time), so it falls back to the default
+/// rather than panicking or returning a number a reader would act on. A caller
+/// who asks for a half-life of zero has asked for something that is not a
+/// half-life; see `ConductancePolicy::half_life_secs` for why that is clamped
+/// here rather than refused at the extern.
+fn decay_factor(elapsed_secs: f64, half_life_secs: f64) -> f32 {
     if elapsed_secs <= 0.0 {
         return 1.0;
     }
-    2f64.powf(-elapsed_secs / CONDUCTANCE_HALF_LIFE_SECS) as f32
+    let half_life = if half_life_secs > 0.0 { half_life_secs } else { CONDUCTANCE_HALF_LIFE_SECS };
+    2f64.powf(-elapsed_secs / half_life) as f32
 }
 
 /// Pure core of effective-conductance computation — no host calls, so
@@ -787,10 +846,11 @@ fn compute_effective_conductance(
     created_at_secs: i64,
     reinforcement_timestamps_secs: &[i64],
     now_secs: i64,
+    half_life_secs: f64,
 ) -> f32 {
-    let mut total = base_conductance * decay_factor((now_secs - created_at_secs) as f64);
+    let mut total = base_conductance * decay_factor((now_secs - created_at_secs) as f64, half_life_secs);
     for &t in reinforcement_timestamps_secs {
-        total += REINFORCE_WEIGHT * decay_factor((now_secs - t) as f64);
+        total += REINFORCE_WEIGHT * decay_factor((now_secs - t) as f64, half_life_secs);
     }
     total
 }
@@ -801,6 +861,16 @@ fn compute_effective_conductance(
 /// captured directly by a caller that made the link itself).
 #[hdk_extern]
 pub fn get_effective_conductance(synaptic_link_action: ActionHash) -> ExternResult<f32> {
+    effective_conductance_with_half_life(synaptic_link_action, CONDUCTANCE_HALF_LIFE_SECS)
+}
+
+/// The same read with the half-life named by whoever is reading. Not an extern:
+/// see CONDUCTANCE HALF-LIFE above on why the published signature stays as it
+/// is, and `ConductancePolicy::half_life_secs` for the path a caller uses.
+fn effective_conductance_with_half_life(
+    synaptic_link_action: ActionHash,
+    half_life_secs: f64,
+) -> ExternResult<f32> {
     let record = must_get_valid_record(synaptic_link_action.clone())?;
     let link_action = record.action();
     let (base_conductance, created_at_secs) = match &link_action.data {
@@ -830,7 +900,13 @@ pub fn get_effective_conductance(synaptic_link_action: ActionHash) -> ExternResu
 
     let now_secs = sys_time()?.as_seconds_and_nanos().0;
 
-    Ok(compute_effective_conductance(base_conductance, created_at_secs, &reinforcement_timestamps, now_secs))
+    Ok(compute_effective_conductance(
+        base_conductance,
+        created_at_secs,
+        &reinforcement_timestamps,
+        now_secs,
+        half_life_secs,
+    ))
 }
 
 // ============================================================================
@@ -3412,6 +3488,36 @@ pub struct ConductancePolicy {
     /// treated as conductance 0.0, i.e. excluded by any positive
     /// threshold.
     pub min_effective_conductance: f32,
+
+    /// The half-life, in seconds, this reader wants elapsed time discounted
+    /// by. `None` is the protocol default (thirty days) and therefore exactly
+    /// the previous behaviour — READINESS item 10, and see CONDUCTANCE
+    /// HALF-LIFE above for why this lives here rather than in a membrane's
+    /// `Constitution`.
+    ///
+    /// WHAT SUPPLYING IT MEANS, and it is a promise rather than a preference:
+    /// a reader setting this says *"for the purposes of what I am about to
+    /// count, connections are stale on this schedule"* — so the threshold that
+    /// turns elapsed time into a decision has an agent behind it, which is the
+    /// whole of SPEC §7's first note on Invariant #1. A climate-science
+    /// membrane's reader and a market-commentary one have no reason to forget
+    /// at the same speed, and neither has to accept a rate the protocol
+    /// asserts universally.
+    ///
+    /// NOT COMPARABLE ACROSS POLICIES, which is the judgement READINESS item 10
+    /// flagged and is accepted deliberately. Two readers using different
+    /// half-lives get different effective conductances for the SAME link, and
+    /// neither is wrong — the number was never a property of the link alone,
+    /// only of the link read through somebody's forgetting schedule. What stays
+    /// comparable is what the DHT holds: the base conductance and the
+    /// Reinforcement events, which are byte-identical for every reader.
+    ///
+    /// Zero or negative is clamped to the default rather than refused. A
+    /// half-life of zero is not a fast-forgetting policy, it is a
+    /// division-by-zero, and the alternative to clamping is an extern that
+    /// rejects an aggregate read over a field a caller may not have meant to
+    /// set — a worse failure than a documented fallback.
+    pub half_life_secs: Option<u64>,
 }
 
 /// The effective conductance of the SynapticLink create_critique made
@@ -3421,7 +3527,11 @@ pub struct ConductancePolicy {
 /// readable; not itself an extern, since callers who want this for a
 /// critique they already hold can already compose find_synaptic_link +
 /// get_effective_conductance themselves.
-fn critique_effective_conductance(critique: &Critique, critique_action: &ActionHash) -> ExternResult<f32> {
+fn critique_effective_conductance(
+    critique: &Critique,
+    critique_action: &ActionHash,
+    half_life_secs: f64,
+) -> ExternResult<f32> {
     let base: AnyDhtHash = match AnyDhtHash::try_from(critique.target.clone()) {
         Ok(hash) => hash,
         Err(_) => return Ok(0.0),
@@ -3431,7 +3541,7 @@ fn critique_effective_conductance(critique: &Critique, critique_action: &ActionH
         target_action: critique_action.clone(),
     })?;
     match synaptic_link_action {
-        Some(link_action) => get_effective_conductance(link_action),
+        Some(link_action) => effective_conductance_with_half_life(link_action, half_life_secs),
         None => Ok(0.0),
     }
 }
@@ -3573,7 +3683,14 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
                 }
 
                 if let Some(ref policy) = payload.conductance_policy {
-                    let effective = critique_effective_conductance(&critique, record.action_address())?;
+                    // The half-life this READER promised, or the default when
+                    // they promised none — see ConductancePolicy.
+                    let half_life = policy
+                        .half_life_secs
+                        .map(|s| s as f64)
+                        .unwrap_or(CONDUCTANCE_HALF_LIFE_SECS);
+                    let effective =
+                        critique_effective_conductance(&critique, record.action_address(), half_life)?;
                     if effective < policy.min_effective_conductance {
                         continue;
                     }
@@ -4608,7 +4725,7 @@ mod tests {
 
     #[test]
     fn decay_factor_is_one_at_zero_elapsed() {
-        assert_eq!(decay_factor(0.0), 1.0);
+        assert_eq!(decay_factor(0.0, HALF_LIFE), 1.0);
     }
 
     #[test]
@@ -4616,25 +4733,92 @@ mod tests {
         // Shouldn't come up in practice (an event's timestamp is never
         // after "now" when this is called), but must not produce a
         // value above 1.0 or panic if it somehow does.
-        assert_eq!(decay_factor(-100.0), 1.0);
+        assert_eq!(decay_factor(-100.0, HALF_LIFE), 1.0);
+    }
+
+    // --- THE HALF-LIFE IS THE READER'S, item 10. Four properties, because the
+    // field is only worth having if a different promise produces a different
+    // number and the default produces the old one.
+
+    #[test]
+    fn a_shorter_half_life_forgets_faster_at_the_same_elapsed_time() {
+        let elapsed = HALF_LIFE;                       // one default half-life
+        let at_default = decay_factor(elapsed, HALF_LIFE);
+        let at_seven_days = decay_factor(elapsed, 7.0 * 24.0 * 3600.0);
+        assert!(at_seven_days < at_default,
+            "a seven-day half-life must discount thirty days more than a thirty-day one, got {} vs {}",
+            at_seven_days, at_default);
+        // 30 days is ~4.3 seven-day half-lives, so ~2^-4.3.
+        assert!(at_seven_days < 0.06, "expected deep decay, got {}", at_seven_days);
+    }
+
+    #[test]
+    fn a_longer_half_life_forgets_slower_and_the_default_is_unchanged() {
+        let elapsed = HALF_LIFE;
+        assert!((decay_factor(elapsed, HALF_LIFE) - 0.5).abs() < 0.0001,
+            "the default must still halve at thirty days — the old behaviour is what None means");
+        let at_a_year = decay_factor(elapsed, 365.0 * 24.0 * 3600.0);
+        assert!(at_a_year > 0.9,
+            "a one-year half-life should barely discount thirty days, got {}", at_a_year);
+    }
+
+    #[test]
+    fn every_half_life_halves_at_its_own_half_life() {
+        // The property that makes the field meaningful rather than a fudge
+        // factor: whatever a reader promises, that IS the half-life.
+        for secs in [3600.0, 86_400.0, 7.0 * 86_400.0, HALF_LIFE, 365.0 * 86_400.0] {
+            let d = decay_factor(secs, secs);
+            assert!((d - 0.5).abs() < 0.0001,
+                "a half-life of {}s must give 0.5 at {}s elapsed, got {}", secs, secs, d);
+        }
+    }
+
+    #[test]
+    fn a_nonpositive_half_life_falls_back_to_the_default_rather_than_dividing_by_zero() {
+        // A half-life of zero is not a fast-forgetting policy, it is a
+        // division by zero. Clamped rather than refused — see
+        // ConductancePolicy::half_life_secs.
+        assert_eq!(decay_factor(HALF_LIFE, 0.0), decay_factor(HALF_LIFE, HALF_LIFE));
+        assert_eq!(decay_factor(HALF_LIFE, -1.0), decay_factor(HALF_LIFE, HALF_LIFE));
+    }
+
+    #[test]
+    fn the_readers_half_life_reaches_the_whole_computation_not_just_the_base() {
+        // Reinforcements decay on the same schedule as the base, so a reader
+        // promising a short half-life must see recent reinforcement dominate.
+        let base = 1.0_f32;
+        let created_at = 0_i64;
+        let now = (30.0 * 24.0 * 3600.0) as i64;        // one default half-life on
+        let week = 7.0 * 24.0 * 3600.0;
+        let recent = &[now - 3600][..];                 // reinforced an hour ago
+
+        let at_default = compute_effective_conductance(base, created_at, recent, now, HALF_LIFE);
+        let at_week = compute_effective_conductance(base, created_at, recent, now, week);
+        assert!(at_week < at_default,
+            "a week-long half-life must discount the thirty-day-old base harder, got {} vs {}",
+            at_week, at_default);
+        // The hour-old reinforcement survives either way; the base does not.
+        assert!(at_week > 0.9,
+            "an hour-old reinforcement should still be worth ~1.0 under a week-long half-life, got {}",
+            at_week);
     }
 
     #[test]
     fn decay_factor_is_exactly_half_at_the_half_life() {
-        let d = decay_factor(HALF_LIFE);
+        let d = decay_factor(HALF_LIFE, HALF_LIFE);
         assert!((d - 0.5).abs() < 0.0001, "expected ~0.5 at exactly one half-life, got {}", d);
     }
 
     #[test]
     fn decay_factor_is_exactly_quarter_at_two_half_lives() {
-        let d = decay_factor(HALF_LIFE * 2.0);
+        let d = decay_factor(HALF_LIFE * 2.0, HALF_LIFE);
         assert!((d - 0.25).abs() < 0.0001, "expected ~0.25 at two half-lives, got {}", d);
     }
 
     #[test]
     fn decay_factor_is_monotonically_decreasing() {
-        let earlier = decay_factor(HALF_LIFE * 0.5);
-        let later = decay_factor(HALF_LIFE * 1.5);
+        let earlier = decay_factor(HALF_LIFE * 0.5, HALF_LIFE);
+        let later = decay_factor(HALF_LIFE * 1.5, HALF_LIFE);
         assert!(earlier > later, "conductance must not increase with elapsed time alone");
     }
 
@@ -4643,7 +4827,7 @@ mod tests {
         let base = 1.0;
         let created_at = 0;
         let now = HALF_LIFE as i64;
-        let result = compute_effective_conductance(base, created_at, &[], now);
+        let result = compute_effective_conductance(base, created_at, &[], now, HALF_LIFE);
         assert!((result - 0.5).abs() < 0.001, "un-reinforced link at one half-life should be ~0.5, got {}", result);
     }
 
@@ -4655,9 +4839,9 @@ mod tests {
         // own.
         let base = 1.0;
         let created_at = 0;
-        let at_one_hl = compute_effective_conductance(base, created_at, &[], HALF_LIFE as i64);
-        let at_four_hl = compute_effective_conductance(base, created_at, &[], (HALF_LIFE * 4.0) as i64);
-        let at_ten_hl = compute_effective_conductance(base, created_at, &[], (HALF_LIFE * 10.0) as i64);
+        let at_one_hl = compute_effective_conductance(base, created_at, &[], HALF_LIFE as i64, HALF_LIFE);
+        let at_four_hl = compute_effective_conductance(base, created_at, &[], (HALF_LIFE * 4.0) as i64, HALF_LIFE);
+        let at_ten_hl = compute_effective_conductance(base, created_at, &[], (HALF_LIFE * 10.0) as i64, HALF_LIFE);
         assert!(at_one_hl > at_four_hl);
         assert!(at_four_hl > at_ten_hl);
         assert!(at_ten_hl < 0.01, "should be nearly fully atrophied after ten half-lives, got {}", at_ten_hl);
@@ -4673,8 +4857,8 @@ mod tests {
         let created_at = 0;
         let now = (HALF_LIFE * 10.0) as i64; // heavily decayed by now
 
-        let unreinforced = compute_effective_conductance(base, created_at, &[], now);
-        let reinforced_recently = compute_effective_conductance(base, created_at, &[now - 1], now);
+        let unreinforced = compute_effective_conductance(base, created_at, &[], now, HALF_LIFE);
+        let reinforced_recently = compute_effective_conductance(base, created_at, &[now - 1], now, HALF_LIFE);
 
         assert!(unreinforced < 0.01);
         assert!(
@@ -4694,8 +4878,8 @@ mod tests {
         let created_at = 0;
         let now = (HALF_LIFE * 10.0) as i64;
 
-        let old_reinforcement = compute_effective_conductance(base, created_at, &[0], now);
-        let recent_reinforcement = compute_effective_conductance(base, created_at, &[now - 1], now);
+        let old_reinforcement = compute_effective_conductance(base, created_at, &[0], now, HALF_LIFE);
+        let recent_reinforcement = compute_effective_conductance(base, created_at, &[now - 1], now, HALF_LIFE);
 
         assert!(old_reinforcement < recent_reinforcement);
         assert!(old_reinforcement < 0.01, "a ten-half-lives-old reinforcement should itself be nearly fully decayed");
@@ -4706,8 +4890,8 @@ mod tests {
         let base = 0.0;
         let created_at = 0;
         let now: i64 = 1_000_000;
-        let one = compute_effective_conductance(base, created_at, &[now - 1], now);
-        let three = compute_effective_conductance(base, created_at, &[now - 1, now - 2, now - 3], now);
+        let one = compute_effective_conductance(base, created_at, &[now - 1], now, HALF_LIFE);
+        let three = compute_effective_conductance(base, created_at, &[now - 1, now - 2, now - 3], now, HALF_LIFE);
         assert!(three > one, "more recent reinforcements should sum to a higher value than one alone");
     }
 
