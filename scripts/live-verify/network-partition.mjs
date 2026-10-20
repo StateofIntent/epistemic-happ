@@ -359,18 +359,28 @@ function socketFacts() {
   return { toRelay, toBootstrap, direct, clientConns, udp };
 }
 
+// THIS FUNCTION'S RESOLUTION IS POLL_MS. Same instrument as
+// `partition-rejoin.mjs`'s, same correction: it samples every 5s, so every
+// true crossing inside one window collapses to ONE reported figure and the
+// tenth of a second is accumulated call overhead over a fixed poll count, not
+// propagation. READINESS §3 read a repeated 421.1s from the sibling harness as
+// a deterministic timeout; variance below the sampling interval produces
+// identical figures by construction. `polls` travels with every figure for
+// that reason — a lattice sample must not be read as a distribution sample.
 async function awaitConvergence(node, domain, label, isolated) {
   const t0 = Date.now();
   let isolatedEverSaw = false;
+  let polls = 0;
   while (Date.now() - t0 < CONVERGE_WINDOW_MS) {
+    polls++;
     const got = await countIn(node, domain);
     const iso = await countIn(isolated, domain);
     if (iso > 0) isolatedEverSaw = true;
     log(`    [${label}] t+${((Date.now() - t0) / 1000).toFixed(0)}s  ${label}=${got}  node${isolated.name}=${iso}`);
-    if (got > 0) return { ms: Date.now() - t0, isolatedEverSaw };
+    if (got > 0) return { ms: Date.now() - t0, polls, isolatedEverSaw };
     await sleep(POLL_MS);
   }
-  return { ms: null, isolatedEverSaw };
+  return { ms: null, polls, isolatedEverSaw };
 }
 
 async function main() {
@@ -472,7 +482,8 @@ async function main() {
   const base = await awaitConvergence(B, D_BASE, 'nodeB', C);
   check('a claim crosses nodeA -> nodeB before the cut', base.ms !== null);
   if (base.ms === null) setupFail(['The network is not carrying claims even before the cut.']);
-  log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`);
+  log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`
+    + ` (poll ${base.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler — resolution ±${(POLL_MS / 1000).toFixed(1)}s)`);
 
   // ---- 4. Cut the data path, leave everything else alone ---------------
   log(`\n--- 4. Cutting the peer paths: UDP, and TCP to the relay :${RELAY_PORT} (no process is touched) ---`);
@@ -548,9 +559,9 @@ async function main() {
     awaitConvergence(B, D_A, 'nodeB', C),
   ]);
   check('nodeA converges on what nodeB wrote during the partition', convA.ms !== null);
-  if (convA.ms !== null) log(`    nodeA converged in ${(convA.ms / 1000).toFixed(1)}s`);
+  if (convA.ms !== null) log(`    nodeA converged in ${(convA.ms / 1000).toFixed(1)}s (poll ${convA.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
   check('nodeB converges on what nodeA wrote during the partition', convB.ms !== null);
-  if (convB.ms !== null) log(`    nodeB converged in ${(convB.ms / 1000).toFixed(1)}s`);
+  if (convB.ms !== null) log(`    nodeB converged in ${(convB.ms / 1000).toFixed(1)}s (poll ${convB.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
 
   const aHasB = await A.call('get_claims_by_domain', D_B);
   const bHasA = await B.call('get_claims_by_domain', D_A);
@@ -566,7 +577,7 @@ async function main() {
   await publish(A, D_POST, 'after the link healed');
   const post = await awaitConvergence(B, D_POST, 'nodeB', C);
   check('a new claim crosses after healing', post.ms !== null);
-  if (post.ms !== null) log(`    crossed in ${(post.ms / 1000).toFixed(1)}s`);
+  if (post.ms !== null) log(`    crossed in ${(post.ms / 1000).toFixed(1)}s (poll ${post.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
 
   // ---- 10. The isolated node ------------------------------------------
   log('\n--- 10. CONTROL: the isolated node saw none of it ---');

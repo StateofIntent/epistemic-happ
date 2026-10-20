@@ -444,6 +444,30 @@ scheduling, not in a propagation distribution.
 > every figure it reports, at all four sites, so a lattice sample cannot be
 > read as a distribution sample again. That is the fix for the misreading, and
 > it is cheaper than the investigation it nearly triggered.
+>
+> **AND A LIVE RUN THEN DEMONSTRATED THE MECHANISM OUTRIGHT, which is better
+> evidence than the simulation.** Run against three real local conductors on
+> 2026-10-21, all 25 checks green: the baseline reported **`5.1s (poll 2)`**
+> and the post-heal crossing **`5.0s (poll 2)`** — **two crossings, the same
+> poll index, figures differing by 0.1s.** That 0.1s is accumulated call
+> overhead and nothing else, which is precisely the digit §3 treated as
+> significant when the same two decimals repeated at 421.1s. Catch-up measured
+> 30.2s (poll 7) and 20.1s (poll 5): ten seconds apart, two polls apart, and
+> genuinely resolvable — the instrument is not useless, it is just blind below
+> its step.
+>
+> **The same sweep found three more harnesses reporting figures from the same
+> kind of sampler, and one of them is a headline number.** `network-partition.mjs`
+> has the identical four sites at `POLL_MS = 5000`; `peering-rate.mjs` samples
+> at 3s and **compares arms**, so two arms whose true difference is under 3s
+> cannot be distinguished by it at all (its own summary already noted a median
+> of "3.0s", which is one poll); and `cross-internet.mjs` samples at 5s, which
+> is where **the single measured datacentre-to-datacentre crossing README §9
+> cites as "5.0s"** comes from. That one polls at t≈0 and then every 5s, so
+> "5.0s" means ABSENT at the first check and PRESENT at the second: **an upper
+> bound of 5s, not a latency of 5s.** It understates the substrate rather than
+> flattering it — the opposite error to the one at 421.1s, from the same cause.
+> All four now report their resolution.
 
 **RULED 2026-10-21: IT DOES NOT CLEAR THE BAR, AND NOBODY HAD TO DECIDE
 THAT.** §9 froze the gossip investigation and named its reopen condition
