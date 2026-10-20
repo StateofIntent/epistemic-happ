@@ -1204,7 +1204,25 @@ and is not a publish.
 together and needs `npm login` plus a browser second factor — `agent-sdk` is
 `0.1.5` here against `0.1.4` published, so item 12's `closureOf` is unpublished,
 and the dependency-range flip belongs to the publish run itself for the
-`ETARGET` reason the sequence documents. **Item 9** is one governance decision.
+`ETARGET` reason the sequence documents.
+
+**That publish is now PREPARED rather than merely queued, on `release/0.1.5`,
+pushed 2026-10-20.** Everything that does not need credentials has been run and
+passed at `0.1.5`: both builds, `check-packages.mjs`, both `npm publish
+--dry-run`s, and — the one that matters — `published-packages.mjs` against a
+real conductor, where the INSTALLED SDK authorized signing, wrote a claim the
+network accepted, an independent read found it, and the installed MCP server
+returned that same claim through a tool call, resolving `@holochain/client`
+`0.21.0`. `mcp-server` is bumped to `0.1.5` with its range tightened to
+`^0.1.5`, because a range only reaches an installer if it is published.
+**Its lock is left stale ON PURPOSE and the branch cannot pass CI** — `ETARGET`
+confirmed by running it, not predicted — and that clears at step 4 of the
+sequence. No pull request was opened, because one sitting red reads as broken
+work. **The credential boundary is earlier than the 0.1.4 sequence implies:**
+`npm whoami` is `E401` and `publish-packages.sh` fails on that before any other
+check, so not even the script's own dry run can be driven without logging in,
+which is why those checks were run individually instead. READINESS's *0.1.5
+publish sequence* carries the five remaining steps. **Item 9** is one governance decision.
 **Item 20** is three readings and a decision each, batched onto the next
 `protocol_version` bump. **Item 8** needs the go-ahead above. **Item 11** sits
 behind 9. Everything else on the roadmap is done.
