@@ -30,8 +30,21 @@
 // no longer produce still looks like coverage.
 //
 // The entry types NOT here are not pretended about: see README.md's class
-// table. `WorldlineTrace` and `Revelation` need dependency chains rather than
-// payloads, which is a larger job than this file.
+// table.
+//
+// THIRTEEN ENTRY TYPES as of 2026-10-21, 260 checks. The foresight family —
+// `pre_registration`, `revelation`, `worldline_trace` — was the last to come
+// in, and the note that used to sit here blamed "dependency chains rather than
+// payloads, which is a larger job than this file". That was wrong twice over:
+// the chains were already built by `otherAgentFixtures()` for the link rules,
+// and what actually blocks the rest is that most of those types' fields are
+// DERIVED BY THE EXTERN. See README.md's finding 14.
+//
+// WATCHED FAILING — BG, BH, BI, one per new type, each a separate build
+// against a clean conductor. BH is the one worth reading: it red for the WRONG
+// REASON first, because the owner case was being refused by the hash check one
+// line later rather than by the rule it names. The case now offers agent 2's
+// real content, and the re-injected forged reveal COMMITS.
 // ============================================================================
 
 import { readFileSync } from 'node:fs';
@@ -190,6 +203,19 @@ async function awaitVisibleToMe(read, label, attempts = 40, everyMs = 500) {
 // arrived DEFERS rather than refusing, which reads as a rule that does not
 // fire.
 let _others = null;
+// AGENT 2'S COMMITTED CONTENT, named rather than written twice.
+//
+// It was two string literals repeated at the commit and the reveal. It is
+// named now because a THIRD caller needs it and must not re-type it: the
+// `Revelation` spec's owner case has to offer content that hashes CORRECTLY to
+// agent 2's commitment, so that the author rule is the only thing left that
+// can refuse the reveal. Injection BH is why — with the author rule removed and
+// agent 1's own content supplied, the forged reveal was stopped by the HASH
+// check instead, so the case red for a reason that had nothing to do with the
+// rule it names. See the case's own comment.
+const OTHER_PREDICTION = 'corpus prediction, committed by the OTHER agent';
+const OTHER_SALT = 'corpus-other-salt-4a1c';
+
 async function otherAgentFixtures() {
   if (_others) return _others;
   const domain = `CorpusOther${Date.now()}`;
@@ -254,8 +280,8 @@ async function otherAgentFixtures() {
   // above was published several writes ago, so it already does.
   const preRegAction = await callOther('pre_register', {
     question: claimAction,
-    prediction: 'corpus prediction, committed by the OTHER agent',
-    salt: 'corpus-other-salt-4a1c',
+    prediction: OTHER_PREDICTION,
+    salt: OTHER_SALT,
     reveal_deadline: nowMicros() + 3_600_000_000,
   });
 
@@ -282,8 +308,8 @@ async function otherAgentFixtures() {
   // owner rule needs: only the revealing agent may hang the link.
   const revelationAction = await callOther('reveal_pre_registration', {
     pre_registration: preRegAction,
-    prediction: 'corpus prediction, committed by the OTHER agent',
-    salt: 'corpus-other-salt-4a1c',
+    prediction: OTHER_PREDICTION,
+    salt: OTHER_SALT,
   });
   await awaitVisibleToMe(
     async () => {
@@ -430,6 +456,7 @@ async function otherAgentFixtures() {
     parentSpecies: otherParentSpecies, parentSpeciesEntry: otherParentEntry,
     childSpecies: otherChildSpecies, critiqueAction: otherCritique,
     antibodyAction: otherAntibody,
+    preRegPrediction: OTHER_PREDICTION, preRegSalt: OTHER_SALT,
   };
   return _others;
 }
@@ -483,9 +510,21 @@ log('');
 // for a different reason entirely: no coordinator extern accepts a raw payload
 // for either, so the fields their rules are about are derived by the extern and
 // cannot be reached from JavaScript at all. See README.md's finding 5.
+//
+// THAT WAS TRUE OF MOST OF THEIR RULES AND NOT ALL OF THEM, and both types are
+// in the list below as of 2026-10-21, alongside `pre_registration`. Eight of
+// the eighteen sites across the three really are `needs_extern` and stay out
+// of the denominator by class. The other ten are about fields a caller hands
+// in — a deadline, a question hash, an expiry, the content offered at reveal —
+// and eight of those now have cases, with two declared unreachable in GAPS for
+// reasons that are not "it needs a chain".
 const COVERED = [
   'claim', 'mew', 'evidence', 'constitution', 'critique_species', 'retraction',
   'critique', 'antibody_pattern', 'membrane', 'federation_record',
+  // The foresight family, added 2026-10-21. See the block comment above their
+  // specs: the dependency chains the old note blamed were already built, and
+  // the real limit is that most of their fields are derived by the extern.
+  'worldline_trace', 'pre_registration', 'revelation',
 ];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
@@ -608,6 +647,25 @@ const GAPS = [
     linkType: 'SynapticLink',
     rule: 'SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). This is an absolute limit, enforced by DHT validation, not a client-side courtesy.',
     why: 'reaching it means committing 20 SynapticLinks in one window, and each one costs a Critique — the limit that stopped this corpus mid-development, measured rather than imagined',
+  },
+  // --- (c) A THIRD SHAPE, FOUND 2026-10-21 AND NOT PRESENT BEFORE: THE FIELD
+  // IS CALLER-CONTROLLED BUT THE RULE IS ABOUT SOMETHING THE CALLER IS NOT.
+  //
+  // The inventory classes a site by whether the extern lets the caller supply
+  // the field the guard names. That heuristic is right for every other rule
+  // here and wrong for this one, because the guard does not compare the field —
+  // it compares the ACTION TIMESTAMP of the record the field points at, and
+  // nothing in a payload can set that. Worth keeping as its own shape: a
+  // `crafted` classification is a claim about the field, not about the rule.
+  {
+    entry: 'pre_registration',
+    rule: 'PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.',
+    why: 'the `question` hash IS caller-controlled, which is why the inventory classes this `crafted` — but the guard compares `question.action().timestamp()` against the commitment\'s own, and both timestamps are host-assigned. Any question that resolves was authored earlier, so the comparison can only be made to fire by a clock moved backwards — which is READINESS item 14\'s defect and has its own probe in `scripts/live-verify/clock-skew-reveal.mjs`, not a payload this corpus can write',
+  },
+  {
+    entry: 'worldline_trace',
+    rule: 'PeriodBoundary sample_action not found.',
+    why: '`generate_worldline_trace` BUILDS the period boundaries by walking the caller\'s own chain, so every `sample_action` it emits is an action that exists by construction. The caller supplies granularity, tags and expiry — never a boundary — so there is no payload in which this dependency can be dangling. Same cost as the six `needs_extern` rules beside it: a raw-payload extern plus a DNA rebuild',
   },
 ];
 
@@ -1079,6 +1137,161 @@ const entries = [
       {
         rule: "FederationRecord can only be authored by local_membrane's own creator.",
         mutate: (f, ctx) => { f.local_membrane = ctx.others.membraneEntry; },
+      },
+    ],
+  },
+  // ==========================================================================
+  // THE FORESIGHT FAMILY — and these three were excluded on a reason that
+  // turned out to be wrong, in the same way the `Retraction` exclusion was.
+  //
+  // The note above `COVERED` used to say `WorldlineTrace` and `Revelation`
+  // needed "dependency chains rather than payloads, which is a larger job than
+  // this file". The chains were the cheap part and were ALREADY BUILT —
+  // `otherAgentFixtures()` has published a trace, a commitment and a reveal
+  // since item 5f, for the link rules. What actually blocks these types is
+  // narrower and does not look like a chain at all: most of their fields are
+  // DERIVED BY THE EXTERN, so the rules about them are `needs_extern` and
+  // unreachable from JavaScript at any effort. Eight of the eighteen sites
+  // across the three are that, and they stay out of the denominator by class.
+  //
+  // What IS reachable is what a caller actually hands in: a deadline, a
+  // question hash, an expiry, and the content offered at reveal time. Those
+  // are the eight cases below, and they take the foresight primitive from
+  // "link rules only" to "the entry rules a client can actually trip".
+  // ==========================================================================
+  {
+    entry: 'worldline_trace',
+    label: 'WorldlineTrace',
+    fn: 'generate_worldline_trace',
+    // No setup: a trace is always OF the caller's own chain, which by this
+    // point in the run has plenty on it. That is also why six of this type's
+    // eight rules are unreachable — every field but `expires_at` is read off
+    // the chain by the extern rather than accepted from the caller.
+    baseline: () => ({ period_granularity_secs: 3600, expertise_tags: ['corpus'], expires_at: null }),
+    cases: [
+      // SECONDS, NOT MICROSECONDS, and this is the one thing here easy to get
+      // wrong: `generate_worldline_trace` sets `created_at` from
+      // `sys_time().as_seconds_and_nanos().0`, so a microsecond `expires_at`
+      // would be astronomically in the FUTURE and the rule would never fire.
+      { rule: 'expires_at must be > created_at.', mutate: (t) => { t.expires_at = nowSecs() - 3600; } },
+    ],
+  },
+  {
+    entry: 'pre_registration',
+    label: 'PreRegistration',
+    fn: 'pre_register',
+    chainNote: 'a question published BEFORE the commitment, which is what the rule requires',
+    setup: async () => {
+      const question = await call('create_claim', {
+        content: 'corpus question, posed before anything is committed about it',
+        domain: `CorpusForesight${Date.now()}`, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { question };
+    },
+    baseline: (ctx) => ({
+      question: ctx.question,
+      prediction: 'corpus prediction, committed so the baseline is a real commitment',
+      salt: 'corpus-prereg-salt-7f2a',
+      reveal_deadline: nowMicros() + 3_600_000_000,
+    }),
+    cases: [
+      {
+        rule: 'PreRegistration reveal_deadline must be after the commitment itself; a commitment that is already expired can never be revealed and would pad the denominator.',
+        mutate: (p) => { p.reveal_deadline = nowMicros() - 3_600_000_000; },
+      },
+      // `must_get_action`, so a missing question DEFERS rather than returning
+      // Invalid — the site's own message is asserted NOT to appear, same as
+      // Claim's two dependency cases.
+      {
+        rule: 'PreRegistration question does not resolve.',
+        expect: 'deferral',
+        mutate: (p) => { p.question = danglingHash('action', 101); },
+      },
+    ],
+  },
+  {
+    entry: 'revelation',
+    label: 'Revelation',
+    fn: 'reveal_pre_registration',
+    chainNote: 'question -> commitment, plus a SECOND commitment deliberately left to expire',
+    setup: async () => {
+      const question = await call('create_claim', {
+        content: 'corpus question for the reveal path, posed first',
+        domain: `CorpusReveal${Date.now()}`, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const PRED = 'corpus prediction, revealed by its own committer';
+      const SALT = 'corpus-reveal-salt-3b9d';
+      const mine = await call('pre_register', {
+        question, prediction: PRED, salt: SALT, reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      // A SECOND COMMITMENT WHOSE WINDOW CLOSES DURING THIS RUN. The late-reveal
+      // rule cannot be reached with the baseline commitment, because a deadline
+      // already in the past is refused by `validate_pre_registration` at commit
+      // time — so the only way in is to commit a real future deadline and let
+      // it lapse. Three seconds, which is the whole cost of this spec.
+      const EXP_PRED = 'corpus prediction whose window closes before it is revealed';
+      const EXP_SALT = 'corpus-expired-salt-5c1e';
+      const expiring = await call('pre_register', {
+        question, prediction: EXP_PRED, salt: EXP_SALT, reveal_deadline: nowMicros() + 2_000_000,
+      });
+      await new Promise((r) => setTimeout(r, 3500));
+      return { question, mine, expiring, PRED, SALT, EXP_PRED, EXP_SALT, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({ pre_registration: ctx.mine, prediction: ctx.PRED, salt: ctx.SALT }),
+    cases: [
+      // A Claim's ActionHash resolves as a record and fails to deserialize as a
+      // PreRegistration — the one rule here reachable through the SDK's own
+      // typed surface, which is why the inventory classes it `honest`.
+      {
+        rule: 'Revelation pre_registration is not a PreRegistration.',
+        mutate: (r, ctx) => { r.pre_registration = ctx.question; },
+      },
+      // CLOSED BY THE SECOND AGENT — item 5f again. Agent 2's commitment is
+      // already published and already awaited visible by otherAgentFixtures(),
+      // so this needs no new chain: agent 1 simply reveals somebody else's.
+      //
+      // IT OFFERS AGENT 2'S REAL CONTENT, AND THAT IS THE WHOLE POINT OF THE
+      // CASE. The first version passed agent 1's own prediction and salt, and
+      // injection BH showed what that cost: with the author rule removed, the
+      // forged reveal was refused by the HASH check instead, which runs one
+      // line later — so the case reddened for a reason unrelated to the rule
+      // it names, and would have gone on "passing" if the author rule were
+      // deleted tomorrow. Supplying content that hashes correctly leaves the
+      // author rule as the ONLY check that can refuse this, which is what
+      // makes the pass mean something.
+      //
+      // It also sharpens what the rule is for. Against somebody who does not
+      // know the committed content, the hash check is already sufficient; the
+      // author rule's unique work is against somebody who DOES — after a
+      // reveal elsewhere, or a leak — which is exactly the case where a third
+      // party could otherwise decide for an author whether their commitment
+      // counts as revealed.
+      {
+        rule: 'Only the author of a PreRegistration may reveal it.',
+        mutate: (r, ctx) => {
+          r.pre_registration = ctx.others.preRegAction;
+          r.prediction = ctx.others.preRegPrediction;
+          r.salt = ctx.others.preRegSalt;
+        },
+      },
+      {
+        rule: 'Revelation content does not hash to the sealed commitment; this is not what was committed to.',
+        mutate: (r) => { r.prediction = 'not what was committed to'; },
+      },
+      // THE SALT AND PREDICTION MOVE WITH THE COMMITMENT, deliberately. The
+      // hash check runs BEFORE the deadline check, so revealing the expired
+      // commitment with the baseline's content would fire the hash rule and
+      // this case would pass for the wrong reason.
+      {
+        rule: 'Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.',
+        mutate: (r, ctx) => { r.pre_registration = ctx.expiring; r.prediction = ctx.EXP_PRED; r.salt = ctx.EXP_SALT; },
+      },
+      {
+        rule: 'Revelation pre_registration does not resolve.',
+        expect: 'deferral',
+        mutate: (r) => { r.pre_registration = danglingHash('action', 102); },
       },
     ],
   },

@@ -1219,6 +1219,78 @@ output.
 closing any of the three means a rule in the integrity zome, and that is a
 `protocol_version` bump and a DNA hash change.
 
+### Finding 14 — the foresight types were excluded on a reason that was wrong twice over, and the case that closed them was passing by accident
+
+**The exclusion note said `WorldlineTrace` and `Revelation` "need dependency
+chains rather than payloads, which is a larger job than this file".** That note
+had already been corrected once — it originally blamed chains for `Retraction`
+too, which turned out to cost one extra call. On 2026-10-21 the rest of it went
+the same way, and in both directions.
+
+**The chains were already built.** `otherAgentFixtures()` has been publishing a
+trace, a commitment and a reveal since item 5f, for the link rules — so the
+expensive-sounding prerequisite existed and nothing consumed it for entry
+rules. What actually blocks these types is narrower and does not look like a
+chain: **most of their fields are derived by the extern**, so the rules about
+them are `needs_extern` and unreachable from JavaScript at any effort. Eight of
+the eighteen sites across the three types are that, and they stay out of the
+denominator by class rather than by exemption.
+
+**Ten were reachable and eight now have cases.** The corpus goes from **10
+entry types to 13** — `pre_registration`, `revelation` and `worldline_trace` —
+at **260 checks, 0 failed, 0 skipped**. What those eight assert is what a
+caller actually hands in: a deadline, a question hash, an expiry, and the
+content offered at reveal time.
+
+**A THIRD SHAPE OF GAP, which this corpus had not seen before.** `PreRegistration
+question must predate the commitment` is classed `crafted`, because `question`
+**is** caller-controlled — and the rule is still unreachable, because the guard
+does not compare the field. It compares `question.action().timestamp()` against
+the commitment's own, and both are host-assigned. Any question that resolves
+was authored earlier, so the only way to make the comparison fire is a clock
+moved backwards, which is READINESS item 14's defect and has its own probe.
+**A `crafted` classification is a claim about the field, not about the rule** —
+the first time those two have come apart here. Declared in `GAPS` with that
+reason, alongside `PeriodBoundary sample_action not found`, which cannot dangle
+because the extern builds every boundary from the caller's own chain.
+
+**AND THE INJECTION FOUND A WEAKNESS IN A CASE RATHER THAN CONFIRMING IT, which
+is the second time that has happened here and the better outcome both times.**
+Injection **BH** removed `Only the author of a PreRegistration may reveal it.`
+The case red — and for the wrong reason: *"stopped for a different reason:
+Revelation content does not hash to the sealed commitment"*. The case had been
+offering agent 1's own prediction and salt, so the **hash check one line later**
+was refusing the forged reveal, and the case would have gone on passing if the
+author rule were deleted tomorrow. It now supplies agent 2's real content —
+named once in `OTHER_PREDICTION`/`OTHER_SALT` rather than typed a third time —
+leaving the author rule as the only check that can refuse it. Re-injected, the
+forged reveal **COMMITS**, which is the strongest red available.
+
+**That also sharpens what the rule is for.** Against somebody who does not know
+the committed content the hash check is already sufficient; the author rule's
+unique work is against somebody who **does** — after a reveal elsewhere, or a
+leak — which is precisely when a third party could otherwise decide for an
+author whether their commitment counts as revealed.
+
+| injection | what was removed | result |
+|---|---|---|
+| **BG** | `reveal_deadline` must be after the commitment | 1 red, and the call **COMMITTED** — an already-expired commitment is accepted |
+| **BH** | only the author may reveal | first run: 1 red **for the wrong reason** (see above). After the case was strengthened: 1 red, and the forged reveal **COMMITS** |
+| **BI** | `expires_at must be > created_at` | 1 red, and the call **COMMITTED** |
+
+Each was a separate build against a clean conductor; the restored zome returns
+260 passed, 0 failed, 0 skipped. **What is NOT asserted here**: the two
+`expect: 'deferral'` cases were not individually injected, for the same reason
+`Claim`'s dependency cases were not — the assertion is that the message does
+*not* appear and the write stalls retryably, which a removed rule does not
+change.
+
+**What remains on these three types is one piece of work and it is not corpus
+authoring.** The eight `needs_extern` rules need a coordinator extern that
+accepts a raw payload, which is a protocol surface decision — whether this
+repository wants an extern existing only so tests can reach derived fields —
+and deliberately not taken here.
+
 ## Why one mutation at a time
 
 A payload that violates two rules proves nothing about either: validation
