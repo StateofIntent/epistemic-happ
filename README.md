@@ -1031,7 +1031,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-20, restructured on 2026-10-10 because the single table
+**Current as of 2026-10-20 (second entry that day), restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1126,6 +1126,88 @@ rather than resolved**, because asserting it unblocked on this reading would be
 the same error in the other direction. **One genuinely open publish follows from
 it**: `agent-sdk` is `0.1.5` in this tree and `0.1.4` on the registry, so item
 12's `closureOf` is unpublished.
+
+**2026-10-20, LATER THE SAME DAY: four more rows closed, and the pattern across
+them is worth more than any of them.** Item 15's code half — `npm audit` in
+`mcp-server` from 4 vulnerabilities (one CRITICAL) to **0**, by a plain relock,
+exactly as the row predicted, with `package.json` untouched; verified past the
+audit number against a real conductor, because a clean audit on a broken
+package is worse than a dirty one on a working package. Item 5e — `enumerate.mjs`
+now sees a coordinator pre-check that shadows a validation rule, nine such
+sites, and the sweep answers the row's open question with **no others**. Item 7 —
+the reasoning for `partition-rejoin`'s deliberate red now lives in the harness
+where a reader of the red will find it. Item 8's dependency — **resolved by
+measurement rather than judgement.**
+
+**FOUR BLOCKERS WERE WRONG, IN FOUR DIFFERENT WAYS, AND THAT IS THE FINDING.**
+
+| row | said | actually |
+|---|---|---|
+| **10** | needs a `protocol_version` bump and a migration judgement | needed **neither** — the blocker had priced the `Constitution` design, not the goal |
+| **15** | needs credentials | the `0.1.4` publish had **already shipped**, two days earlier, and this file said otherwise |
+| **7** | "Nothing" | true of **one of its two options**; the retry half is refused on merit |
+| **8** | blocked on 5f | **satisfied** — friction is keyed on `AgentPubKey`, not on the conductor |
+
+**The common shape is a blocker that describes WHAT IT WOULD TAKE instead of
+WHAT IS BLOCKED.** "A `protocol_version` bump" was the cost of one design for
+item 10's goal, and the goal was reachable without it. "Credentials" was true
+of a publish that had happened. "Nothing" was true of half a row. "5f" was a
+dependency nobody had measured. **A goal outlives the design you had in mind
+for it, and a blocker written as a cost goes stale the moment somebody thinks
+of a cheaper route** — which is exactly what this section exists to catch, and
+it did not catch these, because the rows read as specific rather than as
+assumptions. The rule going forward: write the obstacle, not the remedy.
+
+**Item 8's resolution is the one worth reading, because it turned a judgement
+into a measurement.** Its 5f dependency rested on the friction cap — 20 per
+rolling hour, so one observer saturates and a metabolic loop must be
+multi-agent. Nobody had checked whether the cap is per agent or per conductor.
+It is **per agent, by construction in both zomes**: the integrity side is
+`count_recent_actions_since_checkpoint(author: AgentPubKey, ..)` over
+`must_get_agent_activity(author, ..)`, and the coordinator side is `query()`
+over the caller's own chain. 5f's `callOther` publishes under a genuine second
+`AgentPubKey`. So the infrastructure exists and never needed a second
+conductor. **What remains is the work, not a dependency** — and a coordinator
+change, so no DNA hash bump.
+
+**IT IS STILL NOT BUILT, AND THE REASON IS INVARIANT 6 RATHER THAN EFFORT.**
+Everything a scheduled observer writes is permanent and un-deletable, and it
+spends a real friction budget every tick. Switching on an autonomous writer is
+the least reversible change this protocol offers, so what it writes, how often,
+and under whose key are decisions to take deliberately rather than defaults to
+inherit from whoever implements it first.
+
+**AND AN INSTRUMENT FIRED, which is the whole reason §9's gossip freeze left
+them in place.** `partition-rejoin` went red twice on [#296](../../pull/296) —
+a **comment-only** change to `partition-rejoin.mjs` itself, which is the
+cleanest control this question has ever had, since a comment cannot slow a
+network. Both runs failed on the `<= 60s` precondition while **every rejoin
+assertion passed**, and both reported `baseline crossed in 421.1s` — **the same
+figure, to a tenth of a second, across two independent runs.** Variance does not
+do that. The reading it suggests is a **deterministic timeout or fixed retry
+schedule rather than a distribution**, and the record fits: 415s, 421.1s,
+421.1s and 424.9s all sit within ~5s of 420s, while 929.1s and 943.0s cluster
+near 936s. If a constant is being hit, the number is in `kitsune2`'s backoff or
+round scheduling and not in a propagation distribution.
+
+**That is recorded and deliberately NOT acted on.** The freeze's reopen
+condition is *"a CI failure whose FIRST occurrence is already outside everything
+documented here"* and explicitly **not** another slow crossing. A repeated
+identical constant is arguably outside it — nothing here describes the slowness
+as deterministic — but reading it that way reopens an investigation this project
+shut on purpose, and that is a decision about where to spend effort rather than
+a measurement. **The instruments did their job: the signal arrived legible.**
+Ruling on whether it clears the bar is the one thing here that needs a person
+and is not a publish.
+
+**WHAT NEEDS A PERSON, and it is a short list.** The **publish** closes 15 and 6
+together and needs `npm login` plus a browser second factor — `agent-sdk` is
+`0.1.5` here against `0.1.4` published, so item 12's `closureOf` is unpublished,
+and the dependency-range flip belongs to the publish run itself for the
+`ETARGET` reason the sequence documents. **Item 9** is one governance decision.
+**Item 20** is three readings and a decision each, batched onto the next
+`protocol_version` bump. **Item 8** needs the go-ahead above. **Item 11** sits
+behind 9. Everything else on the roadmap is done.
 
 | Open item | Blocked on |
 |---|---|
