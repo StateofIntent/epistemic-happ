@@ -1105,7 +1105,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-20 (second entry that day), restructured on 2026-10-10 because the single table
+**Current as of 2026-10-20 (checkpoint entry, the third that day), restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1300,6 +1300,84 @@ publish sequence* carries the five remaining steps. **Item 9** is one governance
 **Item 20** is three readings and a decision each, batched onto the next
 `protocol_version` bump. **Item 8** needs the go-ahead above. **Item 11** sits
 behind 9. Everything else on the roadmap is done.
+
+**CHECKPOINT, end of 2026-10-20. Eight queue items closed in one day, and the
+roadmap now has nothing on it that is blocked on effort.** In order: **10** (the
+conductance half-life becomes the reader's promise), **15** (`mcp-server`'s
+advisories, 4 to 0 by a plain relock), **5e** (shadowed pre-checks, nine of
+them, sweep says no others), **7** (why `partition-rejoin`'s red is
+deliberate, said in the harness), **8** (the protocol's present tense), **6**
+and **15**'s publish half (`0.1.5` on the registry), and **9** (a discourse
+reading becomes somebody's signed promise). Eleven pull requests, #291 to #301.
+
+**THE ONE FINDING THAT OUTLIVES ALL OF THEM is about this file's own "blocked
+on" column, and it is now five for five.** Every row closed today had a blocker
+that was wrong, and wrong in the same direction:
+
+| row | said | actually |
+|---|---|---|
+| **10** | needs a `protocol_version` bump and a migration judgement | neither — it priced the `Constitution` design, not the goal |
+| **15** | needs credentials | the `0.1.4` publish had already shipped |
+| **7** | "Nothing" | true of one of its two options |
+| **8** | blocked on 5f | satisfied — friction is per `AgentPubKey`, not per conductor |
+| **9** | "one governance decision" | that, **and a framing that was not implementable**: a membrane has no key |
+
+**The shape is a blocker describing WHAT IT WOULD TAKE instead of WHAT IS
+BLOCKED.** A goal outlives the design you had in mind for it, so a blocker
+written as a cost goes stale the moment somebody finds a cheaper route — and
+these read as specific rather than as assumptions, which is why this section
+did not catch them. **Write the obstacle, not the remedy.** Item 9 adds a
+second failure mode worth naming separately: a row can be blocked on nothing
+and still be *unbuildable as written*, because its own sentence assumes
+something false about the protocol. "Let a membrane publish its reading" was
+never possible — only an agent has a key — and no amount of unblocking would
+have revealed that. **A row's framing deserves the same scepticism as its
+blocker.**
+
+**WHAT TODAY ADDED TO THE PROTOCOL, in one line each.** Readers now promise
+their own forgetting rate (§7, item 10). The validation corpus can see a
+coordinator pre-check that shadows a rule, and knows the difference between one
+with a raw-write bypass and one without (item 5e). **The protocol has a present
+tense** — `metabolic_tick`, the first `#[hdk_extern(infallible)]` here, which
+the host runs with no caller and which deliberately writes nothing (item 8).
+And an aggregate that used to dead-end at the caller is now an attributed,
+critiquable Claim, with two agents demonstrably disagreeing about the same
+membrane and nothing adjudicating between them (item 9).
+
+**THREE THINGS FOUND BY BUILDING RATHER THAN BY LOOKING, and each is recorded
+where it was found rather than only here.** `@holochain/client` 0.21's signal
+shape made a working scheduler look broken, and the same unmade change means
+**`bridge/src/index.ts` has been discarding every signal since that release** —
+masked by its polling fallback, which is why nothing noticed (item 21). An
+injection that was meant to confirm a safety assertion **found a hole in it
+instead**: "the tick wrote nothing" was testing "the tick wrote nothing *here*",
+because the check read only the test's own domain. And `PublishedReading`
+returned only an `ActionHash` while `validate_critique` needs an EntryHash, so
+a reading was critiquable in principle and not in practice.
+
+**AND AN INSTRUMENT FIRED THAT NOBODY HAS RULED ON.** `partition-rejoin`
+reported `baseline crossed in 421.1s` **twice, identically, to a tenth of a
+second**, across two independent runs of a comment-only commit. Variance does
+not do that. The reading it suggests is a deterministic timeout rather than a
+distribution, and §3's seven measurements fit it: four within ~5s of 420s, two
+near 936s. It is recorded and deliberately not acted on, because §9's reopen
+condition is a first occurrence outside everything documented and whether a
+repeated constant clears that bar is a decision about where to spend effort
+rather than a measurement.
+
+**WHERE TO PICK UP. Nothing is blocked on effort; everything open needs a
+person, and that is a different state from any previous checkpoint.**
+
+| open | what it needs |
+|---|---|
+| **20** | three readings and a decision each. Acting costs a `protocol_version` bump, so batch it onto the next one that happens anyway — the call items 10 and 17 both made |
+| **21** | a one-line fix, and a way to watch the bridge receive a signal. The fix is known; the evidence is not, and a fix nobody watched fail is not evidence |
+| **11** | its item-9 dependency is cleared. What remains is the measurement nobody has designed: telling exploration from degradation |
+| **the 421.1s** | a ruling on whether it reopens the frozen gossip investigation |
+
+**Cross-internet propagation on two consumer networks remains the highest-value
+item under *Before mass adoption*, and it still cannot be done in CI** — it
+needs two physical home networks, which is the one thing no runner provides.
 
 | Open item | Blocked on |
 |---|---|
