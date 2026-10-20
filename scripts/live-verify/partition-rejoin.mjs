@@ -232,6 +232,51 @@ const CONVERGE_WINDOW_MS = 600_000;
 // the real news in that run, which scrolled past as one unremarkable line
 // while the 33-minute sleep looked like the anomaly.
 const DWELL_CAP_MS = 300_000;
+// WHY THIS BOUND IS LEFT TO RED, AND WHY THAT IS A DECISION RATHER THAN A GAP.
+// READINESS item 7, second option: the reasoning lived only in `network.yml`,
+// which is not where somebody debugging a red lands.
+//
+// A baseline slower than this fails `the baseline is fast enough to measure
+// divergence inside the job budget`, and that check reds on runs whose SUBJECT
+// passed — #278 crossed its baseline in 210.5s, failed this precondition, and
+// the rejoin assertion (`a NEW claim crosses nodeA -> nodeB after healing`)
+// passed in the same run. #279 then passed outright. Both touch only
+// `scripts/validation-corpus/` and docs, so neither could have caused it.
+//
+// THREE FIXES LOOK OBVIOUS AND ALL THREE ARE REFUSED, each for its own reason:
+//
+//   * RAISE THE BOUND. Clearing the slowest crossing on record needs a
+//     79-minute dwell on top of two 600s convergence windows. The bound is not
+//     the problem; the measurement SPREAD is.
+//   * MAKE THIS CHECK NON-FAILING HERE. The divergence assertion below goes
+//     INCONCLUSIVE *because* this check is red — the two are a pair, by
+//     construction. Silencing this one produces a green run that proved
+//     nothing, which is the green-tick-that-cannot-go-red this directory
+//     exists to refuse. It would also be the first version of DWELL_CAP_MS's
+//     own fix, committed again: cap the dwell, leave the label, print a clean
+//     PASS on a false premise.
+//   * PORT real-gossip's `CROSSING_ATTEMPTS`. Two separate reasons. (a) What
+//     reds is the PRECONDITION, not a missed crossing — the baseline SUCCEEDED
+//     — so a retry re-measures something that already worked. (b) The number
+//     this harness needs is the SLOWEST crossing the network produces, because
+//     the dwell must OUTLAST gossip for absence to mean "the partition held".
+//     Retrying until a fast sample appears and then dwelling on it is the same
+//     false premise as above, reached from the other side. Three attempts at
+//     CONVERGE_WINDOW_MS would also want 30 minutes of a 45-minute job, so it
+//     needs a recomputed ceiling and not a copied constant.
+//
+// SO THE RED STAYS, in a job that is advisory by construction (`network` is the
+// only required one — see `network.yml`), where a red is information rather
+// than a merge block. What it does NOT tell you is whether a slow baseline is
+// intermittent or routine. That needs the consumer-network measurement in
+// READINESS §3, which cannot be done in CI because it needs two physical home
+// networks — so the retry is held until there is one, since retrying is wasted
+// job time if propagation turns out to be routinely minutes-slow.
+//
+// IF YOU ARE HERE BECAUSE THIS WENT RED: check whether the rejoin assertions
+// below passed. If they did, this is the runner being slow and the finding is
+// the baseline figure — record it in READINESS §3 beside the others rather
+// than re-running until it goes green.
 const MAX_SOUND_BASELINE_MS = DWELL_CAP_MS / 5;
 
 // THE FLOOR WAS 15s AND 15s IS INSIDE A CONDUCTOR CRASH WINDOW.
