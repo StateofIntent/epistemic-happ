@@ -978,11 +978,14 @@ zome_name, payload } }`, and a filter written against the older flat shape
 every signal, and the absence was indistinguishable from a function that never
 ran. Isolated by calling `metabolic_tick` directly: it returned
 `Ephemeral(60s)` and emitted a signal while the harness saw nothing. **The same
-client change `bridge/src/index.ts:397` still has not had**, which is now
-READINESS item 21: the bridge's guard is `undefined !== 'epistemic_coordinator'`
-on every signal, so its real-time path has been dead since 0.21 and nothing
-noticed, because a polling fallback kept the feature working with latency
-instead of breaking it.
+client change `bridge/src/index.ts:397` had not had**, which became READINESS
+item 21: the bridge's guard was `undefined !== 'epistemic_coordinator'` on every
+signal, so its real-time path had been dead since 0.21 and nothing noticed,
+because a polling fallback kept the feature working with latency instead of
+breaking it. **Closed 2026-10-21, and the one line was a third of it** — the
+instrument built to watch it fail found two more defects behind it, one of them
+in the polling path that still worked. See READINESS item 21 and
+`scripts/live-verify/bridge-signal.mjs`, 19 checks.
 
 **And an injection found a weakness in an assertion rather than confirming it,
 which is the whole reason for injecting.** Injection AO added an autonomous
@@ -1105,7 +1108,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-20 (checkpoint entry, the third that day), restructured on 2026-10-10 because the single table
+**Current as of 2026-10-21, restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1348,7 +1351,9 @@ membrane and nothing adjudicating between them (item 9).
 where it was found rather than only here.** `@holochain/client` 0.21's signal
 shape made a working scheduler look broken, and the same unmade change means
 **`bridge/src/index.ts` has been discarding every signal since that release** —
-masked by its polling fallback, which is why nothing noticed (item 21). An
+masked by its polling fallback, which is why nothing noticed (item 21 — closed
+2026-10-21, and the fallback turned out to be masking a second defect of its
+own). An
 injection that was meant to confirm a safety assertion **found a hole in it
 instead**: "the tick wrote nothing" was testing "the tick wrote nothing *here*",
 because the check read only the test's own domain. And `PublishedReading`
@@ -1368,16 +1373,96 @@ rather than a measurement.
 **WHERE TO PICK UP. Nothing is blocked on effort; everything open needs a
 person, and that is a different state from any previous checkpoint.**
 
+> **AND THAT CLAIM WAS WRONG WITHIN A DAY — item 21 was pure effort, and the
+> row below says so.** Kept rather than edited, because the error is the
+> interesting part: this checkpoint's own central finding is that a blocker
+> describing WHAT IT WOULD TAKE instead of WHAT IS BLOCKED goes stale, and
+> then it read item 21's "Nothing technical" as a person-shaped blocker
+> without checking the sentence immediately after it, which names an
+> instrument and is pure labour. **Five rows were audited for that fault and
+> the sixth was committed in the same breath.** A blocker summarised is a
+> blocker not re-read.
+
 | open | what it needs |
 |---|---|
 | **20** | three readings and a decision each. Acting costs a `protocol_version` bump, so batch it onto the next one that happens anyway — the call items 10 and 17 both made |
-| **21** | a one-line fix, and a way to watch the bridge receive a signal. The fix is known; the evidence is not, and a fix nobody watched fail is not evidence |
+| ~~**21**~~ | **CLOSED 2026-10-21.** The row was right that the evidence was the work and wrong that it needed a person — building the way to watch cost effort and nothing else. It also found that the known one-line fix was a THIRD of the defect: applied alone it leaves every tweet carrying an unreadable hash. See READINESS item 21 |
 | **11** | its item-9 dependency is cleared. What remains is the measurement nobody has designed: telling exploration from degradation |
 | **the 421.1s** | a ruling on whether it reopens the frozen gossip investigation |
 
 **Cross-internet propagation on two consumer networks remains the highest-value
 item under *Before mass adoption*, and it still cannot be done in CI** — it
 needs two physical home networks, which is the one thing no runner provides.
+
+**2026-10-21. Item 21 closed, and the day's finding is that the thing standing
+in its way was not a person but an INSTRUMENT — and that building the
+instrument found two more defects than the item named.**
+
+Item 21 was one line: the bridge's signal guard read `signal.zome_name` against
+the nested shape `@holochain/client` 0.21 delivers, so it evaluated
+`undefined !== 'epistemic_coordinator'` on every signal — always true — and the
+handler returned before doing anything. Its blocker said **"Nothing
+technical"**, and the sentence immediately after it described the whole job:
+*a way to observe the bridge receiving a signal, which does not exist yet.*
+That is effort, not a decision, and yesterday's checkpoint still counted the
+row as needing a person. **The blocker was right that the evidence was the
+work. It was wrong that the evidence needed somebody.**
+
+**What made the bridge unwatchable was never the conductor or Twitter.** Every
+decision lived inside a method of a class whose module calls `main()` at
+import, so reaching the parse meant connecting a conductor *and* holding four
+Twitter secrets. `bridge/src/signal.ts` now holds the parse, the hash encoding
+and both tweet builders as pure functions, and
+[`scripts/live-verify/bridge-signal.mjs`](scripts/live-verify/bridge-signal.mjs), 19 checks,
+drives **those** against signals a real coordinator emits — not copies of them.
+A harness carrying its own parse would have gone green while the bridge stayed
+broken, which is this file's *a prober proves the rule it probes* in its purest
+form.
+
+**AND THE ONE-LINE FIX WAS A THIRD OF THE DEFECT.** Applied alone, it turns the
+real-time path back on and the bridge then posts `Full context: \u0003Q...`:
+a hash arrives as 39 raw bytes, and interpolating a `Buffer` into tweet text
+yields mojibake. **That second defect is in the path that still WORKED** —
+`pollUnbridged` formats it identically — so the fallback everyone credited with
+keeping the feature alive had been composing unreadable pointers all along, and
+the Correlative Witness Principle's step 1, *"the tweet references the DHT
+hash"*, was true of no tweet the bridge ever built. A third followed from the
+other end: `pollMentions` matched `/0x[a-fA-F0-9]{64}/`, an Ethereum shape a
+39-byte Holochain hash is not in any encoding, and passed the match on as a
+**String** where the zome wants an `EntryHash` — so the Twitter-to-Holochain
+leg could not fire, and failed into a `logger.error` nobody reads.
+
+**The second and third are the same binding seen from both ends, and they
+disagreed with each other as well as with reality.** Nothing had ever compared
+the format the bridge writes with the format it reads, because the two sides
+were four hundred lines apart and neither was reachable from a test. Both now
+come from one module and the harness gates the round trip — written, matched,
+decoded back to the bytes the signal carried, accepted by the zome.
+
+**The negative evidence is four runs, and the ordering is the point.** All
+three defects live: 14 reds of 19 — **but most of that is cascade, not
+evidence**, since no parse means no hash and three sections red for want of an
+input. So each defect got its own injection, and the third needed one most:
+**defect 3 was MASKED by defect 2** (while the tweet carried raw bytes, the
+reverse-leg checks red whatever the pattern was) exactly as defect 2 was masked
+by the polling fallback and defect 1 by both. **One defect hidden by a
+fallback, hiding a second, masking a third** — and the measured reds are 7, 1,
+7 and 4 for the four injections, one of which came in at 1 where 2 was
+predicted. That shortfall is recorded rather than smoothed: two of the three
+controls pass with the ownership guard deleted, so a single check is all that
+stands between that module and claiming every signal on the interface.
+
+**CI compiles `bridge/` for the first time.** Nothing was building that
+directory at all, which is part of how this survived — though `tsc` would not
+have caught it either, since the handler took `any`. `conductor.yml` now builds
+the bridge and runs the harness beside `mew-lifecycle`, which is its pair: that
+one covers the bridge's zome surface, this one covers the bridge's own code.
+**Still unverified: the live X API.** Nothing here posts a tweet, and the
+service's `start()` is still unexercised.
+
+**Where that leaves the roadmap: 20, 11 and the 421.1s ruling, all three
+genuinely needing a person** — and this time the claim has been checked against
+each row's own sentence rather than its summary.
 
 | Open item | Blocked on |
 |---|---|

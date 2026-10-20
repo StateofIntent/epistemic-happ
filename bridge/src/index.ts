@@ -11,6 +11,19 @@ import { AdminWebsocket, AppWebsocket, CellType, type AppInfo, type CellId } fro
 // @holochain/client 0.17.1's own .d.ts files, not guessed: both are
 // genuine exports of "@holochain/client"'s root index.
 import { TwitterApi } from 'twitter-api-v2';
+// The signal path and the tweet text live in their own module so they can be
+// driven without a conductor or Twitter credentials — see signal.ts's header
+// and scripts/live-verify/bridge-signal.mjs. This file calls main() at module
+// load, which is why they could not be reached from a test while they were
+// methods here.
+import {
+  parseCoordinatorSignal,
+  formatDhtHash,
+  buildMewTweet,
+  buildClaimTweet,
+  DHT_HASH_REF,
+  decodeDhtHashRef,
+} from './signal';
 import * as dotenv from 'dotenv';
 import * as winston from 'winston';
 
@@ -393,17 +406,16 @@ class EpistemicBridgeService {
     logger.info('Epistemic Bridge Service started');
   }
 
+  // Dispatch only. Which signals are this bridge's, and what it reads off
+  // them, is parseCoordinatorSignal's decision — kept there so it can be
+  // watched against a real conductor (READINESS item 21).
   private async handleSignal(signal: any) {
-    if (signal.zome_name !== 'epistemic_coordinator') return;
-
-    const payload = signal.data;
-    // NewMew/NewClaim are now struct variants carrying entry_hash
-    // alongside the entry itself (see SignalPayload in the coordinator
-    // zome) — a bare Mew/Claim has no hash field of its own.
-    if (payload.NewMew) {
-      await this.bridgeMewToTwitter(payload.NewMew.mew, payload.NewMew.entry_hash);
-    } else if (payload.NewClaim) {
-      await this.bridgeClaimToTwitter(payload.NewClaim.claim, payload.NewClaim.entry_hash);
+    const parsed = parseCoordinatorSignal(signal);
+    if (!parsed) return;
+    if (parsed.kind === 'NewMew') {
+      await this.bridgeMewToTwitter(parsed.mew, parsed.entryHash);
+    } else {
+      await this.bridgeClaimToTwitter(parsed.claim, parsed.entryHash);
     }
   }
 
@@ -421,13 +433,10 @@ class EpistemicBridgeService {
   // links a BridgeRecord from that same EntryHash and get_unbridged_mews
   // looks the link up under it too. See coordinator's SignalPayload and
   // UnbridgedRecord for where callers get this value from.
-  private async bridgeMewToTwitter(mew: any, entryHash: string) {
-    // Include the DHT hash in the tweet text so replies can reference it.
-    // This is the witness link: the tweet carries a pointer to its DHT
-    // origin, though Twitter itself remains unaware of what that means.
-    const hashRef = entryHash ? `\n\nDHT: ${entryHash}` : '';
-    const excerpt = mew.content.substring(0, 200);
-    const tweetText = `${excerpt}${hashRef}\n\n— via #EpistemicResonance`;
+  private async bridgeMewToTwitter(mew: any, entryHash: unknown) {
+    // Tweet text (and the hash's encoding inside it) is buildMewTweet's
+    // decision — see signal.ts on why a raw hash must not be interpolated.
+    const { text: tweetText, excerpt } = buildMewTweet(mew, entryHash);
 
     // Only `content` actually made it into the tweet text — author is
     // implicit via the posting account (not literal data in the tweet),
@@ -456,7 +465,7 @@ class EpistemicBridgeService {
         }
       );
 
-      logger.info(`Correlative witness recorded: DHT ${entryHash} ↔ Twitter ${tweet.id}`);
+      logger.info(`Correlative witness recorded: DHT ${formatDhtHash(entryHash)} ↔ Twitter ${tweet.id}`);
     } catch (error) {
       logger.error('Bridge to Twitter failed:', error);
     }
@@ -464,13 +473,10 @@ class EpistemicBridgeService {
 
   // `entryHash` is the Claim's EntryHash — see bridgeMewToTwitter above
   // for why this must be passed explicitly rather than read off `claim`.
-  private async bridgeClaimToTwitter(claim: any, entryHash: string) {
-    // Claims are richer than Mews. We publish a summary tweet with a link
-    // to the full claim on the DHT. The full dimensional context stays on
-    // Holochain; Twitter gets only the projection.
-    const hashRef = entryHash ? `\n\nFull context: ${entryHash}` : '';
-    const excerpt = claim.content.substring(0, 200);
-    const tweetText = `${excerpt}${hashRef}\n\nDomain: ${claim.domain} — via #EpistemicResonance`;
+  private async bridgeClaimToTwitter(claim: any, entryHash: unknown) {
+    // Claims are richer than Mews: the tweet is a summary and the full
+    // dimensional context stays on the DHT. See buildClaimTweet.
+    const { text: tweetText, excerpt } = buildClaimTweet(claim, entryHash);
 
     // content (truncated) and domain both appear in the tweet text;
     // evidence_hashes, confidence, semantic_tags, source_mew don't, and
@@ -562,9 +568,17 @@ class EpistemicBridgeService {
       for (const mention of mentions) {
         // Look for Holochain hash references in the reply text.
         // This is how Twitter replies "bind back" to the DHT.
-        const hashMatch = mention.text.match(/0x[a-fA-F0-9]{64}/);
-        if (hashMatch) {
-          const linkedHash = hashMatch[0];
+        //
+        // The pattern comes from signal.ts, which is also where the reference
+        // in the outgoing tweet is written — the two used to disagree, and
+        // this one looked for `0x` + 64 hex, a shape nothing in this protocol
+        // has ever produced. `decodeDhtHashRef` then turns it back into the
+        // bytes the zome wants: `linked_holochain_claim` is an `EntryHash`,
+        // and handing it the matched STRING was the second half of that
+        // defect. See bridge-signal.mjs section 4.
+        const hashMatch = mention.text.match(DHT_HASH_REF);
+        const linkedHash = hashMatch ? decodeDhtHashRef(hashMatch[0]) : null;
+        if (linkedHash) {
 
           // Import as ExternalCritique — preserves Twitter provenance.
           await this.holochain.callZome(
@@ -580,7 +594,7 @@ class EpistemicBridgeService {
             }
           );
 
-          logger.info(`Twitter reply imported as ExternalCritique: ${mention.id} → ${linkedHash}`);
+          logger.info(`Twitter reply imported as ExternalCritique: ${mention.id} → ${formatDhtHash(linkedHash)}`);
         }
 
         this.lastMentionId = mention.id;

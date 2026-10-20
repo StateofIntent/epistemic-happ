@@ -362,6 +362,19 @@ jobs:
           npm ci
           npm run build
 
+      # The bridge has never been built by CI, which is part of how READINESS
+      # item 21 survived: `tsc` would not have caught it (the handler took
+      # `any`), but nothing was compiling this directory at all, so there was
+      # no step for `bridge-signal` to run after either. Built here because
+      # that harness imports `bridge/dist/signal.js` ON PURPOSE — it drives the
+      # bridge's own parse rather than a copy, and exits 1 with instructions if
+      # the build is missing rather than silently testing itself.
+      - name: Build the bridge
+        working-directory: bridge
+        run: |
+          npm ci
+          npm run build
+
       # The documented path, run as documented: two cargo release builds, then
       # `hc dna pack`, `hc app pack`, the UI build, and `hc web-app pack`. This
       # step is therefore also the only automatic check that this script still
@@ -442,6 +455,27 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/mew-lifecycle.mjs
+
+      # bridge-signal — READINESS item 21, and the pair to the step above:
+      # `mew-lifecycle` covers the bridge's ZOME surface, this covers the
+      # bridge's own CODE. It is the first thing in this repository to drive
+      # `bridge/src/` at all.
+      #
+      # The signals are real — emitted by the coordinator because the harness
+      # calls `create_claim` and `create_mew` — and the functions under test
+      # are the bridge's, not copies. That is the whole point: item 21 sat
+      # open because "a fix nobody watched fail is not evidence" and there was
+      # no way to watch, since every decision lived on a class whose module
+      # connects to a conductor and demands four Twitter secrets at import.
+      #
+      # No Twitter credentials are needed or wanted here. What is verified is
+      # the parse, the hash encoding in both directions, and the DHT accepting
+      # what the reverse leg decodes — all of which the live X API would only
+      # obscure.
+      - name: bridge-signal — the bridge receives a real signal, and reads back what it wrote
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/bridge-signal.mjs
 
       - name: friction-limits — the rolling-hour cap refusing a critique for real
         run: |
