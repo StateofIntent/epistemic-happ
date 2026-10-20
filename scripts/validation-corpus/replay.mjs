@@ -542,16 +542,17 @@ const GAPS = [
   // every peer runs. What is untested is the enforcement, and what is tested is
   // the courtesy — exactly the inversion this corpus exists to find, now
   // recorded rather than implied.
-  {
-    entry: 'critique',
-    rule: 'SWO temporal friction: author has {} Critiques in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
-    why: "the coordinator pre-checks the same limit and refuses first with its own wording; no attempt_* extern bypasses create_critique",
-  },
-  {
-    entry: 'antibody_pattern',
-    rule: 'SWO temporal friction: author has {} AntibodyPatterns in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.',
-    why: 'the coordinator pre-checks the same limit and refuses first; no bypassing extern for publish_antibody_pattern',
-  },
+  // THESE TWO USED TO BE DECLARED HERE AND ARE NOW DERIVED, which is strictly
+  // better and is why they are gone rather than kept for completeness.
+  // READINESS item 5e taught `enumerate.mjs` to see a coordinator pre-check
+  // that shadows a rule, so the Critique and AntibodyPattern friction rules
+  // are classed `shadowed` in the inventory — the same fact, computed from the
+  // two zomes instead of asserted here, and out of the assertable denominator
+  // by class rather than by exemption. Keeping both copies would mean one of
+  // them could rot, which is the thing the note above forbids. The three LINK
+  // friction gaps below STAY, because shadowing is not their only reason: each
+  // also needs a budget a single run cannot spend, and that half is not
+  // mechanical.
   // (b) A SECOND AGENT. ALL SEVEN BELOW ARE THE SAME PROBLEM, which is worth seeing as one: a rule that
   // fires when a thing belongs to SOMEBODY ELSE. One conductor has one agent,
   // so everything it can author is its own, and forging the owning field is

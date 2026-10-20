@@ -15,14 +15,44 @@
       "to": "SealedPrediction"
     }
   ],
+  "prechecks_without_validator": [
+    {
+      "in_fn": "assert_expertise",
+      "line": 2454,
+      "condition": "if trace.agent != author",
+      "refuses_with": "Can only assert expertise backed by your own WorldlineTrace.",
+      "reached_by": [
+        "assert_expertise"
+      ]
+    },
+    {
+      "in_fn": "pre_register",
+      "line": 5549,
+      "condition": "if input.prediction.trim().is_empty()",
+      "refuses_with": "prediction must not be empty",
+      "reached_by": [
+        "pre_register"
+      ]
+    },
+    {
+      "in_fn": "pre_register",
+      "line": 5552,
+      "condition": "if input.salt.trim().is_empty()",
+      "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
+      "reached_by": [
+        "pre_register"
+      ]
+    }
+  ],
   "by_class": {
     "honest": 19,
-    "crafted": 134,
+    "crafted": 132,
     "deferred": 15,
     "needs_prober": 0,
     "needs_extern": 10,
     "remote": 4,
-    "passthrough": 12
+    "passthrough": 12,
+    "shadowed": 2
   },
   "sites": [
     {
@@ -499,9 +529,15 @@
       "passthrough": null,
       "formatted": true,
       "guard": "if recent_count >= CRITIQUE_MAX_PER_WINDOW_VALIDATION",
-      "class": "crafted",
+      "class": "shadowed",
       "entry": "critique",
-      "write_path": "create_critique(Critique)"
+      "write_path": "create_critique(Critique)",
+      "shadowed_by": {
+        "extern": "check_critique_friction",
+        "refuses_with": "SWO temporal friction: {} Critiques already created in the last {} seconds (limit {}). \\              This is intentional friction to make critique-flooding slow, not a reputation judgment — \\              try again later.",
+        "matched": "identical condition",
+        "bypass": null
+      }
     },
     {
       "line": 1407,
@@ -554,9 +590,15 @@
       "passthrough": null,
       "formatted": true,
       "guard": "if recent_count >= ANTIBODY_PATTERN_MAX_PER_WINDOW_VALIDATION",
-      "class": "crafted",
+      "class": "shadowed",
       "entry": "antibody_pattern",
-      "write_path": "publish_antibody_pattern(AntibodyPattern)"
+      "write_path": "publish_antibody_pattern(AntibodyPattern)",
+      "shadowed_by": {
+        "extern": "check_antibody_pattern_friction",
+        "refuses_with": "SWO temporal friction: {} AntibodyPatterns already created in the last {} seconds (limit {}). \\              This is intentional friction, not a reputation judgment — try again later.",
+        "matched": "identical condition",
+        "bypass": null
+      }
     },
     {
       "line": 1483,
@@ -589,7 +631,17 @@
       "guard": "if &membrane.creator != action.author()",
       "class": "crafted",
       "entry": "membrane",
-      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)",
+      "shadowed_by": {
+        "extern": "create_membrane",
+        "refuses_with": "Membrane constitution must be the creator's own published Constitution.",
+        "matched": "curated",
+        "why": "shadowed by ORDERING rather than by a twin: forging the creator means naming somebody else, so the extern's constitution-ownership check fires first and the payload is refused on a DIFFERENT rule. Observed that way in 5b.",
+        "bypass": [
+          "attempt_unaccountable_membrane"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane constitution must be the creator's own published Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
       "line": 1497,
@@ -611,7 +663,16 @@
       "guard": "if membrane.required_promises.is_empty()",
       "class": "crafted",
       "entry": "membrane",
-      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)",
+      "shadowed_by": {
+        "extern": "create_membrane",
+        "refuses_with": "Membrane must declare at least one required_promise.",
+        "matched": "identical condition",
+        "bypass": [
+          "attempt_unaccountable_membrane"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane must declare at least one required_promise.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
       "line": 1533,
@@ -622,7 +683,17 @@
       "guard": "if membrane.required_promises.is_empty()",
       "class": "honest",
       "entry": "membrane",
-      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)",
+      "shadowed_by": {
+        "extern": "create_membrane",
+        "refuses_with": "Referenced entry is not a Constitution.",
+        "matched": "curated",
+        "why": "the same refusal written two ways — `let Some(c) = .. else` in the validator, `.ok_or(wasm_error!(..))` on a `get` + `to_app_option` in the extern.",
+        "bypass": [
+          "attempt_unaccountable_membrane"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Referenced entry is not a Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
       "line": 1538,
@@ -633,7 +704,16 @@
       "guard": "if constitution.agent != membrane.creator",
       "class": "crafted",
       "entry": "membrane",
-      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
+      "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)",
+      "shadowed_by": {
+        "extern": "create_membrane",
+        "refuses_with": "Membrane constitution must be the creator's own published Constitution.",
+        "matched": "identical condition",
+        "bypass": [
+          "attempt_unaccountable_membrane"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane constitution must be the creator's own published Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
       "line": 1559,
@@ -1020,7 +1100,16 @@
       "guard": "if recent_count >= SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION",
       "link_type": "SynapticLink",
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "shadowed_by": {
+        "extern": "check_synaptic_link_friction",
+        "refuses_with": "SWO temporal friction: {} SynapticLinks already created in the last {} seconds (limit {}). \\              This is an absolute limit.",
+        "matched": "identical condition",
+        "bypass": [
+          "attempt_false_attachment_link"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — check_synaptic_link_friction returns \"SWO temporal friction: {} SynapticLinks already created in the last {} seconds (limit {}). \\\\              This is an absolute limit.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
       "line": 2008,
@@ -1097,7 +1186,16 @@
       "guard": "if recent_count >= REINFORCEMENT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "Reinforcement",
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "shadowed_by": {
+        "extern": "check_reinforcement_friction",
+        "refuses_with": "SWO temporal friction: {} Reinforcements already created in the last {} seconds (limit {}). \\              This is intentional friction, not a reputation judgment — try again later.",
+        "matched": "identical condition",
+        "bypass": [
+          "attempt_false_attachment_link"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — check_reinforcement_friction returns \"SWO temporal friction: {} Reinforcements already created in the last {} seconds (limit {}). \\\\              This is intentional friction, not a reputation judgment — try again later.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
       "line": 2107,
@@ -1141,7 +1239,16 @@
       "guard": "if recent_count >= ATTESTATION_GRANT_MAX_PER_WINDOW_VALIDATION",
       "link_type": "AttestationGrant",
       "class": "crafted",
-      "entry": "create_link"
+      "entry": "create_link",
+      "shadowed_by": {
+        "extern": "check_attestation_grant_friction",
+        "refuses_with": "SWO temporal friction: {} AttestationGrants already created in the last {} seconds \\              (limit {}). This bounds how fast the right to vouch can be spent — try again later.",
+        "matched": "identical condition",
+        "bypass": [
+          "attempt_false_attachment_link"
+        ]
+      },
+      "enforcement_caveat": "the coordinator refuses this payload FIRST — check_attestation_grant_friction returns \"SWO temporal friction: {} AttestationGrants already created in the last {} seconds \\\\              (limit {}). This bounds how fast the right to vouch can be spent — try again later.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
       "line": 2194,

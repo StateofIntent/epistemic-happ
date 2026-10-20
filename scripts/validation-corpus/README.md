@@ -361,8 +361,13 @@ client skips; the integrity rule, built on
 That inversion is exactly what this corpus exists to find, and it is now
 recorded instead of implied.
 
-`enumerate.mjs` cannot see any of this yet — it learned about derived fields in
-5d, not about pre-checks that shadow a rule. Teaching it is its own queue item.
+~~`enumerate.mjs` cannot see any of this yet — it learned about derived fields in
+5d, not about pre-checks that shadow a rule. Teaching it is its own queue item.~~
+**It can, as of 2026-10-20 — READINESS item 5e. See *Finding 12* below**, which
+is what the sweep this paragraph asked for actually found: nine shadowed sites
+rather than six, a reason the two entry-type declarations above could be
+deleted instead of kept, and two bugs in this tool's own view of the
+coordinator that were hiding the ninth.
 
 ### Finding 7 — a message that needs `Ok(None)`, which a wrong-typed entry does not produce
 
@@ -1086,6 +1091,133 @@ the same limit (`ATTESTATION_GRANT_MAX_PER_WINDOW` 5 = `..._VALIDATION` 5), so
 `Critique` and `AntibodyPattern` gaps already take. Reaching it through the
 prober would additionally need five grants that PASS the tenure bar, which is
 the thing no run can produce.
+
+### Finding 12 — the sweep for shadowed rules found nine, and two bugs that were hiding the ninth
+
+**READINESS item 5e, and the thing worth carrying forward is not the nine.**
+Finding 6 above named six shadowed sites from having run into them, and asked
+for a sweep because `create_claim` and friends carry pre-checks too and nobody
+had checked whether any of THOSE shadow a rule. The sweep says: **no others.**
+Nine sites total — finding 6's six, plus the three LINK friction rules items 18
+and 19 had already declared by hand for the same reason — and nothing else in
+either zome.
+
+**How it decides, and which half is mechanical.** A pre-check and its validation
+twin are usually the same Rust expression, because they were written as a pair.
+So the conditions are compared as text after normalising the one difference the
+pair always has — the integrity zome's constant carries a `_VALIDATION` suffix
+(`CRITIQUE_MAX_PER_WINDOW_VALIDATION` against `CRITIQUE_MAX_PER_WINDOW`, five
+such pairs). That resolves seven of the nine on the expression itself. The other
+two are curated in `SHADOWED_BY_PRECHECK` and the build fails if either stops
+matching:
+
+| rule | why it is not mechanical |
+|---|---|
+| `Membrane's constitution hash does not resolve to a Constitution entry.` | the same refusal written two ways — `let Some(c) = .. else` in the validator, `.ok_or(wasm_error!(..))` on a `get` + `to_app_option` in the extern |
+| `Membrane creator must match action author.` | **no twin at all.** Shadowed by ORDERING: forging the creator means naming somebody else, so the extern's constitution-ownership check fires first and refuses on a DIFFERENT rule — which is exactly what finding 6 observed happening |
+
+**WHAT SHADOWING COSTS DEPENDS ON WHETHER A BYPASS EXISTS, and that is the
+distinction item 5e asked to keep.** With a raw-write path the rule is still
+assertable and its class does not change; what changes is that the inventory now
+says the ordinary extern must not be used, carried on the site as an
+`enforcement_caveat`, so a case cannot quietly be refused by the courtesy and
+counted. Without one, nothing can assert the rule and it leaves the denominator
+as the new `shadowed` class.
+
+| | shadowed sites | bypass |
+|---|---|---|
+| `Membrane` × 4 | all four of finding 6's | `attempt_unaccountable_membrane` — `create_entry` with nothing in front of it |
+| `SynapticLink`, `Reinforcement`, `AttestationGrant` friction | the three link rules | `attempt_false_attachment_link`, which carries no pre-check |
+| `Critique`, `AntibodyPattern` friction | the two entry rules | **none** — nothing writes either without its friction helper |
+
+**So two hand-written declarations in `replay.mjs` were DELETED rather than
+kept.** The Critique and AntibodyPattern friction gaps said, in prose, exactly
+what the tool now derives from the two zomes. Keeping both copies would leave
+one that could rot, which is the thing this file's own note on the GAPS list
+forbids — and the coverage line reads better for it: `critique: 5 of 5` instead
+of `5 of 6, 1 declared unreachable`. **The three LINK friction declarations
+stay**, because shadowing is not their only reason: each also needs a budget one
+run cannot spend (forty Reinforcements, twenty SynapticLinks each costing a
+Critique, five attestation grants that would have to pass a thirty-day tenure
+bar), and that half is not mechanical.
+
+**THE TWO BUGS ARE THE PART WORTH KEEPING, because both failed by producing an
+ABSENT answer rather than a wrong one.** The SynapticLink friction rule was
+missing from this analysis entirely, three separate times, and each cause was a
+bound somebody had set confidently:
+
+1. **The extern scanner could not see wrapped signatures.** It required the
+   parameter on the same line as `pub fn`, and `rustfmt` wraps a signature once
+   it is long enough — so **five of the coordinator's 68 externs were invisible,
+   including BOTH multi-line `attempt_*` probers.** The three link friction
+   rules therefore reported no raw-write path while the prober written for
+   exactly that purpose sat in the tree: the bypass could not be seen because
+   its extern could not be seen. Same shape as item 18's `PROBED_LINK_TYPES` —
+   a classifier reaching a confident conclusion from an input nobody had
+   maintained. No entry write path changes as a result, so 5d's
+   classifications are untouched; the hole was latent for entries and live for
+   links.
+2. **The guard window was too tight by exactly one comment block.** A
+   coordinator refusal's condition is read from the first real line above it,
+   and the window was three lines. `check_synaptic_link_friction` explains
+   itself in four comment lines between its `if` and its `return Err`, so its
+   condition read as absent and matched nothing. Widened to twelve, which is
+   safe because the loop still breaks on the first real line — that is what
+   separates an `if` guard from the `.ok_or(wasm_error!(..))` form, which has no
+   condition of its own.
+
+**And one judgement that was wrong rather than merely bounded.** Guards were
+collected one call level deep, with the bound written down as covering every
+case in this file. It did not: `create_critique` reaches the SynapticLink
+pre-check through TWO hops (`create_synaptic_link` → `check_synaptic_link_friction`).
+Reachability is now the transitive closure with a visited set, which removes the
+judgement instead of restating its limit. The closure being too BROAD is the
+opposite risk and is bounded by what a match demands — the same condition
+expression, or a curated entry naming the exact message.
+
+**The closure is the wrong question in one place, and that is stated because it
+reads as an inconsistency.** Whether an extern WRITES is decided from its own
+body alone. Asking the closure makes every read a write path: `get_discourse_health`
+reaches `effective_conductance_with_half_life` legitimately, and the graph keeps
+going, so three read-only externs each reported the same conductance-tag guard
+as an enforcement gap. Reachability is right for finding a guard and wrong for
+deciding whether a write happened.
+
+### Finding 13 — the inverse of shadowing, and this repository has shipped it twice
+
+**Three coordinator refusals have no validation twin at all.** This fell out of
+5e's comparison for free and is reported rather than classified, because it is
+the opposite arrangement and the opposite problem. Shadowing is a pre-check WITH
+a twin, where the twin is what cannot be reached — a TESTING gap. A pre-check
+with NO twin is an ENFORCEMENT gap: a custom client skips the coordinator and
+the condition is not checked by anybody.
+
+| refusal | in |
+|---|---|
+| `Can only assert expertise backed by your own WorldlineTrace.` | `assert_expertise`, which writes a `Claim` |
+| `prediction must not be empty` | `pre_register` |
+| `salt must not be empty; without it a guessable prediction is recoverable` | `pre_register` |
+
+**This is a candidate list, not a defect list, and the distinction is load-bearing.**
+A pre-check may legitimately have no twin — it can guard a coordinator-only
+concern, or a field the host derives and verifies another way. Deciding which is
+which needs a reader, so the tool reports and does not judge, the same split 5d
+and 5e already use for the half that is not mechanical.
+
+**What makes it worth a permanent check rather than a one-off look is that this
+exact shape has shipped here twice**, and both are recorded in the zomes' own
+comments. `create_membrane` carried all three accountability checks while
+`validate_membrane` checked neither the constitution nor the promises — and its
+comment claimed to be *"mirroring validate_membrane's DHT-enforced rule (the
+real enforcement layer, unbypassable by a custom client)"* while that function
+did no such thing. The burn tier was the same: a pre-check asserting a
+validation twin that did not exist. Both were found by reading, late. This now
+reds nothing and prints every run, so the next one is found by looking at
+output.
+
+**Queued as READINESS item 20** — a decision rather than a sweep, because
+closing any of the three means a rule in the integrity zome, and that is a
+`protocol_version` bump and a DNA hash change.
 
 ## Why one mutation at a time
 

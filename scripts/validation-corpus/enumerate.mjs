@@ -289,13 +289,40 @@ const coordLines = coord.split('\n');
 const pascal = (snake) => snake.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join('');
 
 // Every #[hdk_extern], with the name and single parameter of the fn beneath it.
+//
+// THE SIGNATURE IS READ ACROSS LINES, and bounding it to one was a real blind
+// spot rather than a tidiness point. `rustfmt` wraps a signature once it is
+// long enough, so `pub fn attempt_false_attachment_link(` carries its parameter
+// on the NEXT line — and five of this file's 68 externs are wrapped that way,
+// including BOTH of the multi-line `attempt_*` probers. They were invisible
+// here, which is how the three LINK friction rules came to be reported as
+// having no raw-write path while the prober written for exactly that purpose
+// sat in the tree: the bypass could not be seen because its extern could not
+// be seen. Same shape as item 18's finding — a classifier reaching a confident
+// conclusion from an input nobody had maintained.
+//
+// No entry write path changes as a result (the five are two link probers and
+// three reads), so 5d's classifications are unaffected; the hole was latent for
+// entries and live for links.
 const externs = [];
 for (let i = 0; i < coordLines.length; i++) {
   if (!/#\[hdk_extern\]/.test(coordLines[i])) continue;
   for (let j = i + 1; j < Math.min(i + 6, coordLines.length); j++) {
-    const m = /pub fn ([a-z_0-9]+)\s*\(\s*([a-z_0-9]+)\s*:\s*([A-Za-z_0-9]+)/.exec(coordLines[j]);
-    if (m) { externs.push({ fn: m[1], param: m[2], type: m[3], line: j + 1 }); break; }
-    if (/pub fn ([a-z_0-9]+)\s*\(\s*\)/.test(coordLines[j])) break;   // no-arg extern
+    if (!/pub fn ([a-z_0-9]+)/.test(coordLines[j])) continue;
+    const name = /pub fn ([a-z_0-9]+)/.exec(coordLines[j])[1];
+    // The signature from `(` to its matching `)`, however many lines that takes.
+    const sig = coordLines.slice(j, Math.min(j + 8, coordLines.length)).join(' ');
+    const open = sig.indexOf('(');
+    let depth = 0, close = -1;
+    for (let k = open; k < sig.length && open !== -1; k++) {
+      if (sig[k] === '(') depth++;
+      else if (sig[k] === ')') { depth--; if (depth === 0) { close = k; break; } }
+    }
+    const params = close === -1 ? '' : sig.slice(open + 1, close);
+    const m = /^\s*([a-z_0-9]+)\s*:\s*([A-Za-z_0-9]+)/.exec(params);
+    if (m) externs.push({ fn: name, param: m[1], type: m[2], line: j + 1 });
+    else externs.push({ fn: name, param: null, type: null, line: j + 1 });  // no-arg
+    break;
   }
 }
 const externAt = (ln) => {
@@ -674,7 +701,371 @@ if (unresolved.length) {
   process.exit(1);
 }
 
-const byClass = { honest: 0, crafted: 0, deferred: 0, needs_prober: 0, needs_extern: 0, remote: 0, passthrough: 0 };
+// ============================================================================
+// --- THE COORDINATOR REFUSES FIRST, so the rule's own message never appears.
+// READINESS item 5e, and the direct sequel to 5d.
+//
+// 5d taught this tool that `crafted` is false when the extern DERIVES the
+// field a rule guards: the payload cannot carry the violation, so the rule is
+// unreachable however the caller is built. 5b, by running into it, found the
+// OTHER way `crafted` is false — every field is the caller's, the payload
+// carries the violation perfectly, and the rule still never fires, because the
+// extern checks the same condition FIRST and returns its own `wasm_error!`.
+// A corpus case driven that way passes while asserting nothing about
+// validation: it was refused by the courtesy, not by the enforcement.
+//
+// WHAT IS MECHANICAL, and it is more than expected. A pre-check and its
+// validation twin are usually the same Rust expression, because they were
+// written as a pair — so the conditions are compared after normalising the one
+// difference the pair always has: the integrity zome's constant carries a
+// `_VALIDATION` suffix (`CRITIQUE_MAX_PER_WINDOW_VALIDATION` against
+// `CRITIQUE_MAX_PER_WINDOW`, five such pairs). That catches the five friction
+// rules and two of `Membrane`'s outright, on the expression text rather than on
+// a curated opinion.
+//
+// WHAT IS NOT, and why guessing is worse than failing. Two of `Membrane`'s
+// shadowed rules have no textual twin:
+//
+//   * the constitution-resolution rule is `let Some(c) = .. else` in the
+//     validator and `.ok_or(wasm_error!(..))` in the extern — the same refusal
+//     written two ways the parser cannot equate;
+//   * `Membrane creator must match action author.` has no twin AT ALL. It is
+//     shadowed by ORDERING: forging the creator means naming somebody else, and
+//     the extern's `constitution.agent != membrane.creator` check then fires
+//     first, on a different rule. 5b observed exactly that — the case came back
+//     refused by the constitution rule instead.
+//
+// So those are curated below and the build FAILS if a curated entry matches no
+// site or no extern guard, the same discipline GUARDS_FIELD and
+// PROBED_LINK_TYPES already carry. An unverifiable claim about reachability is
+// how the wrong denominator got here twice.
+//
+// WHAT SHADOWING COSTS DEPENDS ENTIRELY ON WHETHER A BYPASS EXISTS, which is
+// the distinction item 5e asked to be kept:
+//
+//   * WITH a raw-write path, the rule is still assertable and the class does
+//     not change — what changes is that the inventory now says the ordinary
+//     extern MUST NOT be used, so a case cannot quietly be refused by the
+//     courtesy and counted. `attempt_unaccountable_membrane` is `create_entry`
+//     with nothing in front of it, and `attempt_false_attachment_link` carries
+//     no friction check, so all four `Membrane` rules and all three LINK
+//     friction rules are in this group.
+//   * WITHOUT one, nothing can assert the rule and it leaves the denominator
+//     as `shadowed`. That is the two ENTRY friction rules, `Critique` and
+//     `AntibodyPattern`: no extern writes either without its friction helper.
+//
+// THE INVERSION IS THE POINT AND IS WORTH STATING PLAINLY: what is tested is
+// the courtesy and what is untested is the enforcement. The coordinator's check
+// is what a custom client skips; the integrity rule is what every validating
+// peer runs.
+// ============================================================================
+
+// Every coordinator function's body, so a guard can be attributed to the extern
+// that reaches it — the friction checks live in `check_*_friction()` helpers
+// called from the extern, not in the extern itself, so a scan bounded by the
+// extern body finds nothing. One level of calls is followed, which covers every
+// case in this file; the bound is stated rather than assumed, and a helper that
+// called another helper would be missed.
+const coordFns = [];
+for (let i = 0; i < coordLines.length; i++) {
+  const m = /^(?:pub )?fn ([a-z_0-9]+)/.exec(coordLines[i]);
+  if (m) coordFns.push({ name: m[1], start: i + 1 });
+}
+for (let i = 0; i < coordFns.length; i++) {
+  coordFns[i].end = i + 1 < coordFns.length ? coordFns[i + 1].start - 1 : coordLines.length;
+}
+const coordFnByName = new Map(coordFns.map((f) => [f.name, f]));
+
+// A guard that refuses with the coordinator's own message. The condition is
+// taken only from an `if` on one of the three lines above — deliberately tight,
+// because the `.ok_or(wasm_error!(..))` form has no condition at all and
+// walking further back would attribute it to an unrelated `if` above it. A
+// guard with no condition can still be matched by the curated table.
+function guardsIn(fn) {
+  const out = [];
+  for (let i = fn.start; i < fn.end; i++) {
+    if (!/wasm_error!\(WasmErrorInner::Guest/.test(coordLines[i])) continue;
+    const seg = coordLines.slice(i, Math.min(i + 6, fn.end)).join(' ');
+    const lit = /"((?:[^"\\]|\\.)*)"/.exec(seg);
+    if (!lit) continue;                                   // `format!("{:?}", e)` passthrough
+    if (/^\{:\?\}$/.test(lit[1])) continue;
+    // Blanks and comments are skipped, and the FIRST real line above decides:
+    // an `if` is the guard, anything else means this refusal carries no
+    // condition of its own (the `.ok_or(wasm_error!(..))` form, whose preceding
+    // real line is the `let` it hangs off). Breaking on the first real line is
+    // what preserves that distinction, so the window can be generous without
+    // mis-attributing a condition to a refusal that has none.
+    //
+    // Three lines was the first window and it was too tight by exactly one
+    // comment block: `check_synaptic_link_friction` explains itself in four
+    // comment lines between its `if` and its `return Err`, so its condition
+    // read as absent, nothing matched, and the SynapticLink friction rule
+    // stayed out of this analysis altogether rather than being misclassified.
+    let cond = null;
+    for (let j = i - 1; j >= Math.max(fn.start - 1, i - 12); j--) {
+      const t = coordLines[j].trim();
+      if (!t || t.startsWith('//')) continue;
+      if (/^if\s/.test(t)) { cond = t.replace(/\s*\{$/, ''); }
+      break;
+    }
+    out.push({ fn: fn.name, line: i + 1, cond, msg: lit[1].replace(/\\\n\s*/g, '').trim() });
+  }
+  return out;
+}
+
+// What an extern can reach: itself and every local function reachable from it,
+// TRANSITIVELY, with a visited set for cycles.
+//
+// Guards AND link writes both derive from this same set, because both hide in
+// helpers for the same reason. The friction checks are in `check_*_friction()`;
+// the SynapticLink write is in `create_synaptic_link()`, which is not an extern
+// at all.
+//
+// ONE LEVEL WAS TRIED FIRST AND IS NOT ENOUGH — the depth was not a detail to
+// state and move on from, it was wrong. `create_critique` reaches the
+// SynapticLink friction pre-check through TWO hops (`create_synaptic_link` ->
+// `check_synaptic_link_friction`), so at depth one that rule matched no
+// pre-check and dropped out of this analysis silently, which is the failure
+// shape that is hardest to notice: not a wrong answer, an absent one. Going
+// transitive removes the judgement rather than restating its bound.
+//
+// The risk of the closure being too BROAD is real and is bounded by what the
+// match demands: a shadow needs the same condition expression as the rule, or a
+// curated entry naming the exact message, so inheriting an unrelated helper's
+// guards cannot manufacture one.
+const reachCache = new Map();
+function reachableFns(fnName) {
+  if (reachCache.has(fnName)) return reachCache.get(fnName);
+  const out = [];
+  const seen = new Set();
+  const stack = [fnName];
+  while (stack.length) {
+    const name = stack.pop();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const fn = coordFnByName.get(name);
+    if (!fn) continue;
+    out.push(fn);
+    for (let i = fn.start; i < fn.end; i++) {
+      for (const c of coordLines[i].matchAll(/\b([a-z_0-9]{4,})\s*\(/g)) {
+        if (!seen.has(c[1]) && coordFnByName.has(c[1])) stack.push(c[1]);
+      }
+    }
+  }
+  reachCache.set(fnName, out);
+  return out;
+}
+
+const externGuards = new Map();
+for (const e of externs) {
+  externGuards.set(e.fn, reachableFns(e.fn).flatMap((f) => guardsIn(f)));
+}
+
+// Which externs WRITE a given link type, so a LINK rule can be checked for a
+// pre-check and a bypass the same way an entry rule is.
+//
+// Matching every line that merely NAMES a LinkTypes variant was the first cut
+// and it was wrong in a way that invented bypasses: `get_links` names the same
+// variant to READ it, so `find_synaptic_link` and
+// `get_twitter_replies_for_claim` were recorded as write paths and then — being
+// reads, with no pre-check to carry — offered as the raw-write bypass for a
+// friction rule. The variant must appear as an argument to `create_link`.
+//
+// THE TEST IS "CALLS create_link AND NAMES THE VARIANT", not "names the variant
+// near a create_link". Requiring proximity was the second cut and it dropped
+// the one bypass that matters most: `attempt_false_attachment_link` resolves
+// its link type through a `match` over `AttachmentLinkKind` twenty lines above
+// its single `create_link`, so every variant it can write sat outside the
+// window — which reported the three LINK friction rules as having no raw-write
+// path when the prober written for exactly that purpose does.
+//
+// THE `create_link` AND THE VARIANT MUST BE IN THE SAME FUNCTION. Taking both
+// from anywhere in the transitive closure was the third cut and it invented
+// bypasses again, in a subtler way than the first: `get_discourse_health` and
+// `is_agent_attested` READ `LinkTypes::Reinforcement`, and somewhere else in
+// their closure sits an unrelated `create_link`, so the two halves met across
+// two functions and three read-only externs were offered as raw-write paths for
+// a friction rule. Resolving writes per function first, and only then unioning
+// over the closure, keeps the closure's reach without its ambiguity.
+const fnLinkWrites = new Map();
+for (const fn of coordFns) {
+  const body = coordLines.slice(fn.start - 1, fn.end).join('\n');
+  if (!/create_link\s*\(/.test(body)) continue;        // a reader, not a write path
+  const vs = new Set([...body.matchAll(/LinkTypes::([A-Za-z_0-9]+)/g)].map((m) => m[1]));
+  if (vs.size) fnLinkWrites.set(fn.name, vs);
+}
+const linkWritePaths = new Map();
+for (const e of externs) {
+  for (const f of reachableFns(e.fn)) {
+    for (const v of fnLinkWrites.get(f.name) ?? []) {
+      const list = linkWritePaths.get(v) ?? new Set();
+      list.add(e.fn);
+      linkWritePaths.set(v, list);
+    }
+  }
+}
+
+const normCond = (c) => (c ?? '')
+  .replace(/^if\s+/, '')
+  .replace(/\s*\{$/, '')
+  .replace(/_VALIDATION\b/g, '')
+  .replace(/\.clone\(\)/g, '')
+  .replace(/\bref\s+/g, '')
+  .replace(/[&\s]/g, '');
+
+// Shadowed rules whose pre-check is NOT the same expression. Each names the
+// extern and the message that fires instead; both are verified to exist.
+const SHADOWED_BY_PRECHECK = {
+  'Membrane\'s constitution hash does not resolve to a Constitution entry.': {
+    fn: 'create_membrane',
+    refuses_with: 'Referenced entry is not a Constitution.',
+    why: 'the same refusal written two ways — `let Some(c) = .. else` in the validator, '
+      + '`.ok_or(wasm_error!(..))` on a `get` + `to_app_option` in the extern.',
+  },
+  'Membrane creator must match action author.': {
+    fn: 'create_membrane',
+    refuses_with: 'Membrane constitution must be the creator\'s own published Constitution.',
+    why: 'shadowed by ORDERING rather than by a twin: forging the creator means naming '
+      + 'somebody else, so the extern\'s constitution-ownership check fires first and the '
+      + 'payload is refused on a DIFFERENT rule. Observed that way in 5b.',
+  },
+};
+
+// Guards consumed as a shadow, by `fn:line`, so the inverse sweep below can
+// tell a pre-check that mirrors a rule from one that has no rule at all.
+const shadowHits = new Set();
+
+const shadowMiss = [];
+for (const [msg, decl] of Object.entries(SHADOWED_BY_PRECHECK)) {
+  if (!sites.some((s) => s.message === msg)) shadowMiss.push(`no site has message ${JSON.stringify(msg)}`);
+  else if (!(externGuards.get(decl.fn) ?? []).some((g) => g.msg === decl.refuses_with)) {
+    shadowMiss.push(`${decl.fn} has no guard refusing with ${JSON.stringify(decl.refuses_with)}`);
+  }
+}
+if (shadowMiss.length) {
+  console.error('\nSHADOW DECLARATION STALE: SHADOWED_BY_PRECHECK names something that is no');
+  console.error('longer there. A shadow claim nobody can check is exactly the wrong denominator.\n');
+  for (const m of shadowMiss) console.error(`  ${m}`);
+  process.exit(1);
+}
+
+for (const s of sites) {
+  if (!['honest', 'crafted'].includes(s.class)) continue;
+
+  // The externs that could carry this payload, and the raw-write paths that
+  // skip their checks. A bypass is an extern writing the same thing with no
+  // refusing guard reachable from it at all.
+  const writers = s.link_type
+    ? [...(linkWritePaths.get(s.link_type) ?? [])]
+    : (s.entry ? (writePaths.get(pascal(s.entry)) ?? []).map((w) => w.fn) : []);
+  if (!writers.length) continue;
+
+  const ordinary = writers.filter((f) => !/^attempt_/.test(f));
+  const declared = SHADOWED_BY_PRECHECK[s.message];
+  let hit = null;
+  for (const f of ordinary) {
+    for (const g of externGuards.get(f) ?? []) {
+      if (declared ? (f === declared.fn && g.msg === declared.refuses_with)
+                   : (g.cond && normCond(g.cond) === normCond(s.guard))) { hit = g; break; }
+    }
+    if (hit) break;
+  }
+  if (!hit) continue;
+  shadowHits.add(`${hit.fn}:${hit.line}`);
+
+  // A BYPASS IS A WRITE PATH THAT DOES NOT CARRY *THIS* PRE-CHECK, not one
+  // that carries no checks at all. Requiring a guard-free extern was the first
+  // cut and it rejected the real bypasses: `attempt_false_attachment_link`
+  // reaches a hash-parsing helper that refuses with its own message, so it
+  // looked guarded, while being exactly the raw-write path its doc comment says
+  // it is. What disqualifies an extern is refusing the SAME condition.
+  const bypass = writers.filter((f) => !(externGuards.get(f) ?? []).some(
+    (g) => (declared ? g.msg === declared.refuses_with
+                     : (g.cond && normCond(g.cond) === normCond(s.guard))),
+  ));
+  s.shadowed_by = {
+    extern: hit.fn,
+    refuses_with: hit.msg,
+    matched: declared ? 'curated' : 'identical condition',
+    ...(declared ? { why: declared.why } : {}),
+    bypass: bypass.length ? bypass : null,
+  };
+  if (bypass.length) {
+    s.enforcement_caveat = [s.enforcement_caveat, `the coordinator refuses this payload FIRST — `
+      + `${hit.fn} returns ${JSON.stringify(hit.msg)} — so a case driven through it passes on the `
+      + `courtesy rather than the enforcement. Assert it through ${bypass.join('/')}, which carries `
+      + `no pre-check.`].filter(Boolean).join(' ALSO: ');
+  } else {
+    // Nothing writes this without the pre-check, so no case can make the
+    // validator's message appear. Out of the denominator.
+    s.class = 'shadowed';
+  }
+}
+
+// ============================================================================
+// --- THE INVERSE SWEEP, which 5e did not ask for and which falls out of the
+// same comparison for free.
+//
+// Shadowing is a pre-check WITH a validation twin, where the twin is the thing
+// that cannot be reached. The opposite arrangement is a pre-check with NO twin
+// — a condition the coordinator refuses and no validating peer checks — and
+// that is not a testing gap, it is an ENFORCEMENT gap: a custom client skips
+// the coordinator and the condition is simply not enforced.
+//
+// THIS REPOSITORY HAS SHIPPED THAT DEFECT TWICE, which is why the sweep is
+// worth keeping rather than running once. `create_membrane` carried all three
+// accountability checks while `validate_membrane` checked neither the
+// constitution nor the promises — and its comment claimed to be "mirroring
+// validate_membrane's DHT-enforced rule (the real enforcement layer,
+// unbypassable by a custom client)" while that function did no such thing. The
+// burn tier was the same shape: a pre-check asserting a validation twin that
+// did not exist. Both are recorded in the zomes' own comments.
+//
+// WHAT THIS LIST IS AND IS NOT. It is every conditional refusal reachable from
+// an extern that WRITES, whose condition matched no rule of the entry or link
+// type it writes. That is a candidate list, not a defect list: a pre-check may
+// legitimately have no twin because it guards a coordinator-only concern (a
+// malformed link tag being read back), or because the field it guards is
+// derived and the commitment is verified another way. Deciding which is which
+// needs a reader, so the tool reports and does not classify — the same split
+// 5d and 5e already use for the half that is not mechanical.
+//
+// THE WRITE TEST IS THE EXTERN'S OWN BODY, deliberately, and it is the one
+// place here that does NOT use the transitive closure. Asking whether the
+// closure reaches a writer makes every read a write path: `get_discourse_health`
+// reaches `effective_conductance_with_half_life` legitimately, and from there
+// the graph keeps going, so three read-only externs reported the same
+// conductance-tag guard as an enforcement gap. A guard on a pure read cannot be
+// one — nothing is being written for a peer to fail to check. Reachability is
+// the right question for finding a guard and the wrong one for deciding whether
+// a write happened.
+//
+// Deduplicated by the guard itself rather than per extern, since one helper is
+// reached by many externs and the guard is one fact.
+const prechecksWithoutValidator = [];
+{
+  const byGuard = new Map();
+  for (const e of externs) {
+    const self = coordFnByName.get(e.fn);
+    if (!self) continue;
+    const ownBody = coordLines.slice(self.start - 1, self.end).join('\n');
+    if (!/create_entry\s*\(|create_link\s*\(/.test(ownBody)) continue;
+    for (const g of externGuards.get(e.fn) ?? []) {
+      if (!g.cond) continue;                               // no condition to compare
+      if (shadowHits.has(`${g.fn}:${g.line}`)) continue;   // mirrored by a rule
+      const key = `${g.fn}:${g.line}`;
+      if (!byGuard.has(key)) {
+        byGuard.set(key, {
+          in_fn: g.fn, line: g.line, condition: g.cond, refuses_with: g.msg, reached_by: [],
+        });
+      }
+      byGuard.get(key).reached_by.push(e.fn);
+    }
+  }
+  prechecksWithoutValidator.push(...byGuard.values());
+}
+
+const byClass = { honest: 0, crafted: 0, deferred: 0, needs_prober: 0, needs_extern: 0, remote: 0, passthrough: 0, shadowed: 0 };
 for (const s of sites) byClass[s.class]++;
 
 mkdirSync(dirname(OUT), { recursive: true });
@@ -691,6 +1082,10 @@ writeFileSync(OUT, JSON.stringify({
   // independently-derived pairs against these, and so a reader of the
   // inventory can see why two rules carry an `enforcement_caveat`.
   confusable_entry_reads: confusableEntryReads,
+  // READINESS item 5e's inverse sweep: coordinator refusals with no validation
+  // twin. A candidate list for a reader, not a defect list — see the note above
+  // the computation.
+  prechecks_without_validator: prechecksWithoutValidator,
   by_class: byClass,
   sites,
 }, null, 2) + '\n');
@@ -703,9 +1098,19 @@ console.log(`  crafted  ${String(byClass.crafted).padStart(3)}   reachable only 
 console.log(`  deferred ${String(byClass.deferred).padStart(3)}   a must_get_* guard — the dependency defers the commit, so the message never fires`);
 console.log(`  needs_prober ${String(byClass.needs_prober).padStart(3)}  link rules with no attempt_* path — needs a coordinator change + DNA rebuild`);
 console.log(`  needs_extern ${String(byClass.needs_extern).padStart(3)}  entry rules whose field the extern DERIVES — same cost, needs a raw-payload extern`);
+console.log(`  shadowed ${String(byClass.shadowed).padStart(3)}      the coordinator pre-check refuses first and no raw-write path exists — see item 5e`);
 console.log(`  remote   ${String(byClass.remote).padStart(3)}   needs a peer authoring a bad op — not reachable locally`);
 console.log(`  (passthrough ${byClass.passthrough} — forwards another validator's result, no message of its own)`);
 console.log(`\n  assertable as a REFUSAL from JavaScript: ${byClass.honest + byClass.crafted}`);
 console.log(`  assertable only as a DEFERRAL:          ${byClass.deferred}`);
 console.log(`  blocked on a coordinator change:  ${byClass.needs_prober + byClass.needs_extern}`   + ` (${byClass.needs_prober} link rules + ${byClass.needs_extern} entry rules)`);
+if (prechecksWithoutValidator.length) {
+  console.log(`\n  ${prechecksWithoutValidator.length} coordinator refusal(s) on a WRITE path with no validation twin —`);
+  console.log('  candidates for an enforcement gap, not findings. A custom client skips these:');
+  for (const p of prechecksWithoutValidator) {
+    console.log(`    ${p.in_fn}:${p.line}  ${JSON.stringify(p.refuses_with.slice(0, 64))}`);
+    console.log(`      reached by: ${p.reached_by.join(', ')}`);
+  }
+}
+
 console.log(`\nwrote ${OUT.replace(REPO + '/', '')}`);
