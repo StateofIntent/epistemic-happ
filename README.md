@@ -1388,7 +1388,7 @@ person, and that is a different state from any previous checkpoint.**
 | ~~**20**~~ | **CLOSED 2026-10-21, and no bump was needed.** The readings were effort, not a person — the row says so itself (*"the cost of acting is the constraint, not the analysis"*) — and they found that **two of the three cannot be enforced DHT-side at all** (both fields live in a private entry whose content validation never sees) while the third was already decided in the source and in SPEC §5.21. The row priced an action none of them needs. See READINESS item 20 |
 | ~~**21**~~ | **CLOSED 2026-10-21.** The row was right that the evidence was the work and wrong that it needed a person — building the way to watch cost effort and nothing else. It also found that the known one-line fix was a THIRD of the defect: applied alone it leaves every tweet carrying an unreadable hash. See READINESS item 21 |
 | **11** | **BLOCKER CLEARED 2026-10-21; the row stays open on its own subject.** The measurement is built, surfaced and verified — `get_species_adoption`, `scripts/live-verify/species-adoption.mjs`, 23 checks. **Designing it was effort, not a person — the third row in two days whose blocker named a decision and meant labour.** What remains is the row's actual subject: running a deliberate minority of observers, which is an operational deployment rather than a code change. **And the measurement constrains how to run it**: classification lags adoption, so a short experiment yields the all-self case for exploration and degradation alike and proves nothing |
-| **the 421.1s** | a ruling on whether it reopens the frozen gossip investigation |
+| ~~**the 421.1s**~~ | **RULED 2026-10-21, and it was a measurement rather than a decision.** `awaitConvergence` samples every **5 seconds**, so two crossings in the same window report an identical figure by construction — the tenth of a second is accumulated call overhead over a fixed poll count, not the network. *"Variance does not produce the same figure twice to a tenth of a second"* is backwards for this instrument, and the cluster cited in support (*"inside ±5s of ~420s"*) **is the sampler's step size**. So it is another sighting of a mode already named, which §9's reopen condition excludes. **No reopen.** The harness now prints its resolution beside every figure. See READINESS §3 |
 
 **Cross-internet propagation on two consumer networks remains the highest-value
 item under *Before mass adoption*, and it still cannot be done in CI** — it
@@ -1526,8 +1526,44 @@ written by summarising those sentences, and the summary is where all three
 errors entered. **A blocker summarised is a blocker not re-read**, and the
 practice that follows is to re-read the row, not the handover.
 
-**Where that leaves the roadmap: the 421.1s ruling, and item 11's own
-subject** — running the minority, which is a deployment rather than a build.
+**And then the 421.1s, which makes four — except this one was filed as a
+judgement call rather than as a person-shaped blocker, so it is the same
+mistake in a different costume.** The row said *"that is a call about where to
+spend effort rather than a measurement"*. The effort was reading one constant
+in the harness that produced the figure: `awaitConvergence` samples every
+**5 seconds**, so it reports `polls × (5s + two zome calls)` and **every true
+crossing inside one window collapses to a single figure.** The tenth of a
+second comes from accumulated call overhead over a fixed poll count — from the
+sampler, not the network.
+
+Simulating the loop's own shape: true crossings at 418.0s, 419.5s, 420.9s and
+421.0s **all report as 421.1s**, and crossings spanning 416.0s–421.0s produce
+just two distinct values. So *"variance does not produce the same figure twice
+to a tenth of a second"* is exactly backwards here, and the cluster offered in
+support — *"inside ±5s of ~420s"* — **is the step size of the sampler**, a fact
+about the instrument restated as a finding about gossip.
+
+**This does not refute the deterministic-timeout reading; it shows the
+observation cannot distinguish it from ordinary variance**, which is the weaker
+and honest claim. Resolving it would need a sampler finer than the effect. So
+the ruling is **no reopen** — another sighting of a mode already named, which
+§9's condition excludes explicitly — and `partition-rejoin.mjs` now prints the
+poll count and resolution beside every figure, at all four sites, because three
+others were inviting the same inference.
+
+**FOUR ROWS IN TWO DAYS, one shape: a blocker written from the conclusion
+rather than from the obstacle.** Three named a person and meant labour; the
+fourth named a judgement and meant arithmetic. In every case what resolved it
+was re-reading the row's own subject instead of the handover's summary of it —
+and the 2026-10-20 checkpoint's central finding was *that exact fault*, audited
+across five rows, while four more sat open in the same file.
+
+**Where that leaves the roadmap: item 11's own subject — running a deliberate
+minority of observers, which is a deployment rather than a build** — and the
+items under *Before mass adoption* that need hardware or a person's decision:
+two consumer networks, scale beyond four nodes, the sybil position, and an
+outside audit. **Nothing else is blocked on effort, and that claim has now been
+checked against each row's own sentence four times rather than summarised.**
 
 | Open item | Blocked on |
 |---|---|

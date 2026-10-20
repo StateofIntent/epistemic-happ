@@ -412,16 +412,67 @@ while 929.1s and 943.0s sit near ~936s. If a constant is being hit rather than
 a network being slow, the number to find is in `kitsune2`'s backoff or round
 scheduling, not in a propagation distribution.
 
-**THIS IS RECORDED, NOT ACTED ON, AND THE REOPEN DECISION IS DELIBERATELY LEFT
-OPEN.** §9 froze the gossip investigation and named its reopen condition
+> **BOTH SENTENCES ABOVE ARE WRONG, AND THE RULING BELOW IS THEREFORE A
+> MEASUREMENT RATHER THAN A DECISION — struck through in place because the
+> error is more instructive than a corrected paragraph.** `awaitConvergence`
+> **samples every 5 seconds.** It reports `polls × (POLL_MS + two zome calls)`,
+> so **every true crossing inside one 5s window collapses to a single reported
+> figure**, and the tenth-of-a-second on the end is accumulated call overhead
+> over a fixed poll count — it comes from the sampler, not from the network.
+>
+> So *"network variance does not produce the same figure twice to a tenth of a
+> second"* is exactly backwards for this instrument: **variance smaller than
+> the sampling interval produces identical reported figures by construction.**
+> Demonstrated rather than argued — simulating the loop's own shape, true
+> crossings at 418.0s, 419.5s, 420.9s and 421.0s all report as **`421.1s`**,
+> and true crossings spanning 416.0s–421.0s yield just **two** distinct
+> reported values.
+>
+> And the cluster offered in support — *"inside ±5s of ~420s"* — **is the
+> sampler's step size.** A spread whose width equals the sampling interval is
+> the finest distinction the instrument can draw, so it is a fact about the
+> sampler restated as a finding about gossip. The same applies to 929.1s and
+> 943.0s sitting "near ~936s": 13.9s apart is under three polls.
+>
+> **What this does NOT show is that the deterministic-timeout reading is
+> false.** It shows the observation cannot distinguish it from ordinary
+> variance, which is a different and weaker claim — and the honest one. What
+> would distinguish them is a sampler finer than the effect; at `POLL_MS = 5000`
+> there is no measurement here to rule on.
+>
+> `partition-rejoin.mjs` now prints the poll count and the resolution beside
+> every figure it reports, at all four sites, so a lattice sample cannot be
+> read as a distribution sample again. That is the fix for the misreading, and
+> it is cheaper than the investigation it nearly triggered.
+
+**RULED 2026-10-21: IT DOES NOT CLEAR THE BAR, AND NOBODY HAD TO DECIDE
+THAT.** §9 froze the gossip investigation and named its reopen condition
 precisely: *"a CI failure whose FIRST occurrence is already outside everything
 documented here"*, and explicitly NOT *"a slow crossing, or another sighting of
-a mode already named"*. A repeated identical constant is arguably outside what
-is documented — nothing here describes the slowness as deterministic — but
-reading it that way reopens an investigation this project shut deliberately,
-and that is a call about where to spend effort rather than a measurement.
-**The instruments did their job: the signal arrived legible.** What it needs now
-is somebody to rule on whether it clears the bar. **Seven measurements now span 175.4s to 943.0s**, which is the
+a mode already named"*. The repeated constant looked like it might be outside
+what is documented, because nothing here describes the slowness as
+deterministic — and **the repetition turns out to be a property of the
+instrument**, not of the network: a 5-second sampler reports identical figures
+for any two crossings in the same window, which is the quoted block above.
+**So this is another sighting of a mode already named — a slow crossing — read
+through a sampler too coarse to say anything more**, and §9's condition
+excludes it explicitly.
+
+**IT WAS FILED AS A DECISION AND IT WAS A MEASUREMENT, which is the fourth row
+in two days to carry that mistake.** The previous sentence here was *"that is a
+call about where to spend effort rather than a measurement"*, and the effort it
+would have cost was reading one constant in the harness that produced the
+figure. Items 21, 20 and 11 each had a blocker naming a person where the work
+was labour; this one named a judgement where the work was arithmetic. **The
+common shape is a blocker written from the conclusion rather than from the
+obstacle** — and in every one of the four, the thing that resolved it was
+re-reading the row's own subject instead of its summary.
+
+**The instruments did their job in a narrower sense than this section claimed:
+the signal arrived, and it was legible only once its resolution was stated
+alongside it.** An instrument that reports a figure without its own precision
+invites exactly this inference, and three other call sites in the same harness
+were printing bare figures the same way. **Seven measurements now span 175.4s to 943.0s**, which is the
 spread, not a tail: the figure a bound would have to clear keeps moving, which
 is why §9's propagation row chose to surface closure rather than promise one.
 Recorded here rather than acted on, per item 7 — one occurrence is not a

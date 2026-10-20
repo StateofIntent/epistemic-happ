@@ -596,18 +596,39 @@ const readOrExplain = async (node, domain, what) => {
   }
 };
 
+// THIS FUNCTION'S RESOLUTION IS POLL_MS, AND THAT HAS BEEN MISREAD AS A
+// PROPERTY OF THE NETWORK. It samples every 5s, so a crossing is reported as
+// `polls * (POLL_MS + two zome calls)` — every true crossing inside one 5s
+// window collapses to ONE reported figure, and the tenth-of-a-second on the
+// end comes from accumulated call overhead over a fixed poll count, not from
+// propagation.
+//
+// So two independent runs reporting an identical figure to 0.1s is what this
+// instrument does when two crossings land in the same window; it is not
+// evidence of a deterministic timeout. READINESS §3 drew the opposite
+// conclusion from exactly that observation ("network variance does not produce
+// the same figure twice to a tenth of a second") and cited a cluster "inside
+// ±5s of ~420s" in support — which is the sampler's own step size, i.e. the
+// finest distinction it can draw, restated as a finding about gossip.
+//
+// `polls` is returned and printed for that reason: the figure is meaningless
+// without the resolution beside it, and a reader who sees "poll 85 of a 5.0s
+// sampler" cannot mistake a lattice sample for a distribution sample.
+// Whatever uses this must not infer a distribution from these values.
 async function awaitConvergence(node, domain, label, isolated) {
   const t0 = Date.now();
   let isolatedEverSaw = false;
+  let polls = 0;
   while (Date.now() - t0 < CONVERGE_WINDOW_MS) {
+    polls++;
     const got = await pollCount(node, domain);
     const iso = await pollCount(isolated, domain);
     if (iso > 0) isolatedEverSaw = true;
     log(`    [${label}] t+${((Date.now() - t0) / 1000).toFixed(0)}s  ${label}=${got}  node${isolated.name}=${iso}`);
-    if (got > 0) return { ms: Date.now() - t0, isolatedEverSaw };
+    if (got > 0) return { ms: Date.now() - t0, polls, isolatedEverSaw };
     await sleep(POLL_MS);
   }
-  return { ms: null, isolatedEverSaw };
+  return { ms: null, polls, isolatedEverSaw };
 }
 
 async function main() {
@@ -678,7 +699,14 @@ async function main() {
       'Check scripts/network.sh status, and run real-gossip.mjs first.',
       'The ::warning:: above says whether more time would have helped.']);
   }
-  log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`);
+  // The resolution travels with the figure, deliberately. A bare
+  // "crossed in 421.1s" was read as a measurement precise to 0.1s and
+  // generated an open question about a deterministic timeout; the same number
+  // beside its poll count reads as what it is.
+  log(`    baseline crossed in ${(base.ms / 1000).toFixed(1)}s`
+    + ` (poll ${base.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler`
+    + ` — resolution ±${(POLL_MS / 1000).toFixed(1)}s, so an identical figure`
+    + ` across runs is expected from this instrument, not anomalous)`);
 
   // ---- Phase 1: partition, and write where B cannot see -----------------
   log('\n--- Phase 1: nodeB goes offline; nodeA writes anyway ---');
@@ -799,9 +827,9 @@ async function main() {
     awaitConvergence(B, DOMAIN_A, 'nodeB', C),
   ]);
   check('nodeA converges on claimB, written while nodeA was offline', convA.ms !== null);
-  if (convA.ms !== null) log(`    nodeA converged in ${(convA.ms / 1000).toFixed(1)}s`);
+  if (convA.ms !== null) log(`    nodeA converged in ${(convA.ms / 1000).toFixed(1)}s (poll ${convA.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
   check('nodeB converges on claimA, written while nodeB was offline', convB.ms !== null);
-  if (convB.ms !== null) log(`    nodeB converged in ${(convB.ms / 1000).toFixed(1)}s`);
+  if (convB.ms !== null) log(`    nodeB converged in ${(convB.ms / 1000).toFixed(1)}s (poll ${convB.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
 
   // Content, not just count — "a record arrived" and "the record the other
   // node wrote arrived" are different claims.
@@ -818,7 +846,7 @@ async function main() {
   await publishClaim(A, DOMAIN_POST, 'Written after the partition healed.');
   const post = await awaitConvergence(B, DOMAIN_POST, 'nodeB', C);
   check('a NEW claim crosses nodeA -> nodeB after healing', post.ms !== null);
-  if (post.ms !== null) log(`    crossed in ${(post.ms / 1000).toFixed(1)}s`);
+  if (post.ms !== null) log(`    crossed in ${(post.ms / 1000).toFixed(1)}s (poll ${post.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler)`);
 
   // ---- The isolated control, over the whole run -------------------------
   log('\n--- CONTROL: the isolated node saw none of it, throughout ---');
