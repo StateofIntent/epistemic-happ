@@ -389,8 +389,10 @@ and on a phone there is not one.
 ## What will generate false bug reports
 
 **Propagation is intermittently slow by minutes.** Measured crossings at 175.4s,
-210.5s, 415s, **421.1s**, 424.9s, 929.1s and 943.0s, alongside non-crossings
-inside 330s. §9 froze that investigation deliberately: every remaining question
+210.5s, 415s, **421.1s**, 424.9s, **884.8s** (×2, 2026-10-21, local three-node),
+929.1s and 943.0s, alongside non-crossings inside 330s. **Every one of these is
+a poll-lattice sample, not a latency** — see the correction below, which is why
+the figures cluster the way they appear to. §9 froze that investigation deliberately: every remaining question
 sits in `kitsune2` or Holochain's op store rather than in this repository.
 
 **The 421.1s was recorded on 2026-10-20 from [#296](../../pull/296)**, a
@@ -455,6 +457,26 @@ scheduling, not in a propagation distribution.
 > 30.2s (poll 7) and 20.1s (poll 5): ten seconds apart, two polls apart, and
 > genuinely resolvable — the instrument is not useless, it is just blind below
 > its step.
+>
+> **AND THE SIBLING HARNESS THEN REPRODUCED THE EXACT PHENOMENON §3 CALLED
+> ANOMALOUS, in one run, on the same afternoon.** `network-partition.mjs`
+> (under `scripts/netns.sh`, all checks green, exit 0) reported
+> **`nodeA converged in 884.8s (poll 177)`** and
+> **`nodeB converged in 884.8s (poll 177)`** — two convergences, opposite
+> directions, **identical to a tenth of a second.** Same poll index, same
+> accumulated overhead, same figure.
+>
+> **The caveat is real and is stated rather than buried: these two were
+> measured CONCURRENTLY from near-identical start times**, so their clocks are
+> correlated in a way two separate CI runs' are not. It is therefore not a
+> perfect analogue of the 421.1s pair. What it does show, directly, is that
+> **the tenth-of-a-second digit carries no independent information** — it is
+> the lattice plus overhead, and two measurements on the same lattice agree to
+> it as a matter of course. A reading built on that digit is built on nothing.
+>
+> It is also a fresh crossing figure for the list above: **884.8s**, which sits
+> in the already-documented minutes-long range and is another sighting of a
+> mode already named.
 >
 > **The same sweep found three more harnesses reporting figures from the same
 > kind of sampler, and one of them is a headline number.** `network-partition.mjs`

@@ -1108,7 +1108,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-21, restructured on 2026-10-10 because the single table
+**Current as of 2026-10-21 (checkpoint entry, the second that day), restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1564,6 +1564,92 @@ items under *Before mass adoption* that need hardware or a person's decision:
 two consumer networks, scale beyond four nodes, the sybil position, and an
 outside audit. **Nothing else is blocked on effort, and that claim has now been
 checked against each row's own sentence four times rather than summarised.**
+
+**CHECKPOINT, end of 2026-10-21. Four open rows closed or ruled, and every one
+of them had been filed as needing a person.** Items **21**, **20**, **11**'s
+blocker and the **421.1s** ruling. Five pull requests' worth of work on one
+branch; the roadmap count is unchanged at 78/1 because none of these was a
+roadmap row.
+
+**THE FINDING THAT OUTLIVES ALL FOUR is the same one yesterday's checkpoint
+made, and yesterday's checkpoint committed it while making it.** It audited
+five closed rows, found every blocker wrong in the same direction — *a blocker
+describing what it would take instead of what is blocked* — wrote "write the
+obstacle, not the remedy", and then summarised four still-open rows as needing
+a person. **All four were labour.** Three named a person and meant effort; the
+fourth named a judgement call and meant arithmetic.
+
+| row | its blocker said | what it actually needed |
+|---|---|---|
+| **21** | "Nothing technical" | the instrument named in its next sentence — pure effort |
+| **20** | "three readings and a decision each" | the three readings, which it then calls "not the constraint" itself |
+| **11** | "a measurement nobody has designed" | designing the measurement |
+| **the 421.1s** | "a call about where to spend effort rather than a measurement" | reading one constant in the harness that produced the figure |
+
+**The mechanism is now specific enough to act on: the error entered at the
+summary, not at the row.** In all four cases the row's own next sentence named
+the work, and in two cases the correct reading was already written down
+somewhere else in the repository — `assert_expertise`'s decision sat twelve
+lines above the check and again in SPEC §5.21, and §9's cross-internet entry
+says "each inside one poll" where the summary table said "5.0s". **A blocker
+summarised is a blocker not re-read**, and the practice that follows is to
+re-read the row rather than the handover.
+
+**WHAT CLOSING THEM FOUND, in each case more than the row asked for.** Item
+21's one-line fix was **a third of the defect** — applied alone it ships a
+bridge whose every tweet carries an unreadable hash, because a hash reaches the
+tweet as 39 raw bytes, in the polling path that still *worked*; and a third
+defect sat behind that, a reverse leg matching an Ethereum-shaped hex string no
+Holochain hash can be. **One defect hidden by a fallback, hiding a second,
+masking a third.** Item 20 found that two of its three candidates **could never
+have been rules at all** — their fields live in a private entry whose content
+validation never sees — and that one of them fails at its own stated purpose,
+since `salt: "."` is accepted and entropy is not a property a validator can
+check. Item 11 found that the number it was meant to replace is **self-
+inflatable**: `get_critique_species_adoption_count` counts the proposer's own
+citations, so fifty self-citations and fifty adopters are the same figure.
+
+**AND THE 421.1s TURNED INTO A SWEEP, which is the day's second-largest
+result.** The repeated constant was the sampler: `awaitConvergence` polls every
+5 seconds, so every true crossing inside one window reports the same figure and
+the tenth of a second is accumulated call overhead. *"Variance does not produce
+the same figure twice to a tenth of a second"* is backwards for a quantised
+instrument. **Three more harnesses were reporting figures the same way**, and
+one is a headline: the single cross-internet crossing cited as **"5.0s" is an
+upper bound of 5s**, which *understates* the substrate — the opposite error to
+the 421.1s, from the same cause. All four now print their resolution.
+`network-partition.mjs` then reproduced the phenomenon live in one run —
+`nodeA 884.8s (poll 177)`, `nodeB 884.8s (poll 177)`, identical to a tenth of a
+second — with the caveat that those two were measured concurrently and so are
+not a perfect analogue.
+
+**Three defects were found by SURFACING something rather than by building it.**
+Putting item 11's measurement on the taxonomy tab exposed that
+`loadTaxonomy()` ran on connect and after proposing a species and **nowhere
+else**, so that screen's figures were as of session start forever — invisible
+because the old check confirmed adoption through an independent zome read and
+never looked at the tab again. And CI had **never compiled `bridge/` at all**,
+which is part of how item 21 survived.
+
+**WHERE TO PICK UP. For the first time this is not a list of unblocked work.**
+
+| open | what it needs |
+|---|---|
+| **11**'s own subject | running a deliberate minority of observers — an operational deployment, not a build. The measurement now exists to read it by, and **constrains the experiment**: classification lags adoption, so a short run yields the all-self case for exploration and degradation alike |
+| **two consumer networks** | two physical home networks. Still the highest-value item under *Before mass adoption* and still impossible in CI |
+| **scale beyond four nodes** | a run at tens of nodes. Worth checking whether this is hardware or effort — it has not been read the way the four rows above were, and arc sizing is testable locally |
+| **the sybil position** | a person standing behind it before inviting a crowd. Explicitly not technical |
+| **an outside audit** | a person, and money |
+| **the live X API** | credentials. Nothing here posts a tweet, and the bridge service's `start()` is still unexercised |
+
+**The one row above that deserves the treatment the other four got is *scale
+beyond four nodes*.** Its stated blocker is "a run at tens of nodes", which
+reads like hardware — but arc sizing, gossip load and DHT behaviour are all
+testable with conductors on one machine, and `network.sh` already parameterises
+nodes A through D. Whether that is effort or hardware has not been checked
+against the row's own sentence, and on today's evidence that check is worth an
+hour before anybody budgets a cluster.
+
 
 | Open item | Blocked on |
 |---|---|
