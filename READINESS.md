@@ -396,7 +396,32 @@ sits in `kitsune2` or Holochain's op store rather than in this repository.
 **The 421.1s was recorded on 2026-10-20 from [#296](../../pull/296)**, a
 comment-only change to `partition-rejoin.mjs` itself — so it joins 210.5s
 (#278) and 175.4s as an occurrence on a change that provably could not have
-caused it. **Seven measurements now span 175.4s to 943.0s**, which is the
+caused it.
+
+**AND IT CAME BACK TWICE, IDENTICAL TO 0.1s, WHICH IS A DIFFERENT KIND OF
+OBSERVATION FROM A SLOW CROSSING.** Runs
+[`39360577602`](../../actions/runs/39360577602) and
+[`39362103541`](../../actions/runs/39362103541) are consecutive, independent
+runs of the same comment-only commit, and both report **`baseline crossed in
+421.1s`** — checked from each run's own log rather than inferred. Network
+variance does not produce the same figure twice to a tenth of a second.
+**The hypothesis this suggests is a DETERMINISTIC timeout or a fixed retry
+schedule, not a distribution** — and the recorded figures are consistent with
+that reading: 415s, 421.1s, 421.1s and 424.9s cluster inside ±5s of ~420s,
+while 929.1s and 943.0s sit near ~936s. If a constant is being hit rather than
+a network being slow, the number to find is in `kitsune2`'s backoff or round
+scheduling, not in a propagation distribution.
+
+**THIS IS RECORDED, NOT ACTED ON, AND THE REOPEN DECISION IS DELIBERATELY LEFT
+OPEN.** §9 froze the gossip investigation and named its reopen condition
+precisely: *"a CI failure whose FIRST occurrence is already outside everything
+documented here"*, and explicitly NOT *"a slow crossing, or another sighting of
+a mode already named"*. A repeated identical constant is arguably outside what
+is documented — nothing here describes the slowness as deterministic — but
+reading it that way reopens an investigation this project shut deliberately,
+and that is a call about where to spend effort rather than a measurement.
+**The instruments did their job: the signal arrived legible.** What it needs now
+is somebody to rule on whether it clears the bar. **Seven measurements now span 175.4s to 943.0s**, which is the
 spread, not a tail: the figure a bound would have to clear keeps moving, which
 is why §9's propagation row chose to surface closure rather than promise one.
 Recorded here rather than acted on, per item 7 — one occurrence is not a
