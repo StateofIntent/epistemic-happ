@@ -219,6 +219,53 @@ async function main() {
     log('  a setup that cannot distinguish a working lens from an absent one.');
     process.exit(1);
   }
+  // --- THE HALF-LIFE IS THE READER'S, item 10. ConductancePolicy gained
+  // `half_life_secs`, so the rate at which elapsed time discounts a connection
+  // is now something a reader PROMISES rather than something the protocol
+  // asserts for everyone. These checks are at the zome layer deliberately: the
+  // field is a lens, and this is the harness for lenses, but no screen exposes
+  // it yet and a browser assertion would be testing nothing.
+  //
+  // WHY A WAIT, AND WHY ONE SECOND. Decay needs measurable elapsed time, and
+  // the critiques above were authored moments ago — at the default thirty-day
+  // half-life their conductance is ~1.0 and no threshold below 1 can tell the
+  // policies apart. A one-second half-life makes three seconds of elapsed time
+  // unambiguous (2^-3 = 0.125, well under the 0.9 threshold) without the
+  // harness waiting on anything a reader would notice.
+  const CONDUCTANCE_FLOOR = 0.9;
+  const keepsFresh = {
+    min_effective_conductance: CONDUCTANCE_FLOOR, half_life_secs: null,
+  };
+  const healthWith = (conductance_policy) => agent1.call('get_discourse_health', {
+    membrane: membraneEntryHash, attestation_policy: null, conductance_policy,
+  });
+
+  const atDefaultHalfLife = await healthWith(keepsFresh);
+  await new Promise((r) => setTimeout(r, 3000));
+  const atOneSecondHalfLife = await healthWith({ ...keepsFresh, half_life_secs: 1 });
+  const atZeroHalfLife = await healthWith({ ...keepsFresh, half_life_secs: 0 });
+  const neutralAgain = await healthWith(null);
+
+  // SETUP GUARD, same discipline as the attestation one above: if the short
+  // half-life sets nothing aside, every assertion below passes vacuously.
+  if (atOneSecondHalfLife.total_critiques >= atDefaultHalfLife.total_critiques) {
+    log('\n  SETUP FAILED: a one-second half-life discounted nothing, so the');
+    log('  assertions about it would pass vacuously. Expected the critiques');
+    log(`  authored seconds ago to fall under ${CONDUCTANCE_FLOOR} once elapsed time is`);
+    log('  measured in one-second half-lives.');
+    process.exit(1);
+  }
+
+  check('a reader-supplied half-life changes what their read counts',
+    atOneSecondHalfLife.total_critiques < atDefaultHalfLife.total_critiques);
+  check('omitting the half-life is the old behaviour, not a new default',
+    atDefaultHalfLife.total_critiques === neutral.total_critiques);
+  check('a zero half-life falls back to the default rather than dividing by zero',
+    atZeroHalfLife.total_critiques === atDefaultHalfLife.total_critiques);
+  check('the DHT is unchanged by any of it — the lens moved, the record did not',
+    neutralAgain.total_claims === neutral.total_claims
+    && neutralAgain.total_critiques === neutral.total_critiques);
+
   log('');
 
   log('Starting vite preview (production bundle) ...');
