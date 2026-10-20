@@ -3695,6 +3695,14 @@ pub struct DiscourseHealth {
     pub abstract_to_embodied_ratio: f32,
     pub warning: Option<String>,
     pub total_claims: u32,
+    /// How many Claims in this domain were SET ASIDE as readings of it rather
+    /// than counted as discourse in it — see the filter in
+    /// `get_discourse_health` for why, and READINESS item 22. Reported so the
+    /// exclusion is visible: a reader comparing `total_claims` against
+    /// `get_claims_by_domain` directly has to be able to account for the
+    /// difference, and an invisible exclusion is indistinguishable from a
+    /// wrong count.
+    pub reading_claims: u32,
     pub total_critiques: u32,
     pub critique_mode_distribution: Vec<(CritiqueMode, u32)>,
 }
@@ -3768,7 +3776,51 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
     let membrane_hash = hash_entry(&membrane_entry)?;
     let domain = membrane_entry.domain.clone();
-    let claims = get_claims_by_domain(domain.clone())?;
+    let all_in_domain = get_claims_by_domain(domain.clone())?;
+
+    // A READING OF THIS DOMAIN IS NOT DISCOURSE IN IT, AND COUNTING IT AS
+    // DISCOURSE MADE THIS AGGREGATE MEASURE ITSELF.
+    //
+    // `publish_discourse_reading` writes its Claim with `domain:
+    // health.domain` — into the very domain the reading is ABOUT, which is
+    // what makes it discoverable beside the claims it describes and is
+    // deliberate. But this function counted it, so every published reading
+    // incremented the `total_claims` of the domain its next reading would
+    // report. Measured on a live conductor before the fix: one real claim and
+    // no critiques in a fresh domain, then three readings published, and
+    // `total_claims` reported 1, 2, 3, 4 while the actual discourse never
+    // changed. A scheduled writer at one reading a minute would have made
+    // this figure a count of its own ticks (READINESS item 22).
+    //
+    // THE CRITIQUES OF A READING GO WITH IT, and that is the less obvious
+    // half. A critique OF a reading is real discourse — item 9 ships exactly
+    // that, and it is how a reading is contested — but it is discourse about
+    // the MEASUREMENT, not about the domain's subject. Leaving those critiques
+    // in `total_critiques` while removing their targets from `total_claims`
+    // would inflate `abstract_to_embodied_ratio` with argument about the
+    // instrument, which is the same category error in the numerator.
+    //
+    // NOT SILENT: `reading_claims` reports how many were set aside, because an
+    // exclusion nobody can see is indistinguishable from a count that is
+    // simply wrong — and a reader comparing this figure against
+    // `get_claims_by_domain` directly must be able to account for the
+    // difference. A coordinator-only change (SPEC §11): no entry type, no link
+    // type, no validation rule, so the DNA hash is untouched.
+    let mut claims: Vec<Record> = Vec::new();
+    let mut reading_claims = 0u32;
+    for record in all_in_domain {
+        match record.entry().to_app_option::<Claim>() {
+            Ok(Some(claim)) if claim.semantic_tags.iter().any(|t| t == DISCOURSE_READING_TAG) => {
+                reading_claims += 1;
+            }
+            // Anything that does not deserialize as a Claim stays counted
+            // exactly as it was before this filter existed — the old code
+            // took `claims.len()` over every record the index returned, and
+            // narrowing that silently would be a second change wearing the
+            // first one's justification.
+            _ => claims.push(record),
+        }
+    }
 
     // TargetToCritique links are indexed by the claim's EntryHash (see
     // create_critique, which links from critique.target), not its
@@ -3868,6 +3920,7 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         abstract_to_embodied_ratio: ratio,
         warning,
         total_claims: claims.len() as u32,
+        reading_claims,
         total_critiques,
         critique_mode_distribution: mode_counts,
     })
@@ -5370,6 +5423,10 @@ mod tests {
             abstract_to_embodied_ratio: 2.5,
             warning: None,
             total_claims: 10,
+            // Non-zero on purpose: this domain has had readings taken of it
+            // before, which is the normal state for anything being observed,
+            // and render_reading must not start quoting it as discourse.
+            reading_claims: 3,
             total_critiques: 4,
             critique_mode_distribution: vec![],
         };

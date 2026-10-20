@@ -3826,6 +3826,28 @@ function renderDiscourseHealth(health: DiscourseHealth): HTMLElement {
     `abstract:embodied ${health.abstract_to_embodied_ratio.toFixed(2)}`;
   wrap.appendChild(totals);
 
+  // THE EXCLUSION IS SHOWN, NOT ASSUMED. `total_claims` leaves out Claims that
+  // are READINGS of this domain rather than discourse in it — a reading is
+  // published into the domain it describes, so counting it made the aggregate
+  // measure itself (READINESS item 22). Stating the figure here is the same
+  // argument as reporting `reading_claims` from the zome at all: somebody
+  // comparing this screen against the domain's own claim list must be able to
+  // account for the difference, and a number that silently omits things is
+  // indistinguishable from a wrong one.
+  //
+  // Rendered only when there ARE readings — a line saying "0 set aside" on
+  // every domain is noise, and the absence is not a fact anybody needs.
+  if (health.reading_claims > 0) {
+    const setAside = document.createElement('p');
+    setAside.className = 'health-set-aside';
+    setAside.dataset.testid = 'health-set-aside';
+    setAside.textContent =
+      `${health.reading_claims} reading${health.reading_claims === 1 ? '' : 's'} of this domain `
+      + `${health.reading_claims === 1 ? 'is' : 'are'} set aside, not counted above — `
+      + `a reading is an observation of the discourse, not part of it.`;
+    wrap.appendChild(setAside);
+  }
+
   // The five CritiqueModes are non-fungible means of knowing (Invariant
   // #4), so the distribution is shown as five named counts rather than
   // summed into one number.

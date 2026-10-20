@@ -277,6 +277,63 @@ async function main() {
   check('readings carry TWO DISTINCT authors, so neither speaks for the membrane',
     authorsOf.size === 2);
 
+  // === 6. A READING IS NOT DISCOURSE IN THE DOMAIN IT READS ==============
+  // READINESS item 22, and this section exists because NOTHING GATED IT.
+  // `publish_discourse_reading` writes its Claim into `health.domain` — the
+  // domain the reading is ABOUT — and `get_discourse_health` counted it, so
+  // every reading incremented the `total_claims` its next reading would
+  // report. Measured before the fix: one real claim and no critiques, then
+  // three readings, and total_claims went 1, 2, 3, 4 while the discourse
+  // never changed. A scheduled writer would have made the figure a count of
+  // its own ticks.
+  //
+  // IT PASSED BOTH BEFORE AND AFTER THE FIX in this harness and in
+  // trust-lenses, which is why these checks are here: a repair nothing
+  // asserts is a repair that can be reverted in silence, and that is the
+  // defect class this directory keeps finding rather than a hypothetical.
+  //
+  // WATCHED FAILING — injection BJ, the filter disabled: 3 reds of these
+  // five, and the figures print `total_claims=4 reading_claims=0` against a
+  // domain holding one real claim.
+  //
+  // THE ACCOUNTING CHECK STAYS GREEN UNDER BJ, and that is not a weakness —
+  // it is what that check is for. `4 = 4 + 0` is as accountable as
+  // `4 = 1 + 3`; the invariant catches a filter that drops records or
+  // double-counts them, which is the OTHER way this can go wrong, and it
+  // would not notice the filter simply not running. The two kinds of failure
+  // need two kinds of check, which is why they are separate.
+  log('\n--- 6. A reading of a domain is not discourse in it (item 22) ---');
+  const healthNow = await a1.call('get_discourse_health', {
+    membrane: membraneAction, attestation_policy: null, conductance_policy: null,
+  });
+  const rawInDomain = (await a1.call('get_claims_by_domain', DOMAIN)).length;
+  log(`    get_claims_by_domain=${rawInDomain}   total_claims=${healthNow.total_claims}`
+    + `   reading_claims=${healthNow.reading_claims}`);
+
+  check('READINGS ARE SET ASIDE: at least one was published, and it is not counted as discourse',
+    healthNow.reading_claims >= 1);
+  check('the real claims are still counted — the filter removes readings, not the subject',
+    healthNow.total_claims >= 1);
+  // The one that catches a filter removing too much or too little: the two
+  // figures must ACCOUNT for every record the index returns, so neither a
+  // silent over-exclusion nor a leaked reading can hide.
+  check('total_claims + reading_claims accounts for EVERY claim the domain index returns',
+    healthNow.total_claims + healthNow.reading_claims === rawInDomain);
+  // Asserted separately because it is the symptom, not the mechanism: a
+  // reading must not be able to move the figure it reports.
+  const beforeExtra = healthNow.total_claims;
+  await a1.call('publish_discourse_reading', {
+    membrane: membraneAction, attestation_policy: null, conductance_policy: null,
+    confidence: 'Moderate',
+  });
+  const healthAfter = await a1.call('get_discourse_health', {
+    membrane: membraneAction, attestation_policy: null, conductance_policy: null,
+  });
+  check('PUBLISHING ANOTHER READING DOES NOT MOVE total_claims — the aggregate cannot measure itself',
+    healthAfter.total_claims === beforeExtra);
+  check('and the set-aside count rises instead, so the new reading is accounted rather than dropped',
+    healthAfter.reading_claims === healthNow.reading_claims + 1);
+
   log('');
   if (failures === 0) {
     log('ALL CHECKS PASSED — a reading is an attributed, critiquable promise;');
