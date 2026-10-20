@@ -1285,11 +1285,64 @@ Each was a separate build against a clean conductor; the restored zome returns
 *not* appear and the write stalls retryably, which a removed rule does not
 change.
 
-**What remains on these three types is one piece of work and it is not corpus
-authoring.** The eight `needs_extern` rules need a coordinator extern that
-accepts a raw payload, which is a protocol surface decision — whether this
-repository wants an extern existing only so tests can reach derived fields —
-and deliberately not taken here.
+### Finding 15 — the eight unreachable rules were a settled decision read as an open one, and reaching them found which rules are load-bearing
+
+**Finding 14 ended by calling the raw-payload extern "a protocol surface
+decision — whether this repository wants an extern existing only so tests can
+reach derived fields". That framing was wrong: the decision had already been
+made, six times.** `attempt_unaccountable_membrane`,
+`attempt_false_domain_index`, `attempt_false_membrane_registry`,
+`attempt_false_taxonomy_index`, `attempt_entry_update` and
+`attempt_false_attachment_link` all exist for exactly this reason, and the
+first one's own comment carries the argument:
+
+> *"Not an attack surface: every call that a custom client could make to gain
+> something is rejected by `validate_membrane`, which is the point. If this
+> ever SUCCEEDS ... the accountability has regressed to coordinator-side
+> courtesy again."*
+
+It also names the failure the probers exist to prevent, which is the one these
+eight rules were sitting in: *"a test calling it proves only that the
+COORDINATOR refuses — which is precisely the confusion that let
+`validate_membrane` go without these checks while a comment claimed it had
+them."* And SPEC §11.1 makes the security argument structural rather than a
+judgement: a coordinator edit is hot-swappable via `update_coordinators`, so a
+peer running a modified coordinator can already author any op validation
+accepts. A prober grants an attacker nothing; it grants a test the ability to
+**observe** the refusal.
+
+**So three probers were added** — `attempt_raw_worldline_trace`,
+`attempt_raw_pre_registration`, `attempt_raw_revelation`, each three lines, each
+writing no index link for the reason the membrane probe states. `needs_extern`
+fell from **10 to 2**, the three specs moved onto the probers the way the
+`membrane` spec already drove its own, and the corpus reads **270 checks, 0
+failed, 0 skipped**: `worldline_trace` 8 of 8, `revelation` 6 of 6,
+`pre_registration` 3 of 4 with the timestamp rule still declared unreachable.
+The `PeriodBoundary sample_action not found` gap is **gone rather than
+re-justified** — a dangling boundary is now a payload anybody can write.
+
+**AND THE FIRST RUN OF THE NEWLY REACHABLE RULES PRODUCED A FINDING THAT WAS
+UNKNOWABLE BEFORE, which is the best argument for having built them.**
+Injection **BK** removed all three author-binding rules at once:
+
+| type | what happened with the rule gone |
+|---|---|
+| `PreRegistration` | **the call COMMITTED** — a commitment with a forged author was accepted, so this rule is the ONLY thing standing there |
+| `WorldlineTrace` | stopped by `PeriodBoundary sample_action must be authored by trace agent` instead |
+| `Revelation` | stopped by `Only the author of a PreRegistration may reveal it` instead |
+
+Three reds, and the reds are not equivalent: **the author-binding rule is solely
+load-bearing for `PreRegistration` and backed up by an adjacent rule for the
+other two.** Nothing could have established that while the rules were
+unreachable — which is the whole of Finding 14's argument, turned around and
+pointed at Finding 14's own conclusion.
+
+**The estimate was wrong in the same direction twice.** Finding 14 said the
+remaining work was a protocol-surface decision; it was nine lines of Rust and
+eight cases. Before that, the exclusion note said these types needed dependency
+chains; the chains already existed. **Both estimates were written from the
+conclusion rather than from the obstacle**, which is the shape this repository
+had already named four times in the two days before this was written.
 
 ## Why one mutation at a time
 

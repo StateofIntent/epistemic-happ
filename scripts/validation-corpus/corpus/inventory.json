@@ -18,7 +18,7 @@
   "prechecks_without_validator": [
     {
       "in_fn": "assert_expertise",
-      "line": 2597,
+      "line": 2650,
       "condition": "if trace.agent != author",
       "refuses_with": "Can only assert expertise backed by your own WorldlineTrace.",
       "reached_by": [
@@ -30,7 +30,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6267,
+      "line": 6320,
       "condition": "if input.prediction.trim().is_empty()",
       "refuses_with": "prediction must not be empty",
       "reached_by": [
@@ -42,7 +42,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6270,
+      "line": 6323,
       "condition": "if input.salt.trim().is_empty()",
       "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
       "reached_by": [
@@ -55,10 +55,10 @@
   ],
   "by_class": {
     "honest": 19,
-    "crafted": 132,
+    "crafted": 140,
     "deferred": 15,
     "needs_prober": 0,
-    "needs_extern": 10,
+    "needs_extern": 2,
     "remote": 4,
     "passthrough": 12,
     "shadowed": 2
@@ -267,14 +267,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &pr.author != action.author()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "pre_registration",
-      "write_path": "pre_register(PreRegisterInput)",
-      "caller_controlled_fields": [
-        "question",
-        "reveal_deadline"
-      ],
-      "guards_field": "author"
+      "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
       "line": 1151,
@@ -285,12 +280,7 @@
       "guard": "if (pr.reveal_deadline as i64) <= committed_at",
       "class": "crafted",
       "entry": "pre_registration",
-      "write_path": "pre_register(PreRegisterInput)",
-      "caller_controlled_fields": [
-        "question",
-        "reveal_deadline"
-      ],
-      "guards_field": "reveal_deadline"
+      "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
       "line": 1157,
@@ -311,12 +301,7 @@
       "guard": "if question.action().timestamp().as_micros() >= committed_at",
       "class": "crafted",
       "entry": "pre_registration",
-      "write_path": "pre_register(PreRegisterInput)",
-      "caller_controlled_fields": [
-        "question",
-        "reveal_deadline"
-      ],
-      "guards_field": "question"
+      "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
       "line": 1182,
@@ -325,15 +310,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &rev.author != action.author()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "revelation",
-      "write_path": "reveal_pre_registration(RevealInput)",
-      "caller_controlled_fields": [
-        "pre_registration",
-        "prediction",
-        "salt"
-      ],
-      "guards_field": "author"
+      "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
       "line": 1186,
@@ -354,13 +333,7 @@
       "guard": "if &rev.author != action.author()",
       "class": "honest",
       "entry": "revelation",
-      "write_path": "reveal_pre_registration(RevealInput)",
-      "caller_controlled_fields": [
-        "pre_registration",
-        "prediction",
-        "salt"
-      ],
-      "guards_field": "pre_registration"
+      "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
       "line": 1197,
@@ -371,13 +344,7 @@
       "guard": "if pr.author != rev.author",
       "class": "crafted",
       "entry": "revelation",
-      "write_path": "reveal_pre_registration(RevealInput)",
-      "caller_controlled_fields": [
-        "pre_registration",
-        "prediction",
-        "salt"
-      ],
-      "guards_field": "pre_registration"
+      "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
       "line": 1205,
@@ -388,13 +355,7 @@
       "guard": "if recomputed != pr.sealed",
       "class": "crafted",
       "entry": "revelation",
-      "write_path": "reveal_pre_registration(RevealInput)",
-      "caller_controlled_fields": [
-        "pre_registration",
-        "prediction",
-        "salt"
-      ],
-      "guards_field": "prediction"
+      "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
       "line": 1211,
@@ -405,13 +366,7 @@
       "guard": "if action.timestamp().as_micros() > (pr.reveal_deadline as i64)",
       "class": "crafted",
       "entry": "revelation",
-      "write_path": "reveal_pre_registration(RevealInput)",
-      "caller_controlled_fields": [
-        "pre_registration",
-        "prediction",
-        "salt"
-      ],
-      "guards_field": "pre_registration"
+      "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
       "line": 1221,
@@ -872,14 +827,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &trace.agent != action.author()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "agent"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1631,
@@ -888,14 +838,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if trace.period_boundaries.is_empty()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "period_boundaries"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1641,
@@ -904,14 +849,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if *record.action().author() != trace.agent",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "period_boundaries"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1645,
@@ -930,14 +870,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if trace.checksum.len() != 32",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "checksum"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1654,
@@ -946,14 +881,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if boundary.start_time > boundary.end_time",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "period_boundaries"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1659,
@@ -964,12 +894,7 @@
       "guard": "if expires <= trace.created_at",
       "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "expires_at"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1664,
@@ -978,14 +903,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if payload.len() > 65_536",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "worldline_trace",
-      "write_path": "generate_worldline_trace(TraceGenerationParams)",
-      "caller_controlled_fields": [
-        "expertise_tags",
-        "expires_at"
-      ],
-      "guards_field": "trace_payload"
+      "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
       "line": 1691,

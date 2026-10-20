@@ -662,11 +662,6 @@ const GAPS = [
     rule: 'PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.',
     why: 'the `question` hash IS caller-controlled, which is why the inventory classes this `crafted` — but the guard compares `question.action().timestamp()` against the commitment\'s own, and both timestamps are host-assigned. Any question that resolves was authored earlier, so the comparison can only be made to fire by a clock moved backwards — which is READINESS item 14\'s defect and has its own probe in `scripts/live-verify/clock-skew-reveal.mjs`, not a payload this corpus can write',
   },
-  {
-    entry: 'worldline_trace',
-    rule: 'PeriodBoundary sample_action not found.',
-    why: '`generate_worldline_trace` BUILDS the period boundaries by walking the caller\'s own chain, so every `sample_action` it emits is an action that exists by construction. The caller supplies granularity, tags and expiry — never a boundary — so there is no payload in which this dependency can be dangling. Same cost as the six `needs_extern` rules beside it: a raw-payload extern plus a DNA rebuild',
-  },
 ];
 
 const entries = [
@@ -1162,24 +1157,66 @@ const entries = [
   {
     entry: 'worldline_trace',
     label: 'WorldlineTrace',
-    fn: 'generate_worldline_trace',
-    // No setup: a trace is always OF the caller's own chain, which by this
-    // point in the run has plenty on it. That is also why six of this type's
-    // eight rules are unreachable — every field but `expires_at` is read off
-    // the chain by the extern rather than accepted from the caller.
-    baseline: () => ({ period_granularity_secs: 3600, expertise_tags: ['corpus'], expires_at: null }),
+    // THE PROBER, NOT `generate_worldline_trace` — the same call the `membrane`
+    // spec makes, and for the same reason. The real extern derives the agent,
+    // the boundaries and the checksum, so driving it proves only that the
+    // coordinator builds a valid entry and leaves six rules unreachable. See
+    // the probers' header in the coordinator (READINESS 5g).
+    fn: 'attempt_raw_worldline_trace',
+    chainNote: "an action of this agent's own for a period boundary to sample",
+    setup: async () => {
+      const sampleAction = await call('create_claim', {
+        content: 'corpus claim, sampled by a period boundary', domain: `CorpusTrace${Date.now()}`,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { sampleAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      agent: myKey,
+      period_boundaries: [{
+        start_time: nowSecs() - 3600, end_time: nowSecs(),
+        sample_action: ctx.sampleAction, domain_tag: 'corpus', entry_count: 1,
+      }],
+      expertise_tags: ['corpus'],
+      trace_payload: null,
+      binding_key: null,
+      checksum: new Uint8Array(32),
+      created_at: nowSecs(),
+      expires_at: null,
+    }),
     cases: [
-      // SECONDS, NOT MICROSECONDS, and this is the one thing here easy to get
-      // wrong: `generate_worldline_trace` sets `created_at` from
-      // `sys_time().as_seconds_and_nanos().0`, so a microsecond `expires_at`
-      // would be astronomically in the FUTURE and the rule would never fire.
-      { rule: 'expires_at must be > created_at.', mutate: (t) => { t.expires_at = nowSecs() - 3600; } },
+      { rule: 'WorldlineTrace agent must match action author.', mutate: (t) => { t.agent = danglingHash('agent', 111); } },
+      { rule: 'WorldlineTrace must have at least one period boundary.', mutate: (t) => { t.period_boundaries = []; } },
+      // CLOSED BY THE SECOND AGENT: the boundary samples an action agent 2
+      // authored while the trace still claims to be agent 1's, so the
+      // agent-match rule above passes and this one fires.
+      {
+        rule: 'PeriodBoundary sample_action must be authored by trace agent.',
+        mutate: (t, ctx) => { t.period_boundaries[0].sample_action = ctx.others.claimAction; },
+      },
+      // `must_get_valid_record`, so a missing sample DEFERS. This was a
+      // declared GAP until the prober existed, because the extern built every
+      // boundary from the caller's own chain and no payload could carry a
+      // dangling one.
+      {
+        rule: 'PeriodBoundary sample_action not found.',
+        expect: 'deferral',
+        mutate: (t) => { t.period_boundaries[0].sample_action = danglingHash('action', 112); },
+      },
+      { rule: 'Checksum must be 32 bytes.', mutate: (t) => { t.checksum = new Uint8Array(31); } },
+      {
+        rule: 'PeriodBoundary start_time must be <= end_time.',
+        mutate: (t) => { const b = t.period_boundaries[0]; b.start_time = b.end_time + 1; },
+      },
+      { rule: 'expires_at must be > created_at.', mutate: (t) => { t.expires_at = t.created_at - 1; } },
+      { rule: 'trace_payload exceeds 64KB limit.', mutate: (t) => { t.trace_payload = new Uint8Array(65_537); } },
     ],
   },
   {
     entry: 'pre_registration',
     label: 'PreRegistration',
-    fn: 'pre_register',
+    fn: 'attempt_raw_pre_registration',
     chainNote: 'a question published BEFORE the commitment, which is what the rule requires',
     setup: async () => {
       const question = await call('create_claim', {
@@ -1189,31 +1226,35 @@ const entries = [
       });
       return { question };
     },
+    // `sealed` IS NOT VALIDATED AT COMMIT TIME, and a dangling hash here is
+    // correct rather than lazy: the commitment is checked at REVEAL by
+    // recomputing `hash_entry` over the disclosed content, which is the only
+    // moment that content exists publicly. A validator trusting this field
+    // would be trusting the committer about their own commitment.
     baseline: (ctx) => ({
       question: ctx.question,
-      prediction: 'corpus prediction, committed so the baseline is a real commitment',
-      salt: 'corpus-prereg-salt-7f2a',
+      sealed: danglingHash('entry', 115),
       reveal_deadline: nowMicros() + 3_600_000_000,
+      author: myKey,
+      timestamp: nowMicros(),
     }),
     cases: [
+      { rule: 'PreRegistration author must match action author.', mutate: (p) => { p.author = danglingHash('agent', 113); } },
       {
         rule: 'PreRegistration reveal_deadline must be after the commitment itself; a commitment that is already expired can never be revealed and would pad the denominator.',
         mutate: (p) => { p.reveal_deadline = nowMicros() - 3_600_000_000; },
       },
-      // `must_get_action`, so a missing question DEFERS rather than returning
-      // Invalid — the site's own message is asserted NOT to appear, same as
-      // Claim's two dependency cases.
       {
         rule: 'PreRegistration question does not resolve.',
         expect: 'deferral',
-        mutate: (p) => { p.question = danglingHash('action', 101); },
+        mutate: (p) => { p.question = danglingHash('action', 114); },
       },
     ],
   },
   {
     entry: 'revelation',
     label: 'Revelation',
-    fn: 'reveal_pre_registration',
+    fn: 'attempt_raw_revelation',
     chainNote: 'question -> commitment, plus a SECOND commitment deliberately left to expire',
     setup: async () => {
       const question = await call('create_claim', {
@@ -1223,14 +1264,17 @@ const entries = [
       });
       const PRED = 'corpus prediction, revealed by its own committer';
       const SALT = 'corpus-reveal-salt-3b9d';
+      // The REAL `pre_register`, not the prober: this commitment has to carry a
+      // sealed hash the revealed content actually hashes to, which is exactly
+      // what the prober deliberately does not compute.
       const mine = await call('pre_register', {
         question, prediction: PRED, salt: SALT, reveal_deadline: nowMicros() + 3_600_000_000,
       });
       // A SECOND COMMITMENT WHOSE WINDOW CLOSES DURING THIS RUN. The late-reveal
       // rule cannot be reached with the baseline commitment, because a deadline
       // already in the past is refused by `validate_pre_registration` at commit
-      // time — so the only way in is to commit a real future deadline and let
-      // it lapse. Three seconds, which is the whole cost of this spec.
+      // time — so the only way in is to commit a real future deadline and let it
+      // lapse. Three seconds, which is the whole cost of this spec.
       const EXP_PRED = 'corpus prediction whose window closes before it is revealed';
       const EXP_SALT = 'corpus-expired-salt-5c1e';
       const expiring = await call('pre_register', {
@@ -1239,35 +1283,36 @@ const entries = [
       await new Promise((r) => setTimeout(r, 3500));
       return { question, mine, expiring, PRED, SALT, EXP_PRED, EXP_SALT, others: await otherAgentFixtures() };
     },
-    baseline: (ctx) => ({ pre_registration: ctx.mine, prediction: ctx.PRED, salt: ctx.SALT }),
+    baseline: (ctx) => ({
+      pre_registration: ctx.mine, prediction: ctx.PRED, salt: ctx.SALT,
+      author: myKey, timestamp: nowMicros(),
+    }),
     cases: [
-      // A Claim's ActionHash resolves as a record and fails to deserialize as a
-      // PreRegistration — the one rule here reachable through the SDK's own
-      // typed surface, which is why the inventory classes it `honest`.
+      { rule: 'Revelation author must match action author.', mutate: (r) => { r.author = danglingHash('agent', 116); } },
+      {
+        rule: 'Revelation pre_registration does not resolve.',
+        expect: 'deferral',
+        mutate: (r) => { r.pre_registration = danglingHash('action', 117); },
+      },
       {
         rule: 'Revelation pre_registration is not a PreRegistration.',
         mutate: (r, ctx) => { r.pre_registration = ctx.question; },
       },
       // CLOSED BY THE SECOND AGENT — item 5f again. Agent 2's commitment is
-      // already published and already awaited visible by otherAgentFixtures(),
-      // so this needs no new chain: agent 1 simply reveals somebody else's.
+      // already published and awaited visible by otherAgentFixtures().
       //
-      // IT OFFERS AGENT 2'S REAL CONTENT, AND THAT IS THE WHOLE POINT OF THE
-      // CASE. The first version passed agent 1's own prediction and salt, and
+      // IT OFFERS AGENT 2'S REAL CONTENT, AND THAT IS THE POINT OF THE CASE.
+      // The first version passed agent 1's own prediction and salt, and
       // injection BH showed what that cost: with the author rule removed, the
-      // forged reveal was refused by the HASH check instead, which runs one
-      // line later — so the case reddened for a reason unrelated to the rule
-      // it names, and would have gone on "passing" if the author rule were
-      // deleted tomorrow. Supplying content that hashes correctly leaves the
-      // author rule as the ONLY check that can refuse this, which is what
-      // makes the pass mean something.
+      // forged reveal was refused by the HASH check one line later, so the case
+      // reddened for a reason unrelated to the rule it names and would have
+      // gone on passing if the author rule were deleted. Content that hashes
+      // correctly leaves the author rule as the only check that can refuse it.
       //
-      // It also sharpens what the rule is for. Against somebody who does not
-      // know the committed content, the hash check is already sufficient; the
-      // author rule's unique work is against somebody who DOES — after a
-      // reveal elsewhere, or a leak — which is exactly the case where a third
-      // party could otherwise decide for an author whether their commitment
-      // counts as revealed.
+      // It also sharpens what the rule is for: against somebody who does not
+      // know the committed content the hash check already suffices, so the
+      // author rule's unique work is against somebody who DOES — after a reveal
+      // elsewhere, or a leak.
       {
         rule: 'Only the author of a PreRegistration may reveal it.',
         mutate: (r, ctx) => {
@@ -1280,18 +1325,13 @@ const entries = [
         rule: 'Revelation content does not hash to the sealed commitment; this is not what was committed to.',
         mutate: (r) => { r.prediction = 'not what was committed to'; },
       },
-      // THE SALT AND PREDICTION MOVE WITH THE COMMITMENT, deliberately. The
+      // THE SALT AND PREDICTION MOVE WITH THE COMMITMENT, deliberately: the
       // hash check runs BEFORE the deadline check, so revealing the expired
       // commitment with the baseline's content would fire the hash rule and
       // this case would pass for the wrong reason.
       {
         rule: 'Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.',
         mutate: (r, ctx) => { r.pre_registration = ctx.expiring; r.prediction = ctx.EXP_PRED; r.salt = ctx.EXP_SALT; },
-      },
-      {
-        rule: 'Revelation pre_registration does not resolve.',
-        expect: 'deferral',
-        mutate: (r) => { r.pre_registration = danglingHash('action', 102); },
       },
     ],
   },

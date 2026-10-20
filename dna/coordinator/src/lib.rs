@@ -1498,6 +1498,59 @@ pub fn attempt_unaccountable_membrane(membrane: Membrane) -> ExternResult<Action
     create_entry(EntryTypes::Membrane(membrane))
 }
 
+// ============================================================================
+// THE FORESIGHT FAMILY'S BYPASS PROBES — READINESS 5g, and the same argument
+// `attempt_unaccountable_membrane` above makes.
+//
+// `generate_worldline_trace`, `pre_register` and `reveal_pre_registration` all
+// DERIVE most of the fields their rules are about: the agent, the period
+// boundaries, the checksum, the commitment hash, the authorship. So a test
+// calling them proves only that the coordinator built a valid entry — and
+// eight rules in the integrity zome had no reachable path at all, which is
+// the condition the corpus classes `needs_extern`.
+//
+// THAT IS THE EXACT CONFUSION THAT LET `validate_membrane` SHIP WITHOUT ITS
+// CHECKS while a comment claimed it had them, and the reason the probe above
+// exists. A rule nothing can reach is a rule nothing has tested; "the
+// coordinator refuses" is not "the DHT refuses", and this repository has paid
+// for that distinction three times (the `SynapticLink` burn tier,
+// `validate_membrane`, `validate_retraction`).
+//
+// NOT AN ATTACK SURFACE, for the reason the membrane probe states and SPEC
+// §11.1 makes structural: a coordinator edit is hot-swappable via
+// `update_coordinators`, so a peer running a modified coordinator can already
+// author any op validation accepts. These grant an attacker nothing they could
+// not have by editing their own copy — what they grant is the ability to
+// OBSERVE the refusal. If any of them ever SUCCEEDS with a payload the
+// corresponding validator should refuse, the enforcement has regressed to
+// coordinator-side courtesy, which is what the corpus asserts.
+//
+// DELIBERATELY WRITE NO INDEX LINKS, the same call the membrane probe makes
+// and for the same reason: these create entries meant to be REFUSED, and a
+// link whose target validation rejected cannot validate either. Indexing here
+// would test the link rule instead of the entry rule.
+// ============================================================================
+
+/// Raw `WorldlineTrace`, so validation's six derived-field rules are reachable.
+#[hdk_extern]
+pub fn attempt_raw_worldline_trace(trace: WorldlineTrace) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::WorldlineTrace(trace))
+}
+
+/// Raw `PreRegistration`, so the author-binding rule is reachable. The sealed
+/// commitment is a hash the caller supplies here rather than one `pre_register`
+/// computes — which is the point: validation must not trust it.
+#[hdk_extern]
+pub fn attempt_raw_pre_registration(pr: PreRegistration) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::PreRegistration(pr))
+}
+
+/// Raw `Revelation`, so the author-binding rule is reachable.
+#[hdk_extern]
+pub fn attempt_raw_revelation(rev: Revelation) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::Revelation(rev))
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FalseDomainIndexPayload {
     pub claim_action: ActionHash,
