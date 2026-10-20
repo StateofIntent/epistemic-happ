@@ -4257,6 +4257,256 @@ pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constit
 // ============================================================================
 
 
+
+// ============================================================================
+// A READING IS A PROMISE SOMEBODY MAKES — READINESS item 9.
+//
+// `get_discourse_health` computes an aggregate and dead-ends at the caller:
+// nothing in the record says anybody ever looked. This publishes the reading as
+// a first-class, attributed, critiquable Claim instead.
+//
+// WHY THIS DOES NOT BREACH INVARIANT 1, which is the whole question and is
+// settled by WHO is speaking rather than by what the number is. Quantitative
+// Promise Theory's result is that an agent cannot normalise over a population it
+// cannot see, so aggregation requires a NAMED aggregator. The objection to a
+// canonical score is that it claims a view from nowhere — and an attributed
+// reading claims a view from somewhere, which makes it a promise like any other
+// and critiquable by anyone who disputes the method. That is STRICTLY STRONGER
+// than a protocol-computed score, because a protocol's arithmetic cannot be
+// argued with.
+//
+// THE DECISION TAKEN, 2026-10-20, deliberately and not by default: **two agents
+// may publish contradictory readings of the same discourse and this protocol
+// will not adjudicate between them.** Both readings stand, both are signed, both
+// are critiquable, and nothing here computes which is right. That is correct and
+// it will still be the first question anybody asks.
+//
+// ---------------------------------------------------------------------------
+// THE ROW SAID "LET A MEMBRANE PUBLISH ITS READING" AND THAT IS NOT
+// IMPLEMENTABLE AS WRITTEN. A membrane has no key. Only an agent can author an
+// entry, so there is no such thing as a membrane signing anything, and "the
+// membrane's reading" can only ever mean "this AGENT's reading OF this
+// membrane". The distinction is not pedantic: it is the difference between an
+// institutional fact and somebody's promise, and this protocol can only
+// represent the second. The attribution is therefore to the agent, and the
+// membrane is the SUBJECT rather than the speaker.
+//
+// SO ANYONE MAY PUBLISH A READING OF ANY MEMBRANE. Not only its founder — and
+// that follows from the decision above rather than from permissiveness, because
+// "two agents may publish contradictory readings" presupposes that more than one
+// can. It is also the only version enforceable without an integrity change: a
+// reading is a Claim, and `validate_claim` binds the author to the action
+// author, which is exactly the guarantee this needs. A founder-only rule would
+// be a new validation rule, a DNA hash change and a `protocol_version` bump —
+// the price items 10, 17 and 20 all declined — bought for a restriction the
+// governance decision above says should not exist.
+//
+// IT IS A CLAIM RATHER THAN A NEW ENTRY TYPE, which is the same call
+// `assert_expertise` already made and for the same reason: an expertise
+// assertion IS a Claim, "not a separate, unaccountable field", so it inherits
+// the typed `CritiqueMode` machinery Invariant 4 governs. A reading inherits it
+// too — Methodological, Evidential and the rest all apply to a reading exactly
+// as they would to any other claim, which is what "critiquable by anyone who
+// disputes the method" actually requires. Nothing new to validate, and no bump.
+//
+// ---------------------------------------------------------------------------
+// THE METHOD IS PART OF THE READING, AND LEAVING IT OUT WOULD HAVE BEEN THE
+// DEFECT. `get_discourse_health` takes `AttestationPolicy` and
+// `ConductancePolicy` — lenses the CALLER aims (SPEC §7's note on Invariant 1,
+// and item 10's `half_life_secs`). So two readings of the same membrane at the
+// same moment legitimately differ if they were taken through different lenses,
+// and a published figure that does not say which lens produced it is a lensed
+// number presented as a neutral one. That is Invariant 1's objection rebuilt at
+// the publishing layer, which is precisely the move README §4.4 forbids a UI
+// from making: "if the interface is filtering, the user must have chosen the
+// filter and be able to see it."
+//
+// So the content states the policies, including when there were none, and
+// `method_stated` records that it did. A reader who disputes the method can see
+// the method. This is the field that makes the claim critiquable in fact rather
+// than in principle.
+// ============================================================================
+
+/// How a reading is tagged, so readings are discoverable among ordinary claims.
+///
+/// Discovery deliberately reuses `get_claims_by_domain` plus this tag rather
+/// than adding a link type: a new `LinkTypes` variant is an INTEGRITY change
+/// and therefore a DNA hash change, and the by-domain index already indexes
+/// every Claim including these.
+pub const DISCOURSE_READING_TAG: &str = "discourse-health-reading";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishDiscourseReadingPayload {
+    /// The membrane being read. The SUBJECT of the reading, not its author.
+    pub membrane: AnyDhtHash,
+    /// The lenses this reading was taken through. Carried into the published
+    /// content, because a figure without its method is a lensed number
+    /// presented as a neutral one — see this section's header.
+    pub attestation_policy: Option<AttestationPolicy>,
+    pub conductance_policy: Option<ConductancePolicy>,
+    /// The READER's own confidence in their reading, which is theirs to state
+    /// rather than the protocol's to compute. A reading taken through a narrow
+    /// lens over a thin corpus is one its author might honestly call
+    /// `Tentative`, and the protocol has no business overriding that.
+    pub confidence: ConfidenceLevel,
+}
+
+/// Renders the method into something a critic can dispute.
+///
+/// Spelled out even when both policies are absent — "no lens" is itself a
+/// methodological choice and the most consequential one, since an unfiltered
+/// reading counts every critique regardless of attestation or decay.
+fn describe_method(
+    attestation: &Option<AttestationPolicy>,
+    conductance: &Option<ConductancePolicy>,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    match attestation {
+        None => parts.push("no attestation lens (every critique counted)".to_string()),
+        Some(p) => parts.push(format!(
+            "attestation lens: {} distinct attester(s) required, {}, roots {}",
+            p.min_attestations,
+            // `None`, `Some(0)` and `Some(1)` all mean the same thing here —
+            // direct attestation only — so the description says what the lens
+            // DOES rather than echoing a number whose three forms a critic
+            // would have to know are equivalent.
+            match p.max_attestation_depth {
+                None | Some(0) | Some(1) => "direct attestation only".to_string(),
+                Some(d) => format!("up to {} hops of transitive attestation", d),
+            },
+            match &p.require_attestation_from {
+                None => "unrestricted".to_string(),
+                Some(roots) => format!("{} named", roots.len()),
+            },
+        )),
+    }
+    match conductance {
+        None => parts.push("no conductance lens (no decay threshold applied)".to_string()),
+        Some(p) => parts.push(format!(
+            "conductance lens: minimum effective conductance {}, half-life {}",
+            p.min_effective_conductance,
+            match p.half_life_secs {
+                None => "protocol default (30 days)".to_string(),
+                Some(s) => format!("{}s as promised by this reader", s),
+            },
+        )),
+    }
+    parts.join("; ")
+}
+
+/// The reading's content: the figures, the method, and an explicit disclaimer
+/// that this is one agent's observation rather than a protocol verdict.
+fn render_reading(health: &DiscourseHealth, method: &str) -> String {
+    format!(
+        "DISCOURSE READING of domain \"{}\", as observed by the author of this claim.\n\
+         \n\
+         abstract:embodied ratio {:.2}; {} claim(s); {} critique(s).\n\
+         critique modes: {}.\n\
+         {}\n\
+         \n\
+         METHOD: {}.\n\
+         \n\
+         THIS IS NOT A PROTOCOL VERDICT. It is one agent's reading, taken through \
+         the method stated above, and another agent reading the same membrane \
+         through a different method may legitimately publish a different figure. \
+         This protocol does not adjudicate between them. Dispute it as you would \
+         any other claim — it is critiquable through the same typed CritiqueMode \
+         machinery, and Methodological critique is the one this invites.",
+        health.domain,
+        health.abstract_to_embodied_ratio,
+        health.total_claims,
+        health.total_critiques,
+        if health.critique_mode_distribution.is_empty() {
+            "none recorded".to_string()
+        } else {
+            health
+                .critique_mode_distribution
+                .iter()
+                .map(|(mode, n)| format!("{:?}×{}", mode, n))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+        match &health.warning {
+            None => "no warning raised by the computation.".to_string(),
+            Some(w) => format!("warning: {}", w),
+        },
+        method,
+    )
+}
+
+/// What `publish_discourse_reading` returns, so a caller does not have to
+/// re-read its own write to find out what it published.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishedReading {
+    pub action_hash: ActionHash,
+    /// The reading's EntryHash, and it is NOT redundant with the action hash.
+    ///
+    /// `validate_critique` requires an EntryHash-shaped target — a Critique
+    /// filed against an ActionHash is refused with "Critique target must be an
+    /// EntryHash-shaped reference." So a caller who wants to DISPUTE the
+    /// reading needs this, and returning only the action hash would have made
+    /// the claim critiquable in principle and not in practice, which is the
+    /// whole justification for publishing it at all.
+    ///
+    /// Found by writing the harness: §3 could not critique the reading it had
+    /// just published. Same shape as the signal variants that carry
+    /// `entry_hash` alongside the entry because "a bare Mew/Claim has no hash
+    /// field of its own" — see `SignalPayload`.
+    pub entry_hash: EntryHash,
+    /// The reading as computed at publication time.
+    pub health: DiscourseHealth,
+    /// The method string embedded in the claim, so a caller can show what it
+    /// committed to without parsing the content back out.
+    pub method: String,
+    /// Always true. Carried for the same reason `MetabolicObservation`
+    /// carries `wrote_nothing`: an implementation that later omits the method
+    /// should have to change this field rather than quietly mean something
+    /// weaker by the same payload.
+    pub method_stated: bool,
+}
+
+/// Publish a discourse-health reading as this agent's own signed, critiquable
+/// Claim. READINESS item 9.
+#[hdk_extern]
+pub fn publish_discourse_reading(
+    payload: PublishDiscourseReadingPayload,
+) -> ExternResult<PublishedReading> {
+    // Computed through the SAME lenses that will be described, so the figure
+    // and the method cannot disagree. Reusing the extern rather than
+    // reimplementing the aggregate is what keeps that true as the aggregate
+    // changes.
+    let health = get_discourse_health(GetDiscourseHealthPayload {
+        membrane: payload.membrane.clone(),
+        attestation_policy: payload.attestation_policy.clone(),
+        conductance_policy: payload.conductance_policy.clone(),
+    })?;
+
+    let method = describe_method(&payload.attestation_policy, &payload.conductance_policy);
+    let content = render_reading(&health, &method);
+
+    let author = agent_info()?.agent_initial_pubkey;
+    let claim = Claim {
+        content,
+        domain: health.domain.clone(),
+        author,
+        timestamp: sys_time()?.as_micros() as u64,
+        evidence_hashes: vec![],
+        confidence: payload.confidence,
+        semantic_tags: vec![DISCOURSE_READING_TAG.to_string()],
+        source_mew: None,
+    };
+
+    // Published through create_claim rather than create_entry, deliberately:
+    // that is what indexes it by domain and emits the NewClaim signal, so a
+    // reading is discoverable and observable by exactly the machinery every
+    // other claim uses. A reading that needed its own index would be a reading
+    // the rest of the protocol could not see.
+    let entry_hash = hash_entry(&claim)?;
+    let action_hash = create_claim(claim)?;
+
+    Ok(PublishedReading { action_hash, entry_hash, health, method, method_stated: true })
+}
+
 // ============================================================================
 // THE PROTOCOL'S PRESENT TENSE — READINESS item 8.
 //
@@ -4914,6 +5164,85 @@ mod tests {
     // in prose.
 
     const HALF_LIFE: f64 = CONDUCTANCE_HALF_LIFE_SECS;
+
+    // --- A READING CARRIES ITS METHOD, item 9. Four properties, because the
+    // method string is the thing that makes the claim disputable in fact
+    // rather than in principle — if it can go missing or go wrong, the reading
+    // becomes a lensed number presented as a neutral one.
+
+    #[test]
+    fn describe_method_names_the_absence_of_a_lens_rather_than_saying_nothing() {
+        // "No lens" is itself a methodological choice, and the most
+        // consequential one: an unfiltered reading counts every critique
+        // regardless of attestation or decay. Silence here would read as
+        // neutrality.
+        let m = describe_method(&None, &None);
+        assert!(m.contains("no attestation lens"), "got {}", m);
+        assert!(m.contains("no conductance lens"), "got {}", m);
+        assert!(m.contains("every critique counted"), "got {}", m);
+    }
+
+    #[test]
+    fn describe_method_states_the_half_life_the_reader_promised() {
+        // Item 10 made the half-life the reader's own promise, so two readings
+        // of the same membrane legitimately differ by it. A reading that hid
+        // which half-life produced it would be unfalsifiable.
+        let m = describe_method(&None, &Some(ConductancePolicy {
+            min_effective_conductance: 0.5,
+            half_life_secs: Some(604_800),
+        }));
+        assert!(m.contains("604800s as promised by this reader"), "got {}", m);
+        let d = describe_method(&None, &Some(ConductancePolicy {
+            min_effective_conductance: 0.5,
+            half_life_secs: None,
+        }));
+        assert!(d.contains("protocol default (30 days)"), "got {}", d);
+    }
+
+    #[test]
+    fn describe_method_collapses_the_three_equivalent_depths_into_one_statement() {
+        // None, Some(0) and Some(1) all mean direct-only. Echoing the number
+        // would make a critic infer that equivalence themselves.
+        for depth in [None, Some(0u8), Some(1u8)] {
+            let m = describe_method(&Some(AttestationPolicy {
+                require_attestation_from: None,
+                min_attestations: 2,
+                max_attestation_depth: depth,
+            }), &None);
+            assert!(m.contains("direct attestation only"), "depth {:?} gave {}", depth, m);
+        }
+        let m = describe_method(&Some(AttestationPolicy {
+            require_attestation_from: None,
+            min_attestations: 2,
+            max_attestation_depth: Some(3),
+        }), &None);
+        assert!(m.contains("up to 3 hops"), "got {}", m);
+    }
+
+    #[test]
+    fn a_rendered_reading_refuses_to_read_as_a_protocol_verdict() {
+        // The whole Invariant 1 argument rests on the reading claiming a view
+        // from SOMEWHERE. If the text could be mistaken for an protocol-computed
+        // score, publishing it would rebuild the canonical signal the invariant
+        // rules out.
+        let health = DiscourseHealth {
+            domain: "climate".to_string(),
+            abstract_to_embodied_ratio: 2.5,
+            warning: None,
+            total_claims: 10,
+            total_critiques: 4,
+            critique_mode_distribution: vec![],
+        };
+        let r = render_reading(&health, "no attestation lens; no conductance lens");
+        assert!(r.contains("THIS IS NOT A PROTOCOL VERDICT"), "got {}", r);
+        assert!(r.contains("as observed by the author of this claim"), "got {}", r);
+        assert!(r.contains("does not adjudicate"), "got {}", r);
+        assert!(r.contains("METHOD:"), "the method must survive into the content");
+        assert!(r.contains("climate"), "the domain read must be named");
+        // The figures themselves, so the disclaimer is not all it carries.
+        assert!(r.contains("2.50"), "got {}", r);
+        assert!(r.contains("10 claim(s)"), "got {}", r);
+    }
 
     #[test]
     fn decay_factor_is_one_at_zero_elapsed() {
