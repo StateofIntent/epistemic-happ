@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -746,6 +746,10 @@ pub enum LinkTypes {
     // guarantee is that its author chose it. Two types, two branches, each
     // with one rule.
     RetractionToReplacement,
+    // Settlement, protocol_version 11. Appended at the END for the reason
+    // this enum's own comments give: link types are position-indexed.
+    TargetToAssessment,
+    TargetToSettlementStatus,
 }
 
 // ============================================================================
@@ -884,6 +888,185 @@ pub enum EntryTypes {
     SealedPrediction(SealedPrediction),
     PreRegistration(PreRegistration),
     Revelation(Revelation),
+    // Settlement, protocol_version 11. Appended at the END deliberately:
+    // entry types are position-indexed, so inserting above would renumber
+    // every type after it and silently reinterpret existing entries — the
+    // same reasoning LinkTypes already carries.
+    Assessment(Assessment),
+    SettlementPolicy(SettlementPolicy),
+    SettlementStatus(SettlementStatus),
+}
+
+// ============================================================================
+// SETTLEMENT — turning assessments into a status, as somebody's arithmetic
+// ============================================================================
+// Added at `protocol_version: 11`. The question this answers is the one an
+// epistemic substrate cannot avoid for ever: when does a claim stop being
+// contested enough to act on? The answer here is deliberately NOT "when the
+// protocol says so" — §7's Invariant 10 is that the system does not compute
+// truth — but "when a named agent's declared policy, applied to a named set of
+// inputs, says so, and anybody can recompute it."
+//
+// THREE ENTRY TYPES, AND THE SPLIT IS THE WHOLE DESIGN.
+//
+//   `Assessment`       — one agent's stance on one target. Signed, typed,
+//                        critiquable like anything else.
+//   `SettlementPolicy` — a published, versioned threshold. Burgess's point
+//                        that a threshold is itself a promise: the rule for
+//                        turning continuous disagreement into a discrete
+//                        status is on the record BEFORE it is applied, and is
+//                        itself arguable.
+//   `SettlementStatus` — an aggregator saying "under policy P, over input set
+//                        I, this is Settled". It cites the policy BY HASH and
+//                        lists every input, so the claim is reproducible.
+//
+// STATUS IS AN ENTRY, NOT A FIELD, AND INVARIANT 6 IS WHY. Nothing is deleted
+// and nothing is updated (§5.1 refuses app-entry updates outright), so there
+// is no mutable `status` to flip from Contested to Settled. A status is an
+// additive record; a later one does not erase an earlier one, and when two
+// disagree the ordering is `order_records`' problem rather than a race. That
+// is the "channels, not deletion" shape this protocol already has everywhere.
+//
+// AND VALIDATION RECOMPUTES THE RESULT, which is the part that makes this
+// enforcement rather than courtesy. Settlement is a PURE function of (policy,
+// inputs): fetch each input, count, compare to the policy's numbers. Every
+// peer can do that deterministically, so `validate_settlement_status` does —
+// and an aggregator that publishes `Settled` over a set that does not support
+// it is REFUSED BY THE DHT, not merely caught by a careful reader.
+//
+// Two aggregators may still legitimately disagree, and that is the point
+// rather than a flaw: if they used DIFFERENT input sets they reach different
+// statuses, both valid, both reproducible, and the difference is visible in
+// the `inputs` they each published. What is refused is lying about arithmetic,
+// not disagreeing about scope.
+//
+// NO SCORE, ANYWHERE. Invariant 1 bars a canonical comparative measure, and a
+// numeric "truth score" is exactly that wearing a decimal point. `Assessment`
+// carries a TYPED STANCE — the same "typed, not flattened" discipline
+// Invariant 4 applies to critique modes — and the status is one of three named
+// states rather than a number crossing a line.
+
+/// One agent's stance on one target. Not a vote: nothing counts these except
+/// an aggregator applying a policy somebody published and named.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Stance {
+    /// "I think this holds up."
+    Supports,
+    /// "I think this does not hold up." A dissent, which every policy here
+    /// must decide what to do with rather than average away.
+    Disputes,
+    /// "I have read it and I am not taking a position." DELIBERATELY NOT the
+    /// same as silence: an abstention is a recorded act, and a policy may
+    /// legitimately count it toward "enough people have looked at this"
+    /// without counting it toward agreement.
+    Abstains,
+}
+
+/// One agent's assessment of one target, under their own confidence.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct Assessment {
+    pub assessor: AgentPubKey,
+    pub target: AnyLinkableHash,
+    pub stance: Stance,
+    /// The ASSESSOR's confidence in their own assessment, which is theirs to
+    /// state rather than the protocol's to compute — the same reasoning
+    /// `PublishDiscourseReadingPayload.confidence` already carries.
+    pub confidence: ConfidenceLevel,
+    /// Why. Optional, because a stance with no rationale is still a signed
+    /// position somebody can be held to; required reasons would be a quality
+    /// bar this protocol has no way to enforce.
+    pub rationale: Option<String>,
+    /// What this assessor had seen of the target's critiques when they
+    /// assessed it — same field, same rules, same argument as
+    /// `Critique.past_cone` (`protocol_version: 10`). An assessment made
+    /// without seeing the objections is a different act from one made in
+    /// spite of them, and only retention can tell them apart later.
+    #[serde(default)]
+    pub past_cone: Vec<ActionHash>,
+    pub timestamp: u64,
+}
+
+/// A published, versioned rule for turning assessments into a status.
+///
+/// THE PARAMETERS ARE ALL INTEGERS AND ALL COMPARISONS ARE EXACT, which is not
+/// a simplification but a requirement: validation recomputes the status from
+/// these numbers, so every peer must reach the identical answer. A float, a
+/// ratio or a clock would each break that in a different way.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct SettlementPolicy {
+    pub author: AgentPubKey,
+    /// A human name, so a status citing this hash is legible without
+    /// resolving it.
+    pub name: String,
+    /// How many DISTINCT assessors must have assessed before this policy will
+    /// say anything other than `Open`. Distinct by `AgentPubKey`: one agent
+    /// assessing five times is one assessor, which is the only sybil-adjacent
+    /// property a rule here can actually check.
+    pub min_assessors: u32,
+    /// How much dissent this policy tolerates before calling a target
+    /// `Contested` — counting both `Disputes` assessments and critiques in
+    /// the input set. Zero means any dissent at all contests it.
+    pub max_dissent: u32,
+    /// What this policy is for, in the author's own words. Carried into the
+    /// entry rather than left to a README because a policy cited by hash in
+    /// somebody else's status must be self-describing.
+    pub statement: String,
+    pub published_at: u64,
+}
+
+/// What a target's status is, under one policy, over one input set.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum SettlementState {
+    /// Not enough assessors have looked at it yet for this policy to speak.
+    Open,
+    /// Enough have looked, and there is more dissent than this policy tolerates.
+    Contested,
+    /// Enough have looked, and dissent is within tolerance.
+    Settled,
+}
+
+/// An aggregator's published settlement, reproducible by anyone.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct SettlementStatus {
+    pub aggregator: AgentPubKey,
+    pub target: AnyLinkableHash,
+    /// The policy applied, BY HASH. Not by name and not by value: a hash pins
+    /// the exact parameters, so a status cannot be reinterpreted later by
+    /// anybody republishing a policy under the same name.
+    pub policy: ActionHash,
+    /// THE EXACT SET OF INPUTS USED — every Assessment and every Critique this
+    /// aggregator counted. Published because it is what makes the result
+    /// reproducible, and because two aggregators who disagree are usually
+    /// disagreeing about THIS rather than about arithmetic.
+    pub inputs: Vec<ActionHash>,
+    /// The result. Validation recomputes it from `policy` and `inputs` and
+    /// refuses the entry if it does not match.
+    pub state: SettlementState,
+    pub timestamp: u64,
+}
+
+/// The ceiling on an input set, for the same reason `MAX_PAST_CONE` has one:
+/// validation resolves every member, and every peer pays that cost.
+pub const MAX_SETTLEMENT_INPUTS: usize = 256;
+
+/// THE PURE FUNCTION. Given a policy and the classified inputs, what state
+/// does the policy produce?
+///
+/// Extracted and `pub` so three callers share ONE implementation: validation,
+/// the coordinator's `recompute_settlement` read, and this zome's own unit
+/// tests. A second copy would be a second answer, and "anybody can recompute
+/// it" would stop being true the first time the copies drifted.
+pub fn settle(policy: &SettlementPolicy, distinct_assessors: u32, dissent: u32) -> SettlementState {
+    if distinct_assessors < policy.min_assessors {
+        return SettlementState::Open;
+    }
+    if dissent > policy.max_dissent {
+        return SettlementState::Contested;
+    }
+    SettlementState::Settled
 }
 
 // ============================================================================
@@ -1033,6 +1216,9 @@ fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCal
                 EntryTypes::Retraction(retraction) => validate_retraction(&retraction, &action),
                 EntryTypes::PreRegistration(pr) => validate_pre_registration(&pr, &action),
                 EntryTypes::Revelation(rev) => validate_revelation(&rev, &action),
+                EntryTypes::Assessment(a) => validate_assessment(&a, &action),
+                EntryTypes::SettlementPolicy(p) => validate_settlement_policy(&p, &action),
+                EntryTypes::SettlementStatus(st) => validate_settlement_status(&st, &action),
                 // A PRIVATE ENTRY'S CONTENT IS NOT AVAILABLE HERE, so there
                 // is nothing to check and saying so beats a silent catch-all.
                 // hdi delivers `None` for a private entry body and treats
@@ -1260,6 +1446,168 @@ fn validate_revelation(rev: &Revelation, action: &TypedAction<CreateData>) -> Ex
         ));
     }
 
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// An assessment binds its assessor and records what it had seen.
+fn validate_assessment(a: &Assessment, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &a.assessor != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("Assessment assessor must match action author.".into()));
+    }
+    // The target must EXIST. Deliberately not type-restricted: a claim, a
+    // critique and a species are all things somebody may legitimately take a
+    // position on, and narrowing it here would decide that for them.
+    // `EntryHash::try_from` DIRECTLY, which is `validate_critique`'s own
+    // idiom for the same job. An earlier version converted through
+    // `AnyDhtHash` and then fell back to a zeroed hash when the downcast
+    // failed — which would have reported "target not found" for a target that
+    // was simply the wrong SHAPE, sending a reader after a missing entry that
+    // was never named. A wrong diagnosis is worse than a blunt one.
+    let Ok(target_hash) = EntryHash::try_from(a.target.clone()) else {
+        return Ok(ValidateCallbackResult::Invalid(
+            "Assessment target must be an EntryHash-shaped reference.".into()));
+    };
+    if must_get_entry(target_hash).is_err() {
+        return Ok(ValidateCallbackResult::Invalid("Assessment target not found.".into()));
+    }
+    // The same cone rules as Critique, for the same reason — see
+    // `Critique.past_cone`. Over-claiming is unpreventable; selective
+    // IGNORANCE is what transitive closure makes impossible.
+    if a.past_cone.len() > MAX_PAST_CONE {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Assessment past_cone exceeds {} entries.", MAX_PAST_CONE
+        )));
+    }
+    for (i, h) in a.past_cone.iter().enumerate() {
+        if a.past_cone[..i].contains(h) {
+            return Ok(ValidateCallbackResult::Invalid("Assessment past_cone contains a duplicate entry.".into()));
+        }
+    }
+    for h in &a.past_cone {
+        let Ok(record) = must_get_valid_record(h.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Assessment past_cone entry does not resolve to a valid record.".into()));
+        };
+        let Ok(Some(seen)) = record.entry().to_app_option::<Critique>() else {
+            return Ok(ValidateCallbackResult::Invalid("Assessment past_cone entry is not a Critique.".into()));
+        };
+        if seen.target != a.target {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Assessment past_cone entry critiques a different target.".into()));
+        }
+        for inherited in &seen.past_cone {
+            if !a.past_cone.contains(inherited) {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Assessment past_cone is not transitively closed.".into()));
+            }
+        }
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// A policy binds its author and must be able to say something.
+fn validate_settlement_policy(p: &SettlementPolicy, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &p.author != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("SettlementPolicy author must match action author.".into()));
+    }
+    if p.name.trim().is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("SettlementPolicy name cannot be empty.".into()));
+    }
+    if p.statement.trim().is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "SettlementPolicy statement cannot be empty; a threshold nobody explained is a number \
+             pretending to be a reason.".into()
+        ));
+    }
+    // A POLICY THAT SETTLES ON NOBODY'S ASSESSMENT IS NOT A POLICY. Zero would
+    // let an aggregator declare anything Settled over an empty input set,
+    // which is the one result this whole mechanism exists to make impossible.
+    if p.min_assessors == 0 {
+        return Ok(ValidateCallbackResult::Invalid(
+            "SettlementPolicy min_assessors must be at least 1; a policy settling on zero \
+             assessments would settle anything.".into()
+        ));
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// THE RECOMPUTE RULE, and the reason settlement is enforcement here rather
+/// than a convention anybody can ignore.
+///
+/// Settlement is a pure function of (policy, inputs), so validation can
+/// perform it — and does. An aggregator publishing a state its own cited
+/// inputs do not produce is refused by the DHT, by every peer, independently.
+/// What remains possible is choosing a DIFFERENT input set, which is a
+/// disagreement about scope rather than a lie about arithmetic, and is
+/// visible because `inputs` is published.
+fn validate_settlement_status(st: &SettlementStatus, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &st.aggregator != action.author() {
+        return Ok(ValidateCallbackResult::Invalid("SettlementStatus aggregator must match action author.".into()));
+    }
+    if st.inputs.len() > MAX_SETTLEMENT_INPUTS {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "SettlementStatus inputs exceed {} entries.", MAX_SETTLEMENT_INPUTS
+        )));
+    }
+    for (i, h) in st.inputs.iter().enumerate() {
+        if st.inputs[..i].contains(h) {
+            return Ok(ValidateCallbackResult::Invalid(
+                "SettlementStatus inputs contain a duplicate; a repeated assessment would count \
+                 its assessor twice.".into()
+            ));
+        }
+    }
+    let Ok(policy_record) = must_get_valid_record(st.policy.clone()) else {
+        return Ok(ValidateCallbackResult::Invalid("SettlementStatus policy does not resolve.".into()));
+    };
+    let Ok(Some(policy)) = policy_record.entry().to_app_option::<SettlementPolicy>() else {
+        return Ok(ValidateCallbackResult::Invalid("SettlementStatus policy is not a SettlementPolicy.".into()));
+    };
+
+    // Classify every input. An input that is neither an Assessment nor a
+    // Critique is refused rather than ignored: silently skipping it would let
+    // an aggregator pad `inputs` with anything to make a set look larger than
+    // the evidence it actually rests on.
+    let mut assessors: Vec<AgentPubKey> = Vec::new();
+    let mut dissent: u32 = 0;
+    for h in &st.inputs {
+        let Ok(record) = must_get_valid_record(h.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "SettlementStatus input does not resolve to a valid record.".into()));
+        };
+        if let Ok(Some(a)) = record.entry().to_app_option::<Assessment>() {
+            if a.target != st.target {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "SettlementStatus input assesses a different target.".into()));
+            }
+            if !assessors.contains(&a.assessor) {
+                assessors.push(a.assessor.clone());
+            }
+            if a.stance == Stance::Disputes {
+                dissent += 1;
+            }
+        } else if let Ok(Some(c)) = record.entry().to_app_option::<Critique>() {
+            if c.target != st.target {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "SettlementStatus input critiques a different target.".into()));
+            }
+            dissent += 1;
+        } else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "SettlementStatus input is neither an Assessment nor a Critique.".into()));
+        }
+    }
+
+    let expected = settle(&policy, assessors.len() as u32, dissent);
+    if expected != st.state {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "SettlementStatus state does not follow from its own policy and inputs: {} distinct \
+             assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}) yields \
+             {:?}, not {:?}. Settlement is a pure function and every peer computes it.",
+            assessors.len(), dissent, policy.name, policy.min_assessors, policy.max_dissent,
+            expected, st.state
+        )));
+    }
     Ok(ValidateCallbackResult::Valid)
 }
 
@@ -3381,6 +3729,60 @@ fn validate_create_link(
                 "A ClaimToExternalCritique link may only be created by the importing \
                  agent.".into()
             ));
+        }
+    } else if link_type == LinkTypes::TargetToAssessment {
+        // BOUND FROM THE DAY IT EXISTS, which is the lesson §5.19 cost a
+        // network fork to learn: the link types nobody probed were the link
+        // types nobody validated, and "an agent could author a valid entry
+        // about their own claim and then file it against anybody's" was true
+        // of four types at once. This one carries the same risk in a sharper
+        // form — `get_assessments_for` reads by base, so an unbound link would
+        // let anybody file somebody's assessment against any target, and an
+        // aggregator collecting inputs would count it.
+        let Ok(target_hash) = ActionHash::try_from(target_address.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToAssessment target must be an ActionHash.".into()));
+        };
+        let Ok(record) = must_get_valid_record(target_hash) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToAssessment target does not resolve.".into()));
+        };
+        let Ok(Some(assessment)) = record.entry().to_app_option::<Assessment>() else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToAssessment target is not an Assessment.".into()));
+        };
+        if assessment.target != base_address {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToAssessment link must hang from the node the Assessment itself names \
+                 in target.".into()));
+        }
+        if &assessment.assessor != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToAssessment link may only be created by the Assessment's own \
+                 assessor.".into()));
+        }
+    } else if link_type == LinkTypes::TargetToSettlementStatus {
+        let Ok(target_hash) = ActionHash::try_from(target_address.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToSettlementStatus target must be an ActionHash.".into()));
+        };
+        let Ok(record) = must_get_valid_record(target_hash) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToSettlementStatus target does not resolve.".into()));
+        };
+        let Ok(Some(status)) = record.entry().to_app_option::<SettlementStatus>() else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "TargetToSettlementStatus target is not a SettlementStatus.".into()));
+        };
+        if status.target != base_address {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToSettlementStatus link must hang from the node the SettlementStatus \
+                 itself names in target.".into()));
+        }
+        if &status.aggregator != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A TargetToSettlementStatus link may only be created by the status's own \
+                 aggregator.".into()));
         }
     }
     Ok(ValidateCallbackResult::Valid)

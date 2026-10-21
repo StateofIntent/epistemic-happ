@@ -541,6 +541,16 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/past-cone.mjs
 
+      # settlement — protocol_version 11. Three agents, because min_assessors
+      # counts DISTINCT assessors and one agent assessing three times must not
+      # satisfy a two-assessor policy. The clean conductor matters: each run
+      # writes assessments and a critique, and critiques carry a SynapticLink
+      # against §6's 20-per-hour ceiling.
+      - name: settlement — a forged status is refused, and two aggregators may still disagree
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/settlement.mjs
+
       - name: metabolism — the host runs a function nothing called, twice, and writes nothing
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start

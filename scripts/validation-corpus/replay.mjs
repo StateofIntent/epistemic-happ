@@ -216,6 +216,62 @@ let _others = null;
 const OTHER_PREDICTION = 'corpus prediction, committed by the OTHER agent';
 const OTHER_SALT = 'corpus-other-salt-4a1c';
 
+// ONE SET OF CONE FIXTURES FOR THE WHOLE RUN, and finding 17 is why.
+//
+// Every `create_critique` also creates a SynapticLink, and §6 caps those at 20
+// per author per rolling hour. The `critique` spec needs three critiques for
+// its cone cases and the `assessment` spec needs the same three — six, plus
+// everything else the corpus writes, and the run died with `SWO temporal
+// friction: 20 SynapticLinks already created`, skipping every case below it.
+//
+// So they are built ONCE and shared. The cost of not doing this is not a
+// slower run, it is a corpus that silently stops testing things.
+let _cone = null;
+async function coneFixtures() {
+  if (_cone) return _cone;
+  const domain = `CorpusCone${Date.now()}`;
+  await call('create_claim', {
+    content: 'corpus claim, the shared cone target', domain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  const claims = await call('get_claims_by_domain', domain);
+  const target = claims[0].signed_action.hashed.content.data.entry_hash;
+  const member = await call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique, a legal cone member', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [],
+  });
+  const withOwnCone = await call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique whose own cone is non-empty', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [member],
+  });
+  const otherDomain = `CorpusConeOther${Date.now()}`;
+  await call('create_claim', {
+    content: 'corpus claim in another domain', domain: otherDomain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  const oc = await call('get_claims_by_domain', otherDomain);
+  const otherTarget = oc[0].signed_action.hashed.content.data.entry_hash;
+  const foreign = await call('create_critique', {
+    target: otherTarget, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique of a different target', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [],
+  });
+  const notACritique = await call('create_claim', {
+    content: 'corpus claim used as a non-Critique reference', domain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  _cone = { target, otherTarget, member, withOwnCone, foreign, notACritique, domain };
+  return _cone;
+}
+
 async function otherAgentFixtures() {
   if (_others) return _others;
   const domain = `CorpusOther${Date.now()}`;
@@ -527,6 +583,11 @@ const COVERED = [
   'worldline_trace', 'pre_registration', 'revelation',
   // The last two, 2026-10-21 — `needs_extern` reaches 0 with these.
   'bridge_record', 'external_critique',
+  // Settlement, protocol_version 11. Added WITH the entry types rather than
+  // after: a type absent from this list has its rules demanded by nothing,
+  // and the coverage loop reports "0 of 0" while cases run and gate nothing
+  // (finding 10's shape).
+  'assessment', 'settlement_policy', 'settlement_status',
 ];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
@@ -659,6 +720,16 @@ const GAPS = [
   // it compares the ACTION TIMESTAMP of the record the field points at, and
   // nothing in a payload can set that. Worth keeping as its own shape: a
   // `crafted` classification is a claim about the field, not about the rule.
+  {
+    entry: 'assessment',
+    rule: 'Assessment past_cone exceeds {} entries.',
+    why: 'the ceiling is 256 and every member must be a VALID Critique of the same target, so reaching it needs 257 real critiques — against §6\'s 20 per author per rolling hour. Nine hours of a single author doing nothing else, which is not a corpus run. The same shape as the friction gaps above: a limit whose cost is the budget rather than the payload',
+  },
+  {
+    entry: 'settlement_status',
+    rule: 'SettlementStatus inputs exceed {} entries.',
+    why: 'same arithmetic as the Assessment cone ceiling — 257 inputs must each be a valid Assessment or Critique of this target, and critiques are capped at 20 per hour. Assessments are not capped, so this one is reachable IN PRINCIPLE with 257 assessments from one agent; it is gapped because writing 257 entries to assert one bound would dominate the run time of the whole corpus for a rule whose failure mode is a slow validator rather than a wrong verdict',
+  },
   {
     entry: 'pre_registration',
     rule: 'PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.',
@@ -1406,6 +1477,126 @@ const entries = [
       {
         rule: 'Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.',
         mutate: (r, ctx) => { r.pre_registration = ctx.expiring; r.prediction = ctx.EXP_PRED; r.salt = ctx.EXP_SALT; },
+      },
+    ],
+  },
+  {
+    entry: 'settlement_policy',
+    label: 'SettlementPolicy',
+    fn: 'publish_settlement_policy',
+    baseline: () => ({
+      author: myKey, name: 'corpus-policy', min_assessors: 2, max_dissent: 0,
+      statement: 'corpus policy, published so a status can cite it', published_at: nowSecs(),
+    }),
+    cases: [
+      { rule: 'SettlementPolicy author must match action author.', mutate: (p) => { p.author = danglingHash('agent', 131); } },
+      { rule: 'SettlementPolicy name cannot be empty.', mutate: (p) => { p.name = ''; } },
+      {
+        rule: 'SettlementPolicy statement cannot be empty; a threshold nobody explained is a number pretending to be a reason.',
+        mutate: (p) => { p.statement = ''; },
+      },
+      {
+        rule: 'SettlementPolicy min_assessors must be at least 1; a policy settling on zero assessments would settle anything.',
+        mutate: (p) => { p.min_assessors = 0; },
+      },
+    ],
+  },
+  {
+    entry: 'assessment',
+    label: 'Assessment',
+    fn: 'publish_assessment',
+    chainNote: 'the shared cone fixtures — see coneFixtures() on why they are shared',
+    setup: async () => coneFixtures(),
+    baseline: (ctx) => ({
+      assessor: myKey, target: ctx.target, stance: 'Supports', confidence: 'Moderate',
+      rationale: 'corpus baseline assessment', past_cone: [], timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'Assessment assessor must match action author.', mutate: (a) => { a.assessor = danglingHash('agent', 132); } },
+      // AN ACTION HASH, not an agent one. `AnyLinkableHash` does carry agent
+      // keys in principle, but a dangling agent hash does not survive the
+      // extern boundary — the payload failed to DESERIALIZE before validation
+      // saw it, so the case red for the wrong reason. A real ActionHash is a
+      // valid `AnyLinkableHash` and is not EntryHash-shaped, which is exactly
+      // the condition this rule names.
+      { rule: 'Assessment target must be an EntryHash-shaped reference.', mutate: (a, ctx) => { a.target = ctx.member; } },
+      { rule: 'Assessment target not found.', expect: 'deferral', mutate: (a) => { a.target = danglingHash('entry', 134); } },
+      { rule: 'Assessment past_cone contains a duplicate entry.', mutate: (a, ctx) => { a.past_cone = [ctx.member, ctx.member]; } },
+      {
+        rule: 'Assessment past_cone entry does not resolve to a valid record.',
+        expect: 'deferral',
+        mutate: (a) => { a.past_cone = [danglingHash('action', 135)]; },
+      },
+      { rule: 'Assessment past_cone entry is not a Critique.', mutate: (a, ctx) => { a.past_cone = [ctx.notACritique]; } },
+      { rule: 'Assessment past_cone entry critiques a different target.', mutate: (a, ctx) => { a.past_cone = [ctx.foreign]; } },
+      { rule: 'Assessment past_cone is not transitively closed.', mutate: (a, ctx) => { a.past_cone = [ctx.withOwnCone]; } },
+    ],
+  },
+  {
+    entry: 'settlement_status',
+    label: 'SettlementStatus',
+    fn: 'publish_settlement_status',
+    chainNote: 'a policy, a target, two assessments and a critique of something else',
+    setup: async () => {
+      const domain = `CorpusStatus${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim whose status is computed', domain, author: myKey,
+        timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+        semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const target = claims[0].signed_action.hashed.content.data.entry_hash;
+      const policy = await call('publish_settlement_policy', {
+        author: myKey, name: 'corpus-status-policy', min_assessors: 1, max_dissent: 0,
+        statement: 'corpus policy for the status cases', published_at: nowSecs(),
+      });
+      const mine = await call('publish_assessment', {
+        assessor: myKey, target, stance: 'Supports', confidence: 'Moderate',
+        rationale: null, past_cone: [], timestamp: nowMicros(),
+      });
+      const others = await otherAgentFixtures();
+      // An assessment of a DIFFERENT target, for the scope rule.
+      const otherDomain = `CorpusStatusOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim in another domain', domain: otherDomain, author: myKey,
+        timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+        semantic_tags: [], source_mew: null,
+      });
+      const oc = await call('get_claims_by_domain', otherDomain);
+      const otherTarget = oc[0].signed_action.hashed.content.data.entry_hash;
+      const foreignAssessment = await call('publish_assessment', {
+        assessor: myKey, target: otherTarget, stance: 'Supports', confidence: 'Moderate',
+        rationale: null, past_cone: [], timestamp: nowMicros(),
+      });
+      // The SHARED foreign critique rather than a fresh one — see
+      // coneFixtures(). Each extra critique is a SynapticLink against a
+      // 20-per-hour ceiling, and finding 17 records what happens at it.
+      const cone = await coneFixtures();
+      return { target, policy, mine, foreignAssessment, foreignCritique: cone.foreign, domain };
+    },
+    // Baseline: one assessor, no dissent, min_assessors 1 -> Settled.
+    baseline: (ctx) => ({
+      aggregator: myKey, target: ctx.target, policy: ctx.policy,
+      inputs: [ctx.mine], state: 'Settled', timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'SettlementStatus aggregator must match action author.', mutate: (st) => { st.aggregator = danglingHash('agent', 136); } },
+      { rule: 'SettlementStatus inputs contain a duplicate; a repeated assessment would count its assessor twice.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.mine]; } },
+      { rule: 'SettlementStatus policy does not resolve.', expect: 'deferral', mutate: (st) => { st.policy = danglingHash('action', 137); } },
+      // A Claim's ActionHash resolves and is not a SettlementPolicy.
+      { rule: 'SettlementStatus policy is not a SettlementPolicy.', mutate: (st, ctx) => { st.policy = ctx.mine; } },
+      { rule: 'SettlementStatus input does not resolve to a valid record.', expect: 'deferral', mutate: (st) => { st.inputs = [danglingHash('action', 138)]; } },
+      { rule: 'SettlementStatus input assesses a different target.', mutate: (st, ctx) => { st.inputs = [ctx.foreignAssessment]; } },
+      { rule: 'SettlementStatus input critiques a different target.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.foreignCritique]; } },
+      { rule: 'SettlementStatus input is neither an Assessment nor a Critique.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.policy]; } },
+      // THE RECOMPUTE RULE, as a corpus case: claim Open over inputs that
+      // produce Settled.
+      // THE RECOMPUTE RULE as a corpus case: claim Open over inputs that
+      // produce Settled. The rule name must be the inventory's FULL text —
+      // a truncated one names no rule and the coverage gate says so.
+      {
+        rule: 'SettlementStatus state does not follow from its own policy and inputs: {} distinct assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}) yields {:?}, not {:?}. Settlement is a pure function and every peer computes it.',
+        mutate: (st) => { st.state = 'Open'; },
       },
     ],
   },

@@ -1424,6 +1424,175 @@ pub fn which_entries_resolve_locally(hashes: Vec<AnyDhtHash>) -> ExternResult<Ve
 }
 
 // ============================================================================
+// SETTLEMENT — publishing a status, and letting anybody recompute it
+// ============================================================================
+// `protocol_version: 11`. The integrity zome holds the rule; this holds the
+// three write paths and the read that makes the rule checkable without
+// writing anything.
+//
+// THE PURE FUNCTION IS NOT REIMPLEMENTED HERE. `settle()` lives in the
+// integrity zome and is imported, so validation, this coordinator and the
+// zome's own unit tests all run ONE implementation. A second copy would be a
+// second answer, and "anybody can recompute it" stops being true the first
+// time two copies drift — which is this repository's shadowing failure
+// (READINESS item 5e) in the one place it would be hardest to notice.
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecomputedSettlement {
+    pub target: AnyLinkableHash,
+    pub policy: ActionHash,
+    pub policy_name: String,
+    /// What the policy demands, echoed so a reader need not resolve it.
+    pub min_assessors: u32,
+    pub max_dissent: u32,
+    /// What the inputs actually contain.
+    pub distinct_assessors: u32,
+    pub dissent: u32,
+    /// Inputs that resolved to neither an Assessment nor a Critique, or that
+    /// named a different target. Reported rather than dropped: a recomputation
+    /// over a quietly smaller set is a different answer wearing the same name.
+    pub unusable_inputs: u32,
+    /// The state these inputs produce under this policy.
+    pub state: SettlementState,
+    /// Says what the result is and is not. Never a verdict about the claim.
+    pub note: String,
+}
+
+/// Recompute a settlement from a policy and a set of inputs, writing nothing.
+///
+/// This is the whole point of publishing `inputs` on a `SettlementStatus`:
+/// anybody can call this with another aggregator's policy and input set and
+/// get their result, independently. A status that does not match what this
+/// returns could not have been committed — validation runs the same function.
+#[hdk_extern]
+pub fn recompute_settlement(payload: RecomputeSettlementPayload) -> ExternResult<RecomputedSettlement> {
+    let policy_record = get(payload.policy.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("SettlementPolicy not found.".into())))?;
+    let policy: SettlementPolicy = policy_record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a SettlementPolicy.".into())))?;
+
+    let mut assessors: Vec<AgentPubKey> = Vec::new();
+    let mut dissent = 0u32;
+    let mut unusable = 0u32;
+    let mut seen: Vec<ActionHash> = Vec::new();
+    for h in &payload.inputs {
+        if seen.contains(h) { unusable += 1; continue; }
+        seen.push(h.clone());
+        let Some(record) = get(h.clone(), GetOptions::default())? else { unusable += 1; continue };
+        if let Ok(Some(a)) = record.entry().to_app_option::<Assessment>() {
+            if a.target != payload.target { unusable += 1; continue; }
+            if !assessors.contains(&a.assessor) { assessors.push(a.assessor); }
+            if a.stance == Stance::Disputes { dissent += 1; }
+        } else if let Ok(Some(c)) = record.entry().to_app_option::<Critique>() {
+            if c.target != payload.target { unusable += 1; continue; }
+            dissent += 1;
+        } else {
+            unusable += 1;
+        }
+    }
+
+    let state = settle(&policy, assessors.len() as u32, dissent);
+    let note = format!(
+        "{} distinct assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}). \
+         THIS IS ARITHMETIC OVER ONE INPUT SET, NOT A VERDICT ABOUT THE CLAIM. Another aggregator \
+         using a different set may reach a different state, legitimately, and both are reproducible \
+         from what each published.{}",
+        assessors.len(), dissent, policy.name, policy.min_assessors, policy.max_dissent,
+        if unusable > 0 {
+            format!(" {} input(s) were unusable and counted toward nothing.", unusable)
+        } else { String::new() }
+    );
+
+    Ok(RecomputedSettlement {
+        target: payload.target,
+        policy: payload.policy,
+        policy_name: policy.name,
+        min_assessors: policy.min_assessors,
+        max_dissent: policy.max_dissent,
+        distinct_assessors: assessors.len() as u32,
+        dissent,
+        unusable_inputs: unusable,
+        state,
+        note,
+    })
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecomputeSettlementPayload {
+    pub target: AnyLinkableHash,
+    pub policy: ActionHash,
+    pub inputs: Vec<ActionHash>,
+}
+
+/// Publish one agent's assessment of a target.
+#[hdk_extern]
+pub fn publish_assessment(assessment: Assessment) -> ExternResult<ActionHash> {
+    let action_hash = create_entry(EntryTypes::Assessment(assessment.clone()))?;
+    // Indexed from the target, so an aggregator can FIND the assessments
+    // rather than being handed them. Without this the input set would be
+    // whatever an aggregator happened to already know, which is a much weaker
+    // thing than "everything this observer can see".
+    create_link(
+        assessment.target.clone(),
+        action_hash.clone(),
+        LinkTypes::TargetToAssessment,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+    Ok(action_hash)
+}
+
+/// Publish a settlement policy — a threshold, stated before it is applied.
+#[hdk_extern]
+pub fn publish_settlement_policy(policy: SettlementPolicy) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::SettlementPolicy(policy))
+}
+
+/// Publish a settlement status. Validation recomputes it; a state that does
+/// not follow from the cited policy and inputs is refused.
+#[hdk_extern]
+pub fn publish_settlement_status(status: SettlementStatus) -> ExternResult<ActionHash> {
+    let action_hash = create_entry(EntryTypes::SettlementStatus(status.clone()))?;
+    create_link(
+        status.target.clone(),
+        action_hash.clone(),
+        LinkTypes::TargetToSettlementStatus,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+    Ok(action_hash)
+}
+
+/// Every assessment of a target this observer can see.
+#[hdk_extern]
+pub fn get_assessments_for(target: AnyLinkableHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToAssessment)?, GetStrategy::Network)?;
+    let mut out = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if let Some(r) = get(h, GetOptions::default())? { out.push(r); }
+        }
+    }
+    Ok(out)
+}
+
+/// Every settlement status published about a target — ALL of them, including
+/// ones that disagree. Nothing here picks a winner: two aggregators using
+/// different input sets legitimately reach different states, and hiding that
+/// behind a "current" status would be the deletion Invariant 6 forbids,
+/// performed by a reader instead of a writer.
+#[hdk_extern]
+pub fn get_settlement_statuses_for(target: AnyLinkableHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToSettlementStatus)?, GetStrategy::Network)?;
+    let mut out = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if let Some(r) = get(h, GetOptions::default())? { out.push(r); }
+        }
+    }
+    Ok(out)
+}
+
+// ============================================================================
 // WHAT A CRITIQUE'S AUTHOR HAD NOT SEEN — the detection half of the C dial
 // ============================================================================
 // Light Cone Consistency's bound: "a system can tell its order inverted
@@ -2062,6 +2231,12 @@ pub enum AttachmentLinkKind {
     Reinforcement,
     AttestationGrant,
     SynapticLink,
+    // Settlement, protocol_version 11. Added WITH the link types rather than
+    // after them: §5.19's finding was that the link types nobody probed were
+    // the link types nobody validated, and a prober that lags its subject
+    // reproduces that gap by construction.
+    TargetToAssessment,
+    TargetToSettlementStatus,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -2163,6 +2338,8 @@ pub fn attempt_false_attachment_link(
         AttachmentLinkKind::Reinforcement => LinkTypes::Reinforcement,
         AttachmentLinkKind::AttestationGrant => LinkTypes::AttestationGrant,
         AttachmentLinkKind::SynapticLink => LinkTypes::SynapticLink,
+        AttachmentLinkKind::TargetToAssessment => LinkTypes::TargetToAssessment,
+        AttachmentLinkKind::TargetToSettlementStatus => LinkTypes::TargetToSettlementStatus,
     };
     let base: AnyLinkableHash = match (&payload.anchor_of, &payload.question_anchor_of) {
         (Some(agent), _) => agent_anchor_hash(agent)?.into(),
