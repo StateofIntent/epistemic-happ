@@ -939,7 +939,7 @@ exist in a coordinator, and Holochain's own zome split is the kernel/observer
 boundary this needed; it had simply never been used on the observer side.
 
 **Verified by watching something happen while nothing was calling it.**
-`scripts/live-verify/metabolism.mjs`, 11 checks against a real conductor: first
+`scripts/live-verify/metabolism.mjs`, 20 checks against a real conductor: first
 tick **0.1s** after `start_metabolism`, second at **60.1s** against the 60s
 floor, and the DHT byte-identical throughout. The central assertion is an
 **absence of cause**, which is harder to test than a presence — a signal

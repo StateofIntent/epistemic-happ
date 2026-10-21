@@ -925,7 +925,7 @@ Two independently-run Holochain networks share no DHT — one cannot query the o
 
 | Function | Payload | Returns |
 |---|---|---|
-| `start_metabolism` | `()` | `()` — schedules `metabolic_tick` on the CALLING agent's chain. Idempotent by the host: if already scheduled, the existing schedule is respected and the call is a noop |
+| `start_metabolism` | `()` | `MetabolismTerms { runs_as: AgentPubKey, tick_interval_secs: u64, writes_to_the_dht: bool, spends_friction_budget: bool, stopped_by: String, terms: String }` — schedules `metabolic_tick` on the CALLING agent's chain. Idempotent by the host: if already scheduled, the existing schedule is respected and the call is a noop, and the terms are returned on those calls too. **It returned `()` until 2026-10-21, and that was the whole of its problem**: this is the only consent gesture the protocol has for an unattended process running on the caller's own key, and it said nothing about what it was consenting to. `writes_to_the_dht` and `spends_friction_budget` are **false** in this version by the decision in READINESS item 22 (option (a)), and a version that starts writing **MUST** return `writes_to_the_dht: true` — a visible change to this payload rather than a quiet change in behaviour. The same device as `MetabolicObservation.wrote_nothing`. `scripts/live-verify/metabolism.mjs` asserts the declaration against the behaviour: the terms must say `false` **and** the tick's own chain must not grow across ticks, so a promise that stopped matching reality reds |
 
 `metabolic_tick` is **not** in this table, because it is not callable protocol
 surface in the ordinary sense: it is `#[hdk_extern(infallible)]`, takes and

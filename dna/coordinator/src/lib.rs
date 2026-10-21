@@ -4921,7 +4921,49 @@ fn metabolic_tick(_: Option<Schedule>) -> Option<Schedule> {
     Some(Schedule::Ephemeral(Duration::from_secs(METABOLIC_TICK_SECS)))
 }
 
-/// Start the heartbeat on THIS agent's chain.
+/// WHAT STARTING THE HEARTBEAT AGREES TO, returned at the moment of the call.
+///
+/// `start_metabolism` used to return `()`. That was the whole of its problem:
+/// it is the only consent gesture this protocol has for an unattended process
+/// running on the caller's own key, and it said nothing about what it was
+/// consenting to. READINESS item 22 decided the heartbeat writes nothing
+/// (option (a)) — and a decision the call does not state is one the next
+/// implementation can reverse without anybody noticing they were never asked.
+///
+/// SO THE TERMS ARE DATA, NOT A DOC COMMENT. A caller receives them, a harness
+/// can assert them against what the tick actually does, and a future version
+/// that starts writing has to return `writes_to_the_dht: true` — which is a
+/// visible change to this payload rather than a quiet change in behaviour. The
+/// same device as `MetabolicObservation.wrote_nothing` and
+/// `PublishedReading.method_stated`, and for the reason that field's own
+/// comment gives: an implementation that later means something weaker should
+/// have to change the field rather than reuse it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MetabolismTerms {
+    /// The agent whose chain this heartbeat now runs on — and therefore the key
+    /// anything it ever wrote would be signed with. A scheduled function runs
+    /// as the author of the chain it runs for, so this is not a parameter.
+    pub runs_as: AgentPubKey,
+    /// The floor between ticks, in seconds, as compiled in. The host refuses to
+    /// promise granularity beyond this ("historically ranged from once every
+    /// 100ms to every 10s"), so it is a floor rather than a period.
+    pub tick_interval_secs: u64,
+    /// FALSE in this version, by the decision in READINESS item 22. If this is
+    /// ever true, everything the tick writes is permanent and un-deletable
+    /// under Invariant 6 — by the agent in `runs_as`, with no deletion path for
+    /// anyone.
+    pub writes_to_the_dht: bool,
+    /// FALSE in this version. The observation is an ephemeral `emit_signal`, so
+    /// no §6 friction budget is spent per tick.
+    pub spends_friction_budget: bool,
+    /// How to stop it, stated because the answer is unusual and a caller has no
+    /// other way to find out.
+    pub stopped_by: String,
+    /// The terms in words, for a caller with no access to this comment.
+    pub terms: String,
+}
+
+/// Start the heartbeat on THIS agent's chain, and say what that agrees to.
 ///
 /// Needed because `init` is lazy: the host's own documentation warns that an
 /// `init` callback "may not happen immediately or ever after happ installation",
@@ -4930,10 +4972,31 @@ fn metabolic_tick(_: Option<Schedule>) -> Option<Schedule> {
 /// starting it a decision somebody took.
 ///
 /// Idempotent, by the host: "If it is already scheduled, the existing schedule
-/// will be respected and the `schedule` call is a noop."
+/// will be respected and the `schedule` call is a noop." The terms are returned
+/// on every call, including the noop ones, because a caller asking again is
+/// entitled to the same answer.
 #[hdk_extern]
-pub fn start_metabolism(_: ()) -> ExternResult<()> {
-    schedule("metabolic_tick")
+pub fn start_metabolism(_: ()) -> ExternResult<MetabolismTerms> {
+    schedule("metabolic_tick")?;
+    Ok(MetabolismTerms {
+        runs_as: agent_info()?.agent_initial_pubkey,
+        tick_interval_secs: METABOLIC_TICK_SECS,
+        // Both false by decision rather than by omission — READINESS item 22,
+        // option (a). The tick observes and emits; it does not act.
+        writes_to_the_dht: false,
+        spends_friction_budget: false,
+        stopped_by: "Restarting the conductor. The schedule is Ephemeral and there is no stop extern: \
+a scheduled function's only input and output is its schedule, so it cannot be passed a flag, and a \
+persistent stop-flag would need a new entry type and therefore a DNA hash change."
+            .into(),
+        terms: "This agent's conductor will run metabolic_tick on its own clock, with no caller, \
+until the conductor restarts. Each tick OBSERVES this chain and emits an ephemeral signal: it writes \
+nothing to the DHT, spends no friction budget, and leaves the source chain byte-identical. Nothing is \
+published in your name. If a future version of this protocol publishes readings automatically, it must \
+return writes_to_the_dht: true here — and then every reading would be a permanent, attributed, \
+critiquable Claim signed with your key, which Invariant 6 makes un-deletable by anyone, including you."
+            .into(),
+    })
 }
 
 #[cfg(test)]
