@@ -1344,6 +1344,50 @@ chains; the chains already existed. **Both estimates were written from the
 conclusion rather than from the obstacle**, which is the shape this repository
 had already named four times in the two days before this was written.
 
+### Finding 16 — `needs_extern` and `needs_prober` are both 0, and the last three rules were each the only thing standing
+
+**Two more probers finished what Finding 15 started.** `attempt_raw_bridge_record`
+and `attempt_raw_external_critique`, same three-line shape, same argument. The
+corpus is **15 entry types, 282 checks, 0 failed, 0 skipped**, and both
+unreachable classes are now empty:
+
+| class | before 2026-10-21 | after |
+|---|---|---|
+| `needs_extern` | 10 | **0** |
+| `needs_prober` | 0 | **0** |
+
+**Every validation rule reachable from JavaScript now has a case or a stated
+gap.** What remains outside that is `remote` (4 — needs a peer authoring a bad
+op), `passthrough` (12 — forwards another validator's result, no message of its
+own), `shadowed` (2 — the coordinator refuses first, derived rather than
+declared since item 5e) and four declared `GAPS`.
+
+**AND INJECTION BN SAYS SOMETHING BK DID NOT.** All three newly reached rules
+were removed at once, and all three red with **"the call COMMITTED — nothing
+stopped this payload"**:
+
+- `BridgeRecord author must match action author.`
+- `BridgeRecord {}.` (the loss-field consistency rule)
+- `ExternalCritique importer must match action author.`
+
+**Compare BK**, where only `PreRegistration`'s author rule committed and the
+other two fell through to an adjacent rule. So the three here are each **solely
+load-bearing** — nothing else in their validator catches the payload. That is
+the fact a prober buys: before these existed, "is this rule the only thing
+standing?" was not a question anybody could answer about them.
+
+**ONE HARNESS IMPROVEMENT CAME OUT OF IT, and it is the escape hatch the code
+already asked for.** `BridgeRecord {}.` is a `format!` rule whose literal prefix
+is twelve characters — `"BridgeRecord"` — which identifies nothing, so
+`assertStopped` refused it outright with *"assert it another way"*. That refusal
+is correct and was deliberately kept: a weakened match is worse than none. The
+"another way" is now a case-level **`expectText`**, which asserts the FULL
+interpolated string (`BridgeRecord excerpt_length cannot exceed
+original_length.`) rather than a prefix — **stricter, not looser**, since a
+prefix matches any rule sharing its head while this names one exact message. It
+must be copied from the zome rather than imagined, which is the same discipline
+the prefix rule enforces by refusing.
+
 ## Why one mutation at a time
 
 A payload that violates two rules proves nothing about either: validation

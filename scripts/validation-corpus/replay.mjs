@@ -525,6 +525,8 @@ const COVERED = [
   // specs: the dependency chains the old note blamed were already built, and
   // the real limit is that most of their fields are derived by the extern.
   'worldline_trace', 'pre_registration', 'revelation',
+  // The last two, 2026-10-21 — `needs_extern` reaches 0 with these.
+  'bridge_record', 'external_critique',
 ];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
@@ -1335,6 +1337,91 @@ const entries = [
       },
     ],
   },
+  {
+    entry: 'bridge_record',
+    label: 'BridgeRecord',
+    fn: 'attempt_raw_bridge_record',
+    chainNote: 'a Mew to mirror, so the target resolves',
+    setup: async () => {
+      const mewAction = await call('create_mew', {
+        content: 'corpus mew, mirrored by a bridge record', author: myKey,
+        timestamp: nowMicros(), reply_to: null, semantic_tags: [], linked_claim: null,
+      });
+      const mews = await call('get_mews_by_agent', myKey);
+      const row = mews.find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                                === Buffer.from(mewAction).toString('base64'));
+      if (!row) throw new Error(`the mew just created did not come back from get_mews_by_agent (${mews.length} returned)`);
+      return { mewEntry: row.signed_action.hashed.content.data.entry_hash };
+    },
+    baseline: (ctx) => ({
+      author: myKey,
+      mew_hash: ctx.mewEntry,
+      twitter_id: '1790000000000000002',
+      platform: 'twitter',
+      mirrored_at: nowMicros(),
+      carried_fields: ['content'],
+      dropped_fields: ['author', 'timestamp'],
+      original_length: 40,
+      excerpt_length: 20,
+    }),
+    cases: [
+      { rule: 'BridgeRecord author must match action author.', mutate: (b) => { b.author = danglingHash('agent', 121); } },
+      {
+        rule: 'BridgeRecord target not found.',
+        expect: 'deferral',
+        mutate: (b) => { b.mew_hash = danglingHash('entry', 122); },
+      },
+      // `format!("BridgeRecord {}.", msg)` — the literal prefix is twelve
+      // characters and identifies nothing, so this case names the exact
+      // interpolated string instead. See `expectText` in assertStopped.
+      {
+        rule: 'BridgeRecord {}.',
+        expectText: 'BridgeRecord excerpt_length cannot exceed original_length.',
+        mutate: (b) => { b.excerpt_length = b.original_length + 1; },
+      },
+    ],
+  },
+  {
+    entry: 'external_critique',
+    label: 'ExternalCritique',
+    fn: 'attempt_raw_external_critique',
+    chainNote: 'a Claim for the imported reply to link back to',
+    setup: async () => {
+      const domain = `CorpusImport${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, replied to from another platform', domain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      if (!claims.length) throw new Error('the claim just created is not in its own domain index');
+      return { claimEntry: claims[0].signed_action.hashed.content.data.entry_hash };
+    },
+    // NOTE WHICH OF THE TWO PEOPLE IN THIS ENTRY THE RULE IS ABOUT. `importer`
+    // is the Holochain agent who chose to import; `author_handle` is an
+    // unverifiable string from another platform. Only the first is bindable,
+    // which is the entry type's own point.
+    baseline: (ctx) => ({
+      importer: myKey,
+      twitter_id: '1790000000000000003',
+      author_handle: 'a_sceptic',
+      content: 'Interesting, but the sample size is small.',
+      linked_holochain_claim: ctx.claimEntry,
+      imported_at: nowMicros(),
+    }),
+    cases: [
+      {
+        rule: 'ExternalCritique importer must match action author. Note this is the importing agent, not the Twitter handle in author_handle — see the entry type.',
+        mutate: (e) => { e.importer = danglingHash('agent', 123); },
+      },
+      { rule: 'ExternalCritique content cannot be empty.', mutate: (e) => { e.content = ''; } },
+      {
+        rule: 'ExternalCritique linked claim not found.',
+        expect: 'deferral',
+        mutate: (e) => { e.linked_holochain_claim = danglingHash('entry', 124); },
+      },
+    ],
+  },
 ];
 
 // --- One driver for all five, rather than the Claim block copied four times.
@@ -1366,11 +1453,24 @@ function assertStopped(c, err, commitDetail = 'the call COMMITTED — nothing st
     // PREFIX up to the first interpolation — everything the zome wrote
     // verbatim — and a prefix too short to identify a rule is refused outright
     // rather than silently weakened.
-    const brace = c.rule.indexOf('{');
-    const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
-    if (brace !== -1 && expect.length < 20) {
+    // `expectText` IS THE "ANOTHER WAY" THE REFUSAL BELOW ASKS FOR, added
+    // 2026-10-21 for `BridgeRecord {}.` — whose literal prefix is twelve
+    // characters and identifies nothing, because the whole message after
+    // "BridgeRecord " is interpolated from `bridge_record_loss_fields_-
+    // consistent`'s two `Err` strings.
+    //
+    // A case supplying it asserts the FULL interpolated message instead of a
+    // prefix, which is stricter rather than looser: the prefix mechanism
+    // matches any rule sharing the literal head, while this names one exact
+    // string. It must be the string the zome actually produces — the point of
+    // the refusal below is that a weakened match is worse than none, and an
+    // `expectText` copied from imagination rather than from the zome would be
+    // exactly that.
+    const expect = c.expectText
+      ?? (c.rule.indexOf('{') === -1 ? c.rule : c.rule.slice(0, c.rule.indexOf('{')).trimEnd());
+    if (!c.expectText && c.rule.indexOf('{') !== -1 && expect.length < 20) {
       check(false, `refused: ${c.rule}`,
-        `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
+        `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way, e.g. an explicit expectText`);
       return;
     }
     const hit = err.includes(expect);

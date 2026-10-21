@@ -1551,6 +1551,27 @@ pub fn attempt_raw_revelation(rev: Revelation) -> ExternResult<ActionHash> {
     create_entry(EntryTypes::Revelation(rev))
 }
 
+/// Raw `BridgeRecord`, so the author-binding rule is reachable.
+/// `record_twitter_mirror` fills `author` from `agent_info()` — see the field's
+/// own comment, which says validation binds it anyway because the coordinator
+/// is a convenience and the integrity zome is the authority. That authority was
+/// the thing nothing could reach.
+#[hdk_extern]
+pub fn attempt_raw_bridge_record(record: BridgeRecord) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::BridgeRecord(record))
+}
+
+/// Raw `ExternalCritique`, so the importer-binding rule is reachable.
+/// `import_twitter_reply` fills `importer` from `agent_info()`. Note which of
+/// the two people in this entry the rule is about: `importer` is the Holochain
+/// agent who chose to import, and `author_handle` is an unverifiable string
+/// from another platform — the entry type's own comment is explicit that
+/// conflating them would be worse than leaving the second out.
+#[hdk_extern]
+pub fn attempt_raw_external_critique(critique: ExternalCritique) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::ExternalCritique(critique))
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FalseDomainIndexPayload {
     pub claim_action: ActionHash,

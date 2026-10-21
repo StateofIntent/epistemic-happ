@@ -18,7 +18,7 @@
   "prechecks_without_validator": [
     {
       "in_fn": "assert_expertise",
-      "line": 2650,
+      "line": 2671,
       "condition": "if trace.agent != author",
       "refuses_with": "Can only assert expertise backed by your own WorldlineTrace.",
       "reached_by": [
@@ -30,7 +30,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6320,
+      "line": 6404,
       "condition": "if input.prediction.trim().is_empty()",
       "refuses_with": "prediction must not be empty",
       "reached_by": [
@@ -42,7 +42,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6323,
+      "line": 6407,
       "condition": "if input.salt.trim().is_empty()",
       "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
       "reached_by": [
@@ -55,10 +55,10 @@
   ],
   "by_class": {
     "honest": 19,
-    "crafted": 140,
+    "crafted": 142,
     "deferred": 15,
     "needs_prober": 0,
-    "needs_extern": 2,
+    "needs_extern": 0,
     "remote": 4,
     "passthrough": 12,
     "shadowed": 2
@@ -914,20 +914,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &record.author != action.author()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "bridge_record",
-      "write_path": "record_twitter_mirror(RecordTwitterMirrorInput)",
-      "caller_controlled_fields": [
-        "mew_hash",
-        "twitter_id",
-        "platform",
-        "mirrored_at",
-        "carried_fields",
-        "dropped_fields",
-        "original_length",
-        "excerpt_length"
-      ],
-      "guards_field": "author"
+      "write_path": "attempt_raw_bridge_record(BridgeRecord), record_twitter_mirror(RecordTwitterMirrorInput)"
     },
     {
       "line": 1694,
@@ -948,18 +937,7 @@
       "guard": "if let Err(msg) = bridge_record_loss_fields_consistent(record)",
       "class": "crafted",
       "entry": "bridge_record",
-      "write_path": "record_twitter_mirror(RecordTwitterMirrorInput)",
-      "caller_controlled_fields": [
-        "mew_hash",
-        "twitter_id",
-        "platform",
-        "mirrored_at",
-        "carried_fields",
-        "dropped_fields",
-        "original_length",
-        "excerpt_length"
-      ],
-      "guards_field": "carried_fields"
+      "write_path": "attempt_raw_bridge_record(BridgeRecord), record_twitter_mirror(RecordTwitterMirrorInput)"
     },
     {
       "line": 1705,
@@ -968,17 +946,9 @@
       "passthrough": null,
       "formatted": false,
       "guard": "if &ext.importer != action.author()",
-      "class": "needs_extern",
+      "class": "crafted",
       "entry": "external_critique",
-      "write_path": "import_twitter_reply(ImportTwitterReplyInput)",
-      "caller_controlled_fields": [
-        "twitter_id",
-        "author_handle",
-        "content",
-        "linked_holochain_claim",
-        "imported_at"
-      ],
-      "guards_field": "importer"
+      "write_path": "attempt_raw_external_critique(ExternalCritique), import_twitter_reply(ImportTwitterReplyInput)"
     },
     {
       "line": 1711,
@@ -989,15 +959,7 @@
       "guard": "if ext.content.is_empty()",
       "class": "honest",
       "entry": "external_critique",
-      "write_path": "import_twitter_reply(ImportTwitterReplyInput)",
-      "caller_controlled_fields": [
-        "twitter_id",
-        "author_handle",
-        "content",
-        "linked_holochain_claim",
-        "imported_at"
-      ],
-      "guards_field": "content"
+      "write_path": "attempt_raw_external_critique(ExternalCritique), import_twitter_reply(ImportTwitterReplyInput)"
     },
     {
       "line": 1714,
