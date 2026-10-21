@@ -519,6 +519,17 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/species-adoption.mjs
 
+      # ordering-policy — the O dial. Two agents, because records by one author
+      # are chain-ordered and the concurrent case needs two. It writes ~20
+      # Claims and Evidence entries, which carry NO friction budget, and
+      # exactly one Critique — deliberately, after an earlier version retried
+      # `create_critique` into §6's 20-per-hour ceiling and exhausted its own
+      # author's budget.
+      - name: ordering-policy — one order, any observer, and a self-reported clock never consulted
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/ordering-policy.mjs
+
       - name: metabolism — the host runs a function nothing called, twice, and writes nothing
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start

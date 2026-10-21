@@ -1411,6 +1411,207 @@ pub fn which_entries_resolve_locally(hashes: Vec<AnyDhtHash>) -> ExternResult<Ve
 }
 
 // ============================================================================
+// THE ORDERING POLICY — the O dial, and what it can and cannot be here
+// ============================================================================
+// Light Cone Consistency (arXiv 2605.09114) splits observer-relative
+// consistency into two coupled dials: C, the closure filter deciding which
+// dependencies an observer must have seen, and O, the ordering of the
+// concurrent forks that filter admits. This protocol already had C —
+// `which_entries_resolve_locally`, §5.3's closure, and validation's dependency
+// fetch. O was unset: nothing ordered two critiques written without knowledge
+// of each other, so every reader invented its own sequence.
+//
+// WHAT THIS IS NOT, AND THE PAPERS ARE EXPLICIT ABOUT IT. This is not a global
+// order and cannot become one. Landers & Kramer put linearizability outside a
+// single observer's reach by construction — it is "a composite of two systems,
+// a store and a global real-time serializer supplying an order no single
+// observer's light cone can" — and Burgess & Gerlits derive their invariant
+// global ordering from a hierarchy whose parent nodes are "a single point of
+// calibration", which is the centralization this DNA does not have and will
+// not add.
+//
+// WHAT IT IS: a DETERMINISTIC REPLAY ORDER. Every observer handed the same set
+// of records computes the same sequence, causality is never violated, and the
+// result is recomputable by anyone — so an aggregator's claimed order can be
+// checked rather than trusted. That is enough for settlement to be a pure
+// function of (policy, input set), which is the property that makes
+// disagreement between aggregators visible instead of hidden.
+//
+// AUTHOR TIMESTAMPS ARE NOT USED, and that is a refusal rather than an
+// omission. `Claim.timestamp` and its siblings are self-reported: SPEC §5.22
+// records that validation cannot reach a clock at all, and READINESS item 14
+// measured a `reveal_deadline` being backdated by moving the authoring
+// conductor's clock, permanently. An order built on those numbers would be an
+// order the author chooses. Timestamps may be DISPLAYED; they are never
+// consulted here.
+//
+// WHERE CAUSALITY COMES FROM TODAY. Holochain is already a causal DAG and this
+// reads the edges that exist: a record referencing another must have been
+// written after it, because the reference had to resolve to commit (§5.3), and
+// two records by one author are ordered by their chain sequence. When past-cone
+// recording lands, a cone becomes one more edge source and nothing else here
+// changes — which is the point of keeping the policy separate from its inputs.
+
+/// A deterministic order over records, with the honesty of how much of it is
+/// real causality and how much is an arbitrary tie-break.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrderedRecords {
+    /// The records, ordered. Causally-prior first.
+    pub order: Vec<ActionHash>,
+    /// The policy that produced it, named so a reader can tell which one ran.
+    pub policy: String,
+    /// Ordering constraints derived from real causality — a reference that had
+    /// to resolve before the referrer could commit, or two actions on one
+    /// chain.
+    pub causal_edges: u32,
+    /// HOW MANY TIMES THE ORDER WAS ARBITRARY: the number of points at which
+    /// more than one record was ready and the tie went to the hash. This is
+    /// the figure that says how much of `order` means anything — a result with
+    /// a high count is a list, not a sequence, and a reader settling anything
+    /// on it should know that.
+    pub tie_broken: u32,
+    /// Inputs that could not be read, kept rather than silently dropped: an
+    /// order over a set smaller than the one asked for is a different answer.
+    pub unresolved: Vec<ActionHash>,
+    /// Always false in a well-formed graph — a reference must resolve before
+    /// its referrer commits, so a cycle cannot be built through this zome's
+    /// write paths. Reported rather than assumed, and the remaining records
+    /// are still ordered, because a diagnostic that vanishes when the
+    /// impossible happens is worth nothing.
+    pub cycle_detected: bool,
+}
+
+/// Every hash this record references, as raw bytes, whatever the hash type.
+/// Collected by type rather than generically because an entry crosses as
+/// msgpack and there is no reflection: each type's reference fields are named
+/// here, and a new entry type with references needs a line adding.
+fn referenced_hashes(record: &Record) -> Vec<Vec<u8>> {
+    let mut out: Vec<Vec<u8>> = Vec::new();
+    let entry = record.entry();
+    if let Ok(Some(c)) = entry.to_app_option::<Claim>() {
+        for e in &c.evidence_hashes { out.push(e.get_raw_39().to_vec()); }
+        if let Some(m) = &c.source_mew { out.push(m.get_raw_39().to_vec()); }
+    }
+    if let Ok(Some(c)) = entry.to_app_option::<Critique>() {
+        out.push(c.target.get_raw_39().to_vec());
+        for e in &c.evidence_hashes { out.push(e.get_raw_39().to_vec()); }
+        if let Some(sp) = &c.species { out.push(sp.get_raw_39().to_vec()); }
+    }
+    if let Ok(Some(r)) = entry.to_app_option::<Retraction>() {
+        out.push(r.target_claim.get_raw_39().to_vec());
+    }
+    if let Ok(Some(a)) = entry.to_app_option::<AntibodyPattern>() {
+        out.push(a.target.get_raw_39().to_vec());
+    }
+    if let Ok(Some(r)) = entry.to_app_option::<Revelation>() {
+        out.push(r.pre_registration.get_raw_39().to_vec());
+    }
+    if let Ok(Some(e)) = entry.to_app_option::<ExternalCritique>() {
+        out.push(e.linked_holochain_claim.get_raw_39().to_vec());
+    }
+    if let Ok(Some(b)) = entry.to_app_option::<BridgeRecord>() {
+        out.push(b.mew_hash.get_raw_39().to_vec());
+    }
+    out
+}
+
+/// Order a set of records deterministically: causality first, hash tie-break.
+///
+/// A pure read — no writes, no friction spent, no validation rule. Per SPEC
+/// §11 a coordinator-only addition, so the DNA hash is untouched.
+#[hdk_extern]
+pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
+    let mut unresolved: Vec<ActionHash> = Vec::new();
+    let mut present: Vec<ActionHash> = Vec::new();
+    let mut by_entry: HashMap<Vec<u8>, usize> = HashMap::new();
+    let mut by_action: HashMap<Vec<u8>, usize> = HashMap::new();
+    let mut authors: Vec<(AgentPubKey, u32)> = Vec::new();
+    let mut refs: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    for h in hashes {
+        match get(h.clone(), GetOptions::default())? {
+            Some(record) => {
+                let idx = present.len();
+                by_action.insert(h.get_raw_39().to_vec(), idx);
+                if let Some(eh) = record.action().entry_hash() {
+                    by_entry.insert(eh.get_raw_39().to_vec(), idx);
+                }
+                authors.push((record.action().author().clone(), record.action().action_seq()));
+                refs.push(referenced_hashes(&record));
+                present.push(h);
+            }
+            None => unresolved.push(h),
+        }
+    }
+
+    let n = present.len();
+    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut indegree: Vec<u32> = vec![0u32; n];
+    let mut causal_edges = 0u32;
+    let mut add = |from: usize, to: usize, edges: &mut Vec<Vec<usize>>, indeg: &mut Vec<u32>, count: &mut u32| {
+        if from != to && !edges[from].contains(&to) {
+            edges[from].push(to);
+            indeg[to] += 1;
+            *count += 1;
+        }
+    };
+
+    // A reference had to resolve before its referrer could commit (§5.3), so
+    // the referenced record precedes.
+    for (i, rs) in refs.iter().enumerate() {
+        for r in rs {
+            if let Some(&j) = by_entry.get(r).or_else(|| by_action.get(r)) {
+                add(j, i, &mut edges, &mut indegree, &mut causal_edges);
+            }
+        }
+    }
+    // Two actions on one chain are ordered by the chain itself.
+    for i in 0..n {
+        for j in 0..n {
+            if i != j && authors[i].0 == authors[j].0 && authors[i].1 < authors[j].1 {
+                add(i, j, &mut edges, &mut indegree, &mut causal_edges);
+            }
+        }
+    }
+
+    // Kahn's algorithm with a deterministic tie-break: among the ready set,
+    // the smallest hash wins. Every observer therefore gets the same sequence.
+    let mut order: Vec<ActionHash> = Vec::new();
+    let mut taken = vec![false; n];
+    let mut tie_broken = 0u32;
+    for _ in 0..n {
+        let mut ready: Vec<usize> = (0..n).filter(|&k| !taken[k] && indegree[k] == 0).collect();
+        if ready.is_empty() { break; }
+        if ready.len() > 1 { tie_broken += 1; }
+        ready.sort_by(|&a, &b| present[a].get_raw_39().cmp(present[b].get_raw_39()));
+        let pick = ready[0];
+        taken[pick] = true;
+        order.push(present[pick].clone());
+        for &to in &edges[pick] { indegree[to] -= 1; }
+    }
+    let cycle_detected = order.len() < n;
+    if cycle_detected {
+        // Append whatever the cycle swallowed, in hash order, so the caller
+        // still gets every record it asked about.
+        let mut rest: Vec<usize> = (0..n).filter(|&k| !taken[k]).collect();
+        rest.sort_by(|&a, &b| present[a].get_raw_39().cmp(present[b].get_raw_39()));
+        for k in rest { order.push(present[k].clone()); }
+    }
+
+    Ok(OrderedRecords {
+        order,
+        policy: "causal-then-hash/1: a referenced record precedes its referrer (§5.3 dependency), \
+two actions on one chain follow the chain, concurrent records tie-break on action hash. \
+Author timestamps are NOT consulted — see SPEC §5.22 and READINESS item 14."
+            .into(),
+        causal_edges,
+        tie_broken,
+        unresolved,
+        cycle_detected,
+    })
+}
+
+// ============================================================================
 // MEMBRANE FUNCTIONS
 // ============================================================================
 
