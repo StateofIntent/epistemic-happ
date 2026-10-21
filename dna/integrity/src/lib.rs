@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -175,7 +175,54 @@ pub struct Critique {
     pub replication_attempted: bool,
     pub evidence_hashes: Vec<EntryHash>,
     pub species: Option<EntryHash>, // Optional: which CritiqueSpecies taxonomy this uses
+    /// WHAT THIS AUTHOR HAD ALREADY SEEN OF THIS TARGET'S CRITIQUES.
+    ///
+    /// The C dial's missing half. `which_entries_resolve_locally` answers
+    /// "can I see X now?"; this answers the question that outlives the
+    /// moment — "had this author seen X when they wrote?" — which is what
+    /// lets a reader say *this critique was written without seeing that
+    /// rebuttal* instead of guessing from timestamps nobody can trust
+    /// (§5.22, and READINESS item 14's measured backdating).
+    ///
+    /// Light Cone Consistency (arXiv 2605.09114) states the bound this
+    /// implements: "a system can tell its order inverted causality only if it
+    /// retained exactly what would have prevented the inversion." Detection
+    /// requires retention. Nothing reconstructs a cone after the fact.
+    ///
+    /// EMPTY IS HONEST AND IS THE DEFAULT. `#[serde(default)]` so every
+    /// existing caller keeps working unchanged: a payload that omits this
+    /// field records an empty cone, which truthfully says *this author
+    /// recorded nothing about what they had seen*. That is a different
+    /// statement from "they had seen nothing", and `critiques_unseen_by`
+    /// reports it as such rather than inferring ignorance.
+    ///
+    /// WHAT VALIDATION CAN AND CANNOT ENFORCE, stated because the difference
+    /// is the whole security argument. It CANNOT check that the author
+    /// really saw these — no rule can, since the field is author-supplied and
+    /// validation has no view of anybody's screen. What it CAN do is make
+    /// claimed IGNORANCE sticky, which is the direction an attacker wants:
+    /// every entry must resolve, must be a Critique of the SAME target, and
+    /// — the load-bearing one — each member's own cone must be a SUBSET of
+    /// this one. So an author cannot admit seeing X while denying what X
+    /// admitted seeing. Over-claiming (listing things you never read) is
+    /// possible and harmless; under-claiming is what the rules bite on.
+    #[serde(default)]
+    pub past_cone: Vec<ActionHash>,
 }
+
+/// The ceiling on a recorded past cone.
+///
+/// A bound is required rather than tidy: validation resolves every member and
+/// then every member's own members, so an unbounded cone is an unbounded
+/// validation cost that every peer on the network pays. 256 is chosen against
+/// the §6 friction ceiling — 20 Critiques per author per rolling hour — so a
+/// target would need a sustained multi-agent argument to approach it.
+///
+/// A target that exceeds it cannot record a complete cone, and that is a
+/// stated limit rather than a silent truncation: `create_critique` refuses
+/// rather than trimming, because a trimmed cone is a false statement about
+/// what was seen.
+pub const MAX_PAST_CONE: usize = 256;
 
 /// Recognized classes of bad-faith structural/behavioral pattern — the
 /// "antigens" this protocol's agents have actually named. Deliberately a
@@ -1384,6 +1431,67 @@ fn validate_critique(critique: &Critique, action: &TypedAction<CreateData>) -> E
              (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
             recent_count, CRITIQUE_WINDOW_SECS_VALIDATION, CRITIQUE_MAX_PER_WINDOW_VALIDATION
         )));
+    }
+
+    // --- THE PAST CONE ---------------------------------------------------
+    // These rules cannot check that the author SAW anything — no rule can,
+    // and claiming otherwise would be the mechanism-that-reads-as-enforcement
+    // failure this file keeps recording. What they enforce is that a RECORDED
+    // cone is internally coherent and that claimed ignorance cannot be
+    // selective. See the field's own comment for the full argument.
+    if critique.past_cone.len() > MAX_PAST_CONE {
+        return Ok(ValidateCallbackResult::Invalid(format!(
+            "Critique past_cone exceeds {} entries. Validation resolves every member and \
+             every member's own members, so an unbounded cone is an unbounded cost paid by \
+             every peer.",
+            MAX_PAST_CONE
+        )));
+    }
+    // A duplicate is not merely untidy: it would let an author pad a cone to
+    // satisfy the subset rule below without admitting to anything new.
+    for (i, h) in critique.past_cone.iter().enumerate() {
+        if critique.past_cone[..i].contains(h) {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Critique past_cone contains a duplicate entry.".into()
+            ));
+        }
+    }
+    for h in &critique.past_cone {
+        let Ok(record) = must_get_valid_record(h.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Critique past_cone entry does not resolve to a valid record; an author cannot \
+                 record having seen something that does not exist.".into()
+            ));
+        };
+        let Ok(Some(seen)) = record.entry().to_app_option::<Critique>() else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Critique past_cone entry is not a Critique.".into()
+            ));
+        };
+        // SAME TARGET, and this is what makes the cone mean something. A cone
+        // ranging over the whole DHT would be unbounded and would say nothing
+        // about this disagreement; scoped to one target it is exactly the
+        // claim "here is what I had read of the argument I am joining".
+        if seen.target != critique.target {
+            return Ok(ValidateCallbackResult::Invalid(
+                "Critique past_cone entry critiques a different target; a cone records what was \
+                 seen OF THIS NODE, not of the DHT at large.".into()
+            ));
+        }
+        // THE LOAD-BEARING RULE: transitive closure. If X is in this cone,
+        // everything X admitted seeing is in it too. So an author cannot
+        // admit the critique they are answering while denying the rebuttal it
+        // answered — the "made without seeing" claim becomes self-consistent
+        // or it is refused.
+        for inherited in &seen.past_cone {
+            if !critique.past_cone.contains(inherited) {
+                return Ok(ValidateCallbackResult::Invalid(
+                    "Critique past_cone is not transitively closed: it records having seen a \
+                     critique without recording what that critique itself recorded seeing. \
+                     Admitting X means admitting everything X admitted.".into()
+                ));
+            }
+        }
     }
 
     Ok(ValidateCallbackResult::Valid)

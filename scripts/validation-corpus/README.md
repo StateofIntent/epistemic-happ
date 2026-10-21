@@ -1388,6 +1388,16 @@ prefix matches any rule sharing its head while this names one exact message. It
 must be copied from the zome rather than imagined, which is the same discipline
 the prefix rule enforces by refusing.
 
+### Finding 17 — the corpus now spends three more SynapticLinks per run, and the ceiling is 20
+
+**`protocol_version: 10` added `Critique.past_cone` and five validation rules, and the corpus gained five cases — 282 to 287 checks, 0 failed.** The rules are classed correctly without help: the size ceiling comes out **`shadowed`** (the coordinator refuses first, in its own wording), the dangling-member rule **`deferred`** (`must_get_valid_record`), the type rule **`honest`**, and the duplicate, same-target and transitive-closure rules **`crafted`**.
+
+**THE COST THAT WILL BITE SOMEBODY LATER IS NOT THE CHECKS, IT IS THE LINKS.** The cone fixtures need three real critiques — one legal cone member, one whose own cone is non-empty (for the transitive case), and one of a different target (for the same-target rule). **Every `create_critique` also creates a SynapticLink, and §6 caps those at 20 per author per rolling hour.** Running the corpus twice inside an hour on one conductor now fails its *Critique dependency chain* with `SWO temporal friction: 20 SynapticLinks already created`, and every case below it SKIPs.
+
+That is the clean-conductor rule this directory already states, with less headroom than before. **It is recorded rather than worked around**, because the alternative — trimming a fixture — would weaken a case: the transitive-closure fixture is the one that makes the under-claiming attack reachable at all.
+
+**Two wrong hashes were tried before the type-failure case worked, and both are worth keeping.** `ctx.claimAction` did not exist, so the mutation fell through to a dangling hash — which **defers** rather than refusing, so the case red for the wrong reason and said so. Then `notCritiquable` looked obviously right and was not: `create_evidence` returns an **`EntryHash`**, `past_cone` is `Vec<ActionHash>`, and the payload failed to deserialize at the extern boundary before validation ever saw it. A hash is not a hash; the type is part of the contract.
+
 ## Why one mutation at a time
 
 A payload that violates two rules proves nothing about either: validation

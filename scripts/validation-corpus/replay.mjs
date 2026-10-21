@@ -886,7 +886,7 @@ const entries = [
     chainNote: 'published a Claim to critique, and a Mew as a non-critiquable target',
     setup: async () => {
       const domain = `CorpusCritique${Date.now()}`;
-      await call('create_claim', {
+      const claimAction = await call('create_claim', {
         content: 'corpus claim, published in order to be critiqued',
         domain, author: myKey, timestamp: nowMicros(),
         evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
@@ -900,7 +900,39 @@ const entries = [
         content: 'corpus evidence, used only as a non-critiquable critique target',
         evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
       });
-      return { target, notCritiquable, domain };
+      // --- past-cone fixtures, protocol_version 10 ------------------------
+      // `coneMember` is a real critique of THIS target, so it is a legal cone
+      // entry. `coneWithOwnCone` cites it, so its own cone is non-empty —
+      // which is what the transitive-closure case needs: admitting it while
+      // omitting what it admitted is the under-claiming attack.
+      const coneMember = await call('create_critique', {
+        target, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique, used as a legal past_cone member',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [],
+      });
+      const coneWithOwnCone = await call('create_critique', {
+        target, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique whose own cone is non-empty',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [coneMember],
+      });
+      // A critique of a DIFFERENT target, for the same-target rule.
+      const otherDomain = `CorpusConeOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim in another domain, critiqued for the cone rule',
+        domain: otherDomain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const otherClaims = await call('get_claims_by_domain', otherDomain);
+      const otherTarget = otherClaims[0].signed_action.hashed.content.data.entry_hash;
+      const foreignCone = await call('create_critique', {
+        target: otherTarget, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique of a different target entirely',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [],
+      });
+      return { target, claimAction, notCritiquable, domain, coneMember, coneWithOwnCone, foreignCone };
     },
     baseline: (ctx) => ({
       target: ctx.target,
@@ -912,6 +944,7 @@ const entries = [
       replication_attempted: false,
       evidence_hashes: [],
       species: null,
+      past_cone: [],
     }),
     cases: [
       { rule: 'Critique author must match action author.', mutate: (c) => { c.author = danglingHash('agent', 61); } },
@@ -921,6 +954,45 @@ const entries = [
       { rule: 'Critique target is not a critiquable entry type.', mutate: (c, ctx) => { c.target = ctx.notCritiquable; } },
       { rule: 'Critique content cannot be empty.', mutate: (c) => { c.content = ''; } },
       { rule: 'Critique species reference not found.', expect: 'deferral', mutate: (c) => { c.species = danglingHash('entry', 62); } },
+      // --- the past cone, protocol_version 10 ---------------------------
+      // The size rule is SHADOWED — `create_critique` refuses over the
+      // ceiling first, in the coordinator's own wording — so it is classed
+      // `shadowed` by enumerate.mjs and is out of this denominator by class,
+      // not by exemption. The other five are reachable.
+      {
+        rule: 'Critique past_cone contains a duplicate entry.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.coneMember, ctx.coneMember]; },
+      },
+      {
+        rule: 'Critique past_cone entry does not resolve to a valid record; an author cannot record having seen something that does not exist.',
+        expect: 'deferral',
+        mutate: (c) => { c.past_cone = [danglingHash('action', 63)]; },
+      },
+      {
+        rule: 'Critique past_cone entry is not a Critique.',
+        // THE CLAIM'S OWN ACTION HASH: it resolves through
+        // `must_get_valid_record` and is not a Critique, so this is a type
+        // failure rather than a missing dependency.
+        //
+        // Two wrong answers were tried first, and both are instructive.
+        // `ctx.claimAction` did not exist, so it fell through to a dangling
+        // hash — which DEFERS rather than refusing, and the case red for the
+        // wrong reason. Then `notCritiquable` looked right and is not:
+        // `create_evidence` returns an **EntryHash**, and `past_cone` is
+        // `Vec<ActionHash>`, so the payload failed to deserialize at the
+        // extern boundary before validation saw it at all.
+        mutate: (c, ctx) => { c.past_cone = [ctx.claimAction]; },
+      },
+      {
+        rule: 'Critique past_cone entry critiques a different target; a cone records what was seen OF THIS NODE, not of the DHT at large.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.foreignCone]; },
+      },
+      // THE UNDER-CLAIMING ATTACK, as a corpus case: admit a critique while
+      // omitting what that critique itself admitted seeing.
+      {
+        rule: 'Critique past_cone is not transitively closed: it records having seen a critique without recording what that critique itself recorded seeing. Admitting X means admitting everything X admitted.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.coneWithOwnCone]; },
+      },
       // LAST, AND THE DRIVER ENFORCES THAT. This one is not a broken payload —
       // it is a valid one sent once past the limit, so it needs 20 commits
       // first and it leaves this agent unable to publish a Critique for the

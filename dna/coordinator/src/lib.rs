@@ -977,6 +977,19 @@ fn check_critique_friction() -> ExternResult<()> {
 #[hdk_extern]
 pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
     check_critique_friction()?;
+    // REFUSED RATHER THAN TRIMMED. A cone over the ceiling could be cut to fit,
+    // and that would be a false statement about what the author saw — the one
+    // thing this field exists to avoid. The integrity zome refuses it too
+    // (this is the friendly, bypassable pre-check of a real rule); failing
+    // here just gives the caller the reason in their own call rather than as
+    // an InvalidCommit.
+    if critique.past_cone.len() > MAX_PAST_CONE {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "past_cone has {} entries, over the {} ceiling. It is refused rather than trimmed: \
+             a truncated cone would claim the author saw less than they did.",
+            critique.past_cone.len(), MAX_PAST_CONE
+        ))));
+    }
 
     let action_hash = create_entry(EntryTypes::Critique(critique.clone()))?;
 
@@ -1408,6 +1421,110 @@ pub fn which_entries_resolve_locally(hashes: Vec<AnyDhtHash>) -> ExternResult<Ve
         .into_iter()
         .map(|hash| Ok(get(hash, GetOptions::local())?.is_some()))
         .collect()
+}
+
+// ============================================================================
+// WHAT A CRITIQUE'S AUTHOR HAD NOT SEEN — the detection half of the C dial
+// ============================================================================
+// Light Cone Consistency's bound: "a system can tell its order inverted
+// causality only if it retained exactly what would have prevented the
+// inversion." `Critique.past_cone` is the retention; this is the telling.
+//
+// It answers the question an epistemic substrate actually needs — *was this
+// objection written in knowledge of the answer to it?* — and answers it from
+// recorded evidence rather than from timestamps, which §5.22 and READINESS
+// item 14 together establish nobody can trust.
+//
+// IT REPORTS THREE DIFFERENT THINGS AND REFUSES TO CONFLATE THEM, which is
+// the whole reason it returns a struct rather than a list. "Recorded nothing"
+// is not "had seen nothing": an author using a client that does not populate
+// cones is silent, not ignorant, and presenting silence as ignorance would
+// manufacture a finding out of a missing feature.
+
+/// What a critique's author did NOT record having seen, among the critiques
+/// of the same target.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UnseenReport {
+    /// The critique being asked about.
+    pub critique: ActionHash,
+    /// Critiques of the same target that are absent from its recorded cone.
+    /// Read with `cone_recorded` — this list is identical whether the author
+    /// genuinely saw nothing or simply recorded nothing.
+    pub unseen: Vec<ActionHash>,
+    /// How many of the target's critiques the author DID record seeing.
+    pub seen_count: u32,
+    /// FALSE when the cone is empty, which is the "recorded nothing" case.
+    /// A reader MUST branch on this before saying anything about ignorance.
+    pub cone_recorded: bool,
+    /// Every critique of this target known to this observer right now. The
+    /// denominator, published so the figures above can be checked rather than
+    /// trusted — and so a reader can see this is one observer's view.
+    pub total_known: u32,
+    /// Says what the numbers do and do not support. Never a verdict.
+    pub note: String,
+}
+
+/// Which critiques of the same target a given critique's author did not record
+/// having seen.
+///
+/// A pure read: no writes, no friction, no validation rule — coordinator-only
+/// per SPEC §11, so this part of the feature costs no DNA hash change. The
+/// FIELD costs one; the query does not.
+#[hdk_extern]
+pub fn critiques_unseen_by(critique_hash: ActionHash) -> ExternResult<UnseenReport> {
+    let record = get(critique_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Critique not found.".into())))?;
+    let critique: Critique = record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Critique.".into())))?;
+
+    // Every critique of the same target that this observer can see. NOT a
+    // global set: another observer with a different arc may know more, which
+    // is why `total_known` is reported rather than implied.
+    let links = get_links(
+        LinkQuery::try_new(critique.target.clone(), LinkTypes::TargetToCritique)?,
+        GetStrategy::Network,
+    )?;
+    let mut siblings: Vec<ActionHash> = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if h != critique_hash && !siblings.contains(&h) {
+                siblings.push(h);
+            }
+        }
+    }
+
+    let unseen: Vec<ActionHash> = siblings.iter()
+        .filter(|h| !critique.past_cone.contains(h))
+        .cloned()
+        .collect();
+    let cone_recorded = !critique.past_cone.is_empty();
+    let note = if !cone_recorded {
+        "This critique recorded NO past cone, so nothing here is evidence of ignorance. \
+         An author whose client does not populate cones is silent, not uninformed. \
+         `unseen` is simply every sibling critique."
+            .to_string()
+    } else if unseen.is_empty() {
+        "This critique recorded having seen every sibling critique THIS OBSERVER knows of. \
+         Another observer may know of more."
+            .to_string()
+    } else {
+        format!(
+            "This critique recorded seeing {} of {} sibling critique(s) known to this observer. \
+             The {} in `unseen` were not recorded as seen — which may mean they had not arrived, \
+             or had not been read. It does NOT mean the author knew of them and ignored them.",
+            critique.past_cone.len(), siblings.len(), unseen.len()
+        )
+    };
+
+    Ok(UnseenReport {
+        critique: critique_hash,
+        seen_count: critique.past_cone.len() as u32,
+        unseen,
+        cone_recorded,
+        total_known: siblings.len() as u32,
+        note,
+    })
 }
 
 // ============================================================================
@@ -5348,6 +5465,7 @@ mod tests {
             replication_attempted: false,
             evidence_hashes: vec![],
             species: None,
+            past_cone: vec![],
         };
 
         let out = critique.to_n4l(&critique_entry_hash);
@@ -5384,6 +5502,7 @@ mod tests {
             replication_attempted: false,
             evidence_hashes: vec![],
             species: None,
+            past_cone: vec![],
         };
 
         let out = critique.to_n4l(&critique_entry_hash);
@@ -5412,6 +5531,7 @@ mod tests {
             replication_attempted: true,
             evidence_hashes: vec![],
             species: Some(species_hash.clone()),
+            past_cone: vec![],
         };
         let out = with_species.to_n4l(&critique_entry_hash);
         assert!(out.contains(&format!("(adopts species) \"{}\"", species_hash)));

@@ -530,6 +530,17 @@ jobs:
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/ordering-policy.mjs
 
+      # past-cone — protocol_version 10's field, and the attack it refuses.
+      # Two agents: the case that matters is one author answering another's
+      # critique while the argument is still moving. The clean conductor
+      # before it matters more than usual — each run writes several critiques,
+      # and every critique also creates a SynapticLink against §6's 20-per-
+      # hour ceiling.
+      - name: past-cone — selective ignorance is refused, and silence is not ignorance
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/past-cone.mjs
+
       - name: metabolism — the host runs a function nothing called, twice, and writes nothing
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
