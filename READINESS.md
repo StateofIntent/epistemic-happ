@@ -7,7 +7,9 @@ problem.**
 **`v0.2.0` of the desktop app was published on 2026-10-12** carrying
 `protocol_version: 9`, which closes §1 below and makes step 1 and step 2 of
 *The order to do things in* done. The next thing that matters is step 3:
-two consumer networks, never measured.
+two consumer networks, **measured in part on 2026-10-22** — one home
+broadband / mobile CGNAT pair, both directions, with a negative control (§3).
+Two *home routers*: still never measured.
 
 This file exists because the honest answer was spread across README §9,
 INSTALL.md, SPEC.md and two repositories, and nobody reading any one of them
@@ -190,12 +192,68 @@ builds from and absent from the branch everything is cut from — anyone
 branching off `main` would have silently lost it, and the next release would
 have reintroduced the bug. PR #4 restores `main` as the superset.
 
-### 3. Two consumer networks have never been measured
+### 3. Two consumer networks: measured in part on 2026-10-22
 
 This is the one that decides whether "people sharing info" works at all, and it
-is first in §9's priority order for a reason. There is **one** measured
-cross-internet crossing — 5.0s, between two datacentre VMs. Two laptops behind
-two different home routers: zero measurements. Mobile networks and CGNAT: zero.
+is first in §9's priority order for a reason.
+
+**MEASURED 2026-10-22 — home broadband to mobile CGNAT, both directions, with a
+negative control.** Three runs on two machines — a desktop on home broadband
+and a laptop moved onto a phone hotspot — by hand, following
+[`docs/cross-internet-runbook.md`](docs/cross-internet-runbook.md):
+
+| run | direction | result |
+|---|---|---|
+| 1 | home broadband -> mobile CGNAT | **CROSSED.** Discovery + gossip **under 111s**. The reader started *after* the write, so nothing is resolved below that bound — see the ordering note below |
+| 2 | mobile CGNAT -> home broadband | **CROSSED.** Write at `11:14:22Z`, readable on the far host at `11:14:24Z`: **under 2s** to gossip one entry between peers that had already found each other, and **under ~85s** for discovery and gossip together |
+| 3 | **control** — different seeds, same domain | **NO CROSSING in 600s**, with **82 polls after the write, every one empty.** This is the run that makes 1 and 2 mean anything |
+
+**FIVE MORE CROSSINGS THE SAME AFTERNOON, four of them with a lower bound as
+well as an upper one.** The three runs above were one trial per direction; a
+trial series on the same pair, varying only the domain so the peers stayed
+discovered, turns that into a spread. Two further trials restarted both
+conductors on fresh seeds to sample the *cold* case — the one a person actually
+meets when they open the app and nobody is there yet.
+
+| sample | peers | write | last empty poll | readable | crossing |
+|---|---|---|---|---|---|
+| run 2 | warm | `11:14:22Z` | `11:14:19Z` (pre-write) | `11:14:24Z` | **under 2s** |
+| trial 1 | **cold** | `11:47:21Z` | `11:47:23Z` (+2s) | `11:47:28Z` | **2-7s** |
+| trial 2 | warm | `11:49:10Z` | `11:49:08Z` (pre-write) | `11:49:13Z` | **under 3s** |
+| trial 3 | warm | `11:51:34Z` | `11:51:33Z` (pre-write) | `11:51:38Z` | **under 4s** |
+| cold 2 | **cold** | `11:55:40Z` | `11:55:41Z` (+1s) | `11:55:46Z` | **1-6s** |
+
+**Every crossing on this path was single-digit seconds, and cold was not
+distinguishable from warm at this resolution.** That is the opposite of what
+CGNAT pessimism predicts: in `cold 2` host A had been on that network for 57
+seconds, had never met the other peer, and had the entry 6 seconds after it was
+written. Discovery is therefore not adding a measurable penalty here beyond a
+few seconds — which is a statement about *this* path on *one* afternoon, not
+about residential NAT in general.
+
+**Why the positives are admissible.** Identical DNA hash on both hosts within
+each run, **different** agent keys, different public-IP fingerprints, and a
+byte-identical `.happ` copied between the machines rather than rebuilt on each.
+Run 3's two hosts print *different* DNA hashes by construction — that is the
+isolation being exercised, not a fault.
+
+**The 2s figure compares clocks on two different machines**, so it rests on
+their agreeing to within about a second. **Both hosts reported
+`System clock synchronized: yes` with an active NTP service**, checked on each
+rather than assumed, so the comparison rests on NTP agreement. The 5s poll grid
+is still the resolution floor, so read it as "under 2s, unresolved below".
+
+**What this does not close, and why the row stays open.** One side was a phone
+hotspot — CGNAT, so the crossing had to go through the iroh relay with no
+inbound path at all. That is arguably the *harder* case and it is the first
+mobile/CGNAT measurement here, but it is **not two home routers**, which
+remains at zero. Both peers were up and waiting in all three runs, so the
+returning-offline-node case is untouched. The trial series is five crossings on one mobile
+carrier and one home ISP within half an hour, which is a spread for that path
+and not a sample of consumer networks generally. And these were two `hc sandbox` conductors, not two copies of the
+Electron build — what transfers is the relay path, not the packaging.
+
+The datacentre figure stands unchanged: **one** crossing, inside 5.0s.
 
 **The tooling exists and the measurement is cheap.** Two people on two different
 home connections, or one person on home broadband and a phone hotspot. The
@@ -276,6 +334,16 @@ or routine, and that is what these two decisions need:
 
 Both are decisions a measurement makes for you. Neither is worth arguing about
 beforehand.
+
+**AND THE MEASUREMENT NOW EXISTS, THOUGH IT SIZES LESS THAN IT SETTLES.** The
+2026-10-22 runs say consumer propagation on *this* path is not routinely
+minutes-slow: 2s between discovered peers, under 111s including discovery. So
+the retry's premise — that slowness is intermittent rather than the norm — is
+not contradicted by the first consumer data, and `dependencyWaitMs`'s 20
+minutes is roughly 600x the measured crossing. But n is **one per direction on
+one consumer path**, and the path that remains unmeasured (two home routers) is
+the one both decisions were originally scoped to. Treat this as removing the
+"no consumer data at all" objection, not as a basis for picking a number.
 
 **AND THE SPLIT IS NOT THE WHOLE ANSWER, WHICH TOOK THREE HOURS TO FIND OUT.**
 The paragraph above was written as though `partition-rejoin` were the only slow

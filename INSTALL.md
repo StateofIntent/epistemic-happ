@@ -177,11 +177,22 @@ you write anything you would mind standing behind forever:
 
   **But those were two datacentre VMs with good connectivity, which is the easy
   version of the problem.** Two laptops behind different consumer routers is
-  harder — residential NATs are the case relays exist for — and it is still
-  unchecked. The crossing also had both peers up and waiting for each other,
-  which is not the same as a node that was offline coming back. So: less unknown
-  than it was, still not your situation, and if you are the first two people to
-  try it you are still the first test of the case that matters.
+  harder — residential NATs are the case relays exist for.
+
+  **A consumer measurement now exists too, as of 2026-10-22: home broadband to
+  a phone hotspot, and back.** One entry crossed each way through the same
+  public bootstrap and relay — under two seconds in the direction where the
+  receiving side was already watching, and a control run with mismatched
+  network seeds saw nothing at all for ten minutes, which is what makes the
+  other two readings worth anything. A phone hotspot is CGNAT, so that crossing
+  had no inbound path and went through the relay entirely: closer to the worst
+  case than to the easy one.
+
+  **What is still untested is two home routers, and a node that comes back
+  after being offline.** Every run so far had both peers up and waiting for
+  each other. So: a good deal less unknown than it was, and if your two
+  machines are on two home connections you are still the first test of that
+  exact case.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
