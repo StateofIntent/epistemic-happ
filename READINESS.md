@@ -807,11 +807,25 @@ them.
    was additionally verified by sha512 against the published AppImage, which
    is the check `v0.1.1` fails. **Anybody can now test the current protocol
    without building from source.**
-3. **Measure two consumer networks** against that build. If it fails, mass
-   adoption fails, and everything else is premature.
+3. ~~**Measure two consumer networks**~~ — **done 2026-10-22, with one clause
+   of it still open.** Four crossings between two households on two ISPs, all
+   under 7s and transit itself sub-second, plus a mobile-CGNAT pair both
+   directions and a different-seed negative control; the returning-node case
+   measured the same evening (§3, §3b). **What is NOT done is the words
+   "against that build":** both ends were `hc sandbox` conductors, so the relay
+   path is measured and the PACKAGING is not. The protocol question this step
+   existed to answer — if it fails, mass adoption fails — is answered, and it
+   passed. Two desktop installs talking to each other would close the rest,
+   and that is also the cheapest first act of step 4.
 4. **Then invite people — on desktop.** Ten, not ten thousand: enough to find
    what three conductors on one machine cannot, few enough that the propagation
-   latency can be explained to each of them by hand.
+   latency can be explained to each of them by hand. **And as of 2026-10-22
+   there are numbers to explain rather than a shrug** — seconds between peers
+   who are both up, but **five to twelve minutes for somebody who closed their
+   laptop and came back**, growing with how long they were away (§3b). That is
+   the first thing ten people will hit and the thing they will report as "it's
+   broken"; `INSTALL.md` now states it, and anybody hand-holding an installer
+   should say it before they ask.
 5. **The publish-time caveat is in** (see above). What would still help before
    a second round is a per-claim delivery indicator, which needs a zome surface
    that does not exist — so it is a protocol change, not a UI task.
