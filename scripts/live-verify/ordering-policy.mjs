@@ -170,11 +170,22 @@ async function main() {
   // before that it looked like 25 improbable misses.
   //
   // SO NOTHING IS RETRIED. A BATCH IS WRITTEN ONCE AND THE PAIR IS CHOSEN
-  // FROM IT. With 8 candidates the chance that none has the needed hash
-  // relation is under 1%, the cost is 8 writes instead of up to 25, and —
-  // the part that matters — the records used are Claims and Evidence, which
-  // carry NO friction budget at all. Only §5's tie-break figures still need a
-  // critique, and that is one write, not a loop.
+  // FROM IT. The records used are Claims and Evidence, which carry NO friction
+  // budget at all, so the batch can be as wide as the arithmetic needs. Only
+  // §5's tie-break figures still need a critique, and that is one write.
+  //
+  // AND THE WIDTH IS THE PART THIS FILE GOT WRONG ONCE. The first version of
+  // this comment said eight candidates leave "under 1%" chance that none has
+  // the needed hash relation, and accepted it. Under 1% is 1 in 256 — one
+  // draw in 256 where a correct protocol reds a required CI check with a
+  // SETUP failure, which reads as a defect and is not one. It came up on run
+  // 39705302447: §2 wrote its eight, every one hashed below the citing claim,
+  // and the job failed with nothing wrong. A harness that is green 255 times
+  // out of 256 is not a gate, it is a coin with a long memory.
+  //
+  // §2 now draws from 32, so a miss is 2^-32 — about 1 in 4.3 billion, which
+  // is the same order as §4's 64 pairs and costs ~2s of unrationed writes.
+  // §3 reads the same batch, where 32 records give 496 ordered pairs.
   const pickWhere = (candidates, predicate) => candidates.find(predicate) ?? null;
   const hashLt = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) < 0;
 
@@ -205,22 +216,24 @@ async function main() {
   // cite another Claim — and each therefore had to resolve before the citing
   // claim could commit. Every one of them is causally prior by construction.
   //
-  // Among eight, at least one almost certainly has an ACTION hash sorting
-  // ABOVE the citing claim's. That is the one worth asserting on: hash order
-  // would place it after, and only the reference edge places it before.
+  // Among 32, at least one has an ACTION hash sorting ABOVE the citing
+  // claim's unless a 2^-32 draw says otherwise. That is the one worth
+  // asserting on: hash order would place it after, and only the reference
+  // edge places it before.
   //
   // CLAIMS RATHER THAN CRITIQUES, and that is the fix for the defect this
   // section had. The previous version retried `create_critique` until the
   // hashes disagreed and hit §6's ceiling of 20 per rolling hour — the
   // harness exhausted its own author's budget. Claims carry no friction.
+  const CITED_N = 32;
   const cited = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < CITED_N; i++) {
     cited.push(await claim(a1, `cited claim ${i} for the ordering harness`, nowMicros()));
   }
   const citedEntries = [];
   for (const c of cited) citedEntries.push(await entryHashOf(a1, c));
-  check('eight citable claims were written, costing no friction budget',
-    cited.length === 8 && citedEntries.every((e) => e != null));
+  check(`${CITED_N} citable claims were written, costing no friction budget`,
+    cited.length === CITED_N && citedEntries.every((e) => e != null));
 
   const citing = await a2.call('create_claim', {
     content: 'a claim citing all eight as evidence', domain: DOMAIN, author: a2.me,
@@ -244,8 +257,9 @@ async function main() {
   log('\n--- 3. Chain order: two records by one author follow the chain ---');
   // Chosen from the same batch rather than minted: `cited` is eight claims on
   // agent 1's chain IN ORDER, so any pair where the later one hashes below the
-  // earlier is a case where chain order and hash order disagree. Among 28
-  // pairs one such pair is all but certain.
+  // earlier is a case where chain order and hash order disagree. Among the
+  // 496 ordered pairs of a 32-record batch, one such pair is certain in any
+  // run that is not adversarially constructed.
   let chainEarly = null, chainLate = null;
   outer: for (let i = 0; i < cited.length; i++) {
     for (let j = i + 1; j < cited.length; j++) {
