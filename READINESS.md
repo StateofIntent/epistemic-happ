@@ -198,7 +198,8 @@ This is the one that decides whether "people sharing info" works at all, and it
 is first in §9's priority order for a reason.
 
 **MEASURED 2026-10-22 — home broadband to mobile CGNAT, both directions, with a
-negative control.** Three runs on two laptops, by hand, following
+negative control.** Three runs on two machines — a desktop on home broadband
+and a laptop moved onto a phone hotspot — by hand, following
 [`docs/cross-internet-runbook.md`](docs/cross-internet-runbook.md):
 
 | run | direction | result |

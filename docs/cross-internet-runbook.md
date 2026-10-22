@@ -249,7 +249,8 @@ alternative explanation.
 
 ## 6. The first real run, 2026-10-22
 
-Two laptops: A on home broadband, B on a Samsung phone hotspot. Both
+Two machines on one household's LAN to begin with: A a desktop on home
+broadband, B a laptop moved onto a Samsung phone hotspot. Both
 `x86_64` Arch/omarchy, Holochain 0.7.0, the same `.happ` copied over the LAN
 (`sha256 0138386790c7…`) rather than rebuilt on each.
 
