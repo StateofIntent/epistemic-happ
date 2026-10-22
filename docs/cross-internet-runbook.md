@@ -122,19 +122,41 @@ Budget ~35 minutes per run, an hour and a half for all three.
 
 ### Run 1 — A publishes, B reads
 
+**START THE READER FIRST. This is the correction the first real run forced, and
+it costs the whole timing result when you get it wrong.** The reader measures
+from *its own start*, not from the write, so a reader that starts after the
+publisher finds the entry already waiting and reports a figure that is only
+"how long it took me to ask" — 0.1s, in the run that found this out, against a
+true bound of 111s. The window the reader polls must contain the write.
+
 ```bash
 RUN=xnet-$(date +%s)          # generate ONCE, use the same value on both hosts
 
-# laptop A
+# BOTH hosts, first — the conductors can be up well before either half runs
 scripts/cross-internet-node.sh start "$RUN"
-EPI_XNET_ROLE=publisher EPI_XNET_DOMAIN="$RUN" EPI_XNET_HOLD_S=1800 \
-  node scripts/live-verify/cross-internet.mjs
 
-# laptop B, once A prints "published one claim into ..."
-scripts/cross-internet-node.sh start "$RUN"
+# laptop B — the READER goes first, and polls an empty domain while it waits
 EPI_XNET_ROLE=reader EPI_XNET_DOMAIN="$RUN" EPI_XNET_HOLD_S=1800 \
-  node scripts/live-verify/cross-internet.mjs
+  node scripts/live-verify/cross-internet.mjs \
+  | while IFS= read -r l; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$l"; done
+
+# laptop A — publish once B is printing "t+Ns nothing yet"
+EPI_XNET_ROLE=publisher EPI_XNET_DOMAIN="$RUN" EPI_XNET_HOLD_S=1800 \
+  node scripts/live-verify/cross-internet.mjs \
+  | while IFS= read -r l; do printf '%s %s\n' "$(date -u +%H:%M:%S)" "$l"; done
 ```
+
+**Pipe both halves through that `date` wrapper.** The harness prints no wall
+clock, and the crossing figure you actually want is the publisher's
+`published one claim` timestamp subtracted from the reader's first non-empty
+poll — two numbers on two machines. Without the wrapper neither exists, and
+you are left with the reader's self-relative figure, which is the trap above.
+It also means the result inherits any clock offset between the hosts, so check
+`timedatectl` on both; a crossing measured as 2s cannot survive a 10s skew.
+
+CI avoids all of this by aligning both jobs to the run's `created_at`
+(`.github/workflows/cross-internet.yml`), which is a luxury two laptops with no
+shared clock do not have. You are the alignment.
 
 Then §1.5's log copy, then `scripts/cross-internet-node.sh stop` on both.
 
@@ -162,8 +184,11 @@ verdict inverted. Without it, a positive result in runs 1-2 has an untested
 alternative explanation — that the seed is not isolating anything and both
 nodes are simply on the shared DHT, where any claim in the domain would satisfy
 the reader. A crossing here would invalidate runs 1 and 2 rather than adding to
-them. Same 1800s window as the positive runs: absence measured over a shorter
-window than the crossings would not be evidence of isolation.
+them. Size the window to the crossings you actually measured, not to 1800s
+reflexively: absence over a window shorter than your own crossings is no
+evidence of isolation, but absence over 5x the slowest is plenty. The
+2026-10-22 run used **600s** against crossings of 2s and under 111s, and spent
+20 minutes less of a person's attention for it.
 
 ---
 
@@ -219,3 +244,41 @@ grep -rn "consumer network\|never been able to test\|hardware-blocked" \
 Record the window, the poll count, both DNA hashes, and the control's result —
 a crossing figure without its negative control is one number with an untested
 alternative explanation.
+
+---
+
+## 6. The first real run, 2026-10-22
+
+Two laptops: A on home broadband, B on a Samsung phone hotspot. Both
+`x86_64` Arch/omarchy, Holochain 0.7.0, the same `.happ` copied over the LAN
+(`sha256 0138386790c7…`) rather than rebuilt on each.
+
+| run | direction | seed | result |
+|---|---|---|---|
+| 1 | A -> B | `xnet-1792663677` | **CROSSED.** Publisher-first ordering, so the only bound is write `11:00:03Z` to first poll `11:01:54Z`: **under 111s**, discovery included |
+| 2 | B -> A | `xnet-1792667416` | **CROSSED.** Reader already polling: write `11:14:22Z`, readable `11:14:24Z`, previous empty poll `11:14:19Z` (before the write). **Under 2s** for gossip between discovered peers; under ~85s including discovery |
+| 3 | control | `ctrl-a-…` / `ctrl-b-…` | **NO CROSSING in 600s.** 82 polls after the write, all empty, hashes differing by construction |
+
+Validity, in the order §4 lists it: DNA hashes matched within runs 1 and 2
+(`hC0kPcXO…`, `hC0kX9R9…`), agent keys differed, public-IP fingerprints differed
+(`96ad274aef89` vs `7c58318b6743`), and A's conductor config named
+`dev-test-bootstrap2.holochain.org` with the iroh canary relay.
+
+**Four things this run taught that the preconditions above did not say:**
+
+1. **Reader before publisher**, for the reason in §3 — it cost run 1 its
+   resolution and is now the first thing §3 says.
+2. **A rebuild can be byte-identical.** The `.happ` was repacked at HEAD before
+   the run and came out at the same sha256 as the one packed 26 minutes
+   earlier, which is what makes §1.1's "copy, don't rebuild" a convenience
+   rather than a correctness requirement on a single machine. Across two
+   machines it stays a requirement.
+3. **Disable wifi *autoconnect*, not the wifi radio.** A hotspot is wifi, so
+   turning the radio off makes the hotspot unjoinable. What matters is that the
+   laptop cannot silently fall back to the network the other host is on:
+   `nmcli connection modify "<home-ssid>" connection.autoconnect no`. A
+   mid-window fallback puts both halves behind one NAT with nothing in the
+   output to say so.
+4. **Stop the machines idling.** `omarchy toggle idle stay-awake` on both, and
+   leave the lid open — a suspend mid-window produces a clean-looking
+   `NO CROSSING` that measures the lid.
