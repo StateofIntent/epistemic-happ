@@ -921,6 +921,51 @@ A *graded* companion to this (`get_attestation_weight`/`WeightedAttestationPolic
 ### 10.13 Signals
 Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`, `MetabolicTick(MetabolicObservation)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts. **`MetabolicTick` is the only variant not caused by a call** — it is emitted by `metabolic_tick` (§10.14a), which the host runs on its own scheduler, and it carries `MetabolicObservation { at_secs: i64, own_claims: u32, own_critiques: u32, wrote_nothing: bool }`. `wrote_nothing` is carried explicitly rather than left implied: a client is entitled to know the tick that produced the observation changed no state, and an implementation that later DOES write MUST change this field rather than mean something different by the same payload.
 
+### 10.13a Peer signals — the medium (Stage 1)
+
+**ONE entry to open a channel, per agent, once; ZERO per signal thereafter.**
+Nothing a signal carries reaches the DHT or either source chain. The one entry
+is an unrestricted `CapGrant` on `recv_remote_signal`, which
+`send_remote_signal` requires.
+
+**WHY AN EXPLICIT EXTERN AND NOT `init`**, which is what the HDK documents. The
+host warns that an `init` callback *"may not happen immediately or ever after
+happ installation"*, so a grant created there would exist or not depending on
+whether somebody made an unrelated call — and because the host call is
+send-and-forget, a signal sent before the grant existed would be dropped in
+silence on both ends. Opening the medium is therefore a decision somebody
+takes, and its absence is diagnosable.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `open_signal_channel` | `()` | `SignalChannelTerms` — `granted_to`, `created` (TRUE only on the call that made the grant, so a caller can tell *I opened it* from *it was already open*), `entries_written_to_open: 1`, `entries_written_per_signal: 0`, `chain_length` and `limits`. Idempotent by a chain-local query for the `recv_remote_signal` tag, not by luck. `chain_length` is reported so the declaration and the measurement can be compared to each other rather than trusted |
+| `send_peer_signal` | `SendPeerSignalInput { signal: PeerSignal, recipients: Vec<AgentPubKey> }` | `PeerSignalSent { attempted, delivery_confirmed }` — `attempted` is how many recipients the host was ASKED to reach, never how many received. `delivery_confirmed` is **always false by construction**: the host call is non-blocking and reports no failures, so no other value would be truthful |
+| `recv_remote_signal` | `PeerSignal` | `()` — the receiving half the HDK requires BY NAME. Emits `SignalPayload::PeerSignal { from, signal }` to this agent's own client, where `from` is `call_info()?.provenance` — the host's answer to *who called me*, never a field the sender supplied. **The parameter is `PeerSignal`, not the `ExternIO` the HDK's own docs give** (`hdk-0.7.0/src/p2p.rs:134`): the host passes `RemoteSignal.signal`'s bytes AS the extern input, so declaring `ExternIO` tries to deserialize a map into a byte array and fails every delivery |
+
+`PeerSignal` is a closed enum carrying **no free text and no timestamp**:
+`Saturated { domain, headroom }`, `ClosureDeficit { target, resolved, cited }`,
+`Settled { target }`, `ProposingSpecies { name, parent }`. No variant carries a
+time because §5.22 records what an author-supplied one is worth to a reader:
+nothing. A signal is received in the recipient's present, so the only honest
+clock is the recipient's own, applied on arrival.
+
+**THREE LIMITS, NORMATIVE because a signal looks more trustworthy than it is.**
+
+1. **Delivery is unverifiable by the sender.** A caller that needs to know
+   something arrived MUST hear back; the absence of a reply means nothing.
+2. **The sender is host-verified, the payload is not.** An agent claiming
+   `Saturated` may not be, and nothing here can check it.
+3. **No friction budget is spent (§6)**, because nothing is written — so a
+   modified coordinator can emit without limit. This is `SECURITY.md`'s
+   standing hot-swappable-coordinator position, and it is the price of the
+   medium being free: rate-limiting a signal would require writing something
+   to count it.
+
+**SO SIGNALS ARE HINTS AND MUST NEVER BE EVIDENCE.** Nothing downstream may
+treat a received signal as a reason to WRITE, only as a reason to LOOK. A
+disposition that writes because a peer said so has made an unauthenticated
+assertion load-bearing.
+
 ### 10.14 Federation
 | Function | Payload | Returns |
 |---|---|---|
