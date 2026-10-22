@@ -207,6 +207,29 @@ negative control.** Three runs on two laptops, by hand, following
 | 2 | mobile CGNAT -> home broadband | **CROSSED.** Write at `11:14:22Z`, readable on the far host at `11:14:24Z`: **under 2s** to gossip one entry between peers that had already found each other, and **under ~85s** for discovery and gossip together |
 | 3 | **control** — different seeds, same domain | **NO CROSSING in 600s**, with **82 polls after the write, every one empty.** This is the run that makes 1 and 2 mean anything |
 
+**FIVE MORE CROSSINGS THE SAME AFTERNOON, four of them with a lower bound as
+well as an upper one.** The three runs above were one trial per direction; a
+trial series on the same pair, varying only the domain so the peers stayed
+discovered, turns that into a spread. Two further trials restarted both
+conductors on fresh seeds to sample the *cold* case — the one a person actually
+meets when they open the app and nobody is there yet.
+
+| sample | peers | write | last empty poll | readable | crossing |
+|---|---|---|---|---|---|
+| run 2 | warm | `11:14:22Z` | `11:14:19Z` (pre-write) | `11:14:24Z` | **under 2s** |
+| trial 1 | **cold** | `11:47:21Z` | `11:47:23Z` (+2s) | `11:47:28Z` | **2-7s** |
+| trial 2 | warm | `11:49:10Z` | `11:49:08Z` (pre-write) | `11:49:13Z` | **under 3s** |
+| trial 3 | warm | `11:51:34Z` | `11:51:33Z` (pre-write) | `11:51:38Z` | **under 4s** |
+| cold 2 | **cold** | `11:55:40Z` | `11:55:41Z` (+1s) | `11:55:46Z` | **1-6s** |
+
+**Every crossing on this path was single-digit seconds, and cold was not
+distinguishable from warm at this resolution.** That is the opposite of what
+CGNAT pessimism predicts: in `cold 2` host A had been on that network for 57
+seconds, had never met the other peer, and had the entry 6 seconds after it was
+written. Discovery is therefore not adding a measurable penalty here beyond a
+few seconds — which is a statement about *this* path on *one* afternoon, not
+about residential NAT in general.
+
 **Why the positives are admissible.** Identical DNA hash on both hosts within
 each run, **different** agent keys, different public-IP fingerprints, and a
 byte-identical `.happ` copied between the machines rather than rebuilt on each.
@@ -224,8 +247,9 @@ hotspot — CGNAT, so the crossing had to go through the iroh relay with no
 inbound path at all. That is arguably the *harder* case and it is the first
 mobile/CGNAT measurement here, but it is **not two home routers**, which
 remains at zero. Both peers were up and waiting in all three runs, so the
-returning-offline-node case is untouched. One trial per direction is no
-distribution. And these were two `hc sandbox` conductors, not two copies of the
+returning-offline-node case is untouched. The trial series is five crossings on one mobile
+carrier and one home ISP within half an hour, which is a spread for that path
+and not a sample of consumer networks generally. And these were two `hc sandbox` conductors, not two copies of the
 Electron build — what transfers is the relay path, not the packaging.
 
 The datacentre figure stands unchanged: **one** crossing, inside 5.0s.

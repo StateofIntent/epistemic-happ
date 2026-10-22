@@ -264,6 +264,27 @@ Validity, in the order §4 lists it: DNA hashes matched within runs 1 and 2
 (`96ad274aef89` vs `7c58318b6743`), and A's conductor config named
 `dev-test-bootstrap2.holochain.org` with the iroh canary relay.
 
+**A trial series followed, and it is the cheap way to get a spread.** The seed
+defines the network; the *domain* is just a string. So several trials can share
+one conductor pair and one seed, varying only the domain — the peers discover
+each other once and each trial is then a fresh entry gossiped between peers
+that already know each other, with no restart and one command per trial. Only
+the *cold* case needs a fresh seed and a restart on both sides.
+
+| sample | peers | crossing |
+|---|---|---|
+| trial 1 | cold | 2-7s |
+| trial 2 | warm | under 3s |
+| trial 3 | warm | under 4s |
+| cold 2 | cold | 1-6s |
+
+Five crossings counting run 2, every one single-digit seconds, cold
+indistinguishable from warm at a 5s resolution. **Set the publisher's hold
+above the reader's expected wait, not below it** — `cold 2` used a 120s
+publisher hold against a 600s reader window, which was luck rather than
+judgement: a crossing slower than 120s would have found no peer left holding
+the entry and produced a false negative.
+
 **Four things this run taught that the preconditions above did not say:**
 
 1. **Reader before publisher**, for the reason in §3 — it cost run 1 its
