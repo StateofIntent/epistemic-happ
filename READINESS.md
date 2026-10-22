@@ -383,9 +383,10 @@ minutes was "roughly 600x the measured crossing", and that was the wrong
 comparison.** It measured 20 minutes against *steady-state gossip between
 connected peers* — 2s to 7s — which is not the case a timeout exists for. §3b
 measures the cases that are: a peer that changes network address took **368-373s**
-to deliver, and a peer returning from a 14-minute outage had **not delivered
-after 905s**. Against those, 20 minutes is the right order of magnitude and
-arguably tight rather than absurd. The original claim is left visible rather
+to deliver, and a peer returning from a 15-minute outage took **687-692s**.
+Against those, 20 minutes is **correctly sized rather than merely the right
+order of magnitude** — the worst clean measurement is 58% of it, which is a
+sensible margin rather than an arbitrary one. The original claim is left visible rather
 than deleted because the error was in the choice of baseline, which is the kind
 of mistake a replacement number would hide.
 
@@ -505,6 +506,7 @@ and would make it a new node rather than a returning one.
 | **A brand-new node, same moment, same seed** | Generated at `14:47:53`, conductor up `14:47:59`, had **all three claims on its first poll** by `14:48:11` — roughly 15 seconds from not existing |
 | **Completeness, once recovery happened** | The laptop got `gap2` and `gap3` on the first poll as well. Catch-up is **all-or-nothing, not partial** — no silently missing middle |
 | **Round 2: return after a 154s outage, nothing else joining** | **Self-recovered in 304-309s** from reconnect, bracketed both sides — within seconds of the 300s per-peer initiate floor |
+| **Round 3: return after an 884s outage, nothing else joining** | **Self-recovered in 687-692s** — unaided, so recovery happens, and it scales with the absence rather than sitting on the 300s floor |
 
 **THE ASYMMETRY IS THE FINDING.** A peer that has never been seen gets the
 entire history in seconds. A peer that was known, went away, and came back had
@@ -550,18 +552,53 @@ which this file already describes elsewhere as the reason an exhausted gossip
 allowance reaches past a 300s ceiling. A returning peer appears to wait out
 exactly that floor before it can ask again.
 
-**SO ROUND 1 IS NOT EXPLAINED, IT IS SHARPENED.** 905s with no recovery is
-**three times** the floor that round 2 landed on. The two runs differ in one
-obvious variable — 861s offline against 154s — so outage length is now the live
-question rather than a caveat: something about a longer absence appears to cost
-more than one re-initiate window. The weakness noted when round 2 was designed
-(shortening the outage changes the variable most likely to matter) turned out to
-be the finding.
+**ROUND 3 MATCHED ROUND 1'S OUTAGE WITH ROUND 2'S SOLITUDE, and it
+self-recovered too.** 884s offline against round 1's 861s, three claims written
+at the same offsets inside the gap (within two seconds of round 1's on every
+one), nothing else on the network and nothing touched from the serving side:
 
-**Still open:** a round 3 with the outage matched to round 1's ~861s and
-nothing else joining, which is the only run that separates "long outages fail
-to self-recover" from "round 1 was unlucky". Neither answer is available from
-two runs.
+| event | time |
+|---|---|
+| laptop offline | `15:05:49Z` |
+| claims written | `15:09:00Z`, `15:11:02Z`, `15:13:01Z` |
+| laptop back online | `15:20:33Z` |
+| last empty poll | `15:32:00Z` |
+| **readable** | **`15:32:05Z`** |
+
+**687-692s from reconnect, unaided.** So the answer to "does a returning node
+recover without help" is yes, in every clean run.
+
+**WHAT THE THREE ROUNDS ACTUALLY SHOW: recovery is minutes, and it grows with
+the length of the absence.**
+
+| round | outage | recovery from reconnect | clean |
+|---|---|---|---|
+| 2 | 154s | **304-309s** | yes |
+| 3 | 884s | **687-692s** | yes |
+| 1 | 861s | 905s dry, crossed at 980s | **no** — third node at 909s |
+
+Five minutes after a two-and-a-half-minute absence; eleven and a half after a
+fifteen-minute one. Three points, one of them confounded, do not fix a
+functional form — but "not seconds, and worse the longer you were away" is
+supported by both clean runs, and it is the shape that matters for a desktop
+app.
+
+**Round 1 stays the outlier, now more precisely.** Round 3 recovered at 692s
+from a *longer* outage, so round 1 should have been back around `14:44` if it
+behaved the same way. It was still dry at 905s, and the third node arrived at
+909s — after the point where round 3 had already recovered. So round 1 was
+genuinely slower than round 3, and whether it would have recovered unaided is
+still unknown. One run, confounded, recorded as such.
+
+**A PREDICTION THAT FAILED, which is why it is here.** Round 2's recovery
+coincided to the second with a `PeerBehaviorError: Unsolicited Accept message
+from peer` on the serving conductor — one of the signatures the log census
+already counts — and the obvious reading was that a returning peer's first
+successful round is characterised by it. Round 3 was then a test: the same line
+should appear at its crossing. **It did not.** The count stayed at one, and the
+serving conductor logged *nothing at all* around `15:32:05`. So that signature
+was coincidental with round 2's recovery, not characteristic of it, and the
+mechanism remains unidentified.
 
 ### 4. There are no phone builds, and that is upstream
 

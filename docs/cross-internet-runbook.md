@@ -388,6 +388,7 @@ protocol result before the fingerprint check (§1.1) caught it.
 | brand-new node, same seed, same moment | **all three claims, first poll**, ~15s from not existing |
 | completeness once recovery came | `gap2` and `gap3` also first-poll — **all-or-nothing, never partial** |
 | round 2: return after 154s offline, nothing else joining | **self-recovered in 304-309s** from reconnect — within seconds of the 300s per-peer initiate floor |
+| round 3: return after 884s offline, nothing else joining | **self-recovered in 687-692s** — so recovery is unaided but scales with the absence |
 
 **AND THE DIAGNOSTIC SPOILED THE HEADLINE NUMBER, which is the lesson worth
 carrying.** The brand-new node was started to distinguish "the serving host
@@ -407,8 +408,18 @@ The same mistake in a different costume as §7's four parallel readers: the
 instrument interfering with its own subject, twice in one day, once inflating a
 number and once erasing one.
 
-**Round 2 is how to do it**: shorter outage, one claim, reader started 22s after
-the reconnect, and nothing else allowed near the network for the whole window.
-It produced a two-sided bracket landing on a constant the codebase already
-documents. It also differs from round 1 by outage length, which is why a third
-round matched to round 1 is still owed — see READINESS §3b.
+**Rounds 2 and 3 are how to do it**: one variable changed at a time, the reader
+started within seconds of the reconnect, and nothing else allowed near the
+network for the whole window. Round 3 matched round 1's outage to within 23s
+and its write offsets to within 2s, so the only remaining difference from round
+1 was that nothing interfered — and it self-recovered in 687-692s. Recovery is
+therefore unaided and **scales with the absence**: ~305s after 154s away, ~690s
+after 884s.
+
+**And round 3 doubled as a test of a hypothesis, which is the cheapest thing a
+repeat run can also do.** Round 2's recovery coincided to the second with a
+`PeerBehaviorError: Unsolicited Accept message` on the serving conductor, which
+looked like the mechanism. Round 3 predicted the same line at its crossing. It
+did not appear — the serving conductor logged nothing at all — so the signature
+was coincidence. Writing the prediction down before the run is what made that
+knowable instead of a story told afterwards.

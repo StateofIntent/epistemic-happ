@@ -202,13 +202,15 @@ you write anything you would mind standing behind forever:
   installed machine, joining for the first time at that same moment, received
   all three within seconds of starting up.
 
-  So if you close your laptop or lose your connection, **expect to be behind
-  for a while when you return, possibly a long while.** When it does catch up
-  it catches up completely — there is no half-synced state where some records
-  arrive and others go missing quietly. We do not yet know how long unaided
-  recovery takes, because the diagnostic that revealed the problem also
-  perturbed it; READINESS §3b is honest about that rather than quoting a
-  number we cannot stand behind.
+  **It does catch up on its own, and the wait grows with how long you were
+  away.** Two further runs measured it with nothing else on the network: about
+  five minutes of catch-up after two and a half minutes offline, and about
+  eleven and a half minutes after fifteen minutes offline. So expect minutes,
+  not seconds — and more of them the longer you were gone.
+
+  When it does catch up, it catches up **completely**. There is no half-synced
+  state where some records arrive and others go missing quietly, which would be
+  a worse problem than the waiting.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
