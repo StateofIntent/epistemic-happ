@@ -38,7 +38,16 @@
 //     `Saturated` may not be. The sender is host-verified; the assertion is
 //     not, and section 3 checks only the former.
 //
-// Run: scripts/network.sh start, then node scripts/live-verify/peer-signal.mjs
+// RUN IT ON A CLEAN DHT, and section 1 is the reason rather than tidiness:
+//
+//   scripts/network.sh clean && scripts/network.sh start
+//   node scripts/live-verify/peer-signal.mjs
+//
+// The control requires a nodeB that has NEVER opened its channel, and the cap
+// grant is an entry — so it survives `stop`/`start` and a second run on the
+// same state reds section 1 ("heard nothing with its channel shut (got 1)")
+// and section 2's `created` flag. Those reds are the harness measuring a
+// channel it opened on a previous run, not a protocol fault.
 // ============================================================================
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 
@@ -101,13 +110,20 @@ async function connectNode(name) {
     }
     if (lastErr) setupFail([`${NODES[name].node}'s cell was still disabled after 30s.`]);
   }
-  // Every signal this client is handed, kept with an arrival time taken HERE.
-  // A signal carries no timestamp of its own, deliberately — see `PeerSignal`'s
-  // doc comment and §5.22: a sender-supplied time is a number the sender chose.
+  // Every signal this client is handed, kept RAW with an arrival time taken
+  // HERE. A signal carries no timestamp of its own, deliberately — see
+  // `PeerSignal`'s doc comment and §5.22: a sender-supplied time is a number
+  // the sender chose.
+  //
+  // THE RAW SIGNAL IS KEPT, and the previous version's habit of unwrapping it
+  // at the door is the defect that cost this harness a day. It stored
+  // `sig?.payload ?? sig?.App?.payload ?? sig` — all three wrong for this
+  // client — so the envelope was flattened to something `peerSignals` could
+  // not read, and the un-decodable and the un-delivered became the same
+  // observation. Keep the envelope; decode in one place; check the decode.
   const received = [];
   app.on('signal', (sig) => {
-    const payload = sig?.payload ?? sig?.App?.payload ?? sig;
-    received.push({ at: Date.now(), payload });
+    received.push({ at: Date.now(), raw: sig });
   });
   return {
     name,
@@ -120,10 +136,54 @@ async function connectNode(name) {
   };
 }
 
-// A received PeerSignal, unwrapped from whatever envelope the client used.
-const peerSignals = (node) => node.received
-  .map((r) => r.payload?.PeerSignal ?? r.payload?.value?.PeerSignal ?? null)
-  .filter(Boolean);
+// A received PeerSignal, unwrapped from the client's envelope.
+//
+// THE ENVELOPE, MEASURED RATHER THAN GUESSED (@holochain/client 0.21.0, two
+// conductors on `network.sh`, 2026-10-23):
+//
+//   sig.type                                  = "app"
+//   sig.value.cell_id[0|1]                    = 39 bytes each
+//   sig.value.zome_name                       = "epistemic_coordinator"
+//   sig.value.payload.PeerSignal.from         = 39 bytes, host-verified
+//   sig.value.payload.PeerSignal.signal.<Variant>
+//
+// WHAT THE PREVIOUS VERSION LOOKED AT, and why this is written as a list of
+// candidate paths with a counter rather than a one-line `??` chain. It read
+// `payload.PeerSignal` and `payload.value.PeerSignal` after already
+// flattening the envelope — missing `value.payload` by exactly one level. The
+// signals were arriving, correctly typed, the whole time: sections 3 and 4
+// were red for 24 hours against a protocol that worked, and the commit message
+// recorded the fault as "isolated to send_remote_signal itself" because every
+// OTHER link had been confirmed independently and this one had not been
+// instrumented at all. Four conductor restarts, `RUST_LOG`, `NETAUDIT` and a
+// throwaway `call_remote` probe went into re-deriving that.
+//
+// SO THE DECODE IS NOW A MEASUREMENT WITH ITS OWN FAILURE MODE. `undecodable`
+// counts envelopes that arrived and did not yield a `PeerSignal`, and the
+// caller treats that as a SETUP failure rather than a protocol result —
+// because "nothing arrived" and "something arrived that I cannot read" are
+// different findings and this file proved what it costs to conflate them.
+const PEER_SIGNAL_PATHS = [
+  (sig) => sig?.value?.payload?.PeerSignal, // the measured shape, client 0.21
+  (sig) => sig?.payload?.PeerSignal,        // tolerated: a flatter envelope
+  (sig) => sig?.PeerSignal,                 // tolerated: already unwrapped
+];
+
+const decodeSignals = (node) => {
+  const found = [];
+  let undecodable = 0;
+  for (const r of node.received) {
+    let hit = null;
+    for (const at of PEER_SIGNAL_PATHS) {
+      try { hit = at(r.raw) ?? null; } catch { hit = null; }
+      if (hit) break;
+    }
+    if (hit) found.push(hit); else undecodable++;
+  }
+  return { found, undecodable };
+};
+
+const peerSignals = (node) => decodeSignals(node).found;
 
 async function main() {
   log('=== peer-signal: can two agents speak without writing? ===');
@@ -181,7 +241,18 @@ async function main() {
   });
   const deadline = Date.now() + ARRIVE_WINDOW_MS;
   while (Date.now() < deadline && B.received.length === before) await sleep(250);
-  const got = peerSignals(B);
+  const { found: got, undecodable } = decodeSignals(B);
+  // BEFORE the result check, because an unreadable envelope is not a verdict
+  // about delivery and must never be reported as one. This is the exact
+  // confusion that made sections 3 and 4 red against a working protocol.
+  if (undecodable > 0 && got.length === 0) {
+    setupFail([
+      `nodeB received ${undecodable} signal envelope(s) and none yielded a PeerSignal.`,
+      'The signals ARE arriving — this harness cannot read the envelope.',
+      'Add the real path to PEER_SIGNAL_PATHS; see its comment for how to measure it.',
+      `First envelope: ${JSON.stringify(B.received[0]?.raw)?.slice(0, 300)}`,
+    ]);
+  }
   check(`nodeB received a peer signal within ${(ARRIVE_WINDOW_MS / 1000).toFixed(0)}s`, got.length >= 1);
   if (got.length >= 1) {
     const first = got[0];
