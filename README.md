@@ -3710,6 +3710,49 @@ each of these is currently exactly that.
   A harness that later moves a check into a loop makes this gate go red, and
   the fix is to exempt it with a reason rather than to adjust the number until
   the gate agrees.
+- **A harness may not pin the protocol version a bump will change, and that is
+  now gated rather than remembered.** `scripts/check-version-assertions.mjs`,
+  added 2026-10-22 to the `no-conductor` job, and it exists because of a
+  measurement rather than a worry. `past-cone.mjs` asserted
+  `declared_version === 10` — correctly, on the day it was written, since 10 was
+  the version its field had just cost. Settlement bumped the network to **11**
+  the next day, and the `conductor` job went red at 14:20 and stayed red across
+  **three runs for eleven hours**, on a field that was entirely fine, in a file
+  nobody had touched (first occurrence: run
+  [`39615975688`](../../actions/runs/39615975688)). **The failure reads as a
+  defect and is not one**, which is the expensive part: a setup assertion going
+  red looks exactly like a rule going red.
+
+  **Nothing that existed could have caught it.** `check-spec-drift` reads the
+  specification, `check-harness-counts` counts `check()` call sites,
+  `enumerate.mjs` parses the two zomes and `check-workflow-setup-drift` reads
+  the workflow — **none of them look at what a harness asserts about its
+  environment.** The only thing that runs a harness is the `conductor` job,
+  which needs a built hApp and nine minutes, so the signal arrived a day late.
+  This answers in milliseconds before anything is installed.
+
+  **The rule, and what it permits.** An equality against a numeric literal is
+  the error. What a harness is entitled to assert is that the bump *happened* —
+  its field does not exist below that version — and that the two numbers agree:
+  `declared_version >= CONE_VERSION`, plus
+  `implemented_version === declared_version`. `protocol-version.mjs` is the one
+  file that must pin an exact number and it already reads that number out of
+  `dna/dna.yaml`, **so there is no exemption list and that is a claim rather
+  than an omission**: any site wanting an exact version can do the same, and an
+  exemption would only record that somebody did not. It resolves named floor
+  constants per file, so `>= CONE_VERSION` is swept rather than skipped, and it
+  **checks the floors from the other side too** — a floor above the version
+  `dna.yaml` declares is red by construction and invisible until somebody runs
+  it.
+
+  **Watched failing three times before it was trusted.** The real 2026-10-21
+  defect restored — 1 red, naming the file and line; a floor of 12 against a
+  network at 11 — 1 red, *"red by construction"*; and the comparison written
+  backwards, `11 === identity.implemented_version` — 1 red, because an operand
+  order is not a different rule. It reads JavaScript as text with comments and
+  string literals stripped, so a version carried in a variable or built by
+  arithmetic is outside its reach: a green run means no site pins a literal in
+  the shape that has actually rotted here.
 - ~~**Whether the remaining chain-local reads should have global indexes at all.**~~
   **Answered, per function, and `get_membranes` is now indexed** — see the entry
   on `MembraneRegistry` later in this section. This bullet said §10.0 "names the
