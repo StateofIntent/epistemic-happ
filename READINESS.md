@@ -214,9 +214,10 @@ Run 3's two hosts print *different* DNA hashes by construction — that is the
 isolation being exercised, not a fault.
 
 **The 2s figure compares clocks on two different machines**, so it rests on
-their agreeing to within about a second. Host A was NTP-synchronised; the
-mobile host's sync state was not captured at the time. The 5s poll grid is the
-resolution floor regardless, so read it as "under 2s, unresolved below".
+their agreeing to within about a second. **Both hosts reported
+`System clock synchronized: yes` with an active NTP service**, checked on each
+rather than assumed, so the comparison rests on NTP agreement. The 5s poll grid
+is still the resolution floor, so read it as "under 2s, unresolved below".
 
 **What this does not close, and why the row stays open.** One side was a phone
 hotspot — CGNAT, so the crossing had to go through the iroh relay with no
