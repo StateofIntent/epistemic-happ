@@ -195,11 +195,22 @@ you write anything you would mind standing behind forever:
   same second the other machine wrote it, so the time was spent filing the
   record locally rather than moving it between the houses.
 
-  **What is still untested is a machine that comes back after being offline.**
-  Every run so far had both ends up and waiting for each other, which is not
-  the same as catching up on what you missed. So: the case this section
-  existed to warn you about has now been measured, and what remains is
-  rejoining rather than connecting.
+  **A machine that comes back after being offline is a different story, and a
+  worse one.** This was tested the same day: one machine was taken off the
+  network for fourteen minutes while three records were written, then brought
+  back. Fifteen minutes later it still had none of them — while a freshly
+  installed machine, joining for the first time at that same moment, received
+  all three within seconds of starting up.
+
+  **It does catch up on its own, and the wait grows with how long you were
+  away.** Two further runs measured it with nothing else on the network: about
+  five minutes of catch-up after two and a half minutes offline, and about
+  eleven and a half minutes after fifteen minutes offline. So expect minutes,
+  not seconds — and more of them the longer you were gone.
+
+  When it does catch up, it catches up **completely**. There is no half-synced
+  state where some records arrive and others go missing quietly, which would be
+  a worse problem than the waiting.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
