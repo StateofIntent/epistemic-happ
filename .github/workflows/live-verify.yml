@@ -79,6 +79,22 @@ jobs:
       - name: workflow-setup-drift — network.yml's two jobs still share one setup
         run: node scripts/check-workflow-setup-drift.mjs
 
+      # Newest in that family, and the only one that guards a harness's own
+      # ASSERTION rather than a document, a count or a workflow. Added
+      # 2026-10-22, after a measurement rather than a worry: `past-cone.mjs`
+      # asserted `declared_version === 10` because 10 was the version its field
+      # had cost, settlement bumped the network to 11 the next day, and the
+      # conductor job went red for eleven hours across three runs on a field
+      # that was entirely fine (first occurrence: run 39615975688).
+      #
+      # Nothing above could have caught it — they read the specification, the
+      # check counts, the two zomes and this file. The only thing that runs a
+      # harness is the conductor job, which needs a built hApp and nine
+      # minutes, so the feedback arrived a day late and looked like a defect.
+      # This answers in milliseconds, before anything is installed or built.
+      - name: version-assertions — no harness pins the protocol version a bump will change
+        run: node scripts/check-version-assertions.mjs
+
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in
