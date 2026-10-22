@@ -348,3 +348,60 @@ One further log line worth keeping: the relay dropped a connection at
 about six minutes after the last crossing and after the away machine had
 stopped. It affected no sample, and it is the kind of thing that would look
 like a protocol fault if it had landed mid-window.
+
+---
+
+## 8. The returning node, 2026-10-22 evening
+
+The case §6 and §7 could not reach: every crossing they measured had both peers
+up and waiting, which is connecting rather than catching up. This procedure
+tests a node that was **offline while history was written**.
+
+**Take the network down, not the conductor.** `cross-internet-node.sh stop`
+does `rm -rf` on the state directory, so a node restarted after it has a new
+database and a new agent key — a *new* node, which is the case already known to
+sync in seconds. What makes a returning node is the conductor surviving:
+
+```bash
+date -u +"OFFLINE at %H:%M:%S"; nmcli device disconnect wlp1s0   # on the away host
+#   ... the other host writes history here ...
+date -u +"BACK ONLINE at %H:%M:%S"; nmcli connection up "<ssid>"
+```
+
+`nmcli device disconnect` also suppresses autoconnect until an explicit
+`connection up`, which is what keeps the outage an outage. Verify the agent key
+printed after the return matches the one from before it — that is the proof it
+is the same node and not a replacement.
+
+**Use `nmcli connection up "<ssid>"`, not `nmcli device connect`.** The latter
+picks whichever saved profile is available, which on a machine that has been
+moved around is not necessarily the one the test assumes. Ours silently chose a
+different network, and ten minutes of `nothing yet` was nearly read as a
+protocol result before the fingerprint check (§1.1) caught it.
+
+**What it measured:**
+
+| case | result |
+|---|---|
+| address change, conductor alive | claim readable **368-373s** after the write |
+| return after 861s offline, 3 claims in the gap | **nothing after 905s** |
+| brand-new node, same seed, same moment | **all three claims, first poll**, ~15s from not existing |
+| completeness once recovery came | `gap2` and `gap3` also first-poll — **all-or-nothing, never partial** |
+
+**AND THE DIAGNOSTIC SPOILED THE HEADLINE NUMBER, which is the lesson worth
+carrying.** The brand-new node was started to distinguish "the serving host
+will not re-reach the returning peer" from "the host is not serving at all". It
+answered that cleanly — all three claims, immediately — and then the returning
+node crossed **65 seconds later**, after fifteen minutes of silence. Whether it
+self-recovered or the third node's arrival unblocked it cannot be separated
+from one run.
+
+So: **decide before running whether you are measuring self-recovery or
+diagnosing a stall, because the diagnosis destroys the measurement.** If the
+figure matters, let the window expire untouched first and diagnose afterwards.
+Only the lower bound survives a perturbed run — here, no recovery for at least
+905s, measured to the moment before the third node existed.
+
+The same mistake in a different costume as §7's four parallel readers: the
+instrument interfering with its own subject, twice in one day, once inflating a
+number and once erasing one.

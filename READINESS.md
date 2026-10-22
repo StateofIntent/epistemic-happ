@@ -375,11 +375,19 @@ beforehand.
 2026-10-22 runs say consumer propagation on *this* path is not routinely
 minutes-slow: 2s between discovered peers, under 111s including discovery. So
 the retry's premise — that slowness is intermittent rather than the norm — is
-not contradicted by the first consumer data, and `dependencyWaitMs`'s 20
-minutes is roughly 600x the measured crossing. But n is **one per direction on
-one consumer path**, and the path that remains unmeasured (two home routers) is
-the one both decisions were originally scoped to. Treat this as removing the
-"no consumer data at all" objection, not as a basis for picking a number.
+not contradicted by the first consumer data. But n is small, and the figure to
+size against turned out not to be the steady-state crossing at all.
+
+**CORRECTION, SAME DAY: this paragraph first said `dependencyWaitMs`'s 20
+minutes was "roughly 600x the measured crossing", and that was the wrong
+comparison.** It measured 20 minutes against *steady-state gossip between
+connected peers* — 2s to 7s — which is not the case a timeout exists for. §3b
+measures the cases that are: a peer that changes network address took **368-373s**
+to deliver, and a peer returning from a 14-minute outage had **not delivered
+after 905s**. Against those, 20 minutes is the right order of magnitude and
+arguably tight rather than absurd. The original claim is left visible rather
+than deleted because the error was in the choice of baseline, which is the kind
+of mistake a replacement number would hide.
 
 **AND THE SPLIT IS NOT THE WHOLE ANSWER, WHICH TOOK THREE HOURS TO FIND OUT.**
 The paragraph above was written as though `partition-rejoin` were the only slow
@@ -474,6 +482,58 @@ intermittent, and the only measurement that could overturn that premise — rath
 than confirm it on more runners — is the two-machine one below. The harness
 prints a `::warning::` on every run that needed a retry precisely so that a
 premise going stale is visible as a rate rather than invisible as a green tick.
+
+### 3b. A returning node is not a new node, and the gap is large
+
+**Measured 2026-10-22, and partly spoiled by the instrument — both halves of
+that are recorded here.** §3 established that entries cross between consumer
+networks in single-digit seconds. This asks the next question: what happens to
+a node that was *offline while history was written* and then comes back. Every
+figure in §3 had both peers up and waiting, which is connecting rather than
+catching up.
+
+Setup: the desktop on home broadband, the laptop on a phone hotspot, both on
+one seed, peering confirmed across the internet first (a claim crossed in
+under 2s). Then the laptop's network was taken down with `nmcli device
+disconnect` — **not** `cross-internet-node.sh stop`, which deletes the database
+and would make it a new node rather than a returning one.
+
+| case | what happened |
+|---|---|
+| **Address change, conductor alive** | The laptop moved from home wifi to the hotspot. The desktop logged the connection loss at `14:06:42`; a claim written at `14:09:21` became readable on the laptop between `14:15:29` and `14:15:34` — **368-373s from the write, 527-532s from the drop** |
+| **Return after a 861s outage** | Offline `14:18:23`-`14:32:44` with three claims written inside the gap. Back online, the laptop had **none of them after 905s** |
+| **A brand-new node, same moment, same seed** | Generated at `14:47:53`, conductor up `14:47:59`, had **all three claims on its first poll** by `14:48:11` — roughly 15 seconds from not existing |
+| **Completeness, once recovery happened** | The laptop got `gap2` and `gap3` on the first poll as well. Catch-up is **all-or-nothing, not partial** — no silently missing middle |
+
+**THE ASYMMETRY IS THE FINDING.** A peer that has never been seen gets the
+entire history in seconds. A peer that was known, went away, and came back had
+over fifteen minutes with nothing. The desktop's conductor log is consistent
+with it: across the whole run its only transport entries are the two
+disconnections, with no retry and no error. This is the case a desktop app hits
+every time somebody shuts a laptop, and it behaves worse than a fresh install.
+
+**AND THE SELF-RECOVERY FIGURE WAS DESTROYED BY MEASURING IT.** The laptop
+finally crossed at `14:49:04` — **65 seconds after the brand-new node joined**
+the same network. Whether it self-recovered after ~980s or was unblocked by the
+third node's arrival (new agent info, fresh gossip activity, possibly fetching
+from that node rather than the desktop) cannot be separated from one run. The
+"980s" is therefore **not** a recovery time and must not be quoted as one. Same
+class of error as §3's four-parallel-readers contention: the instrument
+perturbing what it measures, twice in one day, in opposite directions.
+
+What is solid is the **lower** bound, which the confound cannot touch: no
+recovery for at least 905s, measured against the moment before the third node
+existed.
+
+**One caveat on the new node, stated rather than buried:** it ran on the
+desktop's own machine, so its path to the data was local. That does not weaken
+the availability conclusion — the claims were served, completely, on demand —
+but its ~15s is not a cross-internet figure.
+
+**Still open:** whether a returning node recovers unaided at all. A second
+round with a 154s outage and no third node was run to answer exactly that, and
+a third round with an outage matched to the first is needed either way, because
+shortening the outage changes the variable most likely to matter.
 
 ### 4. There are no phone builds, and that is upstream
 
