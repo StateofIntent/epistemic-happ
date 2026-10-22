@@ -198,7 +198,11 @@ cross-internet crossing — 5.0s, between two datacentre VMs. Two laptops behind
 two different home routers: zero measurements. Mobile networks and CGNAT: zero.
 
 **The tooling exists and the measurement is cheap.** Two people on two different
-home connections, or one person on home broadband and a phone hotspot:
+home connections, or one person on home broadband and a phone hotspot. The
+operator-ordered version of this — three runs including the negative control,
+and the five things that silently invalidate one — is
+**[`docs/cross-internet-runbook.md`](docs/cross-internet-runbook.md)**; the
+sketch below is the shape of it:
 
 ```bash
 # both hosts, same seed — the seed keeps this off the DHT real installers share
