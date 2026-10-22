@@ -304,3 +304,47 @@ the entry and produced a false negative.
 4. **Stop the machines idling.** `omarchy toggle idle stay-awake` on both, and
    leave the lid open — a suspend mid-window produces a clean-looking
    `NO CROSSING` that measures the lid.
+
+---
+
+## 7. Two actual home routers, 2026-10-22 evening
+
+The run §6 could not do: the desktop stayed on its home connection, the laptop
+was carried to another household and joined that house's own router on a
+different ISP. Fingerprints `96ad274aef89` against `4eed418b9c87`.
+
+| sample | laptop wrote | desktop's last empty poll | desktop received | crossing |
+|---|---|---|---|---|
+| r1 | `13:02:58Z` | `13:03:00Z` (+2s) | `13:03:05Z` | **2-7s** |
+| r2 | `13:08:32Z` | `13:08:34Z` (+2s) | `13:08:39Z` | **2-7s** |
+| r3 | `13:11:28Z` | `13:11:25Z` (-3s) | `13:11:30Z` | **under 2s** |
+| r4 | `13:19:38Z` | `13:19:36Z` (-2s) | `13:19:41Z` | **under 3s** |
+
+**THE UNATTENDED PATTERN, which is what made this possible at all.** The
+operator cannot be at both ends, and the reader must be polling before the
+write (§3). So the reader side was armed *before leaving*: conductor up, idle
+disabled, and **four readers started in parallel on four domains**, each with
+an 8-hour window. The away machine could then publish into `r1`...`r4`
+whenever it arrived, in any order, with nobody home and no channel between the
+two. Both sides piped through the `date` wrapper; the brackets come from
+pairing the two logs afterwards.
+
+**AND THE PATTERN CORRUPTED WHAT IT MEASURED.** Four readers on one conductor
+are four app connections competing to integrate incoming ops. The reading
+conductor logged `database is locked` from `integrate_dht_ops_consumer` at
+`13:08:32.478Z` and `13:11:28.697Z` — the same second as r2's and r3's remote
+writes. A pure reader writes nothing, so that workflow running means the ops
+had already arrived: **transit was sub-second, and the seconds in the table are
+local integration under self-inflicted contention.**
+
+So the pattern is right for *whether* an entry crosses with nobody home, and
+wrong for *how fast*. **One reader per conductor when the figure matters.** If
+several samples are wanted unattended, run them sequentially from one reader
+process, or accept that the numbers are upper bounds carrying a contention
+artefact — and say which, rather than quoting them as propagation times.
+
+One further log line worth keeping: the relay dropped a connection at
+`13:25:18Z` (`ConnectionLost(TimedOut)` against `use1-1.relay.n0.iroh-canary`),
+about six minutes after the last crossing and after the away machine had
+stopped. It affected no sample, and it is the kind of thing that would look
+like a protocol fault if it had landed mid-window.
