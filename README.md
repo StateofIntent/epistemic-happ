@@ -1652,6 +1652,151 @@ nodes A through D. Whether that is effort or hardware has not been checked
 against the row's own sentence, and on today's evidence that check is worth an
 hour before anybody budgets a cluster.
 
+**CHECKPOINT, end of 2026-10-22. Six more rows closed, two protocol forks taken,
+and the first autonomous population this graph has had.** Items **5g**'s last
+eight rules, **22** (decided and then enforced), **23** (the O dial), **24** (the
+past cone, `protocol_version: 10`), **25** (settlement, `protocol_version: 11`)
+and **11**'s own subject, the swarm. `PROTOCOL_VERSION` goes **9 to 11**. The
+roadmap count is unchanged at 78/1 — none of these is a roadmap row — and two
+rows from yesterday's pick-up table are gone: *11's own subject* was run, and
+*the raw-payload extern* turned out to be nine lines of Rust whose decision had
+already been taken six times.
+
+**THE FINDING THAT OUTLIVES ALL SIX: a check that cannot go red reads exactly
+like a check that passes.** Yesterday's finding was about the *blocked on*
+column; today's is about the green tick, and it was found five separate times in
+two days — three of them in harnesses written *after* the lesson was catalogued.
+
+| where | what was green and should not have been | what makes it sensitive now |
+|---|---|---|
+| `ordering-policy` | **all three injections passed against the first version.** Every section asserted that a causal rule produced the right order, using records already in that order **by hash** — so deleting the rule under test changed nothing and the tie-break silently produced the same answer | every section now picks records whose hash order **contradicts** the required order. **BO** 1 red, **BP** 3, **BQ** 4 |
+| `settlement` §8 | the file went green with `TargetToAssessment`'s author binding deleted: the status's target rules were probed thoroughly and **a link was never forged** — §5.19's finding reproduced by somebody who had read it the day before | both new link types are in `AttachmentLinkKind` and probed through `attempt_false_attachment_link` like the other eighteen. **BW** 1 red |
+| `metabolism` | the tick wrote to the DHT while `MetabolismTerms` still declared it did not, and **the declaration check stayed green** — the declaration was still false, so comparing it to itself proved nothing | chain growth plus a pair check requiring declaration and behaviour to agree. **BM** 3 reds, `own_claims` 2, 3 |
+| `discourse-readings` | `discourse-readings` and `trust-lenses` both passed **before and after** the aggregate stopped counting its own readings, so the repair could have been reverted in silence | five checks. **BJ** gives 3 reds and prints `total_claims=4 reading_claims=0` against a domain holding one real claim |
+| `scale-dht` | *"the entry reached every node"* passes at 3 members, at 12 and at 1,000 without ever testing routing | arcs are **reported, not asserted**, and the run and the summary both say §3 did not test scale |
+
+**The general form, which applies past this repository: a check is only
+sensitive when the policy under test and the policy it must NOT be give
+different answers on the data.** A declaration nothing compares to reality is a
+label; an ordering test over records already ordered is a tautology; a
+reachability test on a full-arc DHT is a statement about storage. All three read
+as passes.
+
+**THE TWO FORKS WERE TAKEN BECAUSE NOBODY HAS INSTALLED THE hApp, and that
+window closes.** A field on an entry type is an integrity change, so a DNA hash
+change, so a different network — peers on the old hash cannot see the new one at
+all. **Bumps are free only while there is no installed base**, and §11's own
+migration rule says entry hashes must not be carried across a fork, which means
+**a past cone cannot survive one**: cone history resets at every future bump.
+That is the consistency ratchet instantiated, and it argues for batching future
+integrity changes hard rather than against these two. `past_cone` is additive
+via `serde(default)` — an omitted field records an empty cone, which honestly
+says *nothing was recorded* rather than *nothing was seen* — so about twenty call
+sites across the harnesses, SDK and UI were unchanged by version 10.
+
+**SETTLEMENT CAME OUT STRONGER THAN THE BRIEF ASKED FOR, and that is the second
+finding.** The brief wanted settlement to be a pure function so that *"anyone can
+recompute it and check the aggregator's result"* — a courtesy, telling a careful
+reader how to catch a liar. **But a pure function over data every peer can fetch
+is a function VALIDATION can run**, so `validate_settlement_status` runs it: a
+forged `Settled` is refused by every peer independently, before the entry exists.
+Injection **BU** removes that rule and the forged status **commits** — a disputed
+claim declared settled, permanently, with the disproving inputs attached to it.
+**What remains possible is not a defect**: two aggregators may choose different
+input sets and reach different states, both valid, both reproducible, and the
+difference is visible because `inputs` is published. **Lying about arithmetic is
+refused; disagreeing about scope is not**, and the protocol has no business
+adjudicating the second. Status is an **entry, not a field**, because Invariant 6
+forced it — `get_settlement_statuses_for` returns every status rather than
+hiding a dissent behind a "current" one, which would be the deletion Invariant 6
+forbids performed by a reader instead of a writer.
+
+**THE PAST CONE'S TRANSITIVE CLOSURE IS SOLELY LOAD-BEARING.** Injection **BR**
+removes it and the attack **commits**: an author records having read a rebuttal
+while denying the objection it answered. Nothing else catches that. What
+validation cannot check is that the author actually saw these, and **no rule
+can** — the field is author-supplied and validation has no view of anybody's
+screen, the same shape as item 14's `reveal_deadline`. So over-claiming is
+possible and harmless, and **under-claiming is the direction an attacker wants**:
+pretending you never saw the rebuttal. §4 of the harness asserts that limit
+explicitly so §3 is not over-read.
+
+**THE SWARM RAN, AND THE FORK IS WHY IT PRODUCED ANYTHING.** Five agents, three
+dispositions, one a deliberate minority differing by a single number
+(`minConfidenceToFlag`) rather than by a personality, on a **DHT minted for the
+run** — enforced, not conventional, because Invariant 6 means nothing a swarm
+writes can ever be deleted and item 11's own finding is that exploration cannot
+be told from degradation at the time of writing. The same-DNA-hash precondition
+**fired on its first use**: agents installed without the seed had silently formed
+their own networks, so the population would have been several one-agent swarms
+that could not see each other. **Three critiques of the same target, written in
+the same round, recorded `saw 0 of 2`, `saw 1 of 2` and `saw 2 of 2`** — genuinely
+different views of what had been said, retained at write time and unrecoverable
+afterwards. A concurrent population is the only thing that generates that, and
+version 10 is the only reason it could be recorded. **Dispositions are mechanical
+rather than generated**, and the reason is Invariant 6 rather than caution about
+language models: the first permanent writes an autonomous population ever makes
+should have a basis anybody can audit line by line.
+
+**WHAT THE SWARM IS NOT, stated because the word is tempting: the graph is
+ACTIVE, not autopoietic.** The DNA still does nothing on its own clock — item 22
+decided that deliberately — and a swarm of external processes calling externs is
+not a system that maintains its own organisation. No ranking is computed either,
+because Invariant 1 bars a comparative reputation, so the report gives counts of
+action, which measure which threshold was lower rather than which agent was
+right. **And the first report hid its own finding**: three dispositions each
+showed 6, which reads as *no difference*, when one loose agent wrote 6 and two
+strict agents wrote 3 each. The aggregate divided the signal by the headcount,
+so the report is per-agent now.
+
+**TWO MORE ESTIMATES WERE WRONG IN YESTERDAY'S DIRECTION, which makes the
+blocker finding six for six.** *The raw-payload extern* was called "a protocol
+surface decision" here and is nine lines of Rust: six `attempt_*` probers already
+exist for exactly that reason, and the first one's own comment carries the
+argument — a coordinator is hot-swappable per §11.1, so a prober grants an
+attacker nothing and grants a test the ability to observe a refusal. `needs_extern`
+is now **0** and `needs_prober` was already 0, so every validation rule reachable
+from JavaScript has a case or a stated gap. And *tens of nodes* read as hardware
+and was effort: six conductors measured at **~97.8 MB mean RSS, load 1.17 across
+12 cores**, so twenty is ~2 GB and 1.5 cores. **Both were written from the
+conclusion rather than from the obstacle.**
+
+**AND THE PROBERS ANSWERED A QUESTION THAT WAS UNANSWERABLE WHILE THE RULES WERE
+UNREACHABLE: which author rules carry weight alone.** **BK** removed three at
+once — `PreRegistration`'s forged-author payload **committed**, while
+`WorldlineTrace` and `Revelation` each fell through to an adjacent rule. **BN**
+removed the last three: `BridgeRecord`'s author binding, its loss-field
+consistency rule and `ExternalCritique`'s importer binding, **all three red with
+"the call COMMITTED"**, so all three are solely load-bearing.
+
+**ONE COST ARRIVED EXACTLY AS FINDING 17 PREDICTED, and it is recorded rather
+than worked around.** The corpus's cone fixtures are now **shared** between the
+`critique` and `assessment` specs: six critiques in one run exceeded §6's
+20-per-rolling-hour `SynapticLink` ceiling — every `create_critique` mints one —
+and every case below it SKIPped. **A corpus that silently stops testing things is
+worse than a slow one.** The ceiling is per *agent*, counted over a rolling hour,
+so **a second corpus run inside the same hour on the same conductor still fails
+its `Critique` chain**; the baseline check names the saturation and points at
+`scripts/sandbox.sh clean && start` for a fresh agent rather than letting it read
+as a zome defect. Trimming a fixture would make the under-claiming attack
+unreachable, so it stays.
+
+**WHERE TO PICK UP. Nothing in the queue is blocked on effort, and nothing is
+waiting on a decision** — item 22 was the last of those and it is taken.
+
+| open | what it needs |
+|---|---|
+| **two consumer networks** | two physical home networks. **The only hardware-blocked row left**, and still the highest-value item under *Before mass adoption* |
+| **scale beyond twelve** | more members. Twelve all claim a FULL arc, so the figure worth recording is **the N at which an arc first narrows**, and nothing above twelve has been run. Not a procurement decision — a run |
+| **the sybil position** | a person standing behind it before inviting a crowd. Explicitly not technical |
+| **an outside audit** | a person, and money |
+| **the live X API** | credentials. Nothing here posts a tweet; the bridge service's `start()` is still unexercised |
+| **item 22's reopen condition** | **both halves**: a surface for readings exists *and* somebody wants them faster than a person will click. Then option (b), opt-in per agent with write-on-change, never a heartbeat |
+| **four unsurfaced reads** | an interaction design, not wiring. `critiques_unseen_by` (the honest screen must render `cone_recorded` as prominently as `unseen`, or silence reads as ignorance), `publish_discourse_reading`, and the settlement and assessment screens. Each is deliberately unsurfaced with its reason recorded |
+| **settlement's cool-down** | not a build. §5.22 again: the brief wanted causal steps rather than wall-clock and the instinct is right, but causal distance needs a graph walk validation cannot afford, and every policy parameter must be an exact integer comparison or peers disagree |
+
+
+
 
 | Open item | Blocked on |
 |---|---|
