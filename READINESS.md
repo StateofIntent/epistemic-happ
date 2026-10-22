@@ -504,6 +504,7 @@ and would make it a new node rather than a returning one.
 | **Return after a 861s outage** | Offline `14:18:23`-`14:32:44` with three claims written inside the gap. Back online, the laptop had **none of them after 905s** |
 | **A brand-new node, same moment, same seed** | Generated at `14:47:53`, conductor up `14:47:59`, had **all three claims on its first poll** by `14:48:11` — roughly 15 seconds from not existing |
 | **Completeness, once recovery happened** | The laptop got `gap2` and `gap3` on the first poll as well. Catch-up is **all-or-nothing, not partial** — no silently missing middle |
+| **Round 2: return after a 154s outage, nothing else joining** | **Self-recovered in 304-309s** from reconnect, bracketed both sides — within seconds of the 300s per-peer initiate floor |
 
 **THE ASYMMETRY IS THE FINDING.** A peer that has never been seen gets the
 entire history in seconds. A peer that was known, went away, and came back had
@@ -530,10 +531,37 @@ desktop's own machine, so its path to the data was local. That does not weaken
 the availability conclusion — the claims were served, completely, on demand —
 but its ~15s is not a cross-internet figure.
 
-**Still open:** whether a returning node recovers unaided at all. A second
-round with a 154s outage and no third node was run to answer exactly that, and
-a third round with an outage matched to the first is needed either way, because
-shortening the outage changes the variable most likely to matter.
+**ROUND 2 ANSWERS THE "UNAIDED" QUESTION, AND IT LANDS ON A DOCUMENTED
+CONSTANT.** Same pair, a 154s outage, one claim written inside it, **nothing
+else joining the network and nothing touched from the serving side**:
+
+| event | time |
+|---|---|
+| laptop offline | `14:54:11Z` |
+| claim written | `14:56:03Z` |
+| laptop back online | `14:56:45Z` |
+| reader polling from | `14:57:07Z` |
+| last empty poll | `15:01:49Z` |
+| **readable** | **`15:01:54Z`** |
+
+**Self-recovery in 304-309s from reconnect**, bracketed on both sides. That is
+within a few seconds of kitsune2's **300s per-peer minimum initiate interval**,
+which this file already describes elsewhere as the reason an exhausted gossip
+allowance reaches past a 300s ceiling. A returning peer appears to wait out
+exactly that floor before it can ask again.
+
+**SO ROUND 1 IS NOT EXPLAINED, IT IS SHARPENED.** 905s with no recovery is
+**three times** the floor that round 2 landed on. The two runs differ in one
+obvious variable — 861s offline against 154s — so outage length is now the live
+question rather than a caveat: something about a longer absence appears to cost
+more than one re-initiate window. The weakness noted when round 2 was designed
+(shortening the outage changes the variable most likely to matter) turned out to
+be the finding.
+
+**Still open:** a round 3 with the outage matched to round 1's ~861s and
+nothing else joining, which is the only run that separates "long outages fail
+to self-recover" from "round 1 was unlucky". Neither answer is available from
+two runs.
 
 ### 4. There are no phone builds, and that is upstream
 

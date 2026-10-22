@@ -387,6 +387,7 @@ protocol result before the fingerprint check (§1.1) caught it.
 | return after 861s offline, 3 claims in the gap | **nothing after 905s** |
 | brand-new node, same seed, same moment | **all three claims, first poll**, ~15s from not existing |
 | completeness once recovery came | `gap2` and `gap3` also first-poll — **all-or-nothing, never partial** |
+| round 2: return after 154s offline, nothing else joining | **self-recovered in 304-309s** from reconnect — within seconds of the 300s per-peer initiate floor |
 
 **AND THE DIAGNOSTIC SPOILED THE HEADLINE NUMBER, which is the lesson worth
 carrying.** The brand-new node was started to distinguish "the serving host
@@ -405,3 +406,9 @@ Only the lower bound survives a perturbed run — here, no recovery for at least
 The same mistake in a different costume as §7's four parallel readers: the
 instrument interfering with its own subject, twice in one day, once inflating a
 number and once erasing one.
+
+**Round 2 is how to do it**: shorter outage, one claim, reader started 22s after
+the reconnect, and nothing else allowed near the network for the whole window.
+It produced a two-sided bracket landing on a constant the codebase already
+documents. It also differs from round 1 by outage length, which is why a third
+round matched to round 1 is still owed — see READINESS §3b.
