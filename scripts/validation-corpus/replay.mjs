@@ -30,8 +30,21 @@
 // no longer produce still looks like coverage.
 //
 // The entry types NOT here are not pretended about: see README.md's class
-// table. `WorldlineTrace` and `Revelation` need dependency chains rather than
-// payloads, which is a larger job than this file.
+// table.
+//
+// THIRTEEN ENTRY TYPES as of 2026-10-21, 260 checks. The foresight family —
+// `pre_registration`, `revelation`, `worldline_trace` — was the last to come
+// in, and the note that used to sit here blamed "dependency chains rather than
+// payloads, which is a larger job than this file". That was wrong twice over:
+// the chains were already built by `otherAgentFixtures()` for the link rules,
+// and what actually blocks the rest is that most of those types' fields are
+// DERIVED BY THE EXTERN. See README.md's finding 14.
+//
+// WATCHED FAILING — BG, BH, BI, one per new type, each a separate build
+// against a clean conductor. BH is the one worth reading: it red for the WRONG
+// REASON first, because the owner case was being refused by the hash check one
+// line later rather than by the rule it names. The case now offers agent 2's
+// real content, and the re-injected forged reveal COMMITS.
 // ============================================================================
 
 import { readFileSync } from 'node:fs';
@@ -190,6 +203,75 @@ async function awaitVisibleToMe(read, label, attempts = 40, everyMs = 500) {
 // arrived DEFERS rather than refusing, which reads as a rule that does not
 // fire.
 let _others = null;
+// AGENT 2'S COMMITTED CONTENT, named rather than written twice.
+//
+// It was two string literals repeated at the commit and the reveal. It is
+// named now because a THIRD caller needs it and must not re-type it: the
+// `Revelation` spec's owner case has to offer content that hashes CORRECTLY to
+// agent 2's commitment, so that the author rule is the only thing left that
+// can refuse the reveal. Injection BH is why — with the author rule removed and
+// agent 1's own content supplied, the forged reveal was stopped by the HASH
+// check instead, so the case red for a reason that had nothing to do with the
+// rule it names. See the case's own comment.
+const OTHER_PREDICTION = 'corpus prediction, committed by the OTHER agent';
+const OTHER_SALT = 'corpus-other-salt-4a1c';
+
+// ONE SET OF CONE FIXTURES FOR THE WHOLE RUN, and finding 17 is why.
+//
+// Every `create_critique` also creates a SynapticLink, and §6 caps those at 20
+// per author per rolling hour. The `critique` spec needs three critiques for
+// its cone cases and the `assessment` spec needs the same three — six, plus
+// everything else the corpus writes, and the run died with `SWO temporal
+// friction: 20 SynapticLinks already created`, skipping every case below it.
+//
+// So they are built ONCE and shared. The cost of not doing this is not a
+// slower run, it is a corpus that silently stops testing things.
+let _cone = null;
+async function coneFixtures() {
+  if (_cone) return _cone;
+  const domain = `CorpusCone${Date.now()}`;
+  await call('create_claim', {
+    content: 'corpus claim, the shared cone target', domain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  const claims = await call('get_claims_by_domain', domain);
+  const target = claims[0].signed_action.hashed.content.data.entry_hash;
+  const member = await call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique, a legal cone member', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [],
+  });
+  const withOwnCone = await call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique whose own cone is non-empty', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [member],
+  });
+  const otherDomain = `CorpusConeOther${Date.now()}`;
+  await call('create_claim', {
+    content: 'corpus claim in another domain', domain: otherDomain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  const oc = await call('get_claims_by_domain', otherDomain);
+  const otherTarget = oc[0].signed_action.hashed.content.data.entry_hash;
+  const foreign = await call('create_critique', {
+    target: otherTarget, target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'corpus critique of a different target', author: myKey,
+    timestamp: nowMicros(), replication_attempted: false, evidence_hashes: [],
+    species: null, past_cone: [],
+  });
+  const notACritique = await call('create_claim', {
+    content: 'corpus claim used as a non-Critique reference', domain, author: myKey,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  _cone = { target, otherTarget, member, withOwnCone, foreign, notACritique, domain };
+  return _cone;
+}
+
 async function otherAgentFixtures() {
   if (_others) return _others;
   const domain = `CorpusOther${Date.now()}`;
@@ -254,8 +336,8 @@ async function otherAgentFixtures() {
   // above was published several writes ago, so it already does.
   const preRegAction = await callOther('pre_register', {
     question: claimAction,
-    prediction: 'corpus prediction, committed by the OTHER agent',
-    salt: 'corpus-other-salt-4a1c',
+    prediction: OTHER_PREDICTION,
+    salt: OTHER_SALT,
     reveal_deadline: nowMicros() + 3_600_000_000,
   });
 
@@ -282,8 +364,8 @@ async function otherAgentFixtures() {
   // owner rule needs: only the revealing agent may hang the link.
   const revelationAction = await callOther('reveal_pre_registration', {
     pre_registration: preRegAction,
-    prediction: 'corpus prediction, committed by the OTHER agent',
-    salt: 'corpus-other-salt-4a1c',
+    prediction: OTHER_PREDICTION,
+    salt: OTHER_SALT,
   });
   await awaitVisibleToMe(
     async () => {
@@ -430,6 +512,7 @@ async function otherAgentFixtures() {
     parentSpecies: otherParentSpecies, parentSpeciesEntry: otherParentEntry,
     childSpecies: otherChildSpecies, critiqueAction: otherCritique,
     antibodyAction: otherAntibody,
+    preRegPrediction: OTHER_PREDICTION, preRegSalt: OTHER_SALT,
   };
   return _others;
 }
@@ -483,9 +566,28 @@ log('');
 // for a different reason entirely: no coordinator extern accepts a raw payload
 // for either, so the fields their rules are about are derived by the extern and
 // cannot be reached from JavaScript at all. See README.md's finding 5.
+//
+// THAT WAS TRUE OF MOST OF THEIR RULES AND NOT ALL OF THEM, and both types are
+// in the list below as of 2026-10-21, alongside `pre_registration`. Eight of
+// the eighteen sites across the three really are `needs_extern` and stay out
+// of the denominator by class. The other ten are about fields a caller hands
+// in — a deadline, a question hash, an expiry, the content offered at reveal —
+// and eight of those now have cases, with two declared unreachable in GAPS for
+// reasons that are not "it needs a chain".
 const COVERED = [
   'claim', 'mew', 'evidence', 'constitution', 'critique_species', 'retraction',
   'critique', 'antibody_pattern', 'membrane', 'federation_record',
+  // The foresight family, added 2026-10-21. See the block comment above their
+  // specs: the dependency chains the old note blamed were already built, and
+  // the real limit is that most of their fields are derived by the extern.
+  'worldline_trace', 'pre_registration', 'revelation',
+  // The last two, 2026-10-21 — `needs_extern` reaches 0 with these.
+  'bridge_record', 'external_critique',
+  // Settlement, protocol_version 11. Added WITH the entry types rather than
+  // after: a type absent from this list has its rules demanded by nothing,
+  // and the coverage loop reports "0 of 0" while cases run and gate nothing
+  // (finding 10's shape).
+  'assessment', 'settlement_policy', 'settlement_status',
 ];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
@@ -608,6 +710,30 @@ const GAPS = [
     linkType: 'SynapticLink',
     rule: 'SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). This is an absolute limit, enforced by DHT validation, not a client-side courtesy.',
     why: 'reaching it means committing 20 SynapticLinks in one window, and each one costs a Critique — the limit that stopped this corpus mid-development, measured rather than imagined',
+  },
+  // --- (c) A THIRD SHAPE, FOUND 2026-10-21 AND NOT PRESENT BEFORE: THE FIELD
+  // IS CALLER-CONTROLLED BUT THE RULE IS ABOUT SOMETHING THE CALLER IS NOT.
+  //
+  // The inventory classes a site by whether the extern lets the caller supply
+  // the field the guard names. That heuristic is right for every other rule
+  // here and wrong for this one, because the guard does not compare the field —
+  // it compares the ACTION TIMESTAMP of the record the field points at, and
+  // nothing in a payload can set that. Worth keeping as its own shape: a
+  // `crafted` classification is a claim about the field, not about the rule.
+  {
+    entry: 'assessment',
+    rule: 'Assessment past_cone exceeds {} entries.',
+    why: 'the ceiling is 256 and every member must be a VALID Critique of the same target, so reaching it needs 257 real critiques — against §6\'s 20 per author per rolling hour. Nine hours of a single author doing nothing else, which is not a corpus run. The same shape as the friction gaps above: a limit whose cost is the budget rather than the payload',
+  },
+  {
+    entry: 'settlement_status',
+    rule: 'SettlementStatus inputs exceed {} entries.',
+    why: 'same arithmetic as the Assessment cone ceiling — 257 inputs must each be a valid Assessment or Critique of this target, and critiques are capped at 20 per hour. Assessments are not capped, so this one is reachable IN PRINCIPLE with 257 assessments from one agent; it is gapped because writing 257 entries to assert one bound would dominate the run time of the whole corpus for a rule whose failure mode is a slow validator rather than a wrong verdict',
+  },
+  {
+    entry: 'pre_registration',
+    rule: 'PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.',
+    why: 'the `question` hash IS caller-controlled, which is why the inventory classes this `crafted` — but the guard compares `question.action().timestamp()` against the commitment\'s own, and both timestamps are host-assigned. Any question that resolves was authored earlier, so the comparison can only be made to fire by a clock moved backwards — which is READINESS item 14\'s defect and has its own probe in `scripts/live-verify/clock-skew-reveal.mjs`, not a payload this corpus can write',
   },
 ];
 
@@ -831,7 +957,7 @@ const entries = [
     chainNote: 'published a Claim to critique, and a Mew as a non-critiquable target',
     setup: async () => {
       const domain = `CorpusCritique${Date.now()}`;
-      await call('create_claim', {
+      const claimAction = await call('create_claim', {
         content: 'corpus claim, published in order to be critiqued',
         domain, author: myKey, timestamp: nowMicros(),
         evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
@@ -845,7 +971,39 @@ const entries = [
         content: 'corpus evidence, used only as a non-critiquable critique target',
         evidence_type: 'Text', source_url: null, author: myKey, timestamp: nowMicros(),
       });
-      return { target, notCritiquable, domain };
+      // --- past-cone fixtures, protocol_version 10 ------------------------
+      // `coneMember` is a real critique of THIS target, so it is a legal cone
+      // entry. `coneWithOwnCone` cites it, so its own cone is non-empty —
+      // which is what the transitive-closure case needs: admitting it while
+      // omitting what it admitted is the under-claiming attack.
+      const coneMember = await call('create_critique', {
+        target, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique, used as a legal past_cone member',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [],
+      });
+      const coneWithOwnCone = await call('create_critique', {
+        target, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique whose own cone is non-empty',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [coneMember],
+      });
+      // A critique of a DIFFERENT target, for the same-target rule.
+      const otherDomain = `CorpusConeOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim in another domain, critiqued for the cone rule',
+        domain: otherDomain, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const otherClaims = await call('get_claims_by_domain', otherDomain);
+      const otherTarget = otherClaims[0].signed_action.hashed.content.data.entry_hash;
+      const foreignCone = await call('create_critique', {
+        target: otherTarget, target_type: 'Claim', critique_mode: 'Methodological',
+        content: 'corpus critique of a different target entirely',
+        author: myKey, timestamp: nowMicros(), replication_attempted: false,
+        evidence_hashes: [], species: null, past_cone: [],
+      });
+      return { target, claimAction, notCritiquable, domain, coneMember, coneWithOwnCone, foreignCone };
     },
     baseline: (ctx) => ({
       target: ctx.target,
@@ -857,6 +1015,7 @@ const entries = [
       replication_attempted: false,
       evidence_hashes: [],
       species: null,
+      past_cone: [],
     }),
     cases: [
       { rule: 'Critique author must match action author.', mutate: (c) => { c.author = danglingHash('agent', 61); } },
@@ -866,6 +1025,45 @@ const entries = [
       { rule: 'Critique target is not a critiquable entry type.', mutate: (c, ctx) => { c.target = ctx.notCritiquable; } },
       { rule: 'Critique content cannot be empty.', mutate: (c) => { c.content = ''; } },
       { rule: 'Critique species reference not found.', expect: 'deferral', mutate: (c) => { c.species = danglingHash('entry', 62); } },
+      // --- the past cone, protocol_version 10 ---------------------------
+      // The size rule is SHADOWED — `create_critique` refuses over the
+      // ceiling first, in the coordinator's own wording — so it is classed
+      // `shadowed` by enumerate.mjs and is out of this denominator by class,
+      // not by exemption. The other five are reachable.
+      {
+        rule: 'Critique past_cone contains a duplicate entry.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.coneMember, ctx.coneMember]; },
+      },
+      {
+        rule: 'Critique past_cone entry does not resolve to a valid record; an author cannot record having seen something that does not exist.',
+        expect: 'deferral',
+        mutate: (c) => { c.past_cone = [danglingHash('action', 63)]; },
+      },
+      {
+        rule: 'Critique past_cone entry is not a Critique.',
+        // THE CLAIM'S OWN ACTION HASH: it resolves through
+        // `must_get_valid_record` and is not a Critique, so this is a type
+        // failure rather than a missing dependency.
+        //
+        // Two wrong answers were tried first, and both are instructive.
+        // `ctx.claimAction` did not exist, so it fell through to a dangling
+        // hash — which DEFERS rather than refusing, and the case red for the
+        // wrong reason. Then `notCritiquable` looked right and is not:
+        // `create_evidence` returns an **EntryHash**, and `past_cone` is
+        // `Vec<ActionHash>`, so the payload failed to deserialize at the
+        // extern boundary before validation saw it at all.
+        mutate: (c, ctx) => { c.past_cone = [ctx.claimAction]; },
+      },
+      {
+        rule: 'Critique past_cone entry critiques a different target; a cone records what was seen OF THIS NODE, not of the DHT at large.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.foreignCone]; },
+      },
+      // THE UNDER-CLAIMING ATTACK, as a corpus case: admit a critique while
+      // omitting what that critique itself admitted seeing.
+      {
+        rule: 'Critique past_cone is not transitively closed: it records having seen a critique without recording what that critique itself recorded seeing. Admitting X means admitting everything X admitted.',
+        mutate: (c, ctx) => { c.past_cone = [ctx.coneWithOwnCone]; },
+      },
       // LAST, AND THE DRIVER ENFORCES THAT. This one is not a broken payload —
       // it is a valid one sent once past the limit, so it needs 20 commits
       // first and it leaves this agent unable to publish a Critique for the
@@ -1082,6 +1280,411 @@ const entries = [
       },
     ],
   },
+  // ==========================================================================
+  // THE FORESIGHT FAMILY — and these three were excluded on a reason that
+  // turned out to be wrong, in the same way the `Retraction` exclusion was.
+  //
+  // The note above `COVERED` used to say `WorldlineTrace` and `Revelation`
+  // needed "dependency chains rather than payloads, which is a larger job than
+  // this file". The chains were the cheap part and were ALREADY BUILT —
+  // `otherAgentFixtures()` has published a trace, a commitment and a reveal
+  // since item 5f, for the link rules. What actually blocks these types is
+  // narrower and does not look like a chain at all: most of their fields are
+  // DERIVED BY THE EXTERN, so the rules about them are `needs_extern` and
+  // unreachable from JavaScript at any effort. Eight of the eighteen sites
+  // across the three are that, and they stay out of the denominator by class.
+  //
+  // What IS reachable is what a caller actually hands in: a deadline, a
+  // question hash, an expiry, and the content offered at reveal time. Those
+  // are the eight cases below, and they take the foresight primitive from
+  // "link rules only" to "the entry rules a client can actually trip".
+  // ==========================================================================
+  {
+    entry: 'worldline_trace',
+    label: 'WorldlineTrace',
+    // THE PROBER, NOT `generate_worldline_trace` — the same call the `membrane`
+    // spec makes, and for the same reason. The real extern derives the agent,
+    // the boundaries and the checksum, so driving it proves only that the
+    // coordinator builds a valid entry and leaves six rules unreachable. See
+    // the probers' header in the coordinator (READINESS 5g).
+    fn: 'attempt_raw_worldline_trace',
+    chainNote: "an action of this agent's own for a period boundary to sample",
+    setup: async () => {
+      const sampleAction = await call('create_claim', {
+        content: 'corpus claim, sampled by a period boundary', domain: `CorpusTrace${Date.now()}`,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { sampleAction, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      agent: myKey,
+      period_boundaries: [{
+        start_time: nowSecs() - 3600, end_time: nowSecs(),
+        sample_action: ctx.sampleAction, domain_tag: 'corpus', entry_count: 1,
+      }],
+      expertise_tags: ['corpus'],
+      trace_payload: null,
+      binding_key: null,
+      checksum: new Uint8Array(32),
+      created_at: nowSecs(),
+      expires_at: null,
+    }),
+    cases: [
+      { rule: 'WorldlineTrace agent must match action author.', mutate: (t) => { t.agent = danglingHash('agent', 111); } },
+      { rule: 'WorldlineTrace must have at least one period boundary.', mutate: (t) => { t.period_boundaries = []; } },
+      // CLOSED BY THE SECOND AGENT: the boundary samples an action agent 2
+      // authored while the trace still claims to be agent 1's, so the
+      // agent-match rule above passes and this one fires.
+      {
+        rule: 'PeriodBoundary sample_action must be authored by trace agent.',
+        mutate: (t, ctx) => { t.period_boundaries[0].sample_action = ctx.others.claimAction; },
+      },
+      // `must_get_valid_record`, so a missing sample DEFERS. This was a
+      // declared GAP until the prober existed, because the extern built every
+      // boundary from the caller's own chain and no payload could carry a
+      // dangling one.
+      {
+        rule: 'PeriodBoundary sample_action not found.',
+        expect: 'deferral',
+        mutate: (t) => { t.period_boundaries[0].sample_action = danglingHash('action', 112); },
+      },
+      { rule: 'Checksum must be 32 bytes.', mutate: (t) => { t.checksum = new Uint8Array(31); } },
+      {
+        rule: 'PeriodBoundary start_time must be <= end_time.',
+        mutate: (t) => { const b = t.period_boundaries[0]; b.start_time = b.end_time + 1; },
+      },
+      { rule: 'expires_at must be > created_at.', mutate: (t) => { t.expires_at = t.created_at - 1; } },
+      { rule: 'trace_payload exceeds 64KB limit.', mutate: (t) => { t.trace_payload = new Uint8Array(65_537); } },
+    ],
+  },
+  {
+    entry: 'pre_registration',
+    label: 'PreRegistration',
+    fn: 'attempt_raw_pre_registration',
+    chainNote: 'a question published BEFORE the commitment, which is what the rule requires',
+    setup: async () => {
+      const question = await call('create_claim', {
+        content: 'corpus question, posed before anything is committed about it',
+        domain: `CorpusForesight${Date.now()}`, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      return { question };
+    },
+    // `sealed` IS NOT VALIDATED AT COMMIT TIME, and a dangling hash here is
+    // correct rather than lazy: the commitment is checked at REVEAL by
+    // recomputing `hash_entry` over the disclosed content, which is the only
+    // moment that content exists publicly. A validator trusting this field
+    // would be trusting the committer about their own commitment.
+    baseline: (ctx) => ({
+      question: ctx.question,
+      sealed: danglingHash('entry', 115),
+      reveal_deadline: nowMicros() + 3_600_000_000,
+      author: myKey,
+      timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'PreRegistration author must match action author.', mutate: (p) => { p.author = danglingHash('agent', 113); } },
+      {
+        rule: 'PreRegistration reveal_deadline must be after the commitment itself; a commitment that is already expired can never be revealed and would pad the denominator.',
+        mutate: (p) => { p.reveal_deadline = nowMicros() - 3_600_000_000; },
+      },
+      {
+        rule: 'PreRegistration question does not resolve.',
+        expect: 'deferral',
+        mutate: (p) => { p.question = danglingHash('action', 114); },
+      },
+    ],
+  },
+  {
+    entry: 'revelation',
+    label: 'Revelation',
+    fn: 'attempt_raw_revelation',
+    chainNote: 'question -> commitment, plus a SECOND commitment deliberately left to expire',
+    setup: async () => {
+      const question = await call('create_claim', {
+        content: 'corpus question for the reveal path, posed first',
+        domain: `CorpusReveal${Date.now()}`, author: myKey, timestamp: nowMicros(),
+        evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const PRED = 'corpus prediction, revealed by its own committer';
+      const SALT = 'corpus-reveal-salt-3b9d';
+      // The REAL `pre_register`, not the prober: this commitment has to carry a
+      // sealed hash the revealed content actually hashes to, which is exactly
+      // what the prober deliberately does not compute.
+      const mine = await call('pre_register', {
+        question, prediction: PRED, salt: SALT, reveal_deadline: nowMicros() + 3_600_000_000,
+      });
+      // A SECOND COMMITMENT WHOSE WINDOW CLOSES DURING THIS RUN. The late-reveal
+      // rule cannot be reached with the baseline commitment, because a deadline
+      // already in the past is refused by `validate_pre_registration` at commit
+      // time — so the only way in is to commit a real future deadline and let it
+      // lapse. Three seconds, which is the whole cost of this spec.
+      const EXP_PRED = 'corpus prediction whose window closes before it is revealed';
+      const EXP_SALT = 'corpus-expired-salt-5c1e';
+      const expiring = await call('pre_register', {
+        question, prediction: EXP_PRED, salt: EXP_SALT, reveal_deadline: nowMicros() + 2_000_000,
+      });
+      await new Promise((r) => setTimeout(r, 3500));
+      return { question, mine, expiring, PRED, SALT, EXP_PRED, EXP_SALT, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      pre_registration: ctx.mine, prediction: ctx.PRED, salt: ctx.SALT,
+      author: myKey, timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'Revelation author must match action author.', mutate: (r) => { r.author = danglingHash('agent', 116); } },
+      {
+        rule: 'Revelation pre_registration does not resolve.',
+        expect: 'deferral',
+        mutate: (r) => { r.pre_registration = danglingHash('action', 117); },
+      },
+      {
+        rule: 'Revelation pre_registration is not a PreRegistration.',
+        mutate: (r, ctx) => { r.pre_registration = ctx.question; },
+      },
+      // CLOSED BY THE SECOND AGENT — item 5f again. Agent 2's commitment is
+      // already published and awaited visible by otherAgentFixtures().
+      //
+      // IT OFFERS AGENT 2'S REAL CONTENT, AND THAT IS THE POINT OF THE CASE.
+      // The first version passed agent 1's own prediction and salt, and
+      // injection BH showed what that cost: with the author rule removed, the
+      // forged reveal was refused by the HASH check one line later, so the case
+      // reddened for a reason unrelated to the rule it names and would have
+      // gone on passing if the author rule were deleted. Content that hashes
+      // correctly leaves the author rule as the only check that can refuse it.
+      //
+      // It also sharpens what the rule is for: against somebody who does not
+      // know the committed content the hash check already suffices, so the
+      // author rule's unique work is against somebody who DOES — after a reveal
+      // elsewhere, or a leak.
+      {
+        rule: 'Only the author of a PreRegistration may reveal it.',
+        mutate: (r, ctx) => {
+          r.pre_registration = ctx.others.preRegAction;
+          r.prediction = ctx.others.preRegPrediction;
+          r.salt = ctx.others.preRegSalt;
+        },
+      },
+      {
+        rule: 'Revelation content does not hash to the sealed commitment; this is not what was committed to.',
+        mutate: (r) => { r.prediction = 'not what was committed to'; },
+      },
+      // THE SALT AND PREDICTION MOVE WITH THE COMMITMENT, deliberately: the
+      // hash check runs BEFORE the deadline check, so revealing the expired
+      // commitment with the baseline's content would fire the hash rule and
+      // this case would pass for the wrong reason.
+      {
+        rule: 'Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.',
+        mutate: (r, ctx) => { r.pre_registration = ctx.expiring; r.prediction = ctx.EXP_PRED; r.salt = ctx.EXP_SALT; },
+      },
+    ],
+  },
+  {
+    entry: 'settlement_policy',
+    label: 'SettlementPolicy',
+    fn: 'publish_settlement_policy',
+    baseline: () => ({
+      author: myKey, name: 'corpus-policy', min_assessors: 2, max_dissent: 0,
+      statement: 'corpus policy, published so a status can cite it', published_at: nowSecs(),
+    }),
+    cases: [
+      { rule: 'SettlementPolicy author must match action author.', mutate: (p) => { p.author = danglingHash('agent', 131); } },
+      { rule: 'SettlementPolicy name cannot be empty.', mutate: (p) => { p.name = ''; } },
+      {
+        rule: 'SettlementPolicy statement cannot be empty; a threshold nobody explained is a number pretending to be a reason.',
+        mutate: (p) => { p.statement = ''; },
+      },
+      {
+        rule: 'SettlementPolicy min_assessors must be at least 1; a policy settling on zero assessments would settle anything.',
+        mutate: (p) => { p.min_assessors = 0; },
+      },
+    ],
+  },
+  {
+    entry: 'assessment',
+    label: 'Assessment',
+    fn: 'publish_assessment',
+    chainNote: 'the shared cone fixtures — see coneFixtures() on why they are shared',
+    setup: async () => coneFixtures(),
+    baseline: (ctx) => ({
+      assessor: myKey, target: ctx.target, stance: 'Supports', confidence: 'Moderate',
+      rationale: 'corpus baseline assessment', past_cone: [], timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'Assessment assessor must match action author.', mutate: (a) => { a.assessor = danglingHash('agent', 132); } },
+      // AN ACTION HASH, not an agent one. `AnyLinkableHash` does carry agent
+      // keys in principle, but a dangling agent hash does not survive the
+      // extern boundary — the payload failed to DESERIALIZE before validation
+      // saw it, so the case red for the wrong reason. A real ActionHash is a
+      // valid `AnyLinkableHash` and is not EntryHash-shaped, which is exactly
+      // the condition this rule names.
+      { rule: 'Assessment target must be an EntryHash-shaped reference.', mutate: (a, ctx) => { a.target = ctx.member; } },
+      { rule: 'Assessment target not found.', expect: 'deferral', mutate: (a) => { a.target = danglingHash('entry', 134); } },
+      { rule: 'Assessment past_cone contains a duplicate entry.', mutate: (a, ctx) => { a.past_cone = [ctx.member, ctx.member]; } },
+      {
+        rule: 'Assessment past_cone entry does not resolve to a valid record.',
+        expect: 'deferral',
+        mutate: (a) => { a.past_cone = [danglingHash('action', 135)]; },
+      },
+      { rule: 'Assessment past_cone entry is not a Critique.', mutate: (a, ctx) => { a.past_cone = [ctx.notACritique]; } },
+      { rule: 'Assessment past_cone entry critiques a different target.', mutate: (a, ctx) => { a.past_cone = [ctx.foreign]; } },
+      { rule: 'Assessment past_cone is not transitively closed.', mutate: (a, ctx) => { a.past_cone = [ctx.withOwnCone]; } },
+    ],
+  },
+  {
+    entry: 'settlement_status',
+    label: 'SettlementStatus',
+    fn: 'publish_settlement_status',
+    chainNote: 'a policy, a target, two assessments and a critique of something else',
+    setup: async () => {
+      const domain = `CorpusStatus${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim whose status is computed', domain, author: myKey,
+        timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+        semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      const target = claims[0].signed_action.hashed.content.data.entry_hash;
+      const policy = await call('publish_settlement_policy', {
+        author: myKey, name: 'corpus-status-policy', min_assessors: 1, max_dissent: 0,
+        statement: 'corpus policy for the status cases', published_at: nowSecs(),
+      });
+      const mine = await call('publish_assessment', {
+        assessor: myKey, target, stance: 'Supports', confidence: 'Moderate',
+        rationale: null, past_cone: [], timestamp: nowMicros(),
+      });
+      const others = await otherAgentFixtures();
+      // An assessment of a DIFFERENT target, for the scope rule.
+      const otherDomain = `CorpusStatusOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim in another domain', domain: otherDomain, author: myKey,
+        timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+        semantic_tags: [], source_mew: null,
+      });
+      const oc = await call('get_claims_by_domain', otherDomain);
+      const otherTarget = oc[0].signed_action.hashed.content.data.entry_hash;
+      const foreignAssessment = await call('publish_assessment', {
+        assessor: myKey, target: otherTarget, stance: 'Supports', confidence: 'Moderate',
+        rationale: null, past_cone: [], timestamp: nowMicros(),
+      });
+      // The SHARED foreign critique rather than a fresh one — see
+      // coneFixtures(). Each extra critique is a SynapticLink against a
+      // 20-per-hour ceiling, and finding 17 records what happens at it.
+      const cone = await coneFixtures();
+      return { target, policy, mine, foreignAssessment, foreignCritique: cone.foreign, domain };
+    },
+    // Baseline: one assessor, no dissent, min_assessors 1 -> Settled.
+    baseline: (ctx) => ({
+      aggregator: myKey, target: ctx.target, policy: ctx.policy,
+      inputs: [ctx.mine], state: 'Settled', timestamp: nowMicros(),
+    }),
+    cases: [
+      { rule: 'SettlementStatus aggregator must match action author.', mutate: (st) => { st.aggregator = danglingHash('agent', 136); } },
+      { rule: 'SettlementStatus inputs contain a duplicate; a repeated assessment would count its assessor twice.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.mine]; } },
+      { rule: 'SettlementStatus policy does not resolve.', expect: 'deferral', mutate: (st) => { st.policy = danglingHash('action', 137); } },
+      // A Claim's ActionHash resolves and is not a SettlementPolicy.
+      { rule: 'SettlementStatus policy is not a SettlementPolicy.', mutate: (st, ctx) => { st.policy = ctx.mine; } },
+      { rule: 'SettlementStatus input does not resolve to a valid record.', expect: 'deferral', mutate: (st) => { st.inputs = [danglingHash('action', 138)]; } },
+      { rule: 'SettlementStatus input assesses a different target.', mutate: (st, ctx) => { st.inputs = [ctx.foreignAssessment]; } },
+      { rule: 'SettlementStatus input critiques a different target.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.foreignCritique]; } },
+      { rule: 'SettlementStatus input is neither an Assessment nor a Critique.', mutate: (st, ctx) => { st.inputs = [ctx.mine, ctx.policy]; } },
+      // THE RECOMPUTE RULE, as a corpus case: claim Open over inputs that
+      // produce Settled.
+      // THE RECOMPUTE RULE as a corpus case: claim Open over inputs that
+      // produce Settled. The rule name must be the inventory's FULL text —
+      // a truncated one names no rule and the coverage gate says so.
+      {
+        rule: 'SettlementStatus state does not follow from its own policy and inputs: {} distinct assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}) yields {:?}, not {:?}. Settlement is a pure function and every peer computes it.',
+        mutate: (st) => { st.state = 'Open'; },
+      },
+    ],
+  },
+  {
+    entry: 'bridge_record',
+    label: 'BridgeRecord',
+    fn: 'attempt_raw_bridge_record',
+    chainNote: 'a Mew to mirror, so the target resolves',
+    setup: async () => {
+      const mewAction = await call('create_mew', {
+        content: 'corpus mew, mirrored by a bridge record', author: myKey,
+        timestamp: nowMicros(), reply_to: null, semantic_tags: [], linked_claim: null,
+      });
+      const mews = await call('get_mews_by_agent', myKey);
+      const row = mews.find((r) => Buffer.from(r.signed_action.hashed.hash).toString('base64')
+                                === Buffer.from(mewAction).toString('base64'));
+      if (!row) throw new Error(`the mew just created did not come back from get_mews_by_agent (${mews.length} returned)`);
+      return { mewEntry: row.signed_action.hashed.content.data.entry_hash };
+    },
+    baseline: (ctx) => ({
+      author: myKey,
+      mew_hash: ctx.mewEntry,
+      twitter_id: '1790000000000000002',
+      platform: 'twitter',
+      mirrored_at: nowMicros(),
+      carried_fields: ['content'],
+      dropped_fields: ['author', 'timestamp'],
+      original_length: 40,
+      excerpt_length: 20,
+    }),
+    cases: [
+      { rule: 'BridgeRecord author must match action author.', mutate: (b) => { b.author = danglingHash('agent', 121); } },
+      {
+        rule: 'BridgeRecord target not found.',
+        expect: 'deferral',
+        mutate: (b) => { b.mew_hash = danglingHash('entry', 122); },
+      },
+      // `format!("BridgeRecord {}.", msg)` — the literal prefix is twelve
+      // characters and identifies nothing, so this case names the exact
+      // interpolated string instead. See `expectText` in assertStopped.
+      {
+        rule: 'BridgeRecord {}.',
+        expectText: 'BridgeRecord excerpt_length cannot exceed original_length.',
+        mutate: (b) => { b.excerpt_length = b.original_length + 1; },
+      },
+    ],
+  },
+  {
+    entry: 'external_critique',
+    label: 'ExternalCritique',
+    fn: 'attempt_raw_external_critique',
+    chainNote: 'a Claim for the imported reply to link back to',
+    setup: async () => {
+      const domain = `CorpusImport${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, replied to from another platform', domain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const claims = await call('get_claims_by_domain', domain);
+      if (!claims.length) throw new Error('the claim just created is not in its own domain index');
+      return { claimEntry: claims[0].signed_action.hashed.content.data.entry_hash };
+    },
+    // NOTE WHICH OF THE TWO PEOPLE IN THIS ENTRY THE RULE IS ABOUT. `importer`
+    // is the Holochain agent who chose to import; `author_handle` is an
+    // unverifiable string from another platform. Only the first is bindable,
+    // which is the entry type's own point.
+    baseline: (ctx) => ({
+      importer: myKey,
+      twitter_id: '1790000000000000003',
+      author_handle: 'a_sceptic',
+      content: 'Interesting, but the sample size is small.',
+      linked_holochain_claim: ctx.claimEntry,
+      imported_at: nowMicros(),
+    }),
+    cases: [
+      {
+        rule: 'ExternalCritique importer must match action author. Note this is the importing agent, not the Twitter handle in author_handle — see the entry type.',
+        mutate: (e) => { e.importer = danglingHash('agent', 123); },
+      },
+      { rule: 'ExternalCritique content cannot be empty.', mutate: (e) => { e.content = ''; } },
+      {
+        rule: 'ExternalCritique linked claim not found.',
+        expect: 'deferral',
+        mutate: (e) => { e.linked_holochain_claim = danglingHash('entry', 124); },
+      },
+    ],
+  },
 ];
 
 // --- One driver for all five, rather than the Claim block copied four times.
@@ -1113,11 +1716,24 @@ function assertStopped(c, err, commitDetail = 'the call COMMITTED — nothing st
     // PREFIX up to the first interpolation — everything the zome wrote
     // verbatim — and a prefix too short to identify a rule is refused outright
     // rather than silently weakened.
-    const brace = c.rule.indexOf('{');
-    const expect = brace === -1 ? c.rule : c.rule.slice(0, brace).trimEnd();
-    if (brace !== -1 && expect.length < 20) {
+    // `expectText` IS THE "ANOTHER WAY" THE REFUSAL BELOW ASKS FOR, added
+    // 2026-10-21 for `BridgeRecord {}.` — whose literal prefix is twelve
+    // characters and identifies nothing, because the whole message after
+    // "BridgeRecord " is interpolated from `bridge_record_loss_fields_-
+    // consistent`'s two `Err` strings.
+    //
+    // A case supplying it asserts the FULL interpolated message instead of a
+    // prefix, which is stricter rather than looser: the prefix mechanism
+    // matches any rule sharing the literal head, while this names one exact
+    // string. It must be the string the zome actually produces — the point of
+    // the refusal below is that a weakened match is worse than none, and an
+    // `expectText` copied from imagination rather than from the zome would be
+    // exactly that.
+    const expect = c.expectText
+      ?? (c.rule.indexOf('{') === -1 ? c.rule : c.rule.slice(0, c.rule.indexOf('{')).trimEnd());
+    if (!c.expectText && c.rule.indexOf('{') !== -1 && expect.length < 20) {
       check(false, `refused: ${c.rule}`,
-        `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way`);
+        `this rule interpolates too early to identify it from a prefix (${JSON.stringify(expect)}) — assert it another way, e.g. an explicit expectText`);
       return;
     }
     const hit = err.includes(expect);

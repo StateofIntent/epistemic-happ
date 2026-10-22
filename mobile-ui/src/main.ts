@@ -288,11 +288,27 @@ const attestedByMembraneAgent = new Map<string, boolean>();
 // taxonomy order — parents, then their children — and the count is shown
 // beside each species as a fact about it, never as its position.
 let critiqueSpecies: DecodedRecord<CritiqueSpecies>[] = [];
-/** species entryHash (b64) -> live adoption count, counted from real
- * CritiqueToSpecies links at query time. Absent while in flight or if
- * the read failed; the UI says "adoption unavailable" rather than 0,
- * because 0 is a real and different answer. */
-const adoptionBySpecies = new Map<string, number>();
+/** What a species' uptake is MADE OF, read at query time from real
+ * CritiqueToSpecies links. Absent while in flight or if the read failed; the
+ * UI says "adoption unavailable" rather than 0, because 0 is a real and
+ * different answer.
+ *
+ * A BARE COUNT USED TO LIVE HERE, and it could not say the one thing worth
+ * knowing. `get_critique_species_adoption_count` counts every citation
+ * INCLUDING THE PROPOSER'S OWN, so a species one agent invented and then used
+ * in fifty of their own critiques displayed identically to one fifty agents
+ * had adopted. READINESS item 11 needed those told apart — a divergent
+ * species taken up by others is exploration, and one nobody else touches is
+ * indistinguishable from noise — so the screen now shows what the number is
+ * composed of. Still a fact about the species, never its position. */
+type SpeciesAdoption = {
+  total_citations: number;
+  proposer_citations: number;
+  independent_adopters: Uint8Array[];
+  unattributable_citations: number;
+  warning: string | null;
+};
+const adoptionBySpecies = new Map<string, SpeciesAdoption>();
 /** whether the propose-a-species form is open */
 let proposingSpecies = false;
 
@@ -1016,6 +1032,19 @@ function renderTabs(): HTMLElement {
       // hop, so it is loaded when the tab is opened rather than on connect —
       // a practitioner who never opens it never talks to it at all.
       if (tab === 'notes') onNotesTabOpened(notesContext());
+      // THE TAXONOMY'S FIGURES WERE AS OF CONNECT TIME AND NEVER MOVED.
+      // `loadTaxonomy()` ran on connect and after proposing a species, and
+      // nowhere else — so a session that added a critique, or whose peers
+      // adopted a species, kept showing the adoption state it started with.
+      // Found by a harness reading the screen instead of the zome: the old
+      // check confirmed adoption rose through an INDEPENDENT client and never
+      // looked at the tab again, so a stale count was invisible to it.
+      //
+      // It matters more now than it did as a bare count: "nobody has used it
+      // yet" is a stronger false statement than a stale 0, and adoption BY
+      // OTHER AGENTS is something this session cannot learn about any other
+      // way.
+      if (tab === 'taxonomy') void refreshTaxonomy().catch(() => { /* keeps what it has */ });
       render();
     };
     nav.appendChild(btn);
@@ -3035,18 +3064,34 @@ async function loadTaxonomy() {
   void loadAdoptionCounts();
 }
 
+/** Re-read the taxonomy for an already-connected session.
+ *
+ * Deliberately does NOT clear `adoptionBySpecies` the way `loadTaxonomy()`
+ * does. Clearing is right on connect, where there is nothing to show yet and
+ * "adoption unavailable" is the honest state; on a refresh it would blank
+ * every figure on screen and then fill them back in, which reads as a failed
+ * read rather than a pending one. Entries are replaced in place instead, so
+ * the screen only ever moves from one true figure to another. */
+async function refreshTaxonomy() {
+  if (!connection) return;
+  const records = await connection.callZome<any[]>('get_all_critique_species', null);
+  critiqueSpecies = decodeRecords<CritiqueSpecies>(records);
+  render();
+  await loadAdoptionCounts();
+}
+
 async function loadAdoptionCounts() {
   if (!connection) return;
   const conn = connection;
   await Promise.all(critiqueSpecies.map(async (species) => {
     try {
-      // The count is keyed by ENTRY hash, not action hash — the link base
-      // is the species entry itself (CritiqueToSpecies), and passing the
-      // action hash returns a confident, wrong zero rather than an error.
-      const count = await conn.callZome<number>(
-        'get_critique_species_adoption_count', species.entryHash,
+      // Keyed by ENTRY hash, not action hash — the link base is the species
+      // entry itself (CritiqueToSpecies), and passing the action hash returns
+      // a confident, wrong zero rather than an error.
+      const adoption = await conn.callZome<SpeciesAdoption>(
+        'get_species_adoption', species.entryHash,
       );
-      adoptionBySpecies.set(b64(species.entryHash), count);
+      adoptionBySpecies.set(b64(species.entryHash), adoption);
     } catch {
       // Left absent rather than set to 0 — see adoptionBySpecies.
     }
@@ -3231,13 +3276,46 @@ function renderSpeciesCard(species: DecodedRecord<CritiqueSpecies>, depth: numbe
   adoption.className = 'species-adoption';
   adoption.dataset.testid = 'species-adoption';
   if (adoptionBySpecies.has(key)) {
-    const n = adoptionBySpecies.get(key)!;
+    const a = adoptionBySpecies.get(key)!;
+    const n = a.total_citations;
     adoption.textContent = n === 1 ? 'used by 1 critique' : `used by ${n} critiques`;
   } else {
     adoption.textContent = 'adoption unavailable';
     adoption.classList.add('unavailable');
   }
   head.appendChild(adoption);
+
+  // WHO the citations came from, which is the half a count cannot carry.
+  // Rendered as a separate element rather than folded into the sentence
+  // above, so "how many critiques" and "how many other agents" stay two
+  // facts — a reader deciding whether a species found purchase needs the
+  // second, and the first has been standing in for it.
+  //
+  // Deliberately NOT a ratio and not a badge: a species with one independent
+  // adopter is not "20% adopted", and a visual marker would rank the tree by
+  // the back door, which §4.4's "lens that aims itself" is about and which
+  // the ordering comment above already refuses.
+  if (adoptionBySpecies.has(key)) {
+    const a = adoptionBySpecies.get(key)!;
+    const others = a.independent_adopters.length;
+    const by = document.createElement('span');
+    by.className = 'species-adopters';
+    by.dataset.testid = 'species-adopters';
+    if (a.total_citations === 0) {
+      // No citations at all is not insularity, and saying "only its proposer"
+      // here would assert a citation nobody made.
+      by.textContent = 'nobody has used it yet';
+      by.classList.add('none');
+    } else if (others === 0) {
+      by.textContent = 'all by its proposer';
+      by.classList.add('self-only');
+    } else {
+      by.textContent = others === 1
+        ? 'including 1 other agent'
+        : `including ${others} other agents`;
+    }
+    head.appendChild(by);
+  }
   card.appendChild(head);
 
   if (species.entry.required_evidence.length > 0) {
@@ -3747,6 +3825,28 @@ function renderDiscourseHealth(health: DiscourseHealth): HTMLElement {
     `${health.total_critiques} critique${health.total_critiques === 1 ? '' : 's'} · ` +
     `abstract:embodied ${health.abstract_to_embodied_ratio.toFixed(2)}`;
   wrap.appendChild(totals);
+
+  // THE EXCLUSION IS SHOWN, NOT ASSUMED. `total_claims` leaves out Claims that
+  // are READINGS of this domain rather than discourse in it — a reading is
+  // published into the domain it describes, so counting it made the aggregate
+  // measure itself (READINESS item 22). Stating the figure here is the same
+  // argument as reporting `reading_claims` from the zome at all: somebody
+  // comparing this screen against the domain's own claim list must be able to
+  // account for the difference, and a number that silently omits things is
+  // indistinguishable from a wrong one.
+  //
+  // Rendered only when there ARE readings — a line saying "0 set aside" on
+  // every domain is noise, and the absence is not a fact anybody needs.
+  if (health.reading_claims > 0) {
+    const setAside = document.createElement('p');
+    setAside.className = 'health-set-aside';
+    setAside.dataset.testid = 'health-set-aside';
+    setAside.textContent =
+      `${health.reading_claims} reading${health.reading_claims === 1 ? '' : 's'} of this domain `
+      + `${health.reading_claims === 1 ? 'is' : 'are'} set aside, not counted above — `
+      + `a reading is an observation of the discourse, not part of it.`;
+    wrap.appendChild(setAside);
+  }
 
   // The five CritiqueModes are non-fungible means of knowing (Invariant
   // #4), so the distribution is shown as five named counts rather than

@@ -198,6 +198,96 @@ OPTIONAL_NODES=(
   "nodeD:8891:8890:epistemic-net-d:$SHARED_SEED"
 )
 
+# ---------------------------------------------------------------------------
+# SCALE NODES — opt-in, for READINESS's "scale beyond four nodes" row.
+#
+# THE ROW'S BLOCKER READ LIKE HARDWARE AND IS NOT. It says "a run at tens of
+# nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and
+# none is measured", which reads as needing a cluster. Measured on the
+# development machine instead, 2026-10-21: a conductor is **~95 MB RSS** and
+# **~8% of one core** at rest with a small DHT (three of them: 97.5, 96.5,
+# 91.4 MB; load 0.64 across 12 cores). So twenty nodes is about **2 GB and
+# 1.5 cores**, which is a laptop rather than a budget.
+#
+# WHAT A LOCAL RUN DOES AND DOES NOT MEASURE, because the two scale rows are
+# different questions. Arc sizing, gossip load and DHT behaviour are properties
+# of the DHT's own logic and ARE exercised by many conductors on one host — that
+# is what this row asks about. What localhost cannot produce is NAT, real
+# latency or packet loss, which is the separate *cross-internet propagation on
+# consumer networks* row and is not what this one names.
+#
+# OPT-IN BY ENV VAR, AND DELIBERATELY NOT IN `start`. These are appended to
+# OPTIONAL_NODES rather than NODES, so `start` brings up exactly nodeA/B/C as
+# it always has: a fourth member of the shared DHT changes what the partition
+# harnesses measure, which is the whole reason nodeD is opt-in, and a twentieth
+# would change it twenty times over. `stop`, `clean` and `status` DO see them,
+# because a node left running would be invisible to the next harness.
+#
+#   EPI_SCALE_NODES=20 scripts/network.sh start        # services + A/B/C only
+#   EPI_SCALE_NODES=20 scripts/network.sh start-scale  # then the twenty
+#   EPI_SCALE_NODES=20 scripts/network.sh stop         # and all of them again
+#
+# Ports start at 9200 (two per node) because 8888-8899 are taken by the
+# sandbox, the fixed nodes and the two services. They share SHARED_SEED, so
+# they join nodeA and nodeB's DHT rather than forming their own.
+SCALE_NODE_COUNT="${EPI_SCALE_NODES:-0}"
+SCALE_PORT_BASE="${EPI_SCALE_PORT_BASE:-9200}"
+
+# A scale node's spec is fully determined by its name, so it can be rebuilt
+# from one — which is what makes the discovery below possible.
+scale_spec_for_index() {
+  # Split across statements rather than one `local i=.. n=..`: under `set -u`
+  # bash evaluates the arithmetic before the local on the same line is visible,
+  # and the first version died with "i: unbound variable" on its first run.
+  local i n
+  i="$1"
+  n=$((i + 1))
+  echo "scale$n:$((SCALE_PORT_BASE + i * 2)):$((SCALE_PORT_BASE + i * 2 + 1)):epistemic-net-scale$n:$SHARED_SEED"
+}
+
+# THE SCALE NODES MUST BE VISIBLE TO `stop` WITHOUT THE ENV VAR, and the first
+# version of this was not. It built the list only when EPI_SCALE_NODES was set,
+# so `scripts/network.sh stop` on its own left them running — reintroducing
+# exactly the failure the `stop` loop's own comment exists to prevent ("one
+# left running would be invisible to the next harness and would change what it
+# measures"). Found by running it: `stop` reported everything stopped and
+# `pgrep` still showed scale1.
+#
+# So the running set is discovered from DISK rather than from the environment.
+# A pidfile or a state directory under $NET_ROOT is the evidence that a node
+# exists; the env var only ever decides how many to CREATE.
+discover_scale_specs() {
+  local f base idx
+  shopt -s nullglob
+  for f in "$NET_ROOT"/scale*.pid "$NET_ROOT"/scale*/; do
+    base="$(basename "${f%/}")"
+    base="${base%.pid}"
+    [[ "$base" =~ ^scale([0-9]+)$ ]] || continue
+    idx=$(( ${BASH_REMATCH[1]} - 1 ))
+    scale_spec_for_index "$idx"
+  done
+  shopt -u nullglob
+}
+
+SCALE_NODES=()
+if [ "$SCALE_NODE_COUNT" -gt 0 ] 2>/dev/null; then
+  for ((_i = 0; _i < SCALE_NODE_COUNT; _i++)); do
+    SCALE_NODES+=("$(scale_spec_for_index "$_i")")
+  done
+fi
+
+# Union of "asked for" and "already on disk", deduplicated, so every
+# subcommand sees every scale node whether or not this shell was told about
+# them. `start-scale` uses SCALE_NODES (what to create); everything else uses
+# OPTIONAL_NODES (what exists).
+_known_scale="$(
+  { [ "${#SCALE_NODES[@]}" -gt 0 ] && printf '%s\n' "${SCALE_NODES[@]}"; discover_scale_specs; } \
+    | awk 'NF && !seen[$0]++'
+)"
+if [ -n "$_known_scale" ]; then
+  while IFS= read -r _spec; do OPTIONAL_NODES+=("$_spec"); done <<< "$_known_scale"
+fi
+
 # Pinned, not ephemeral — see the header. These live just below the
 # conductor ports for the same reason those avoid 8888/8889: so the whole
 # range this script occupies is contiguous and obvious.
@@ -910,6 +1000,31 @@ case "$cmd" in
     log "Next: node scripts/live-verify/real-gossip.mjs"
     ;;
 
+  start-scale)
+    # The scale nodes only — the services and nodeA/B/C must already be up,
+    # because this is an addition to a working network rather than a different
+    # one. Separate from `start` on purpose: see SCALE NODES above for why a
+    # fourth member of the shared DHT is never brought up implicitly.
+    if [ "${#SCALE_NODES[@]}" -eq 0 ]; then
+      log "No scale nodes configured. Set EPI_SCALE_NODES, e.g.:"
+      log "  EPI_SCALE_NODES=20 scripts/network.sh start-scale"
+      exit 1
+    fi
+    if ! node_running nodeA; then
+      log "nodeA is not running. Run 'scripts/network.sh start' first — these"
+      log "nodes join an existing DHT rather than forming one."
+      exit 1
+    fi
+    log "Starting ${#SCALE_NODES[@]} scale node(s) on the shared DHT ..."
+    log "  measured cost on this machine: ~95 MB and ~8% of one core each,"
+    log "  so ${#SCALE_NODES[@]} is roughly $(( ${#SCALE_NODES[@]} * 95 / 1024 )) GB and \
+$(( ${#SCALE_NODES[@]} * 8 / 100 )) core(s). Watch the host, not just the harness."
+    for spec in "${SCALE_NODES[@]}"; do start_node "$spec"; done
+    log ""
+    log "Up. These are members of nodeA and nodeB's DHT — so any partition"
+    log "harness run while they are up is measuring something else."
+    ;;
+
   stop)
     # Optional nodes included: one left running would be invisible to the
     # next harness and would change what it measures.
@@ -992,7 +1107,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "Usage: scripts/network.sh {start|stop|status|clean|addrs|stop-node <n>|start-node <n>}" >&2
+    echo "Usage: scripts/network.sh {start|start-scale|stop|status|clean|addrs|stop-node <n>|start-node <n>}" >&2
     echo "  nodes: nodeA nodeB nodeC (started by 'start'), nodeD (opt-in, third member of the shared DHT)" >&2
     exit 1
     ;;

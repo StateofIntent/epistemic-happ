@@ -452,9 +452,18 @@ async function oneTrial(roundTimeoutMs, i) {
     };
   }
 
+  // RESOLUTION IS POLL_MS (3s here, not the 5s the partition harnesses use).
+  // Every figure below is "found by poll N", so a crossing anywhere inside one
+  // 3s window reports the same number — see partition-rejoin.mjs's note and
+  // READINESS §3, where a repeated figure from a 5s sampler was read as a
+  // deterministic timeout. It matters more here than there: this harness
+  // COMPARES ARMS, and two arms whose true difference is under 3s cannot be
+  // distinguished by it at all.
   const t0 = Date.now();
   let ms = null;
+  let polls = 0;
   while (Date.now() - t0 < CAP_MS) {
+    polls++;
     let got = 0;
     try { got = (await D.call('get_claims_by_domain', domain)).length; }
     catch { /* a read that cannot answer yet is "not yet", not the end */ }
@@ -462,7 +471,7 @@ async function oneTrial(roundTimeoutMs, i) {
     await sleep(POLL_MS);
   }
 
-  return { ms, integMs, note: null, wrongPeer: wrongPeerHits() };
+  return { ms, polls, integMs, note: null, wrongPeer: wrongPeerHits() };
 }
 
 async function main() {
@@ -520,7 +529,9 @@ async function main() {
         r = { ms: null, note: `TRIAL ERROR: ${String(e?.message ?? e).split('\n')[0].slice(0, 120)}`, wrongPeer: wrongPeerHits() };
       }
       results[arm].push(r);
-      const when = r.ms === null ? `NO CROSSING in ${(CAP_MS / 1000).toFixed(0)}s` : `${(r.ms / 1000).toFixed(1)}s`;
+      const when = r.ms === null
+        ? `NO CROSSING in ${(CAP_MS / 1000).toFixed(0)}s`
+        : `${(r.ms / 1000).toFixed(1)}s (poll ${r.polls}/${(POLL_MS / 1000).toFixed(1)}s)`;
 
       // UNCONDITIONALLY, and before the next trial's `clean` deletes them.
       // The label is the measurement, never anything read out of a log — see

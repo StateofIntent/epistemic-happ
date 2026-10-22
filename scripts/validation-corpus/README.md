@@ -1219,6 +1219,185 @@ output.
 closing any of the three means a rule in the integrity zome, and that is a
 `protocol_version` bump and a DNA hash change.
 
+### Finding 14 — the foresight types were excluded on a reason that was wrong twice over, and the case that closed them was passing by accident
+
+**The exclusion note said `WorldlineTrace` and `Revelation` "need dependency
+chains rather than payloads, which is a larger job than this file".** That note
+had already been corrected once — it originally blamed chains for `Retraction`
+too, which turned out to cost one extra call. On 2026-10-21 the rest of it went
+the same way, and in both directions.
+
+**The chains were already built.** `otherAgentFixtures()` has been publishing a
+trace, a commitment and a reveal since item 5f, for the link rules — so the
+expensive-sounding prerequisite existed and nothing consumed it for entry
+rules. What actually blocks these types is narrower and does not look like a
+chain: **most of their fields are derived by the extern**, so the rules about
+them are `needs_extern` and unreachable from JavaScript at any effort. Eight of
+the eighteen sites across the three types are that, and they stay out of the
+denominator by class rather than by exemption.
+
+**Ten were reachable and eight now have cases.** The corpus goes from **10
+entry types to 13** — `pre_registration`, `revelation` and `worldline_trace` —
+at **260 checks, 0 failed, 0 skipped**. What those eight assert is what a
+caller actually hands in: a deadline, a question hash, an expiry, and the
+content offered at reveal time.
+
+**A THIRD SHAPE OF GAP, which this corpus had not seen before.** `PreRegistration
+question must predate the commitment` is classed `crafted`, because `question`
+**is** caller-controlled — and the rule is still unreachable, because the guard
+does not compare the field. It compares `question.action().timestamp()` against
+the commitment's own, and both are host-assigned. Any question that resolves
+was authored earlier, so the only way to make the comparison fire is a clock
+moved backwards, which is READINESS item 14's defect and has its own probe.
+**A `crafted` classification is a claim about the field, not about the rule** —
+the first time those two have come apart here. Declared in `GAPS` with that
+reason, alongside `PeriodBoundary sample_action not found`, which cannot dangle
+because the extern builds every boundary from the caller's own chain.
+
+**AND THE INJECTION FOUND A WEAKNESS IN A CASE RATHER THAN CONFIRMING IT, which
+is the second time that has happened here and the better outcome both times.**
+Injection **BH** removed `Only the author of a PreRegistration may reveal it.`
+The case red — and for the wrong reason: *"stopped for a different reason:
+Revelation content does not hash to the sealed commitment"*. The case had been
+offering agent 1's own prediction and salt, so the **hash check one line later**
+was refusing the forged reveal, and the case would have gone on passing if the
+author rule were deleted tomorrow. It now supplies agent 2's real content —
+named once in `OTHER_PREDICTION`/`OTHER_SALT` rather than typed a third time —
+leaving the author rule as the only check that can refuse it. Re-injected, the
+forged reveal **COMMITS**, which is the strongest red available.
+
+**That also sharpens what the rule is for.** Against somebody who does not know
+the committed content the hash check is already sufficient; the author rule's
+unique work is against somebody who **does** — after a reveal elsewhere, or a
+leak — which is precisely when a third party could otherwise decide for an
+author whether their commitment counts as revealed.
+
+| injection | what was removed | result |
+|---|---|---|
+| **BG** | `reveal_deadline` must be after the commitment | 1 red, and the call **COMMITTED** — an already-expired commitment is accepted |
+| **BH** | only the author may reveal | first run: 1 red **for the wrong reason** (see above). After the case was strengthened: 1 red, and the forged reveal **COMMITS** |
+| **BI** | `expires_at must be > created_at` | 1 red, and the call **COMMITTED** |
+
+Each was a separate build against a clean conductor; the restored zome returns
+260 passed, 0 failed, 0 skipped. **What is NOT asserted here**: the two
+`expect: 'deferral'` cases were not individually injected, for the same reason
+`Claim`'s dependency cases were not — the assertion is that the message does
+*not* appear and the write stalls retryably, which a removed rule does not
+change.
+
+### Finding 15 — the eight unreachable rules were a settled decision read as an open one, and reaching them found which rules are load-bearing
+
+**Finding 14 ended by calling the raw-payload extern "a protocol surface
+decision — whether this repository wants an extern existing only so tests can
+reach derived fields". That framing was wrong: the decision had already been
+made, six times.** `attempt_unaccountable_membrane`,
+`attempt_false_domain_index`, `attempt_false_membrane_registry`,
+`attempt_false_taxonomy_index`, `attempt_entry_update` and
+`attempt_false_attachment_link` all exist for exactly this reason, and the
+first one's own comment carries the argument:
+
+> *"Not an attack surface: every call that a custom client could make to gain
+> something is rejected by `validate_membrane`, which is the point. If this
+> ever SUCCEEDS ... the accountability has regressed to coordinator-side
+> courtesy again."*
+
+It also names the failure the probers exist to prevent, which is the one these
+eight rules were sitting in: *"a test calling it proves only that the
+COORDINATOR refuses — which is precisely the confusion that let
+`validate_membrane` go without these checks while a comment claimed it had
+them."* And SPEC §11.1 makes the security argument structural rather than a
+judgement: a coordinator edit is hot-swappable via `update_coordinators`, so a
+peer running a modified coordinator can already author any op validation
+accepts. A prober grants an attacker nothing; it grants a test the ability to
+**observe** the refusal.
+
+**So three probers were added** — `attempt_raw_worldline_trace`,
+`attempt_raw_pre_registration`, `attempt_raw_revelation`, each three lines, each
+writing no index link for the reason the membrane probe states. `needs_extern`
+fell from **10 to 2**, the three specs moved onto the probers the way the
+`membrane` spec already drove its own, and the corpus reads **270 checks, 0
+failed, 0 skipped**: `worldline_trace` 8 of 8, `revelation` 6 of 6,
+`pre_registration` 3 of 4 with the timestamp rule still declared unreachable.
+The `PeriodBoundary sample_action not found` gap is **gone rather than
+re-justified** — a dangling boundary is now a payload anybody can write.
+
+**AND THE FIRST RUN OF THE NEWLY REACHABLE RULES PRODUCED A FINDING THAT WAS
+UNKNOWABLE BEFORE, which is the best argument for having built them.**
+Injection **BK** removed all three author-binding rules at once:
+
+| type | what happened with the rule gone |
+|---|---|
+| `PreRegistration` | **the call COMMITTED** — a commitment with a forged author was accepted, so this rule is the ONLY thing standing there |
+| `WorldlineTrace` | stopped by `PeriodBoundary sample_action must be authored by trace agent` instead |
+| `Revelation` | stopped by `Only the author of a PreRegistration may reveal it` instead |
+
+Three reds, and the reds are not equivalent: **the author-binding rule is solely
+load-bearing for `PreRegistration` and backed up by an adjacent rule for the
+other two.** Nothing could have established that while the rules were
+unreachable — which is the whole of Finding 14's argument, turned around and
+pointed at Finding 14's own conclusion.
+
+**The estimate was wrong in the same direction twice.** Finding 14 said the
+remaining work was a protocol-surface decision; it was nine lines of Rust and
+eight cases. Before that, the exclusion note said these types needed dependency
+chains; the chains already existed. **Both estimates were written from the
+conclusion rather than from the obstacle**, which is the shape this repository
+had already named four times in the two days before this was written.
+
+### Finding 16 — `needs_extern` and `needs_prober` are both 0, and the last three rules were each the only thing standing
+
+**Two more probers finished what Finding 15 started.** `attempt_raw_bridge_record`
+and `attempt_raw_external_critique`, same three-line shape, same argument. The
+corpus is **15 entry types, 282 checks, 0 failed, 0 skipped**, and both
+unreachable classes are now empty:
+
+| class | before 2026-10-21 | after |
+|---|---|---|
+| `needs_extern` | 10 | **0** |
+| `needs_prober` | 0 | **0** |
+
+**Every validation rule reachable from JavaScript now has a case or a stated
+gap.** What remains outside that is `remote` (4 — needs a peer authoring a bad
+op), `passthrough` (12 — forwards another validator's result, no message of its
+own), `shadowed` (2 — the coordinator refuses first, derived rather than
+declared since item 5e) and four declared `GAPS`.
+
+**AND INJECTION BN SAYS SOMETHING BK DID NOT.** All three newly reached rules
+were removed at once, and all three red with **"the call COMMITTED — nothing
+stopped this payload"**:
+
+- `BridgeRecord author must match action author.`
+- `BridgeRecord {}.` (the loss-field consistency rule)
+- `ExternalCritique importer must match action author.`
+
+**Compare BK**, where only `PreRegistration`'s author rule committed and the
+other two fell through to an adjacent rule. So the three here are each **solely
+load-bearing** — nothing else in their validator catches the payload. That is
+the fact a prober buys: before these existed, "is this rule the only thing
+standing?" was not a question anybody could answer about them.
+
+**ONE HARNESS IMPROVEMENT CAME OUT OF IT, and it is the escape hatch the code
+already asked for.** `BridgeRecord {}.` is a `format!` rule whose literal prefix
+is twelve characters — `"BridgeRecord"` — which identifies nothing, so
+`assertStopped` refused it outright with *"assert it another way"*. That refusal
+is correct and was deliberately kept: a weakened match is worse than none. The
+"another way" is now a case-level **`expectText`**, which asserts the FULL
+interpolated string (`BridgeRecord excerpt_length cannot exceed
+original_length.`) rather than a prefix — **stricter, not looser**, since a
+prefix matches any rule sharing its head while this names one exact message. It
+must be copied from the zome rather than imagined, which is the same discipline
+the prefix rule enforces by refusing.
+
+### Finding 17 — the corpus now spends three more SynapticLinks per run, and the ceiling is 20
+
+**`protocol_version: 10` added `Critique.past_cone` and five validation rules, and the corpus gained five cases — 282 to 287 checks, 0 failed.** The rules are classed correctly without help: the size ceiling comes out **`shadowed`** (the coordinator refuses first, in its own wording), the dangling-member rule **`deferred`** (`must_get_valid_record`), the type rule **`honest`**, and the duplicate, same-target and transitive-closure rules **`crafted`**.
+
+**THE COST THAT WILL BITE SOMEBODY LATER IS NOT THE CHECKS, IT IS THE LINKS.** The cone fixtures need three real critiques — one legal cone member, one whose own cone is non-empty (for the transitive case), and one of a different target (for the same-target rule). **Every `create_critique` also creates a SynapticLink, and §6 caps those at 20 per author per rolling hour.** Running the corpus twice inside an hour on one conductor now fails its *Critique dependency chain* with `SWO temporal friction: 20 SynapticLinks already created`, and every case below it SKIPs.
+
+That is the clean-conductor rule this directory already states, with less headroom than before. **It is recorded rather than worked around**, because the alternative — trimming a fixture — would weaken a case: the transitive-closure fixture is the one that makes the under-claiming attack reachable at all.
+
+**Two wrong hashes were tried before the type-failure case worked, and both are worth keeping.** `ctx.claimAction` did not exist, so the mutation fell through to a dangling hash — which **defers** rather than refusing, so the case red for the wrong reason and said so. Then `notCritiquable` looked obviously right and was not: `create_evidence` returns an **`EntryHash`**, `past_cone` is `Vec<ActionHash>`, and the payload failed to deserialize at the extern boundary before validation ever saw it. A hash is not a hash; the type is part of the contract.
+
 ## Why one mutation at a time
 
 A payload that violates two rules proves nothing about either: validation

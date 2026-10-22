@@ -175,6 +175,12 @@ export interface DiscourseHealth {
    * away from practice. Not a score, and not about any agent. */
   warning: string | null;
   total_claims: number;
+  /** How many Claims in the domain were set aside as READINGS of it rather
+   *  than counted as discourse in it. `total_claims + reading_claims` equals
+   *  what `get_claims_by_domain` returns, so the exclusion is auditable —
+   *  see READINESS item 22 and SPEC §10. A reading is published INTO the
+   *  domain it describes, so counting it made the aggregate measure itself. */
+  reading_claims: number;
   total_critiques: number;
   /** Arrives as [mode, count] pairs — serde's representation of the
    * Rust Vec<(CritiqueMode, u32)>. */

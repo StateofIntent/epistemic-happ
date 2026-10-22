@@ -61,7 +61,17 @@
 //   because a call is the thing whose absence is under test. AO now reds with
 //   `own_claims: 1, 2`, and the restored code reports `1, 1`.
 //
-// Re-check both the same way if you change what this asserts.
+//   BM: the tick writes a Claim while `start_metabolism` still returns
+//   `writes_to_the_dht: false` — the drift the terms exist to catch.
+//   Result: 3 reds, and the one that matters is which check STAYED GREEN.
+//   Section 3's "IT DECLARES THAT IT WRITES NOTHING" passed, because the
+//   declaration was still false; what red was the chain-growth check and the
+//   PAIR check requiring the two to agree (`own_claims across 2 tick(s):
+//   2, 3`). So the declaration on its own asserts nothing about behaviour —
+//   it is a label — and the pair is the whole of its value. An implementation
+//   that starts writing and forgets to update the terms is exactly this case.
+//
+// Re-check all three the same way if you change what this asserts.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -162,9 +172,37 @@ async function main() {
 
   // === 3. One call, and then silence ====================================
   log('\n--- 3. start_metabolism, and then NO further call from this process ---');
-  await call('start_metabolism', null);
+  // THE CALL STATES ITS TERMS NOW, AND THEY ARE ASSERTED AGAINST BEHAVIOUR.
+  // `start_metabolism` used to return `()`. It is the only consent gesture this
+  // protocol has for an unattended process running on the caller's own key, and
+  // it said nothing about what it was consenting to — so READINESS item 22's
+  // decision (the heartbeat writes nothing) lived in a doc comment, where the
+  // next implementation could reverse it without anybody noticing they had
+  // never been asked. Section 6 ties `writes_to_the_dht` to what the chain
+  // actually does, which is what makes this a check rather than a label.
+  const terms = await call('start_metabolism', null);
   log('    scheduled. From here this process makes no zome call at all.');
   const startedAt = Date.now();
+
+  check('the call RETURNS ITS TERMS rather than nothing at all',
+    terms !== null && typeof terms === 'object');
+  check('it names the key the heartbeat runs as, which is the key anything it wrote would be signed with',
+    terms?.runs_as != null && b64(terms.runs_as) === b64(me));
+  check('it states the tick floor, and it is the figure this harness waits against',
+    terms?.tick_interval_secs === TICK_SECS);
+  check('IT DECLARES THAT IT WRITES NOTHING TO THE DHT — item 22 option (a), as data rather than a comment',
+    terms?.writes_to_the_dht === false);
+  check('and that it spends no friction budget per tick',
+    terms?.spends_friction_budget === false);
+  check('it says how to stop it, since the answer is unusual and a caller has no other way to learn it',
+    typeof terms?.stopped_by === 'string' && /restart/i.test(terms.stopped_by));
+  // The terms have to be legible to somebody who cannot read the zome, which is
+  // the whole point of returning them — and they must name the thing that makes
+  // the decision consequential rather than merely describing a schedule.
+  check('the terms say in words that nothing is published in the caller\'s name',
+    typeof terms?.terms === 'string' && /nothing is published in your name/i.test(terms.terms));
+  check('and they name Invariant 6, so a reader learns the cost of the option NOT taken',
+    typeof terms?.terms === 'string' && /Invariant 6/.test(terms.terms));
 
   log(`    waiting up to ${FIRST_TICK_WAIT_MS / 1000}s for a tick with nobody calling ...`);
   const deadline1 = Date.now() + FIRST_TICK_WAIT_MS;
@@ -233,6 +271,15 @@ async function main() {
   const grew = counts.some((c) => c !== counts[0]);
   check('ITS OWN CHAIN DID NOT GROW across ticks — detects a write to ANY domain, not just this one',
     ticks.length >= 2 && !grew);
+  // THE DECLARATION AND THE BEHAVIOUR ARE CHECKED AGAINST EACH OTHER, which is
+  // the only reason section 3's `writes_to_the_dht` assertion is worth making.
+  // A promise nothing compares to reality is the "mechanism that reads as
+  // enforcement" failure this repository keeps finding — and here both halves
+  // exist, so the pair can be required to agree. An implementation that starts
+  // writing while still returning `false` fails THIS check even if it somehow
+  // satisfied the two above it separately.
+  check('THE TERMS MATCH THE BEHAVIOUR: it declared writes_to_the_dht: false, and the chain did not grow',
+    terms?.writes_to_the_dht === false && !grew);
   log(`    own_claims across ${ticks.length} tick(s): ${counts.join(', ')}`);
   log(`    ${ticks.length} tick(s) observed, ${claimsAfter} claim(s) in ${DOMAIN} — unchanged`);
 

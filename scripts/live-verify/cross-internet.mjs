@@ -152,7 +152,24 @@ async function main() {
     log(`polling for a claim in ${DOMAIN} that this host did not write ...`);
     const t0 = Date.now();
     let found = null;
+    // THE FIGURE THIS LOOP REPORTS IS AN UPPER BOUND, NOT A LATENCY, and the
+    // one it produced is quoted as a measurement. It polls at t≈0 and then
+    // every POLL_MS, so "CROSSED in 5.0s" means ABSENT at the first check and
+    // PRESENT at the second: the true crossing was anywhere in (0s, 5s]. The
+    // single datacentre-to-datacentre crossing README §9 cites as "5.0s" is
+    // therefore ≤5s with the real figure unresolved — which understates this
+    // substrate rather than flattering it, and is the opposite error to the
+    // one the same sampler caused in `partition-rejoin.mjs`, where a coarse
+    // grid made a slow crossing look like a deterministic constant.
+    //
+    // Left coarse deliberately: this harness waits out a cross-internet
+    // window on two paid hosts, and a finer poll would spend the budget it
+    // exists to conserve. What is fixed is the CLAIM, not the sampler — the
+    // poll count travels with the figure so nobody reads an upper bound as a
+    // measurement again.
+    let polls = 0;
     while (Date.now() - t0 < HOLD_MS) {
+      polls++;
       let claims = [];
       try { claims = await c.call('get_claims_by_domain', DOMAIN); }
       catch { /* a read that cannot answer yet is "not yet" */ }
@@ -164,13 +181,16 @@ async function main() {
         const a = r?.entry?.Present?.entry?.author ?? r?.author;
         return a ? b64(Uint8Array.from(Object.values(a))) !== b64(c.me) : true;
       });
-      if (foreign.length > 0) { found = { at: Date.now() - t0, n: foreign.length }; break; }
+      if (foreign.length > 0) { found = { at: Date.now() - t0, n: foreign.length, polls }; break; }
       log(`  t+${((Date.now() - t0) / 1000).toFixed(0)}s  nothing yet (${claims.length} local)`);
       await sleep(POLL_MS);
     }
     log('');
     if (found) {
-      log(`CROSSED in ${(found.at / 1000).toFixed(1)}s — ${found.n} claim(s) from the other host.`);
+      log(`CROSSED by poll ${found.polls} of a ${(POLL_MS / 1000).toFixed(1)}s sampler`
+        + ` — so WITHIN ${(found.at / 1000).toFixed(1)}s, not measured AT it`
+        + ` (true crossing somewhere in the preceding ${(POLL_MS / 1000).toFixed(1)}s).`
+        + ` ${found.n} claim(s) from the other host.`);
       check('an entry written on another host, on another network, arrived here', true);
     } else {
       log(`NO CROSSING inside ${(HOLD_MS / 1000).toFixed(0)}s.`);

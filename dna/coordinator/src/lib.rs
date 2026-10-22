@@ -977,6 +977,19 @@ fn check_critique_friction() -> ExternResult<()> {
 #[hdk_extern]
 pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
     check_critique_friction()?;
+    // REFUSED RATHER THAN TRIMMED. A cone over the ceiling could be cut to fit,
+    // and that would be a false statement about what the author saw — the one
+    // thing this field exists to avoid. The integrity zome refuses it too
+    // (this is the friendly, bypassable pre-check of a real rule); failing
+    // here just gives the caller the reason in their own call rather than as
+    // an InvalidCommit.
+    if critique.past_cone.len() > MAX_PAST_CONE {
+        return Err(wasm_error!(WasmErrorInner::Guest(format!(
+            "past_cone has {} entries, over the {} ceiling. It is refused rather than trimmed: \
+             a truncated cone would claim the author saw less than they did.",
+            critique.past_cone.len(), MAX_PAST_CONE
+        ))));
+    }
 
     let action_hash = create_entry(EntryTypes::Critique(critique.clone()))?;
 
@@ -1411,6 +1424,480 @@ pub fn which_entries_resolve_locally(hashes: Vec<AnyDhtHash>) -> ExternResult<Ve
 }
 
 // ============================================================================
+// SETTLEMENT — publishing a status, and letting anybody recompute it
+// ============================================================================
+// `protocol_version: 11`. The integrity zome holds the rule; this holds the
+// three write paths and the read that makes the rule checkable without
+// writing anything.
+//
+// THE PURE FUNCTION IS NOT REIMPLEMENTED HERE. `settle()` lives in the
+// integrity zome and is imported, so validation, this coordinator and the
+// zome's own unit tests all run ONE implementation. A second copy would be a
+// second answer, and "anybody can recompute it" stops being true the first
+// time two copies drift — which is this repository's shadowing failure
+// (READINESS item 5e) in the one place it would be hardest to notice.
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecomputedSettlement {
+    pub target: AnyLinkableHash,
+    pub policy: ActionHash,
+    pub policy_name: String,
+    /// What the policy demands, echoed so a reader need not resolve it.
+    pub min_assessors: u32,
+    pub max_dissent: u32,
+    /// What the inputs actually contain.
+    pub distinct_assessors: u32,
+    pub dissent: u32,
+    /// Inputs that resolved to neither an Assessment nor a Critique, or that
+    /// named a different target. Reported rather than dropped: a recomputation
+    /// over a quietly smaller set is a different answer wearing the same name.
+    pub unusable_inputs: u32,
+    /// The state these inputs produce under this policy.
+    pub state: SettlementState,
+    /// Says what the result is and is not. Never a verdict about the claim.
+    pub note: String,
+}
+
+/// Recompute a settlement from a policy and a set of inputs, writing nothing.
+///
+/// This is the whole point of publishing `inputs` on a `SettlementStatus`:
+/// anybody can call this with another aggregator's policy and input set and
+/// get their result, independently. A status that does not match what this
+/// returns could not have been committed — validation runs the same function.
+#[hdk_extern]
+pub fn recompute_settlement(payload: RecomputeSettlementPayload) -> ExternResult<RecomputedSettlement> {
+    let policy_record = get(payload.policy.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("SettlementPolicy not found.".into())))?;
+    let policy: SettlementPolicy = policy_record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a SettlementPolicy.".into())))?;
+
+    let mut assessors: Vec<AgentPubKey> = Vec::new();
+    let mut dissent = 0u32;
+    let mut unusable = 0u32;
+    let mut seen: Vec<ActionHash> = Vec::new();
+    for h in &payload.inputs {
+        if seen.contains(h) { unusable += 1; continue; }
+        seen.push(h.clone());
+        let Some(record) = get(h.clone(), GetOptions::default())? else { unusable += 1; continue };
+        if let Ok(Some(a)) = record.entry().to_app_option::<Assessment>() {
+            if a.target != payload.target { unusable += 1; continue; }
+            if !assessors.contains(&a.assessor) { assessors.push(a.assessor); }
+            if a.stance == Stance::Disputes { dissent += 1; }
+        } else if let Ok(Some(c)) = record.entry().to_app_option::<Critique>() {
+            if c.target != payload.target { unusable += 1; continue; }
+            dissent += 1;
+        } else {
+            unusable += 1;
+        }
+    }
+
+    let state = settle(&policy, assessors.len() as u32, dissent);
+    let note = format!(
+        "{} distinct assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}). \
+         THIS IS ARITHMETIC OVER ONE INPUT SET, NOT A VERDICT ABOUT THE CLAIM. Another aggregator \
+         using a different set may reach a different state, legitimately, and both are reproducible \
+         from what each published.{}",
+        assessors.len(), dissent, policy.name, policy.min_assessors, policy.max_dissent,
+        if unusable > 0 {
+            format!(" {} input(s) were unusable and counted toward nothing.", unusable)
+        } else { String::new() }
+    );
+
+    Ok(RecomputedSettlement {
+        target: payload.target,
+        policy: payload.policy,
+        policy_name: policy.name,
+        min_assessors: policy.min_assessors,
+        max_dissent: policy.max_dissent,
+        distinct_assessors: assessors.len() as u32,
+        dissent,
+        unusable_inputs: unusable,
+        state,
+        note,
+    })
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecomputeSettlementPayload {
+    pub target: AnyLinkableHash,
+    pub policy: ActionHash,
+    pub inputs: Vec<ActionHash>,
+}
+
+/// Publish one agent's assessment of a target.
+#[hdk_extern]
+pub fn publish_assessment(assessment: Assessment) -> ExternResult<ActionHash> {
+    let action_hash = create_entry(EntryTypes::Assessment(assessment.clone()))?;
+    // Indexed from the target, so an aggregator can FIND the assessments
+    // rather than being handed them. Without this the input set would be
+    // whatever an aggregator happened to already know, which is a much weaker
+    // thing than "everything this observer can see".
+    create_link(
+        assessment.target.clone(),
+        action_hash.clone(),
+        LinkTypes::TargetToAssessment,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+    Ok(action_hash)
+}
+
+/// Publish a settlement policy — a threshold, stated before it is applied.
+#[hdk_extern]
+pub fn publish_settlement_policy(policy: SettlementPolicy) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::SettlementPolicy(policy))
+}
+
+/// Publish a settlement status. Validation recomputes it; a state that does
+/// not follow from the cited policy and inputs is refused.
+#[hdk_extern]
+pub fn publish_settlement_status(status: SettlementStatus) -> ExternResult<ActionHash> {
+    let action_hash = create_entry(EntryTypes::SettlementStatus(status.clone()))?;
+    create_link(
+        status.target.clone(),
+        action_hash.clone(),
+        LinkTypes::TargetToSettlementStatus,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
+    Ok(action_hash)
+}
+
+/// Every assessment of a target this observer can see.
+#[hdk_extern]
+pub fn get_assessments_for(target: AnyLinkableHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToAssessment)?, GetStrategy::Network)?;
+    let mut out = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if let Some(r) = get(h, GetOptions::default())? { out.push(r); }
+        }
+    }
+    Ok(out)
+}
+
+/// Every settlement status published about a target — ALL of them, including
+/// ones that disagree. Nothing here picks a winner: two aggregators using
+/// different input sets legitimately reach different states, and hiding that
+/// behind a "current" status would be the deletion Invariant 6 forbids,
+/// performed by a reader instead of a writer.
+#[hdk_extern]
+pub fn get_settlement_statuses_for(target: AnyLinkableHash) -> ExternResult<Vec<Record>> {
+    let links = get_links(LinkQuery::try_new(target, LinkTypes::TargetToSettlementStatus)?, GetStrategy::Network)?;
+    let mut out = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if let Some(r) = get(h, GetOptions::default())? { out.push(r); }
+        }
+    }
+    Ok(out)
+}
+
+// ============================================================================
+// WHAT A CRITIQUE'S AUTHOR HAD NOT SEEN — the detection half of the C dial
+// ============================================================================
+// Light Cone Consistency's bound: "a system can tell its order inverted
+// causality only if it retained exactly what would have prevented the
+// inversion." `Critique.past_cone` is the retention; this is the telling.
+//
+// It answers the question an epistemic substrate actually needs — *was this
+// objection written in knowledge of the answer to it?* — and answers it from
+// recorded evidence rather than from timestamps, which §5.22 and READINESS
+// item 14 together establish nobody can trust.
+//
+// IT REPORTS THREE DIFFERENT THINGS AND REFUSES TO CONFLATE THEM, which is
+// the whole reason it returns a struct rather than a list. "Recorded nothing"
+// is not "had seen nothing": an author using a client that does not populate
+// cones is silent, not ignorant, and presenting silence as ignorance would
+// manufacture a finding out of a missing feature.
+
+/// What a critique's author did NOT record having seen, among the critiques
+/// of the same target.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UnseenReport {
+    /// The critique being asked about.
+    pub critique: ActionHash,
+    /// Critiques of the same target that are absent from its recorded cone.
+    /// Read with `cone_recorded` — this list is identical whether the author
+    /// genuinely saw nothing or simply recorded nothing.
+    pub unseen: Vec<ActionHash>,
+    /// How many of the target's critiques the author DID record seeing.
+    pub seen_count: u32,
+    /// FALSE when the cone is empty, which is the "recorded nothing" case.
+    /// A reader MUST branch on this before saying anything about ignorance.
+    pub cone_recorded: bool,
+    /// Every critique of this target known to this observer right now. The
+    /// denominator, published so the figures above can be checked rather than
+    /// trusted — and so a reader can see this is one observer's view.
+    pub total_known: u32,
+    /// Says what the numbers do and do not support. Never a verdict.
+    pub note: String,
+}
+
+/// Which critiques of the same target a given critique's author did not record
+/// having seen.
+///
+/// A pure read: no writes, no friction, no validation rule — coordinator-only
+/// per SPEC §11, so this part of the feature costs no DNA hash change. The
+/// FIELD costs one; the query does not.
+#[hdk_extern]
+pub fn critiques_unseen_by(critique_hash: ActionHash) -> ExternResult<UnseenReport> {
+    let record = get(critique_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Critique not found.".into())))?;
+    let critique: Critique = record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Critique.".into())))?;
+
+    // Every critique of the same target that this observer can see. NOT a
+    // global set: another observer with a different arc may know more, which
+    // is why `total_known` is reported rather than implied.
+    let links = get_links(
+        LinkQuery::try_new(critique.target.clone(), LinkTypes::TargetToCritique)?,
+        GetStrategy::Network,
+    )?;
+    let mut siblings: Vec<ActionHash> = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if h != critique_hash && !siblings.contains(&h) {
+                siblings.push(h);
+            }
+        }
+    }
+
+    let unseen: Vec<ActionHash> = siblings.iter()
+        .filter(|h| !critique.past_cone.contains(h))
+        .cloned()
+        .collect();
+    let cone_recorded = !critique.past_cone.is_empty();
+    let note = if !cone_recorded {
+        "This critique recorded NO past cone, so nothing here is evidence of ignorance. \
+         An author whose client does not populate cones is silent, not uninformed. \
+         `unseen` is simply every sibling critique."
+            .to_string()
+    } else if unseen.is_empty() {
+        "This critique recorded having seen every sibling critique THIS OBSERVER knows of. \
+         Another observer may know of more."
+            .to_string()
+    } else {
+        format!(
+            "This critique recorded seeing {} of {} sibling critique(s) known to this observer. \
+             The {} in `unseen` were not recorded as seen — which may mean they had not arrived, \
+             or had not been read. It does NOT mean the author knew of them and ignored them.",
+            critique.past_cone.len(), siblings.len(), unseen.len()
+        )
+    };
+
+    Ok(UnseenReport {
+        critique: critique_hash,
+        seen_count: critique.past_cone.len() as u32,
+        unseen,
+        cone_recorded,
+        total_known: siblings.len() as u32,
+        note,
+    })
+}
+
+// ============================================================================
+// THE ORDERING POLICY — the O dial, and what it can and cannot be here
+// ============================================================================
+// Light Cone Consistency (arXiv 2605.09114) splits observer-relative
+// consistency into two coupled dials: C, the closure filter deciding which
+// dependencies an observer must have seen, and O, the ordering of the
+// concurrent forks that filter admits. This protocol already had C —
+// `which_entries_resolve_locally`, §5.3's closure, and validation's dependency
+// fetch. O was unset: nothing ordered two critiques written without knowledge
+// of each other, so every reader invented its own sequence.
+//
+// WHAT THIS IS NOT, AND THE PAPERS ARE EXPLICIT ABOUT IT. This is not a global
+// order and cannot become one. Landers & Kramer put linearizability outside a
+// single observer's reach by construction — it is "a composite of two systems,
+// a store and a global real-time serializer supplying an order no single
+// observer's light cone can" — and Burgess & Gerlits derive their invariant
+// global ordering from a hierarchy whose parent nodes are "a single point of
+// calibration", which is the centralization this DNA does not have and will
+// not add.
+//
+// WHAT IT IS: a DETERMINISTIC REPLAY ORDER. Every observer handed the same set
+// of records computes the same sequence, causality is never violated, and the
+// result is recomputable by anyone — so an aggregator's claimed order can be
+// checked rather than trusted. That is enough for settlement to be a pure
+// function of (policy, input set), which is the property that makes
+// disagreement between aggregators visible instead of hidden.
+//
+// AUTHOR TIMESTAMPS ARE NOT USED, and that is a refusal rather than an
+// omission. `Claim.timestamp` and its siblings are self-reported: SPEC §5.22
+// records that validation cannot reach a clock at all, and READINESS item 14
+// measured a `reveal_deadline` being backdated by moving the authoring
+// conductor's clock, permanently. An order built on those numbers would be an
+// order the author chooses. Timestamps may be DISPLAYED; they are never
+// consulted here.
+//
+// WHERE CAUSALITY COMES FROM TODAY. Holochain is already a causal DAG and this
+// reads the edges that exist: a record referencing another must have been
+// written after it, because the reference had to resolve to commit (§5.3), and
+// two records by one author are ordered by their chain sequence. When past-cone
+// recording lands, a cone becomes one more edge source and nothing else here
+// changes — which is the point of keeping the policy separate from its inputs.
+
+/// A deterministic order over records, with the honesty of how much of it is
+/// real causality and how much is an arbitrary tie-break.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrderedRecords {
+    /// The records, ordered. Causally-prior first.
+    pub order: Vec<ActionHash>,
+    /// The policy that produced it, named so a reader can tell which one ran.
+    pub policy: String,
+    /// Ordering constraints derived from real causality — a reference that had
+    /// to resolve before the referrer could commit, or two actions on one
+    /// chain.
+    pub causal_edges: u32,
+    /// HOW MANY TIMES THE ORDER WAS ARBITRARY: the number of points at which
+    /// more than one record was ready and the tie went to the hash. This is
+    /// the figure that says how much of `order` means anything — a result with
+    /// a high count is a list, not a sequence, and a reader settling anything
+    /// on it should know that.
+    pub tie_broken: u32,
+    /// Inputs that could not be read, kept rather than silently dropped: an
+    /// order over a set smaller than the one asked for is a different answer.
+    pub unresolved: Vec<ActionHash>,
+    /// Always false in a well-formed graph — a reference must resolve before
+    /// its referrer commits, so a cycle cannot be built through this zome's
+    /// write paths. Reported rather than assumed, and the remaining records
+    /// are still ordered, because a diagnostic that vanishes when the
+    /// impossible happens is worth nothing.
+    pub cycle_detected: bool,
+}
+
+/// Every hash this record references, as raw bytes, whatever the hash type.
+/// Collected by type rather than generically because an entry crosses as
+/// msgpack and there is no reflection: each type's reference fields are named
+/// here, and a new entry type with references needs a line adding.
+fn referenced_hashes(record: &Record) -> Vec<Vec<u8>> {
+    let mut out: Vec<Vec<u8>> = Vec::new();
+    let entry = record.entry();
+    if let Ok(Some(c)) = entry.to_app_option::<Claim>() {
+        for e in &c.evidence_hashes { out.push(e.get_raw_39().to_vec()); }
+        if let Some(m) = &c.source_mew { out.push(m.get_raw_39().to_vec()); }
+    }
+    if let Ok(Some(c)) = entry.to_app_option::<Critique>() {
+        out.push(c.target.get_raw_39().to_vec());
+        for e in &c.evidence_hashes { out.push(e.get_raw_39().to_vec()); }
+        if let Some(sp) = &c.species { out.push(sp.get_raw_39().to_vec()); }
+    }
+    if let Ok(Some(r)) = entry.to_app_option::<Retraction>() {
+        out.push(r.target_claim.get_raw_39().to_vec());
+    }
+    if let Ok(Some(a)) = entry.to_app_option::<AntibodyPattern>() {
+        out.push(a.target.get_raw_39().to_vec());
+    }
+    if let Ok(Some(r)) = entry.to_app_option::<Revelation>() {
+        out.push(r.pre_registration.get_raw_39().to_vec());
+    }
+    if let Ok(Some(e)) = entry.to_app_option::<ExternalCritique>() {
+        out.push(e.linked_holochain_claim.get_raw_39().to_vec());
+    }
+    if let Ok(Some(b)) = entry.to_app_option::<BridgeRecord>() {
+        out.push(b.mew_hash.get_raw_39().to_vec());
+    }
+    out
+}
+
+/// Order a set of records deterministically: causality first, hash tie-break.
+///
+/// A pure read — no writes, no friction spent, no validation rule. Per SPEC
+/// §11 a coordinator-only addition, so the DNA hash is untouched.
+#[hdk_extern]
+pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
+    let mut unresolved: Vec<ActionHash> = Vec::new();
+    let mut present: Vec<ActionHash> = Vec::new();
+    let mut by_entry: HashMap<Vec<u8>, usize> = HashMap::new();
+    let mut by_action: HashMap<Vec<u8>, usize> = HashMap::new();
+    let mut authors: Vec<(AgentPubKey, u32)> = Vec::new();
+    let mut refs: Vec<Vec<Vec<u8>>> = Vec::new();
+
+    for h in hashes {
+        match get(h.clone(), GetOptions::default())? {
+            Some(record) => {
+                let idx = present.len();
+                by_action.insert(h.get_raw_39().to_vec(), idx);
+                if let Some(eh) = record.action().entry_hash() {
+                    by_entry.insert(eh.get_raw_39().to_vec(), idx);
+                }
+                authors.push((record.action().author().clone(), record.action().action_seq()));
+                refs.push(referenced_hashes(&record));
+                present.push(h);
+            }
+            None => unresolved.push(h),
+        }
+    }
+
+    let n = present.len();
+    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut indegree: Vec<u32> = vec![0u32; n];
+    let mut causal_edges = 0u32;
+    let mut add = |from: usize, to: usize, edges: &mut Vec<Vec<usize>>, indeg: &mut Vec<u32>, count: &mut u32| {
+        if from != to && !edges[from].contains(&to) {
+            edges[from].push(to);
+            indeg[to] += 1;
+            *count += 1;
+        }
+    };
+
+    // A reference had to resolve before its referrer could commit (§5.3), so
+    // the referenced record precedes.
+    for (i, rs) in refs.iter().enumerate() {
+        for r in rs {
+            if let Some(&j) = by_entry.get(r).or_else(|| by_action.get(r)) {
+                add(j, i, &mut edges, &mut indegree, &mut causal_edges);
+            }
+        }
+    }
+    // Two actions on one chain are ordered by the chain itself.
+    for i in 0..n {
+        for j in 0..n {
+            if i != j && authors[i].0 == authors[j].0 && authors[i].1 < authors[j].1 {
+                add(i, j, &mut edges, &mut indegree, &mut causal_edges);
+            }
+        }
+    }
+
+    // Kahn's algorithm with a deterministic tie-break: among the ready set,
+    // the smallest hash wins. Every observer therefore gets the same sequence.
+    let mut order: Vec<ActionHash> = Vec::new();
+    let mut taken = vec![false; n];
+    let mut tie_broken = 0u32;
+    for _ in 0..n {
+        let mut ready: Vec<usize> = (0..n).filter(|&k| !taken[k] && indegree[k] == 0).collect();
+        if ready.is_empty() { break; }
+        if ready.len() > 1 { tie_broken += 1; }
+        ready.sort_by(|&a, &b| present[a].get_raw_39().cmp(present[b].get_raw_39()));
+        let pick = ready[0];
+        taken[pick] = true;
+        order.push(present[pick].clone());
+        for &to in &edges[pick] { indegree[to] -= 1; }
+    }
+    let cycle_detected = order.len() < n;
+    if cycle_detected {
+        // Append whatever the cycle swallowed, in hash order, so the caller
+        // still gets every record it asked about.
+        let mut rest: Vec<usize> = (0..n).filter(|&k| !taken[k]).collect();
+        rest.sort_by(|&a, &b| present[a].get_raw_39().cmp(present[b].get_raw_39()));
+        for k in rest { order.push(present[k].clone()); }
+    }
+
+    Ok(OrderedRecords {
+        order,
+        policy: "causal-then-hash/1: a referenced record precedes its referrer (§5.3 dependency), \
+two actions on one chain follow the chain, concurrent records tie-break on action hash. \
+Author timestamps are NOT consulted — see SPEC §5.22 and READINESS item 14."
+            .into(),
+        causal_edges,
+        tie_broken,
+        unresolved,
+        cycle_detected,
+    })
+}
+
+// ============================================================================
 // MEMBRANE FUNCTIONS
 // ============================================================================
 
@@ -1496,6 +1983,80 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
 #[hdk_extern]
 pub fn attempt_unaccountable_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
     create_entry(EntryTypes::Membrane(membrane))
+}
+
+// ============================================================================
+// THE FORESIGHT FAMILY'S BYPASS PROBES — READINESS 5g, and the same argument
+// `attempt_unaccountable_membrane` above makes.
+//
+// `generate_worldline_trace`, `pre_register` and `reveal_pre_registration` all
+// DERIVE most of the fields their rules are about: the agent, the period
+// boundaries, the checksum, the commitment hash, the authorship. So a test
+// calling them proves only that the coordinator built a valid entry — and
+// eight rules in the integrity zome had no reachable path at all, which is
+// the condition the corpus classes `needs_extern`.
+//
+// THAT IS THE EXACT CONFUSION THAT LET `validate_membrane` SHIP WITHOUT ITS
+// CHECKS while a comment claimed it had them, and the reason the probe above
+// exists. A rule nothing can reach is a rule nothing has tested; "the
+// coordinator refuses" is not "the DHT refuses", and this repository has paid
+// for that distinction three times (the `SynapticLink` burn tier,
+// `validate_membrane`, `validate_retraction`).
+//
+// NOT AN ATTACK SURFACE, for the reason the membrane probe states and SPEC
+// §11.1 makes structural: a coordinator edit is hot-swappable via
+// `update_coordinators`, so a peer running a modified coordinator can already
+// author any op validation accepts. These grant an attacker nothing they could
+// not have by editing their own copy — what they grant is the ability to
+// OBSERVE the refusal. If any of them ever SUCCEEDS with a payload the
+// corresponding validator should refuse, the enforcement has regressed to
+// coordinator-side courtesy, which is what the corpus asserts.
+//
+// DELIBERATELY WRITE NO INDEX LINKS, the same call the membrane probe makes
+// and for the same reason: these create entries meant to be REFUSED, and a
+// link whose target validation rejected cannot validate either. Indexing here
+// would test the link rule instead of the entry rule.
+// ============================================================================
+
+/// Raw `WorldlineTrace`, so validation's six derived-field rules are reachable.
+#[hdk_extern]
+pub fn attempt_raw_worldline_trace(trace: WorldlineTrace) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::WorldlineTrace(trace))
+}
+
+/// Raw `PreRegistration`, so the author-binding rule is reachable. The sealed
+/// commitment is a hash the caller supplies here rather than one `pre_register`
+/// computes — which is the point: validation must not trust it.
+#[hdk_extern]
+pub fn attempt_raw_pre_registration(pr: PreRegistration) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::PreRegistration(pr))
+}
+
+/// Raw `Revelation`, so the author-binding rule is reachable.
+#[hdk_extern]
+pub fn attempt_raw_revelation(rev: Revelation) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::Revelation(rev))
+}
+
+/// Raw `BridgeRecord`, so the author-binding rule is reachable.
+/// `record_twitter_mirror` fills `author` from `agent_info()` — see the field's
+/// own comment, which says validation binds it anyway because the coordinator
+/// is a convenience and the integrity zome is the authority. That authority was
+/// the thing nothing could reach.
+#[hdk_extern]
+pub fn attempt_raw_bridge_record(record: BridgeRecord) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::BridgeRecord(record))
+}
+
+/// Raw `ExternalCritique`, so the importer-binding rule is reachable.
+/// `import_twitter_reply` fills `importer` from `agent_info()`. Note which of
+/// the two people in this entry the rule is about: `importer` is the Holochain
+/// agent who chose to import, and `author_handle` is an unverifiable string
+/// from another platform — the entry type's own comment is explicit that
+/// conflating them would be worse than leaving the second out.
+#[hdk_extern]
+pub fn attempt_raw_external_critique(critique: ExternalCritique) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::ExternalCritique(critique))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1670,6 +2231,12 @@ pub enum AttachmentLinkKind {
     Reinforcement,
     AttestationGrant,
     SynapticLink,
+    // Settlement, protocol_version 11. Added WITH the link types rather than
+    // after them: §5.19's finding was that the link types nobody probed were
+    // the link types nobody validated, and a prober that lags its subject
+    // reproduces that gap by construction.
+    TargetToAssessment,
+    TargetToSettlementStatus,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1771,6 +2338,8 @@ pub fn attempt_false_attachment_link(
         AttachmentLinkKind::Reinforcement => LinkTypes::Reinforcement,
         AttachmentLinkKind::AttestationGrant => LinkTypes::AttestationGrant,
         AttachmentLinkKind::SynapticLink => LinkTypes::SynapticLink,
+        AttachmentLinkKind::TargetToAssessment => LinkTypes::TargetToAssessment,
+        AttachmentLinkKind::TargetToSettlementStatus => LinkTypes::TargetToSettlementStatus,
     };
     let base: AnyLinkableHash = match (&payload.anchor_of, &payload.question_anchor_of) {
         (Some(agent), _) => agent_anchor_hash(agent)?.into(),
@@ -1992,6 +2561,146 @@ pub fn get_all_critique_species() -> ExternResult<Vec<Record>> {
 pub fn get_critique_species_adoption_count(species_hash: EntryHash) -> ExternResult<usize> {
     let links = get_links(LinkQuery::try_new(species_hash, LinkTypes::CritiqueToSpecies)?, GetStrategy::Network)?;
     Ok(links.len())
+}
+
+// ============================================================================
+// WHO ACTUALLY TOOK A SPECIES UP — READINESS item 11's missing measurement
+// ============================================================================
+// Item 11 wants to run a deliberate minority of observers on looser thresholds
+// and unusual `CritiqueSpecies` preferences, and has been blocked for its whole
+// life on one thing: **telling exploration from degradation.** Without that,
+// a divergent observer is indistinguishable from a bug.
+//
+// THE DISCRIMINATOR IS NOT A PROPERTY OF THE DIVERGENT ACT. It is a property
+// of the act's RECEPTION: a species proposed on unusual grounds is exploration
+// if agents who did not share the proposer's priors take it up, and noise if
+// nobody does. Nothing about the critique itself separates the two — the text,
+// the mode, the evidence list and the thresholds all look identical in both
+// cases, which is precisely why the row could not find a measurement by
+// looking at the write.
+//
+// `get_critique_species_adoption_count` above is the nearest thing that
+// existed and it cannot carry this, for a reason worth stating rather than
+// patching silently: it returns `links.len()`, which COUNTS THE PROPOSER'S OWN
+// CITATIONS. An agent who proposes a species and then cites it in fifty of
+// their own critiques reports an adoption count of fifty. The comment that
+// deleted the old self-declared `adoption_count` field called a derived
+// query-time count "the real replacement" — and a derived number one agent can
+// drive alone is barely better than a declared one. The same criticism, one
+// level up.
+//
+// So this returns COMPONENTS AND NO SCORE, which is the house rule everywhere
+// else: `get_discourse_health` reports a ratio and a warning, the MCP surface
+// "offers no ranking", and the foresight tab says in as many words that there
+// is no score on the page. A single "exploration index" here would be the
+// fabricated scalar README §2.5 was built to avoid — it would also be read as
+// a verdict on an agent, which Invariant #1 is about.
+//
+// WHAT THIS MEASUREMENT CANNOT DO, stated because the row's framing assumes
+// otherwise: it cannot clear a divergent observer IN ADVANCE. Adoption is
+// visible only after other agents have had the chance to adopt, so a minority
+// deployed today is unclassifiable today and stays that way until the graph
+// responds. Item 11 asked for a measurement that would make running divergent
+// observers SAFE; what is achievable is one that makes them OBSERVABLE, and
+// those are different promises. The second is worth having and the first is
+// not on offer.
+/// `CritiqueSpecies` uptake, decomposed by who did the citing.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpeciesAdoption {
+    pub species: EntryHash,
+    pub name: String,
+    pub proposer: AgentPubKey,
+    /// Every `CritiqueToSpecies` link, which is what
+    /// `get_critique_species_adoption_count` returns. Kept here so the two
+    /// reads cannot quietly disagree about the same species.
+    pub total_citations: u32,
+    /// Citations whose `Critique` was authored by the species' own proposer.
+    pub proposer_citations: u32,
+    /// Distinct agents OTHER than the proposer who have cited it. This is the
+    /// number item 11 needs; the rest is context for reading it.
+    pub independent_adopters: Vec<AgentPubKey>,
+    /// Citations this read could not attribute — the link resolved to nothing,
+    /// or to an entry that is not a `Critique`. Reported rather than dropped,
+    /// because a count that silently discards what it cannot explain is how
+    /// `get_discourse_health` once returned zero for every claim.
+    pub unattributable_citations: u32,
+    /// Describes what is and is not distinguishable here. Never a verdict.
+    pub warning: Option<String>,
+}
+
+/// Who has taken a `CritiqueSpecies` up, as against who proposed it.
+///
+/// A pure read: no writes, no friction spent, nothing scheduled. Adding it
+/// changes no entry type, no link type and no validation rule, so per SPEC
+/// §11 it is a coordinator-only change and leaves the DNA hash alone.
+#[hdk_extern]
+pub fn get_species_adoption(species_hash: EntryHash) -> ExternResult<SpeciesAdoption> {
+    let record = get(AnyDhtHash::from(species_hash.clone()), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("CritiqueSpecies not found.".into())))?;
+    let species: CritiqueSpecies = record.entry()
+        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a CritiqueSpecies.".into())))?;
+
+    let links = get_links(
+        LinkQuery::try_new(species_hash.clone(), LinkTypes::CritiqueToSpecies)?,
+        GetStrategy::Network,
+    )?;
+    let total_citations = links.len() as u32;
+
+    let mut proposer_citations = 0u32;
+    let mut unattributable_citations = 0u32;
+    // Distinct, and a Vec rather than a HashSet because the return type has to
+    // serialize; the membership test is linear over a list this small.
+    let mut independent_adopters: Vec<AgentPubKey> = Vec::new();
+
+    for link in links {
+        // create_critique links species -> the critique's ACTION hash.
+        let Ok(critique_hash) = ActionHash::try_from(link.target) else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Some(rec) = get(critique_hash, GetOptions::default())? else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Ok(Some(critique)) = rec.entry().to_app_option::<Critique>() else {
+            unattributable_citations += 1;
+            continue;
+        };
+        // `critique.author` rather than the action's author: validation binds
+        // the two (SPEC §5.2), so they agree, and every other read here goes
+        // through the entry's own field.
+        if critique.author == species.proposer {
+            proposer_citations += 1;
+        } else if !independent_adopters.contains(&critique.author) {
+            independent_adopters.push(critique.author);
+        }
+    }
+
+    // Says what cannot be told apart, never what the figures mean. The
+    // all-self case is the one worth naming because it is the case that LOOKS
+    // like adoption in the older count.
+    let warning = if total_citations == 0 {
+        Some("No critique cites this species yet, so there is nothing to tell exploration and degradation apart with. A species with no citations is not evidence of either.".into())
+    } else if independent_adopters.is_empty() {
+        Some(format!(
+            "All {} citation(s) are the proposer's own. Adoption by other agents is 0, so this species' uptake is indistinguishable from one agent using a private vocabulary — and get_critique_species_adoption_count reports {} for it.",
+            total_citations, total_citations
+        ))
+    } else {
+        None
+    };
+
+    Ok(SpeciesAdoption {
+        species: species_hash,
+        name: species.name,
+        proposer: species.proposer,
+        total_citations,
+        proposer_citations,
+        independent_adopters,
+        unattributable_citations,
+        warning,
+    })
 }
 
 // ============================================================================
@@ -3555,6 +4264,14 @@ pub struct DiscourseHealth {
     pub abstract_to_embodied_ratio: f32,
     pub warning: Option<String>,
     pub total_claims: u32,
+    /// How many Claims in this domain were SET ASIDE as readings of it rather
+    /// than counted as discourse in it — see the filter in
+    /// `get_discourse_health` for why, and READINESS item 22. Reported so the
+    /// exclusion is visible: a reader comparing `total_claims` against
+    /// `get_claims_by_domain` directly has to be able to account for the
+    /// difference, and an invisible exclusion is indistinguishable from a
+    /// wrong count.
+    pub reading_claims: u32,
     pub total_critiques: u32,
     pub critique_mode_distribution: Vec<(CritiqueMode, u32)>,
 }
@@ -3628,7 +4345,51 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
     let membrane_hash = hash_entry(&membrane_entry)?;
     let domain = membrane_entry.domain.clone();
-    let claims = get_claims_by_domain(domain.clone())?;
+    let all_in_domain = get_claims_by_domain(domain.clone())?;
+
+    // A READING OF THIS DOMAIN IS NOT DISCOURSE IN IT, AND COUNTING IT AS
+    // DISCOURSE MADE THIS AGGREGATE MEASURE ITSELF.
+    //
+    // `publish_discourse_reading` writes its Claim with `domain:
+    // health.domain` — into the very domain the reading is ABOUT, which is
+    // what makes it discoverable beside the claims it describes and is
+    // deliberate. But this function counted it, so every published reading
+    // incremented the `total_claims` of the domain its next reading would
+    // report. Measured on a live conductor before the fix: one real claim and
+    // no critiques in a fresh domain, then three readings published, and
+    // `total_claims` reported 1, 2, 3, 4 while the actual discourse never
+    // changed. A scheduled writer at one reading a minute would have made
+    // this figure a count of its own ticks (READINESS item 22).
+    //
+    // THE CRITIQUES OF A READING GO WITH IT, and that is the less obvious
+    // half. A critique OF a reading is real discourse — item 9 ships exactly
+    // that, and it is how a reading is contested — but it is discourse about
+    // the MEASUREMENT, not about the domain's subject. Leaving those critiques
+    // in `total_critiques` while removing their targets from `total_claims`
+    // would inflate `abstract_to_embodied_ratio` with argument about the
+    // instrument, which is the same category error in the numerator.
+    //
+    // NOT SILENT: `reading_claims` reports how many were set aside, because an
+    // exclusion nobody can see is indistinguishable from a count that is
+    // simply wrong — and a reader comparing this figure against
+    // `get_claims_by_domain` directly must be able to account for the
+    // difference. A coordinator-only change (SPEC §11): no entry type, no link
+    // type, no validation rule, so the DNA hash is untouched.
+    let mut claims: Vec<Record> = Vec::new();
+    let mut reading_claims = 0u32;
+    for record in all_in_domain {
+        match record.entry().to_app_option::<Claim>() {
+            Ok(Some(claim)) if claim.semantic_tags.iter().any(|t| t == DISCOURSE_READING_TAG) => {
+                reading_claims += 1;
+            }
+            // Anything that does not deserialize as a Claim stays counted
+            // exactly as it was before this filter existed — the old code
+            // took `claims.len()` over every record the index returned, and
+            // narrowing that silently would be a second change wearing the
+            // first one's justification.
+            _ => claims.push(record),
+        }
+    }
 
     // TargetToCritique links are indexed by the claim's EntryHash (see
     // create_critique, which links from critique.target), not its
@@ -3728,6 +4489,7 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         abstract_to_embodied_ratio: ratio,
         warning,
         total_claims: claims.len() as u32,
+        reading_claims,
         total_critiques,
         critique_mode_distribution: mode_counts,
     })
@@ -4675,7 +5437,49 @@ fn metabolic_tick(_: Option<Schedule>) -> Option<Schedule> {
     Some(Schedule::Ephemeral(Duration::from_secs(METABOLIC_TICK_SECS)))
 }
 
-/// Start the heartbeat on THIS agent's chain.
+/// WHAT STARTING THE HEARTBEAT AGREES TO, returned at the moment of the call.
+///
+/// `start_metabolism` used to return `()`. That was the whole of its problem:
+/// it is the only consent gesture this protocol has for an unattended process
+/// running on the caller's own key, and it said nothing about what it was
+/// consenting to. READINESS item 22 decided the heartbeat writes nothing
+/// (option (a)) — and a decision the call does not state is one the next
+/// implementation can reverse without anybody noticing they were never asked.
+///
+/// SO THE TERMS ARE DATA, NOT A DOC COMMENT. A caller receives them, a harness
+/// can assert them against what the tick actually does, and a future version
+/// that starts writing has to return `writes_to_the_dht: true` — which is a
+/// visible change to this payload rather than a quiet change in behaviour. The
+/// same device as `MetabolicObservation.wrote_nothing` and
+/// `PublishedReading.method_stated`, and for the reason that field's own
+/// comment gives: an implementation that later means something weaker should
+/// have to change the field rather than reuse it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MetabolismTerms {
+    /// The agent whose chain this heartbeat now runs on — and therefore the key
+    /// anything it ever wrote would be signed with. A scheduled function runs
+    /// as the author of the chain it runs for, so this is not a parameter.
+    pub runs_as: AgentPubKey,
+    /// The floor between ticks, in seconds, as compiled in. The host refuses to
+    /// promise granularity beyond this ("historically ranged from once every
+    /// 100ms to every 10s"), so it is a floor rather than a period.
+    pub tick_interval_secs: u64,
+    /// FALSE in this version, by the decision in READINESS item 22. If this is
+    /// ever true, everything the tick writes is permanent and un-deletable
+    /// under Invariant 6 — by the agent in `runs_as`, with no deletion path for
+    /// anyone.
+    pub writes_to_the_dht: bool,
+    /// FALSE in this version. The observation is an ephemeral `emit_signal`, so
+    /// no §6 friction budget is spent per tick.
+    pub spends_friction_budget: bool,
+    /// How to stop it, stated because the answer is unusual and a caller has no
+    /// other way to find out.
+    pub stopped_by: String,
+    /// The terms in words, for a caller with no access to this comment.
+    pub terms: String,
+}
+
+/// Start the heartbeat on THIS agent's chain, and say what that agrees to.
 ///
 /// Needed because `init` is lazy: the host's own documentation warns that an
 /// `init` callback "may not happen immediately or ever after happ installation",
@@ -4684,10 +5488,31 @@ fn metabolic_tick(_: Option<Schedule>) -> Option<Schedule> {
 /// starting it a decision somebody took.
 ///
 /// Idempotent, by the host: "If it is already scheduled, the existing schedule
-/// will be respected and the `schedule` call is a noop."
+/// will be respected and the `schedule` call is a noop." The terms are returned
+/// on every call, including the noop ones, because a caller asking again is
+/// entitled to the same answer.
 #[hdk_extern]
-pub fn start_metabolism(_: ()) -> ExternResult<()> {
-    schedule("metabolic_tick")
+pub fn start_metabolism(_: ()) -> ExternResult<MetabolismTerms> {
+    schedule("metabolic_tick")?;
+    Ok(MetabolismTerms {
+        runs_as: agent_info()?.agent_initial_pubkey,
+        tick_interval_secs: METABOLIC_TICK_SECS,
+        // Both false by decision rather than by omission — READINESS item 22,
+        // option (a). The tick observes and emits; it does not act.
+        writes_to_the_dht: false,
+        spends_friction_budget: false,
+        stopped_by: "Restarting the conductor. The schedule is Ephemeral and there is no stop extern: \
+a scheduled function's only input and output is its schedule, so it cannot be passed a flag, and a \
+persistent stop-flag would need a new entry type and therefore a DNA hash change."
+            .into(),
+        terms: "This agent's conductor will run metabolic_tick on its own clock, with no caller, \
+until the conductor restarts. Each tick OBSERVES this chain and emits an ephemeral signal: it writes \
+nothing to the DHT, spends no friction budget, and leaves the source chain byte-identical. Nothing is \
+published in your name. If a future version of this protocol publishes readings automatically, it must \
+return writes_to_the_dht: true here — and then every reading would be a permanent, attributed, \
+critiquable Claim signed with your key, which Invariant 6 makes un-deletable by anyone, including you."
+            .into(),
+    })
 }
 
 #[cfg(test)]
@@ -4817,6 +5642,7 @@ mod tests {
             replication_attempted: false,
             evidence_hashes: vec![],
             species: None,
+            past_cone: vec![],
         };
 
         let out = critique.to_n4l(&critique_entry_hash);
@@ -4853,6 +5679,7 @@ mod tests {
             replication_attempted: false,
             evidence_hashes: vec![],
             species: None,
+            past_cone: vec![],
         };
 
         let out = critique.to_n4l(&critique_entry_hash);
@@ -4881,6 +5708,7 @@ mod tests {
             replication_attempted: true,
             evidence_hashes: vec![],
             species: Some(species_hash.clone()),
+            past_cone: vec![],
         };
         let out = with_species.to_n4l(&critique_entry_hash);
         assert!(out.contains(&format!("(adopts species) \"{}\"", species_hash)));
@@ -5230,6 +6058,10 @@ mod tests {
             abstract_to_embodied_ratio: 2.5,
             warning: None,
             total_claims: 10,
+            // Non-zero on purpose: this domain has had readings taken of it
+            // before, which is the normal state for anything being observed,
+            // and render_reading must not start quoting it as discourse.
+            reading_claims: 3,
             total_critiques: 4,
             critique_mode_distribution: vec![],
         };

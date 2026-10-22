@@ -939,7 +939,7 @@ exist in a coordinator, and Holochain's own zome split is the kernel/observer
 boundary this needed; it had simply never been used on the observer side.
 
 **Verified by watching something happen while nothing was calling it.**
-`scripts/live-verify/metabolism.mjs`, 11 checks against a real conductor: first
+`scripts/live-verify/metabolism.mjs`, 20 checks against a real conductor: first
 tick **0.1s** after `start_metabolism`, second at **60.1s** against the 60s
 floor, and the DHT byte-identical throughout. The central assertion is an
 **absence of cause**, which is harder to test than a presence — a signal
@@ -978,11 +978,14 @@ zome_name, payload } }`, and a filter written against the older flat shape
 every signal, and the absence was indistinguishable from a function that never
 ran. Isolated by calling `metabolic_tick` directly: it returned
 `Ephemeral(60s)` and emitted a signal while the harness saw nothing. **The same
-client change `bridge/src/index.ts:397` still has not had**, which is now
-READINESS item 21: the bridge's guard is `undefined !== 'epistemic_coordinator'`
-on every signal, so its real-time path has been dead since 0.21 and nothing
-noticed, because a polling fallback kept the feature working with latency
-instead of breaking it.
+client change `bridge/src/index.ts:397` had not had**, which became READINESS
+item 21: the bridge's guard was `undefined !== 'epistemic_coordinator'` on every
+signal, so its real-time path had been dead since 0.21 and nothing noticed,
+because a polling fallback kept the feature working with latency instead of
+breaking it. **Closed 2026-10-21, and the one line was a third of it** — the
+instrument built to watch it fail found two more defects behind it, one of them
+in the polling path that still worked. See READINESS item 21 and
+`scripts/live-verify/bridge-signal.mjs`, 19 checks.
 
 **And an injection found a weakness in an assertion rather than confirming it,
 which is the whole reason for injecting.** Injection AO added an autonomous
@@ -1105,7 +1108,7 @@ being checked: the version on the registry and the version in this tree are both
 `0.1.2`, so the command the blockquote asked for would have been refused by its
 own script. The accurate figure is further down this section and always was.
 
-**Current as of 2026-10-20 (second entry that day), restructured on 2026-10-10 because the single table
+**Current as of 2026-10-21 (checkpoint entry, the second that day), restructured on 2026-10-10 because the single table
 had grown to fourteen rows with eight struck through and the live items were
 buried inside the settled ones.** This section's own failure mode is a status
 line that was true when written and went stale without anybody editing it — it
@@ -1301,6 +1304,500 @@ publish sequence* carries the five remaining steps. **Item 9** is one governance
 `protocol_version` bump. **Item 8** needs the go-ahead above. **Item 11** sits
 behind 9. Everything else on the roadmap is done.
 
+**CHECKPOINT, end of 2026-10-20. Eight queue items closed in one day, and the
+roadmap now has nothing on it that is blocked on effort.** In order: **10** (the
+conductance half-life becomes the reader's promise), **15** (`mcp-server`'s
+advisories, 4 to 0 by a plain relock), **5e** (shadowed pre-checks, nine of
+them, sweep says no others), **7** (why `partition-rejoin`'s red is
+deliberate, said in the harness), **8** (the protocol's present tense), **6**
+and **15**'s publish half (`0.1.5` on the registry), and **9** (a discourse
+reading becomes somebody's signed promise). Eleven pull requests, #291 to #301.
+
+**THE ONE FINDING THAT OUTLIVES ALL OF THEM is about this file's own "blocked
+on" column, and it is now five for five.** Every row closed today had a blocker
+that was wrong, and wrong in the same direction:
+
+| row | said | actually |
+|---|---|---|
+| **10** | needs a `protocol_version` bump and a migration judgement | neither — it priced the `Constitution` design, not the goal |
+| **15** | needs credentials | the `0.1.4` publish had already shipped |
+| **7** | "Nothing" | true of one of its two options |
+| **8** | blocked on 5f | satisfied — friction is per `AgentPubKey`, not per conductor |
+| **9** | "one governance decision" | that, **and a framing that was not implementable**: a membrane has no key |
+
+**The shape is a blocker describing WHAT IT WOULD TAKE instead of WHAT IS
+BLOCKED.** A goal outlives the design you had in mind for it, so a blocker
+written as a cost goes stale the moment somebody finds a cheaper route — and
+these read as specific rather than as assumptions, which is why this section
+did not catch them. **Write the obstacle, not the remedy.** Item 9 adds a
+second failure mode worth naming separately: a row can be blocked on nothing
+and still be *unbuildable as written*, because its own sentence assumes
+something false about the protocol. "Let a membrane publish its reading" was
+never possible — only an agent has a key — and no amount of unblocking would
+have revealed that. **A row's framing deserves the same scepticism as its
+blocker.**
+
+**WHAT TODAY ADDED TO THE PROTOCOL, in one line each.** Readers now promise
+their own forgetting rate (§7, item 10). The validation corpus can see a
+coordinator pre-check that shadows a rule, and knows the difference between one
+with a raw-write bypass and one without (item 5e). **The protocol has a present
+tense** — `metabolic_tick`, the first `#[hdk_extern(infallible)]` here, which
+the host runs with no caller and which deliberately writes nothing (item 8).
+And an aggregate that used to dead-end at the caller is now an attributed,
+critiquable Claim, with two agents demonstrably disagreeing about the same
+membrane and nothing adjudicating between them (item 9).
+
+**THREE THINGS FOUND BY BUILDING RATHER THAN BY LOOKING, and each is recorded
+where it was found rather than only here.** `@holochain/client` 0.21's signal
+shape made a working scheduler look broken, and the same unmade change means
+**`bridge/src/index.ts` has been discarding every signal since that release** —
+masked by its polling fallback, which is why nothing noticed (item 21 — closed
+2026-10-21, and the fallback turned out to be masking a second defect of its
+own). An
+injection that was meant to confirm a safety assertion **found a hole in it
+instead**: "the tick wrote nothing" was testing "the tick wrote nothing *here*",
+because the check read only the test's own domain. And `PublishedReading`
+returned only an `ActionHash` while `validate_critique` needs an EntryHash, so
+a reading was critiquable in principle and not in practice.
+
+**AND AN INSTRUMENT FIRED THAT NOBODY HAS RULED ON.** `partition-rejoin`
+reported `baseline crossed in 421.1s` **twice, identically, to a tenth of a
+second**, across two independent runs of a comment-only commit. Variance does
+not do that. The reading it suggests is a deterministic timeout rather than a
+distribution, and §3's seven measurements fit it: four within ~5s of 420s, two
+near 936s. It is recorded and deliberately not acted on, because §9's reopen
+condition is a first occurrence outside everything documented and whether a
+repeated constant clears that bar is a decision about where to spend effort
+rather than a measurement.
+
+**WHERE TO PICK UP. Nothing is blocked on effort; everything open needs a
+person, and that is a different state from any previous checkpoint.**
+
+> **AND THAT CLAIM WAS WRONG WITHIN A DAY — item 21 was pure effort, and the
+> row below says so.** Kept rather than edited, because the error is the
+> interesting part: this checkpoint's own central finding is that a blocker
+> describing WHAT IT WOULD TAKE instead of WHAT IS BLOCKED goes stale, and
+> then it read item 21's "Nothing technical" as a person-shaped blocker
+> without checking the sentence immediately after it, which names an
+> instrument and is pure labour. **Five rows were audited for that fault and
+> the sixth was committed in the same breath.** A blocker summarised is a
+> blocker not re-read.
+
+| open | what it needs |
+|---|---|
+| ~~**20**~~ | **CLOSED 2026-10-21, and no bump was needed.** The readings were effort, not a person — the row says so itself (*"the cost of acting is the constraint, not the analysis"*) — and they found that **two of the three cannot be enforced DHT-side at all** (both fields live in a private entry whose content validation never sees) while the third was already decided in the source and in SPEC §5.21. The row priced an action none of them needs. See READINESS item 20 |
+| ~~**21**~~ | **CLOSED 2026-10-21.** The row was right that the evidence was the work and wrong that it needed a person — building the way to watch cost effort and nothing else. It also found that the known one-line fix was a THIRD of the defect: applied alone it leaves every tweet carrying an unreadable hash. See READINESS item 21 |
+| ~~**11**~~ | **CLOSED 2026-10-22: the swarm ran.** Five agents, three dispositions, one the deliberate minority, on a DHT minted for the run — `scripts/swarm.sh` plus `scripts/swarm/`. **The scratch DHT is enforced, not conventional**, and the check fired on its first use: agents installed without the network seed had silently formed their own network. **Dispositions are mechanical rather than generated** — every rule is a property of the data a reader can audit — and **thresholds are published as `Constitution` promises before any agent acts**, so the standard each judges by is itself critiquable. **It produced the result the `protocol_version: 10` fork was for**: three critiques of one target in one round recording `saw 0 of 2`, `saw 1 of 2`, `saw 2 of 2` — genuinely different views, retained at write time and unrecoverable afterwards. **The graph is ACTIVE, not autopoietic**: the DNA still does nothing on its own clock (item 22), and no ranking is computed (Invariant 1). See READINESS item 11 |
+| ~~**the 421.1s**~~ | **RULED 2026-10-21, and it was a measurement rather than a decision.** `awaitConvergence` samples every **5 seconds**, so two crossings in the same window report an identical figure by construction — the tenth of a second is accumulated call overhead over a fixed poll count, not the network. *"Variance does not produce the same figure twice to a tenth of a second"* is backwards for this instrument, and the cluster cited in support (*"inside ±5s of ~420s"*) **is the sampler's step size**. So it is another sighting of a mode already named, which §9's reopen condition excludes. **No reopen.** The harness now prints its resolution beside every figure. See READINESS §3 |
+
+**Cross-internet propagation on two consumer networks remains the highest-value
+item under *Before mass adoption*, and it still cannot be done in CI** — it
+needs two physical home networks, which is the one thing no runner provides.
+
+**2026-10-21. Item 21 closed, and the day's finding is that the thing standing
+in its way was not a person but an INSTRUMENT — and that building the
+instrument found two more defects than the item named.**
+
+Item 21 was one line: the bridge's signal guard read `signal.zome_name` against
+the nested shape `@holochain/client` 0.21 delivers, so it evaluated
+`undefined !== 'epistemic_coordinator'` on every signal — always true — and the
+handler returned before doing anything. Its blocker said **"Nothing
+technical"**, and the sentence immediately after it described the whole job:
+*a way to observe the bridge receiving a signal, which does not exist yet.*
+That is effort, not a decision, and yesterday's checkpoint still counted the
+row as needing a person. **The blocker was right that the evidence was the
+work. It was wrong that the evidence needed somebody.**
+
+**What made the bridge unwatchable was never the conductor or Twitter.** Every
+decision lived inside a method of a class whose module calls `main()` at
+import, so reaching the parse meant connecting a conductor *and* holding four
+Twitter secrets. `bridge/src/signal.ts` now holds the parse, the hash encoding
+and both tweet builders as pure functions, and
+[`scripts/live-verify/bridge-signal.mjs`](scripts/live-verify/bridge-signal.mjs), 19 checks,
+drives **those** against signals a real coordinator emits — not copies of them.
+A harness carrying its own parse would have gone green while the bridge stayed
+broken, which is this file's *a prober proves the rule it probes* in its purest
+form.
+
+**AND THE ONE-LINE FIX WAS A THIRD OF THE DEFECT.** Applied alone, it turns the
+real-time path back on and the bridge then posts `Full context: \u0003Q...`:
+a hash arrives as 39 raw bytes, and interpolating a `Buffer` into tweet text
+yields mojibake. **That second defect is in the path that still WORKED** —
+`pollUnbridged` formats it identically — so the fallback everyone credited with
+keeping the feature alive had been composing unreadable pointers all along, and
+the Correlative Witness Principle's step 1, *"the tweet references the DHT
+hash"*, was true of no tweet the bridge ever built. A third followed from the
+other end: `pollMentions` matched `/0x[a-fA-F0-9]{64}/`, an Ethereum shape a
+39-byte Holochain hash is not in any encoding, and passed the match on as a
+**String** where the zome wants an `EntryHash` — so the Twitter-to-Holochain
+leg could not fire, and failed into a `logger.error` nobody reads.
+
+**The second and third are the same binding seen from both ends, and they
+disagreed with each other as well as with reality.** Nothing had ever compared
+the format the bridge writes with the format it reads, because the two sides
+were four hundred lines apart and neither was reachable from a test. Both now
+come from one module and the harness gates the round trip — written, matched,
+decoded back to the bytes the signal carried, accepted by the zome.
+
+**The negative evidence is four runs, and the ordering is the point.** All
+three defects live: 14 reds of 19 — **but most of that is cascade, not
+evidence**, since no parse means no hash and three sections red for want of an
+input. So each defect got its own injection, and the third needed one most:
+**defect 3 was MASKED by defect 2** (while the tweet carried raw bytes, the
+reverse-leg checks red whatever the pattern was) exactly as defect 2 was masked
+by the polling fallback and defect 1 by both. **One defect hidden by a
+fallback, hiding a second, masking a third** — and the measured reds are 7, 1,
+7 and 4 for the four injections, one of which came in at 1 where 2 was
+predicted. That shortfall is recorded rather than smoothed: two of the three
+controls pass with the ownership guard deleted, so a single check is all that
+stands between that module and claiming every signal on the interface.
+
+**CI compiles `bridge/` for the first time.** Nothing was building that
+directory at all, which is part of how this survived — though `tsc` would not
+have caught it either, since the handler took `any`. `conductor.yml` now builds
+the bridge and runs the harness beside `mew-lifecycle`, which is its pair: that
+one covers the bridge's zome surface, this one covers the bridge's own code.
+**Still unverified: the live X API.** Nothing here posts a tweet, and the
+service's `start()` is still unexercised.
+
+**And then item 20 went the same way, within the hour.** Its blocker also
+said **"Nothing technical"**, also described the work two sentences later
+(*"the cost of acting is the constraint, not the analysis"*), and the analysis
+was effort. **Three readings, and the row's expensive part — a
+`protocol_version` bump — turned out to be needed by none of them**: two of the
+three pre-checks cannot have a validation twin at all, because `prediction` and
+`salt` live in `SealedPrediction`, this zome's only private entry, and the
+integrity zome already says at the arm where a rule would go that a private
+entry's content is not available there. The third had been decided twice over,
+in the source and in SPEC §5.21, before the row existed — `enumerate.mjs`
+flagged it because a sweep reads conditions and cannot read the comment four
+lines above them.
+
+**Both readings then found something the row had not asked about, and both were
+measured rather than argued.** `prediction: "."` is accepted, revealed, and
+counted among kept commitments indistinguishably from a real one — so **"not
+empty" is a proxy for "not vacuous" and the proxy does not hold**, and a rule
+would refuse the one input nobody would ever use. And the salt check **fails at
+its own stated purpose**: it exists so a prediction is not "recoverable from
+its hash", and `salt: "."` is accepted. The achievable version is an entropy
+requirement, which **no validation rule can check** — entropy is a property of
+the process that made a string, not of the string. §5.22's shape a second time.
+
+**Then item 11's blocker went the same way, which makes three.** Its two
+dependencies — items 8 and 9 — had both closed the day before, leaving *"a
+measurement nobody has designed"*. **Designing a measurement is effort.**
+
+**THE DESIGN FINDING IS THAT THE DISCRIMINATOR IS NOT IN THE DIVERGENT ACT.**
+Exploration and degradation produce identical writes — same entry type, same
+modes, same thresholds — which is why the row could not find a measurement by
+looking at the write. What separates them is RECEPTION: a species proposed on
+unusual grounds is exploration if agents who did not share the proposer's
+priors take it up, and noise if nobody does. The nearest thing that existed
+could not say that — `get_critique_species_adoption_count` returns `links.len()`
+**including the proposer's own citations**, so a species one agent invented and
+then cited fifty times reported fifty, indistinguishable from fifty adopters.
+The comment that deleted the old self-declared `adoption_count` field called
+that derived count "the real, query-time replacement"; **a derived number one
+agent can drive alone is barely better than a declared one.**
+
+`get_species_adoption` decomposes the same links by author and reports
+**components and no score** — an exploration index would be the fabricated
+scalar §2.5 refuses, and would read as a verdict on an agent. A pure read, so
+per SPEC §11 it is coordinator-only: no DNA hash change, no bump.
+
+**THE HONEST LIMIT ANSWERS THE ROW RATHER THAN SATISFYING IT.** Adoption is
+visible only after others have had the chance to adopt, so **this cannot clear
+a divergent observer in advance.** Item 11 asked for a measurement that would
+make running divergent observers SAFE; what is achievable makes them
+OBSERVABLE. Nothing here can offer the first, and the remaining work should not
+be planned as though it can.
+
+**And surfacing it found a staleness defect nothing had noticed.** The taxonomy
+tab's figures were as of connect time and never moved — `loadTaxonomy()` ran on
+connect and after proposing a species and nowhere else — because the old check
+confirmed adoption through an independent zome read and never looked at the tab
+again. That mattered more once adopters were shown: "nobody has used it yet" is
+a stronger false statement than a stale 0, and adoption by another agent is
+something a session cannot learn any other way.
+
+**Three rows in two days whose blocker named a person and meant labour, each
+caught by reading the row's own next sentence.** The checkpoint above was
+written by summarising those sentences, and the summary is where all three
+errors entered. **A blocker summarised is a blocker not re-read**, and the
+practice that follows is to re-read the row, not the handover.
+
+**And then the 421.1s, which makes four — except this one was filed as a
+judgement call rather than as a person-shaped blocker, so it is the same
+mistake in a different costume.** The row said *"that is a call about where to
+spend effort rather than a measurement"*. The effort was reading one constant
+in the harness that produced the figure: `awaitConvergence` samples every
+**5 seconds**, so it reports `polls × (5s + two zome calls)` and **every true
+crossing inside one window collapses to a single figure.** The tenth of a
+second comes from accumulated call overhead over a fixed poll count — from the
+sampler, not the network.
+
+Simulating the loop's own shape: true crossings at 418.0s, 419.5s, 420.9s and
+421.0s **all report as 421.1s**, and crossings spanning 416.0s–421.0s produce
+just two distinct values. So *"variance does not produce the same figure twice
+to a tenth of a second"* is exactly backwards here, and the cluster offered in
+support — *"inside ±5s of ~420s"* — **is the step size of the sampler**, a fact
+about the instrument restated as a finding about gossip.
+
+**This does not refute the deterministic-timeout reading; it shows the
+observation cannot distinguish it from ordinary variance**, which is the weaker
+and honest claim. Resolving it would need a sampler finer than the effect. So
+the ruling is **no reopen** — another sighting of a mode already named, which
+§9's condition excludes explicitly — and `partition-rejoin.mjs` now prints the
+poll count and resolution beside every figure, at all four sites, because three
+others were inviting the same inference.
+
+**FOUR ROWS IN TWO DAYS, one shape: a blocker written from the conclusion
+rather than from the obstacle.** Three named a person and meant labour; the
+fourth named a judgement and meant arithmetic. In every case what resolved it
+was re-reading the row's own subject instead of the handover's summary of it —
+and the 2026-10-20 checkpoint's central finding was *that exact fault*, audited
+across five rows, while four more sat open in the same file.
+
+**Where that leaves the roadmap: item 11's own subject — running a deliberate
+minority of observers, which is a deployment rather than a build** — and the
+items under *Before mass adoption* that need hardware or a person's decision:
+two consumer networks, scale beyond four nodes, the sybil position, and an
+outside audit. **Nothing else is blocked on effort, and that claim has now been
+checked against each row's own sentence four times rather than summarised.**
+
+**CHECKPOINT, end of 2026-10-21. Four open rows closed or ruled, and every one
+of them had been filed as needing a person.** Items **21**, **20**, **11**'s
+blocker and the **421.1s** ruling. Five pull requests' worth of work on one
+branch; the roadmap count is unchanged at 78/1 because none of these was a
+roadmap row.
+
+**THE FINDING THAT OUTLIVES ALL FOUR is the same one yesterday's checkpoint
+made, and yesterday's checkpoint committed it while making it.** It audited
+five closed rows, found every blocker wrong in the same direction — *a blocker
+describing what it would take instead of what is blocked* — wrote "write the
+obstacle, not the remedy", and then summarised four still-open rows as needing
+a person. **All four were labour.** Three named a person and meant effort; the
+fourth named a judgement call and meant arithmetic.
+
+| row | its blocker said | what it actually needed |
+|---|---|---|
+| **21** | "Nothing technical" | the instrument named in its next sentence — pure effort |
+| **20** | "three readings and a decision each" | the three readings, which it then calls "not the constraint" itself |
+| **11** | "a measurement nobody has designed" | designing the measurement |
+| **the 421.1s** | "a call about where to spend effort rather than a measurement" | reading one constant in the harness that produced the figure |
+
+**The mechanism is now specific enough to act on: the error entered at the
+summary, not at the row.** In all four cases the row's own next sentence named
+the work, and in two cases the correct reading was already written down
+somewhere else in the repository — `assert_expertise`'s decision sat twelve
+lines above the check and again in SPEC §5.21, and §9's cross-internet entry
+says "each inside one poll" where the summary table said "5.0s". **A blocker
+summarised is a blocker not re-read**, and the practice that follows is to
+re-read the row rather than the handover.
+
+**WHAT CLOSING THEM FOUND, in each case more than the row asked for.** Item
+21's one-line fix was **a third of the defect** — applied alone it ships a
+bridge whose every tweet carries an unreadable hash, because a hash reaches the
+tweet as 39 raw bytes, in the polling path that still *worked*; and a third
+defect sat behind that, a reverse leg matching an Ethereum-shaped hex string no
+Holochain hash can be. **One defect hidden by a fallback, hiding a second,
+masking a third.** Item 20 found that two of its three candidates **could never
+have been rules at all** — their fields live in a private entry whose content
+validation never sees — and that one of them fails at its own stated purpose,
+since `salt: "."` is accepted and entropy is not a property a validator can
+check. Item 11 found that the number it was meant to replace is **self-
+inflatable**: `get_critique_species_adoption_count` counts the proposer's own
+citations, so fifty self-citations and fifty adopters are the same figure.
+
+**AND THE 421.1s TURNED INTO A SWEEP, which is the day's second-largest
+result.** The repeated constant was the sampler: `awaitConvergence` polls every
+5 seconds, so every true crossing inside one window reports the same figure and
+the tenth of a second is accumulated call overhead. *"Variance does not produce
+the same figure twice to a tenth of a second"* is backwards for a quantised
+instrument. **Three more harnesses were reporting figures the same way**, and
+one is a headline: the single cross-internet crossing cited as **"5.0s" is an
+upper bound of 5s**, which *understates* the substrate — the opposite error to
+the 421.1s, from the same cause. All four now print their resolution.
+`network-partition.mjs` then reproduced the phenomenon live in one run —
+`nodeA 884.8s (poll 177)`, `nodeB 884.8s (poll 177)`, identical to a tenth of a
+second — with the caveat that those two were measured concurrently and so are
+not a perfect analogue.
+
+**Three defects were found by SURFACING something rather than by building it.**
+Putting item 11's measurement on the taxonomy tab exposed that
+`loadTaxonomy()` ran on connect and after proposing a species and **nowhere
+else**, so that screen's figures were as of session start forever — invisible
+because the old check confirmed adoption through an independent zome read and
+never looked at the tab again. And CI had **never compiled `bridge/` at all**,
+which is part of how item 21 survived.
+
+**WHERE TO PICK UP. For the first time this is not a list of unblocked work.**
+
+| open | what it needs |
+|---|---|
+| **11**'s own subject | running a deliberate minority of observers — an operational deployment, not a build. The measurement now exists to read it by, and **constrains the experiment**: classification lags adoption, so a short run yields the all-self case for exploration and degradation alike |
+| **two consumer networks** | two physical home networks. Still the highest-value item under *Before mass adoption* and still impossible in CI |
+| **scale beyond four nodes** | a run at tens of nodes. Worth checking whether this is hardware or effort — it has not been read the way the four rows above were, and arc sizing is testable locally |
+| **the sybil position** | a person standing behind it before inviting a crowd. Explicitly not technical |
+| **an outside audit** | a person, and money |
+| **the live X API** | credentials. Nothing here posts a tweet, and the bridge service's `start()` is still unexercised |
+| ~~**22** — Invariant 9's consequence~~ | **DECIDED 2026-10-21: no autonomous write.** The tick keeps emitting an ephemeral signal; a reading is published when a person chooses to. Nothing was built — the status changed, which is the point: a tick writing nothing because nobody decided is one implementation away from writing something. **Three reasons:** there is no consumer (`publish_discourse_reading` is itself unsurfaced), Invariant 6 makes it the least reversible change available (the off switch stops future writes and nothing else), and a reading is somebody's *signed* promise — an unattended writer makes permanent attributable promises while its agent is not watching. **Enforced, not stated:** `metabolism.mjs` asserts the tick's chain does not grow, watched failing as injection AO. **Cost, stated plainly: Invariant 9 stays unsatisfied, now by choice** — and 6 and 9 are in tension by construction, which no implementation resolves. See READINESS item 22 |
+| **the raw-payload extern** | a protocol surface decision — whether this repository wants an extern existing only so tests can reach derived fields. It would close the 8 `needs_extern` foresight rules (READINESS 5g); corpus authoring will not |
+
+**The one row above that deserves the treatment the other four got is *scale
+beyond four nodes*.** Its stated blocker is "a run at tens of nodes", which
+reads like hardware — but arc sizing, gossip load and DHT behaviour are all
+testable with conductors on one machine, and `network.sh` already parameterises
+nodes A through D. Whether that is effort or hardware has not been checked
+against the row's own sentence, and on today's evidence that check is worth an
+hour before anybody budgets a cluster.
+
+**CHECKPOINT, end of 2026-10-22. Six more rows closed, two protocol forks taken,
+and the first autonomous population this graph has had.** Items **5g**'s last
+eight rules, **22** (decided and then enforced), **23** (the O dial), **24** (the
+past cone, `protocol_version: 10`), **25** (settlement, `protocol_version: 11`)
+and **11**'s own subject, the swarm. `PROTOCOL_VERSION` goes **9 to 11**. The
+roadmap count is unchanged at 78/1 — none of these is a roadmap row — and two
+rows from yesterday's pick-up table are gone: *11's own subject* was run, and
+*the raw-payload extern* turned out to be nine lines of Rust whose decision had
+already been taken six times.
+
+**THE FINDING THAT OUTLIVES ALL SIX: a check that cannot go red reads exactly
+like a check that passes.** Yesterday's finding was about the *blocked on*
+column; today's is about the green tick, and it was found five separate times in
+two days — three of them in harnesses written *after* the lesson was catalogued.
+
+| where | what was green and should not have been | what makes it sensitive now |
+|---|---|---|
+| `ordering-policy` | **all three injections passed against the first version.** Every section asserted that a causal rule produced the right order, using records already in that order **by hash** — so deleting the rule under test changed nothing and the tie-break silently produced the same answer | every section now picks records whose hash order **contradicts** the required order. **BO** 1 red, **BP** 3, **BQ** 4 |
+| `settlement` §8 | the file went green with `TargetToAssessment`'s author binding deleted: the status's target rules were probed thoroughly and **a link was never forged** — §5.19's finding reproduced by somebody who had read it the day before | both new link types are in `AttachmentLinkKind` and probed through `attempt_false_attachment_link` like the other eighteen. **BW** 1 red |
+| `metabolism` | the tick wrote to the DHT while `MetabolismTerms` still declared it did not, and **the declaration check stayed green** — the declaration was still false, so comparing it to itself proved nothing | chain growth plus a pair check requiring declaration and behaviour to agree. **BM** 3 reds, `own_claims` 2, 3 |
+| `discourse-readings` | `discourse-readings` and `trust-lenses` both passed **before and after** the aggregate stopped counting its own readings, so the repair could have been reverted in silence | five checks. **BJ** gives 3 reds and prints `total_claims=4 reading_claims=0` against a domain holding one real claim |
+| `scale-dht` | *"the entry reached every node"* passes at 3 members, at 12 and at 1,000 without ever testing routing | arcs are **reported, not asserted**, and the run and the summary both say §3 did not test scale |
+
+**The general form, which applies past this repository: a check is only
+sensitive when the policy under test and the policy it must NOT be give
+different answers on the data.** A declaration nothing compares to reality is a
+label; an ordering test over records already ordered is a tautology; a
+reachability test on a full-arc DHT is a statement about storage. All three read
+as passes.
+
+**THE TWO FORKS WERE TAKEN BECAUSE NOBODY HAS INSTALLED THE hApp, and that
+window closes.** A field on an entry type is an integrity change, so a DNA hash
+change, so a different network — peers on the old hash cannot see the new one at
+all. **Bumps are free only while there is no installed base**, and §11's own
+migration rule says entry hashes must not be carried across a fork, which means
+**a past cone cannot survive one**: cone history resets at every future bump.
+That is the consistency ratchet instantiated, and it argues for batching future
+integrity changes hard rather than against these two. `past_cone` is additive
+via `serde(default)` — an omitted field records an empty cone, which honestly
+says *nothing was recorded* rather than *nothing was seen* — so about twenty call
+sites across the harnesses, SDK and UI were unchanged by version 10.
+
+**SETTLEMENT CAME OUT STRONGER THAN THE BRIEF ASKED FOR, and that is the second
+finding.** The brief wanted settlement to be a pure function so that *"anyone can
+recompute it and check the aggregator's result"* — a courtesy, telling a careful
+reader how to catch a liar. **But a pure function over data every peer can fetch
+is a function VALIDATION can run**, so `validate_settlement_status` runs it: a
+forged `Settled` is refused by every peer independently, before the entry exists.
+Injection **BU** removes that rule and the forged status **commits** — a disputed
+claim declared settled, permanently, with the disproving inputs attached to it.
+**What remains possible is not a defect**: two aggregators may choose different
+input sets and reach different states, both valid, both reproducible, and the
+difference is visible because `inputs` is published. **Lying about arithmetic is
+refused; disagreeing about scope is not**, and the protocol has no business
+adjudicating the second. Status is an **entry, not a field**, because Invariant 6
+forced it — `get_settlement_statuses_for` returns every status rather than
+hiding a dissent behind a "current" one, which would be the deletion Invariant 6
+forbids performed by a reader instead of a writer.
+
+**THE PAST CONE'S TRANSITIVE CLOSURE IS SOLELY LOAD-BEARING.** Injection **BR**
+removes it and the attack **commits**: an author records having read a rebuttal
+while denying the objection it answered. Nothing else catches that. What
+validation cannot check is that the author actually saw these, and **no rule
+can** — the field is author-supplied and validation has no view of anybody's
+screen, the same shape as item 14's `reveal_deadline`. So over-claiming is
+possible and harmless, and **under-claiming is the direction an attacker wants**:
+pretending you never saw the rebuttal. §4 of the harness asserts that limit
+explicitly so §3 is not over-read.
+
+**THE SWARM RAN, AND THE FORK IS WHY IT PRODUCED ANYTHING.** Five agents, three
+dispositions, one a deliberate minority differing by a single number
+(`minConfidenceToFlag`) rather than by a personality, on a **DHT minted for the
+run** — enforced, not conventional, because Invariant 6 means nothing a swarm
+writes can ever be deleted and item 11's own finding is that exploration cannot
+be told from degradation at the time of writing. The same-DNA-hash precondition
+**fired on its first use**: agents installed without the seed had silently formed
+their own networks, so the population would have been several one-agent swarms
+that could not see each other. **Three critiques of the same target, written in
+the same round, recorded `saw 0 of 2`, `saw 1 of 2` and `saw 2 of 2`** — genuinely
+different views of what had been said, retained at write time and unrecoverable
+afterwards. A concurrent population is the only thing that generates that, and
+version 10 is the only reason it could be recorded. **Dispositions are mechanical
+rather than generated**, and the reason is Invariant 6 rather than caution about
+language models: the first permanent writes an autonomous population ever makes
+should have a basis anybody can audit line by line.
+
+**WHAT THE SWARM IS NOT, stated because the word is tempting: the graph is
+ACTIVE, not autopoietic.** The DNA still does nothing on its own clock — item 22
+decided that deliberately — and a swarm of external processes calling externs is
+not a system that maintains its own organisation. No ranking is computed either,
+because Invariant 1 bars a comparative reputation, so the report gives counts of
+action, which measure which threshold was lower rather than which agent was
+right. **And the first report hid its own finding**: three dispositions each
+showed 6, which reads as *no difference*, when one loose agent wrote 6 and two
+strict agents wrote 3 each. The aggregate divided the signal by the headcount,
+so the report is per-agent now.
+
+**TWO MORE ESTIMATES WERE WRONG IN YESTERDAY'S DIRECTION, which makes the
+blocker finding six for six.** *The raw-payload extern* was called "a protocol
+surface decision" here and is nine lines of Rust: six `attempt_*` probers already
+exist for exactly that reason, and the first one's own comment carries the
+argument — a coordinator is hot-swappable per §11.1, so a prober grants an
+attacker nothing and grants a test the ability to observe a refusal. `needs_extern`
+is now **0** and `needs_prober` was already 0, so every validation rule reachable
+from JavaScript has a case or a stated gap. And *tens of nodes* read as hardware
+and was effort: six conductors measured at **~97.8 MB mean RSS, load 1.17 across
+12 cores**, so twenty is ~2 GB and 1.5 cores. **Both were written from the
+conclusion rather than from the obstacle.**
+
+**AND THE PROBERS ANSWERED A QUESTION THAT WAS UNANSWERABLE WHILE THE RULES WERE
+UNREACHABLE: which author rules carry weight alone.** **BK** removed three at
+once — `PreRegistration`'s forged-author payload **committed**, while
+`WorldlineTrace` and `Revelation` each fell through to an adjacent rule. **BN**
+removed the last three: `BridgeRecord`'s author binding, its loss-field
+consistency rule and `ExternalCritique`'s importer binding, **all three red with
+"the call COMMITTED"**, so all three are solely load-bearing.
+
+**ONE COST ARRIVED EXACTLY AS FINDING 17 PREDICTED, and it is recorded rather
+than worked around.** The corpus's cone fixtures are now **shared** between the
+`critique` and `assessment` specs: six critiques in one run exceeded §6's
+20-per-rolling-hour `SynapticLink` ceiling — every `create_critique` mints one —
+and every case below it SKIPped. **A corpus that silently stops testing things is
+worse than a slow one.** The ceiling is per *agent*, counted over a rolling hour,
+so **a second corpus run inside the same hour on the same conductor still fails
+its `Critique` chain**; the baseline check names the saturation and points at
+`scripts/sandbox.sh clean && start` for a fresh agent rather than letting it read
+as a zome defect. Trimming a fixture would make the under-claiming attack
+unreachable, so it stays.
+
+**WHERE TO PICK UP. Nothing in the queue is blocked on effort, and nothing is
+waiting on a decision** — item 22 was the last of those and it is taken.
+
+| open | what it needs |
+|---|---|
+| **two consumer networks** | two physical home networks. **The only hardware-blocked row left**, and still the highest-value item under *Before mass adoption* |
+| **scale beyond twelve** | more members. Twelve all claim a FULL arc, so the figure worth recording is **the N at which an arc first narrows**, and nothing above twelve has been run. Not a procurement decision — a run |
+| **the sybil position** | a person standing behind it before inviting a crowd. Explicitly not technical |
+| **an outside audit** | a person, and money |
+| **the live X API** | credentials. Nothing here posts a tweet; the bridge service's `start()` is still unexercised |
+| **item 22's reopen condition** | **both halves**: a surface for readings exists *and* somebody wants them faster than a person will click. Then option (b), opt-in per agent with write-on-change, never a heartbeat |
+| **four unsurfaced reads** | an interaction design, not wiring. `critiques_unseen_by` (the honest screen must render `cone_recorded` as prominently as `unseen`, or silence reads as ignorance), `publish_discourse_reading`, and the settlement and assessment screens. Each is deliberately unsurfaced with its reason recorded |
+| **settlement's cool-down** | not a build. §5.22 again: the brief wanted causal steps rather than wall-clock and the instinct is right, but causal distance needs a graph walk validation cannot afford, and every policy parameter must be an exact integer comparison or peers disagree |
+
+
+
+
 | Open item | Blocked on |
 |---|---|
 | ~~Post the upstream draft, or decide not to~~ | **Closed 2026-10-12: posted as [holochain/kitsune2#673](https://github.com/holochain/kitsune2/issues/673).** It was the only item here that needed a person. What it asks: whether `kitsune2_gossip` advancing the new-ops bookmark before `request_ops` is known to have succeeded is intended, given `core_fetch` drops an unresponsive peer's request with no log line and no retry timer. Verified against `main` before posting — `respond.rs:181`/`188`, `respond/accept.rs:38`/`52`, `core_fetch.rs:346` are unchanged there, so the question is about current code rather than the 0.5.0 it was drafted from. The first question to expect is still "have you observed this stranding an op?", and the answer is still **no**: four timestamp arguments were examined and all four withdrawn, which is why it is filed as a question about intended behaviour. **Nothing depends on the answer** — a maintainer saying which path recovers the op would close an investigation, not unblock work. |
@@ -1315,8 +1812,8 @@ in this file; what was missing was a list of them in one place.
 
 | What | Where it stands | What it needs |
 |---|---|---|
-| **Cross-internet propagation on consumer networks** | **One** measured crossing, 5.0s, between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured) | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
-| **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. Nothing above that | A run at tens of nodes. Arc sizing, gossip load and DHT behaviour are all scale-sensitive and none is measured |
+| **Cross-internet propagation on consumer networks** | **One** crossing, **inside 5.0s** — not AT 5.0s, corrected 2026-10-21 — between two **datacentre VMs** (§9 and INSTALL.md both say the two-consumer-routers case is the harder one and is unmeasured). `cross-internet.mjs` polls at t≈0 and then every 5s, so the figure means absent at the first check and present at the second: **an upper bound, with the true latency unresolved.** It understates the result rather than flattering it. Same sampler artefact as the 421.1s in READINESS §3, from the opposite direction. **§9's own detail entry had this right — it says "each inside one poll" — and this summary row lost it**, which is the "blocked on" column's failure applied to a figure | Two laptops on two different home networks. Cannot be done in CI. **Highest value of the four and the cheapest.** |
+| **Scale beyond four nodes** | Every harness is three conductors; `peering-rate` adds a fourth. **A sixth-member DHT was brought up and verified on 2026-10-21** — see the next cell. Nothing above six | **THE BLOCKER READ LIKE HARDWARE AND IS NOT; it is effort, and the first increment is done.** *"A run at tens of nodes"* reads as needing a cluster. **Measured on the development machine instead: a conductor is ~95-98 MB RSS and ~8% of one core** at rest with a small DHT (six of them: 0.57 GB total, mean 97.8 MB, load 1.17 across 12 cores). So **twenty nodes is about 2 GB and 1.5 cores** — a laptop, not a budget. **`scripts/network.sh` now takes opt-in scale nodes** (`EPI_SCALE_NODES=20 … start-scale`, ports from 9200, shared seed). They are appended to `OPTIONAL_NODES` and **never to `start`**, because a fourth member of the shared DHT changes what the partition harnesses measure — the reason nodeD is opt-in — and a twentieth would change it twenty times over. **Verified at six members, not merely started:** scale nodes report the **same DNA hash** as nodeA with **distinct agent keys**, and a claim written on nodeA reached two of them on the first 5s poll (`5.0s` and `5.1s`, poll 2 of a 5.0s sampler). **WHAT A LOCAL RUN DOES AND DOES NOT MEASURE, because the two scale rows are different questions.** Arc sizing, gossip load and DHT behaviour are properties of the DHT's own logic and ARE exercised by many conductors on one host — which is what this row names. What localhost cannot produce is NAT, real latency or packet loss; that is the *cross-internet propagation* row above and is not this one. **THE HARNESS EXISTS AND TWELVE MEMBERS WERE RUN (2026-10-21): `scripts/live-verify/scale-dht.mjs`, 9 checks** — an experiment, not a gate and not in CI, since twelve conductors on two CI vCPUs would measure the runner. nodeA + nodeB + ten scale nodes, with nodeC outside as the isolation control. **AND THE ROW IS NOT CLOSED BY IT, which is the finding.** All **12 members claim a FULL arc, `[0, 4294967295]`** — every one an authority for the whole DHT. So the entry written on nodeA was resolvable by hash from all 11 peers (5.1s to 10.3s), and **that result is STORAGE, not ROUTING**: at full arcs everybody has a complete copy, so resolvability is guaranteed by construction and would pass at a thousand members without testing anything. **The harness is built around refusing to let that read as a scale result** — §2 reports arc narrowing rather than asserting it (whether this substrate ought to shrink an arc by twelve is not a claim this repository is entitled to make), and says in the run and in the summary that §3 did not test scale. **So what twelve members established is where the question actually starts: this substrate does not narrow an arc at twelve, and the next experiment is MORE MEMBERS rather than a different assertion.** The figure worth recording is the N at which an arc first narrows, and nothing above twelve has been run. Memory is a floor too — measured at rest with a small DHT, not a steady state under gossip load |
 | ~~**Propagation latency a user would accept**~~ | Crossings measured at 415s, 424.9s, 929.1s, 943.0s, and non-crossings inside 330s. Frozen as this substrate's known behaviour | **DECIDED 2026-10-19, and it is the second of the two options rather than the first.** This row asked for a decision rather than a fix: state a bound a user can rely on, or surface "not yet propagated". **Surfacing it is the honest one**, because stating a bound would mean promising something this substrate does not offer — the measurements above span 415s to 943s and were frozen as behaviour, not as a guarantee. So the protocol reports CLOSURE instead: `which_entries_resolve_locally` answers, per hash a pending write cites, whether this observer can see it yet, and `agent-sdk` reports that through `closureOf()` before a write and `onPendingDependency`'s `closure` while one is stalled. A client can now say "3 of 4 citations have arrived" rather than counting down a twenty-minute timer — which is SPEC §5.3's point that in an observer-centric model the question is what this observer must have seen, not how long it has waited. **What this row does NOT now claim:** closure is not a bound, not a prediction, and not a promise the next commit will succeed. Minutes-long silence remains a product characteristic; what is no longer true is that a user has to watch it blind |
 | **A security review** | **Run on 2026-10-11 over the zomes and the validation path, and it found five defects of one shape** — see *What the security review found* below. **The four link-level ones are fixed** (`protocol_version: 5`; SPEC §5.19 carries the rules and the account). The fifth is the update-op gap SPEC §5.1 already recorded, and is a decision rather than a bug. **[`SECURITY.md`](SECURITY.md) now exists** — where to report, what is already a known and deliberate position (sybils, hot-swappable coordinators, structurally impossible erasure), what has been reviewed and what has not, and the fact that 72 of the harness's 73 checks have never been shown capable of failing. Still **no outside audit**, and this file still states plainly that **nothing resists sybil creation** | Two things, and neither is about the nine rules any more. **Those are measured**: `scripts/live-verify/attachment-links.mjs` green on its first execution anywhere (35 checks, run [`38110651478`](../../actions/runs/38110651478)) **and watched failing on its own rule** (run [`38111598258`](../../actions/runs/38111598258) — one rule reverted, 2 reds of 34, prediction recorded beforehand). What remains is **one decision, and it is not a technical one**: the conscious choice to stand behind the sybil position before inviting a crowd. The update-op gap — the fifth defect — **is closed**, and closed by refusal rather than by rule: `dna/integrity/src/lib.rs:1018` returns `Invalid("Entry updates are not permitted; see SPEC.md §5.1")`, at `PROTOCOL_VERSION = 9`. [`SECURITY.md`](SECURITY.md) exists. Still **no outside audit** **AND A SIXTH DEFECT WAS CONFIRMED ON 2026-10-18, after this review and of a different shape from the five.** It was found by reading rather than by the review's own sweep, and then measured: `reveal_deadline` is enforced against a timestamp the author supplies, so a commitment whose window has closed can still be revealed by moving the authoring conductor's clock back inside it — permanently, since the resulting `Revelation` is a durable entry Invariant 6 forbids deleting. `scripts/live-verify/clock-skew-reveal.mjs`, reproduced twice, with the honest refusal as the in-run control. **This one cannot be fixed by a validation rule at all** — `hdi` has no `sys_time` because validation must be deterministic — so every repair names a clock instead (countersigning, or an attested external one). SPEC §5.22 and READINESS item 14. **The lesson for this row is about the review's coverage, not only the defect**: the five it found were all link-level and of one shape, and the sixth was a different shape in a path the review did not reach, which is the argument for an outside audit rather than against it. |
 
@@ -4863,6 +5360,22 @@ each of these is currently exactly that.
   | agent key | `hCAkZlX7D7U0J+VmQuhjKRy3…` | **different** |
   | | published into `XNet37564173490` at 03:07:03.70 | `t+0s` nothing · **CROSSED in 5.0s** at 03:07:09.14 |
 
+  **"EACH INSIDE ONE POLL" IS THE ACCURATE READING AND THIS SECTION HAD IT
+  RIGHT; the summary table under *Before mass adoption* flattened it to "5.0s"
+  and that was corrected on 2026-10-21.** The timestamps above bound it without
+  any new measurement: published at `03:07:03.70`, nothing at the `t+0s` check,
+  present at `03:07:09.14` — so **the true crossing is somewhere in (0.3s,
+  5.4s]** and 5.0s is where the second poll happened to land, not where the
+  entry arrived. The figure is an upper bound and it **understates** this
+  substrate.
+
+  **Worth noting as a pattern rather than a one-off:** the detail site knew the
+  resolution and the summary lost it, which is the same failure as the "blocked
+  on" column's — a thing read correctly once, then summarised, and the summary
+  is what everybody afterwards cites. READINESS §3's 421.1s is the same sampler
+  making the opposite error, and all four harnesses that print figures from a
+  poll loop now print their resolution beside them.
+
   All three of the checks this harness prints for exactly this purpose are
   clean: the two hosts reported the **same DNA hash**, so they were genuinely on
   one DHT; **different agent keys**, so it was two nodes rather than one
@@ -5151,7 +5664,9 @@ each of these is currently exactly that.
 
   **Two smaller things the build settled.** The picker is *hidden* when the taxonomy is empty and *disabled* when the budget is spent — §4.5's rule that structural impossibility hides while transient unavailability explains itself. And both connect paths load the taxonomy, not just the manual one: a Launcher-installed practitioner reaches the critique form without ever opening the tab, so loading it only there would have left the picker empty on precisely the path that ships.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, sixteen checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
+  **Verified live, and observed failing first.** `scripts/live-verify/taxonomy-ui.mjs`, 25 checks: the tree nests, adoption is the query-time count (0 reads as "0", never as "unavailable" — different answers, rendered differently), a critique written *through the UI* raises the count 0 → 1 as read by an **independent** client, and a species proposed through the form lands on the DHT under the right name *and* the parent the select chose. Then the two regressions it exists to catch were injected and watched go red: reverting `species` to `null` fails the adoption check, and sorting the tree by adoption fails three checks at once.
+
+  **Nine checks were added on 2026-10-21, and they are READINESS item 11's measurement reaching the screen.** The count this harness verified says how many CRITIQUES used a species, and it includes the proposer's own — so a species one agent invented and then cited itself displayed identically to one others had adopted. The tab now also says *who*: "nobody has used it yet", "all by its proposer", or "including N other agents", from `get_species_adoption`. **A second agent was added to this harness for it**, because the case that matters cannot be produced by one: §3b has somebody who did not propose the species cite it, and requires the wording to change. **And adding those checks found a staleness defect nothing had noticed**, because the old check confirmed the count through an independent zome read and never looked at the tab again: `loadTaxonomy()` ran on connect and after proposing a species, and nowhere else, so this screen's figures were as of session start forever. It mattered more once adopters were shown — "nobody has used it yet" is a stronger false statement than a stale 0, and adoption by another agent is something a session cannot learn about any other way. The tab now refreshes when opened, without clearing first, so figures move from one true value to another rather than blanking to "unavailable" and back.
 
 - [x] **Opt-in trust lenses surfaced — the item §9 flagged as needing care under §4.4, and the care turned out to be the whole job.** `AttestationPolicy` is the mechanism §4.4 itself names as the honest kind of lens: aimed explicitly by the caller, so two callers legitimately get different answers because they asked different questions. Surfacing it means `is_agent_attested`, `grant_attestation` and `get_my_membership_action` now have a UI, and `get_discourse_health` can finally be asked a question rather than only a neutral one.
 
@@ -6012,7 +6527,7 @@ each of these is currently exactly that.
   **Two defects in the harness, both of the kind this directory keeps recording.** Its first summary line claimed the run proved "a question chosen afterwards" is refused, which it no longer tests — a label claiming more than its assertions. And a probe for "a commitment cannot be updated" called an extern that does not exist while asserting the error contained `"not"`, which `"function not found"` satisfies: a guard scoring a pass against a function that was never there. Verifying that a function is *absent* is `check-spec-drift.mjs`'s job, since it enumerates what exists; it is not something a live call can establish by being rejected.
 
   **And it runs directly at Invariant 1, which is the deeper reason to design it before building it.** "Who called it right" is a comparative standing, and this feature begs to become one. The invariant permits exactly what pre-registration would produce — raw history, open and queryable, a record of what someone committed and when — and forbids what everyone would immediately want computed from it. So the constraint is not on the record but on the arithmetic: no hit rate, no calibration score, no ranking of forecasters, however tempting a cryptographically verifiable one would be. A leaderboard arriving with a proof attached is *worse* than an obviously subjective one, because it is harder to argue with and no more legitimate. That is the trap this entry is parked in front of, not merely the absence of a stated need.
-- [ ] **Surface the epistemic state the backend already computes — now 43 of 70 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
+- [ ] **Surface the epistemic state the backend already computes — now 43 of 84 coordinator functions, from 4.** Everything the protocol computes *about* discourse is what distinguishes it from a forum, and most of it had no surface. Shipped so far: the HUD layer (`get_discourse_health`, `get_effective_conductance`, `get_cross_domain_critiques`, `get_antibody_patterns_for`, `get_synaptic_link_friction_status`), membranes and governance (`get_membranes`, `get_membrane_members`, `join_membrane`, `create_membrane`, `publish_constitution`), evidence and grounding (`create_evidence`, `get_grounding_path`, and `get_claim`/`get_evidence` to resolve the path that returns), and retraction in both directions (`create_retraction`, `get_retractions_for_claim`).
 
   **The critique taxonomy is now shipped** — `get_all_critique_species`, `get_critique_species_adoption_count` and `create_critique_species` all have a surface, and `Critique.species` is no longer hardcoded `null` at the one place a critique is written. See the Critique Types entry below.
 
@@ -6060,10 +6575,19 @@ Three of the four remaining were called **hash-addressed getters** which a scree
 
   | Unsurfaced extern | Why it has no screen |
   |---|---|
+  | `critiques_unseen_by` | **Unsurfaced because the screen for it is a real interaction-design problem, not a wiring task — the same call `publish_discourse_reading` made.** It answers *which critiques of this node did that critique's author not record having seen*, and a screen showing that beside a critique is one step from reading as an accusation. The honest version has to render `cone_recorded` as prominently as `unseen` — silence is not ignorance, and most critiques today are silent, since the field is `#[serde(default)]` and every existing client omits it. Shipping the list without that distinction would manufacture a finding out of a missing feature. The protocol half is done and verified (READINESS item 24) |
+  | `publish_assessment` | **Unsurfaced because the screen is a design problem, not wiring** — the same call `publish_discourse_reading` made. A stance button commits a user to a permanent, attributed position under their own key, and doing it honestly means showing what they are assessing ALONGSIDE the objections already raised, since `past_cone` records what they had seen. A one-click Supports/Disputes without that is a vote, which is the thing this entry type is deliberately not. Protocol half done and verified (READINESS item 25) |
+  | `publish_settlement_policy` | Unsurfaced, same family. A policy editor is a form that asks a user for two integers and a paragraph — easy — but a screen that ALSO shows what those numbers would settle, over the graph as it stands, is the one worth having, and that is a view nobody has designed |
+  | `publish_settlement_status` | Unsurfaced, and the most dangerous of the three to surface carelessly: a "Settle" button renders one agent's arithmetic as a verdict unless the screen also shows the policy, the input set, and any competing status. `get_settlement_statuses_for` deliberately returns ALL statuses for exactly that reason |
+  | `recompute_settlement` | SDK- and aggregator-facing rather than screen-facing, like `order_records` and `which_entries_resolve_locally`. It is what a client calls to CHECK somebody's published status; the thing a user would look at is the comparison, not this |
+  | `get_assessments_for` | read half of the above — unsurfaced because nothing displays assessments yet |
+  | `get_settlement_statuses_for` | read half of the above |
+  | `order_records` | **SDK- and aggregator-facing rather than screen-facing, the same call `which_entries_resolve_locally` made and for a related reason — the two are the C and O dials of one model.** It returns a deterministic replay order over a set of records, which is a thing a client computes WITH rather than a thing a user looks at: the consumer is whatever composes a view or recomputes an aggregate, and `mobile-ui` has no screen that displays a mixed set of concurrent records yet. **A screen would also have to say what the order is not** — it is not a global order, and rendering a numbered list invites exactly the reading SPEC §10 forbids. It is surfaced when something needs to show competing positions in a stated sequence; until then it is an extern with a reason rather than a gap |
   | `which_entries_resolve_locally` | **SDK-facing rather than screen-facing, and that is the point of it.** It answers §5.3's closure question — of the hashes a pending write cites, how many can this observer actually see — and the caller that needs it is `agent-sdk`, which reports closure through `onPendingDependency` and `closureOf()`. A screen would consume it through the SDK, not call it: the composer indicator it exists for ("3 of 4 citations have arrived") belongs to whatever client is composing, and `mobile-ui` has no claim composer that cites evidence yet. It is also the one extern here whose absence is designed to be survivable — the SDK treats a missing `which_entries_resolve_locally` as unknown closure and keeps writing, so an older happ loses the indicator and nothing else |
   | `publish_discourse_reading` | **Unsurfaced because a screen for it has a design problem, not because nobody thought of one.** It publishes a permanent, attributed, critiquable Claim — so a button for it is a button that commits the user to a public reading under their own key. Doing that honestly means the screen must let them CHOOSE the lens and SHOW which one they chose, because §4.4 forbids an interface that filters without the user having chosen and being able to see the filter — and a reading published through a lens the user did not knowingly aim is exactly the laundering this whole mechanism exists to prevent. That is a real interaction design, not a wiring task, and it is the next increment here rather than a gap. The protocol half is done and verified |
   | `start_metabolism` | **Unsurfaced on purpose, and it is the only row here where the reason is the off switch.** It schedules the heartbeat (READINESS item 8, SPEC §10.14a) on the calling agent's own chain. A button for it would start something nobody can stop: a scheduled function's only input and output is its schedule, so it cannot be passed a flag, and a persistent stop-flag needs a new entry type and therefore a DNA hash change. Restarting the conductor IS the stop, which `Schedule::Ephemeral` makes sufficient — and a control whose off switch is "restart the conductor" does not belong on a screen. There is also nothing for a screen to show: the tick writes nothing, so it has no user-visible consequence. Same call the foresight tab made about `get_pre_registrations_for_question` — unsurfaced with a reason rather than shipped with a caveat |
   | `create_mew` | bridge-only — `bridge/` owns the Twitter surface, and the UI is not a Twitter client |
+  | `get_critique_species_adoption_count` | **Superseded on the screen, deliberately, and still a real extern.** The taxonomy tab called it until 2026-10-21 and now calls `get_species_adoption`, which returns the same link count as `total_citations` ALONGSIDE who did the citing. The bare count cannot say the one thing a reader of that screen needs — it counts the proposer's own citations, so a species one agent invented and then used fifty times displayed identically to one fifty agents had adopted (READINESS item 11). **It is not deprecated and must not be removed**: `taxonomy-ui.mjs` and `species-adoption.mjs` both call it as an INDEPENDENT read, which is how each asserts that the decomposed figures agree with the raw link count rather than replacing it with something unchecked. A surface for it would now be the misleading half of a number the screen already shows honestly |
   | `get_mew` | bridge-only |
   | `get_mews_by_agent` | bridge-only |
   | `get_twitter_replies_for_claim` | bridge-only |
@@ -6079,6 +6603,11 @@ Three of the four remaining were called **hash-addressed getters** which a scree
   | `attempt_false_domain_index` | a negative-path prober — its own doc comment says it exists to *fail*, so validation can be watched refusing a poisoned index rather than assumed to |
   | `attempt_false_membrane_registry` | a negative-path prober, same shape |
   | `attempt_unaccountable_membrane` | a negative-path prober, same shape |
+  | `attempt_raw_worldline_trace` | a negative-path prober, and the reason it exists is the one `attempt_unaccountable_membrane` records: `generate_worldline_trace` DERIVES the agent, the boundaries and the checksum, so driving the real extern proved only that the coordinator builds a valid entry and left six integrity rules with no reachable path at all. Watched being refused by `scripts/validation-corpus/replay.mjs`, eight of eight rules (READINESS 5g) |
+  | `attempt_raw_pre_registration` | a negative-path prober, same shape — `pre_register` derives the author and computes the sealed hash, so the author-binding rule was unreachable |
+  | `attempt_raw_revelation` | a negative-path prober, same shape — `reveal_pre_registration` derives the author, so the author-binding rule was unreachable. **Not an attack surface**, for the reason SPEC §11.1 makes structural: a coordinator edit is hot-swappable, so a peer running a modified coordinator can already author any op validation accepts — what a prober adds is the ability to OBSERVE the refusal |
+  | `attempt_raw_bridge_record` | a negative-path prober, same shape — `record_twitter_mirror` fills `author` from `agent_info()`, so the author-binding rule the field's own comment calls "the authority" was the thing nothing could reach |
+  | `attempt_raw_external_critique` | a negative-path prober, same shape — `import_twitter_reply` fills `importer` from `agent_info()`. **With these two, `needs_extern` and `needs_prober` are both 0**: every validation rule reachable from JavaScript now has a corpus case or a stated gap |
   | `attempt_false_taxonomy_index` | a negative-path prober for `TaxonomyToSpecies`'s three rules, which `attempt_false_attachment_link` cannot reach because their base is a derived anchor |
   | `export_to_n4l` | an export path whose caller is `sstorytime/ingest.sh`, not a screen |
   | `get_all_constitutions` | chain-local by specification (SPEC §10.0) — a global list it cannot honestly produce |
