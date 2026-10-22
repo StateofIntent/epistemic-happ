@@ -7,9 +7,10 @@ problem.**
 **`v0.2.0` of the desktop app was published on 2026-10-12** carrying
 `protocol_version: 9`, which closes §1 below and makes step 1 and step 2 of
 *The order to do things in* done. The next thing that matters is step 3:
-two consumer networks, **measured in part on 2026-10-22** — one home
-broadband / mobile CGNAT pair, both directions, with a negative control (§3).
-Two *home routers*: still never measured.
+two consumer networks, **measured on 2026-10-22, including the two-home-router
+case** — a mobile CGNAT pair both directions with a negative control, then four
+crossings between two separate households on two ISPs, all under seven seconds
+and two of them sub-second in transit (§3).
 
 This file exists because the honest answer was spread across README §9,
 INSTALL.md, SPEC.md and two repositories, and nobody reading any one of them
@@ -192,7 +193,7 @@ builds from and absent from the branch everything is cut from — anyone
 branching off `main` would have silently lost it, and the next release would
 have reintroduced the bug. PR #4 restores `main` as the superset.
 
-### 3. Two consumer networks: measured in part on 2026-10-22
+### 3. Two consumer networks: measured on 2026-10-22
 
 This is the one that decides whether "people sharing info" works at all, and it
 is first in §9's priority order for a reason.
@@ -243,14 +244,49 @@ their agreeing to within about a second. **Both hosts reported
 rather than assumed, so the comparison rests on NTP agreement. The 5s poll grid
 is still the resolution floor, so read it as "under 2s, unresolved below".
 
-**What this does not close, and why the row stays open.** One side was a phone
-hotspot — CGNAT, so the crossing had to go through the iroh relay with no
-inbound path at all. That is arguably the *harder* case and it is the first
-mobile/CGNAT measurement here, but it is **not two home routers**, which
-remains at zero. Both peers were up and waiting in all three runs, so the
-returning-offline-node case is untouched. The trial series is five crossings on one mobile
-carrier and one home ISP within half an hour, which is a spread for that path
-and not a sample of consumer networks generally. And these were two `hc sandbox` conductors, not two copies of the
+**AND THEN THE TWO-HOME-ROUTER CASE ITSELF, the same evening.** The desktop
+stayed on its home connection; the laptop was carried to another household and
+joined that house's `TelstraBE428C` — a different premises on a different ISP.
+Four domains, one claim each, with the desktop already polling all four before
+the laptop ever wrote:
+
+| sample | laptop wrote | desktop's last empty poll | desktop received | crossing |
+|---|---|---|---|---|
+| r1 | `13:02:58Z` | `13:03:00Z` (+2s) | `13:03:05Z` | **2-7s** |
+| r2 | `13:08:32Z` | `13:08:34Z` (+2s) | `13:08:39Z` | **2-7s** |
+| r3 | `13:11:28Z` | `13:11:25Z` (-3s) | `13:11:30Z` | **under 2s** |
+| r4 | `13:19:38Z` | `13:19:36Z` (-2s) | `13:19:41Z` | **under 3s** |
+
+r1 and r2 carry a **lower** bound as well as an upper one: the reader polled
+and found nothing *after* the write had already happened. Nothing in this
+repository has had a two-sided bracket on cross-internet propagation before.
+
+**The validity chain, every link checked rather than assumed:** public-IP
+fingerprints `96ad274aef89` (home) against `4eed418b9c87` (the other house);
+identical DNA hash `hC0k/CQhlEXP...` printed on both ends; different agent keys
+(`hCAkFRdfGREV...` reading, `hCAkNJapXNyQ...` writing); the `.happ` verified by
+`sha256` on the far machine before it was used; and both clocks reporting
+`System clock synchronized: yes`.
+
+**TWO OF THOSE FIGURES ARE INFLATED BY THE MEASUREMENT, AND THE CONDUCTOR LOG
+SAYS SO.** The reading host logged `database is locked` from
+`integrate_dht_ops_consumer` at `13:08:32.478Z` and `13:11:28.697Z` — the same
+second as r2's and r3's remote writes. That host is a pure reader and writes
+nothing, so the integration workflow running at all means **the ops had already
+arrived**. Transit between the two houses was therefore **sub-second**, and the
+2-7s and under-2s above are dominated by local integration.
+
+The contention is self-inflicted: four readers were run in parallel against one
+conductor so that the away host could publish without coordinating, and that is
+four app connections competing to integrate. It buys an unattended run at the
+cost of the resolution it was measuring. **Run one reader per conductor if the
+figure matters**; the runbook now says so.
+
+**What this does not close.** Both peers were up and waiting in every run, so
+the returning-offline-node case is untouched. The trial series is five crossings on one mobile
+carrier and one home ISP within half an hour, and the two-house run is four on
+one pair of households — spreads for those paths, not a sample of consumer
+networks generally. And these were two `hc sandbox` conductors, not two copies of the
 Electron build — what transfers is the relay path, not the packaging.
 
 The datacentre figure stands unchanged: **one** crossing, inside 5.0s.

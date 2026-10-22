@@ -188,11 +188,18 @@ you write anything you would mind standing behind forever:
   had no inbound path and went through the relay entirely: closer to the worst
   case than to the easy one.
 
-  **What is still untested is two home routers, and a node that comes back
-  after being offline.** Every run so far had both peers up and waiting for
-  each other. So: a good deal less unknown than it was, and if your two
-  machines are on two home connections you are still the first test of that
-  exact case.
+  **And then two actual home routers, the same evening.** One machine stayed on
+  its home connection; the other was carried to a different household on a
+  different ISP. Four records crossed, every one in under seven seconds — and
+  the receiving machine's own log shows it processing the incoming data in the
+  same second the other machine wrote it, so the time was spent filing the
+  record locally rather than moving it between the houses.
+
+  **What is still untested is a machine that comes back after being offline.**
+  Every run so far had both ends up and waiting for each other, which is not
+  the same as catching up on what you missed. So: the case this section
+  existed to warn you about has now been measured, and what remains is
+  rejoining rather than connecting.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
