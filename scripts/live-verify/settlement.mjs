@@ -129,9 +129,17 @@ async function main() {
   const a3 = await ensure(admin, 'epistemic-resonance-happ-agent3');
   log(`three agents: ${[a1, a2, a3].map((a) => b64(a.me).slice(0, 10)).join('  ')}\n`);
 
+  // At or after 11, not equal to 11: settlement arrived at 11, and the next
+  // bump that has nothing to do with settlement must not turn this file red.
+  // What it asserts is that the bump happened and that the DNA's declaration
+  // and the integrity zome's constant agree — see past-cone.mjs, which went
+  // red exactly this way one day after it was written.
+  const SETTLEMENT_VERSION = 11;
   const identity = await a1.call('get_protocol_version', null);
-  check('this network is PROTOCOL_VERSION 11 — the bump settlement cost',
-    identity?.declared_version === 11 && identity?.implemented_version === 11);
+  check(`this network is PROTOCOL_VERSION ${SETTLEMENT_VERSION} or later — the bump settlement cost`,
+    Number.isInteger(identity?.declared_version)
+      && identity.declared_version >= SETTLEMENT_VERSION
+      && identity.implemented_version === identity.declared_version);
 
   // --- A claim for the three of them to assess ---------------------------
   await a1.call('create_claim', {

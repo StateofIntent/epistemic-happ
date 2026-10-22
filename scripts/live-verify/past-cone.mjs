@@ -131,11 +131,19 @@ async function main() {
   // from the DNA properties (inside the DNA hash, so the network cannot
   // disagree about it) and `implemented_version` from the integrity zome's own
   // constant. Asserting both catches a bump applied to one and not the other.
+  //
+  // AT OR AFTER 10, NOT EQUAL TO 10, and the reason is this harness going red
+  // on the very next bump that was not about it: `past_cone` arrived at 10 and
+  // settlement took the network to 11 the following day, so an equality check
+  // asserted the date of a fork rather than the presence of a field. The claim
+  // this file is entitled to make is that the bump HAPPENED — a network at 9
+  // has no such field — and that the two numbers agree with each other.
+  const CONE_VERSION = 10;
   const identity = await a1.call('get_protocol_version', null);
-  check('this network DECLARES protocol version 10 — the bump this field cost',
-    identity?.declared_version === 10);
-  check('and the integrity zome IMPLEMENTS 10, so the declaration is not stale',
-    identity?.implemented_version === 10);
+  check(`this network DECLARES protocol version ${CONE_VERSION} or later — the bump this field cost`,
+    Number.isInteger(identity?.declared_version) && identity.declared_version >= CONE_VERSION);
+  check('and the integrity zome IMPLEMENTS what the DNA declares, so the declaration is not stale',
+    identity?.implemented_version === identity?.declared_version);
 
   // --- The argument: a claim, a critique of it, a rebuttal of that -------
   const claimAction = await a1.call('create_claim', {
