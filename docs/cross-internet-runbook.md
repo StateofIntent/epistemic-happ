@@ -23,13 +23,39 @@ makes for you").
 
 ---
 
-## 1. The five things that silently invalidate a run
+## 1. The six things that silently invalidate a run
 
-The scripts enforce the sixth (a missing seed is refused). These five are
+The scripts enforce one of these (a missing seed is refused). The rest are
 yours, and each of them produces an output **indistinguishable from a failed
 crossing** — which is the whole reason they are listed before the commands.
 
-**1. Both machines must run the same `.happ` file, copied — not rebuilt.**
+**1. PROVE THE TWO HOSTS ARE ON DIFFERENT NATs, with a check that cannot
+silently pass.** This is the precondition every result rests on and the only one
+whose failure invalidates the experiment rather than merely breaking it: two
+machines behind one router produce a perfectly healthy-looking crossing that
+demonstrates nothing CI had not already. Run this on both hosts and compare:
+
+```bash
+ip=$(curl -s --max-time 10 https://api.ipify.org); \
+  if [ -n "$ip" ]; then printf '%s' "$ip" | sha256sum | cut -c1-12; else echo "NO INTERNET"; fi
+```
+
+Equal values mean one NAT — stop. Different values mean two.
+
+**The guard is not decoration, and it was added because the naive form fooled
+us.** `curl ... | sha256sum` with no `-n` test prints
+`e3b0c44298fc...` whenever curl returns nothing — that is the hash of the empty
+string, and it is a *different* value from the other host's, so it reads as a
+pass. On 2026-10-22 a laptop that had just joined a hotspot with no route yet
+produced exactly that, and "no internet at all" was one glance away from being
+recorded as "confirmed second NAT". Hash only a non-empty body, and say
+`NO INTERNET` out loud otherwise.
+
+It hashes rather than prints the address so a home IP does not end up pasted
+through a chat log or a commit message; a 12-hex prefix is ample to compare two
+values and useless for anything else.
+
+**2. Both machines must run the same `.happ` file, copied — not rebuilt.**
 `/*.happ` is gitignored (`.gitignore:37`), so a fresh clone on the second
 laptop has no bundle and the obvious move is to build one. A different build is
 a different DNA hash, a different DNA hash is a different network, and the
@@ -45,7 +71,7 @@ scp epistemic-resonance-happ.happ laptopB:~/epistemic-happ/
 The harness prints the DNA hash on both sides precisely so this is checkable
 after the fact — step 4 below.
 
-**2. `scripts/live-verify/node_modules` has to be recreated by hand.** It is an
+**3. `scripts/live-verify/node_modules` has to be recreated by hand.** It is an
 untracked symlink to `federation/node_modules` (`.gitignore:21`), so on a fresh
 clone the harness cannot import `@holochain/client` at all. Same two lines CI
 uses, plus CI's assertion:
@@ -57,7 +83,7 @@ test -d scripts/live-verify/node_modules/@holochain/client \
   || { echo "@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
 ```
 
-**3. A fresh seed and domain every run, identical on both hosts.** The seed is
+**4. A fresh seed and domain every run, identical on both hosts.** The seed is
 mandatory and `cross-internet-node.sh` refuses to start without one: the
 shipped `.happ` declares no network seed, so a seedless run joins the DHT every
 installer shares and Invariant #6 means whatever it wrote could never be
@@ -65,7 +91,7 @@ removed. *Fresh* matters separately from *present* — reusing a previous run's
 seed and domain means a claim from the earlier run can satisfy the reader, and
 the run proves nothing about today's network.
 
-**4. `EPI_XNET_HOLD_S=1800` on both sides, and the publisher's window must be
+**5. `EPI_XNET_HOLD_S=1800` on both sides, and the publisher's window must be
 at least the reader's.** The default is 600 (`cross-internet.mjs:55`) and two of
 the four crossings this repository has ever measured — 929.1s and 943.0s — are
 longer than that, so at the default a working network is written down as a
@@ -73,7 +99,7 @@ propagation failure. And because Holochain is not a server, a publisher that
 exits mid-window leaves nothing for the reader to fetch from: the reader then
 measures the publisher's absence, not the network.
 
-**5. Copy the conductor log off before stopping.** `cross-internet-node.sh
+**6. Copy the conductor log off before stopping.** `cross-internet-node.sh
 stop` does `rm -rf /tmp/epi-xnet`, log included. That log is the only way to
 tell a protocol result from a bootstrap outage, and it is needed most on the
 runs that failed.
@@ -86,16 +112,16 @@ cp /tmp/epi-xnet/nodeX.log ~/xnet-<run-id>-<role>.log   # BEFORE stop
 
 ## 2. Per-machine prerequisites
 
-Both laptops, on different home networks — two routers, or one router and a
-phone hotspot. Not two machines behind the same NAT: that tests less than CI
-already did.
+Both machines on different consumer networks — two routers, or one router and a
+phone hotspot. Not two behind the same NAT, which tests less than CI already
+did, and §1.1 is how you establish that rather than assume it.
 
 - **Holochain 0.7.0, `hc` and `holochain`.** `scripts/ci/install-holochain.sh`
   puts the pinned pair in `~/.cargo/bin` and asserts the version rather than
   the exit code. Check with `~/.cargo/bin/hc --version` directly —
   `~/.cargo/bin` is not on this environment's default `PATH`, and the scripts
   pass `-H` explicitly rather than relying on it.
-- **Node 22** and the `npm ci` + symlink from §1.2.
+- **Node 22** and the `npm ci` + symlink from §1.3.
 - **Ports 9899 (admin) and 9898 (app) free.** Any other sandbox on the machine
   will be holding them. Overridable: `start <seed> <admin> <app>` on the script,
   `EPI_XNET_ADMIN` / `EPI_XNET_APP` on the harness — change both or the harness
@@ -158,7 +184,7 @@ CI avoids all of this by aligning both jobs to the run's `created_at`
 (`.github/workflows/cross-internet.yml`), which is a luxury two laptops with no
 shared clock do not have. You are the alignment.
 
-Then §1.5's log copy, then `scripts/cross-internet-node.sh stop` on both.
+Then §1.6's log copy, then `scripts/cross-internet-node.sh stop` on both.
 
 ### Run 2 — B publishes, A reads, **new `RUN`**
 
@@ -199,8 +225,9 @@ yours, and three of the four checks are about ruling out a false negative.
 
 | Check | Where | A mismatch means |
 |---|---|---|
-| **Same `DNA hash:`** both sides | harness prints it on connect | different builds, §1.1 — the run measured nothing |
+| **Same `DNA hash:`** both sides | harness prints it on connect | different builds, §1.2 — the run measured nothing |
 | **Different `agent key:`** | same place | both halves on one machine; nothing crossed the internet |
+| **Different NAT fingerprints** | §1.1, run before the window | one router between them — a healthy-looking crossing that proves nothing. Equal values, or `NO INTERNET` from either host, void the run |
 | **Windows overlapped in wall clock** | job timestamps | the reader polled while the publisher was down |
 | **Bootstrap answered** | `nodeX.log`, §2's curl | an infrastructure outage, not a protocol result |
 
@@ -292,7 +319,7 @@ the entry and produced a false negative.
    resolution and is now the first thing §3 says.
 2. **A rebuild can be byte-identical.** The `.happ` was repacked at HEAD before
    the run and came out at the same sha256 as the one packed 26 minutes
-   earlier, which is what makes §1.1's "copy, don't rebuild" a convenience
+   earlier, which is what makes §1.2's "copy, don't rebuild" a convenience
    rather than a correctness requirement on a single machine. Across two
    machines it stays a requirement.
 3. **Disable wifi *autoconnect*, not the wifi radio.** A hotspot is wifi, so
