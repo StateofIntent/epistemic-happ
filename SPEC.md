@@ -735,6 +735,36 @@ Three notes, since they materially affect conformance. The first two are carried
 
 **SO THE AMENDMENT THIS NOTE CALLED FOR IS NOT NEEDED.** Neither invariant has to change; what had to change is this note's claim that no implementation resolves the tension. A read-time standing rule resolves it, satisfies both, writes nothing, and does not reopen READINESS item 22 — whose reopen condition governs autonomous WRITES and therefore does not apply to a computation performed on demand. **What remains genuinely open is the THRESHOLD, and that is a Quantitative Promise Theory problem rather than a 6-versus-9 one**: a threshold turning a signal into a decision is itself a promise and needs an agent behind it, which is the argument that retired `CONDUCTANCE_HALF_LIFE_SECS` as a universal constant with no promiser. The two available answers are therefore a **per-membrane declared promise** (§10.9's shape, and the reading under which "same DNA, different expression" is exact), or a threshold **derived** rather than chosen, so that no agent had to pick it. Nothing here yet does either, and that — not the invariant pair — is what Invariant 9 is waiting on. **Reopen condition: a surface for readings exists AND somebody wants them faster than a person will click** — both halves, and then option (b), opt-in per agent and write-on-change, rather than a heartbeat. The observation is therefore emitted as an ephemeral signal, touching neither the DHT nor the source chain. The structural rule is unchanged and is what made this possible: it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
 
+## 7b. Two disciplines that are not invariants
+
+**These are not invariants and are deliberately not numbered among them.** They are not derivations from Promise Theory, nothing in validation can enforce them, and an implementation that ignored them would still conform to §7. They are rules about how this protocol REPORTS, written down because both were already practised in several places and in none of them as a rule — which is exactly the condition under which a practice lapses without anybody deciding to drop it.
+
+**Both are adopted from Veritas (Project 89, `github.com/project-89/Veritas`), which states them as system-wide rules for an evidence-grounded ingestion pipeline.** The wording below is theirs; the instances are this repository's.
+
+### 7b.1 Grounded or silent — and counted
+
+**Anything that cannot cite what it rests on is dropped, AND THE DROP IS COUNTED.** Veritas's form: *"Claims and extracted examples must cite verifiable evidence; unverifiable ones are dropped and counted."*
+
+**The counted half is the load-bearing one**, because a silent drop is indistinguishable from an empty input. A filter that returns three things from a hundred and reports three looks identical to one that was handed three. §5.19's denominator note is this discipline applied to pre-registration — an unrevealed commitment stays countable because its deadline and question are public from the moment it is made — and §10's `order_records` applies it to reads: `unresolved` NAMES the inputs it could not read rather than omitting them, and `tie_broken` reports how many positions were decided arbitrarily so a reader can tell a sequence from a list.
+
+**Where it binds next is automated ingestion**, which is the one direction that would make this protocol's inflow problem tractable and the one most likely to erode it. An ingesting agent is safe to switch on exactly when its rejects are counted: *"dropped 400 of 500, 380 for an unresolvable citation"* is a reading somebody can dispute, while the same run reporting 100 claims is indistinguishable from a quiet day.
+
+**What it forbids:** a read that returns fewer things than it considered without saying so.
+
+### 7b.2 Every read declares the mode it ran in
+
+**A computation with more than one mode — a fallback, a sampling resolution, a cap, a tie-break — reports which mode it used, in the same structure as its answer.** Veritas's form is *"honest degradation"*: each stage declares its fallback, and outputs *"state what they filtered rather than silently shrinking."*
+
+**This repository has been bitten three times by its absence, which is why it is a rule and not a preference.** The single datacentre crossing was quoted as a latency of "5.0s" for months when it was an upper bound from a 5s sampler (corrected 2026-10-21). A 421.1s figure was read as a deterministic constant when the repetition was the sampler's step size. And on 2026-10-22 both errors were made again in one day from the opposite directions: four readers run in parallel against one conductor inflated a crossing figure through lock contention, and a diagnostic started to explain a stall erased the self-recovery figure it was run to find.
+
+**The strongest form puts the declaration and the measurement in the same structure, so a harness can compare them to each other rather than trusting either.** `MetabolismTerms` declares `writes_to_the_dht: false` and `scripts/live-verify/metabolism.mjs` asserts the tick's own chain does not grow across ticks; `SignalChannelTerms` declares `entries_written_per_signal: 0` and carries the agent's `chain_length` in the same struct so a caller can read it, send signals, and read it again. **A declaration nothing checks is a comment**, and §5.21 already records what this repository thinks of comments standing in for enforcement.
+
+**What it forbids:** an answer whose precision is implied by its format.
+
+### 7b.3 Why these are disciplines rather than rules
+
+Neither is reachable by validation. Both concern coordinator reads, harnesses and clients — the hot-swappable half — so the only enforcement available is the one 7b.2 names: a check that compares a declaration against a measurement and goes red when they disagree. That is weaker than validation and it is what is available. Stating the disciplines is what makes the absence of such a check visible as a gap rather than invisible as a habit nobody wrote down.
+
 ## 8. HRR Encoding (Holographic Reduced Representations)
 
 Both HRR mechanisms below are **reading lenses only** — approximate, local, recomputed on demand — never a second source of truth. Every value they return carries the real `EntryHash`/`ActionHash`(es) it was computed from or scored against; the exact, lossless answer always remains the direct DHT read (`get_grounding_path`, `export_to_n4l`, or a plain `get()`).
