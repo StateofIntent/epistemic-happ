@@ -505,8 +505,8 @@ and would make it a new node rather than a returning one.
 | **Return after a 861s outage** | Offline `14:18:23`-`14:32:44` with three claims written inside the gap. Back online, the laptop had **none of them after 905s** |
 | **A brand-new node, same moment, same seed** | Generated at `14:47:53`, conductor up `14:47:59`, had **all three claims on its first poll** by `14:48:11` — roughly 15 seconds from not existing |
 | **Completeness, once recovery happened** | The laptop got `gap2` and `gap3` on the first poll as well. Catch-up is **all-or-nothing, not partial** — no silently missing middle |
-| **Round 2: return after a 154s outage, nothing else joining** | **Self-recovered in 304-309s** from reconnect, bracketed both sides — within seconds of the 300s per-peer initiate floor |
-| **Round 3: return after an 884s outage, nothing else joining** | **Self-recovered in 687-692s** — unaided, so recovery happens, and it scales with the absence rather than sitting on the 300s floor |
+| **Round 2: return after a 154s outage, nothing else joining** | **Self-recovered in 304-309s** from reconnect, bracketed both sides. **The "300s per-peer initiate floor" this once cited DOES NOT EXIST** — `min_initiate_interval_ms` is read by no code in kitsune2_gossip 0.5.0 or 0.5.2; see `docs/cross-internet-runbook.md`, "The rejoin mechanism" |
+| **Round 3: return after an 884s outage, nothing else joining** | **Self-recovered in 687-692s** — unaided, so recovery happens. **The "scales with the absence" reading is RETIRED**: the mechanism is a URL-keyed unresponsive marker whose TTL is the peer's `agent_info.expires_at`, fixed before the outage began, so recovery is governed by a latent variable none of the three rounds recorded and is predicted to be INDEPENDENT of outage length. Round 1 therefore needs no separate cause — see `docs/cross-internet-runbook.md`, "The rejoin mechanism" |
 
 **THE ASYMMETRY IS THE FINDING.** A peer that has never been seen gets the
 entire history in seconds. A peer that was known, went away, and came back had
