@@ -7296,3 +7296,550 @@ pub fn recv_remote_signal(signal: PeerSignal) -> ExternResult<()> {
     emit_signal(&SignalPayload::PeerSignal { from, signal })?;
     Ok(())
 }
+
+// ============================================================================
+// STAGE 2 — PROPRIOCEPTION. ONE READ THAT TELLS AN AGENT ITS OWN STATE.
+//
+// WHY THIS IS THE STAGE THAT MATTERS, in Luhmann's terms rather than this
+// repository's. An autopoietic system of communications requires that a
+// communication be produced by PRIOR COMMUNICATIONS rather than by the
+// environment. Every Claim in this graph is currently produced by a human, or
+// by an agent a human or a cron triggered — the environment, in Luhmann's
+// sense, every time. `get_local_tension` is the single change that makes the
+// graph's own state available as the proximate cause of the next write: a
+// disposition reads its own position and acts on THAT, not on a prompt.
+//
+// WHAT IT THEREFORE MUST NOT DO, and this is the whole of the design. It
+// reports. It does not decide. Stage 3 — standing and apoptosis — is blocked
+// on `docs/open-work.md` item 3.1, *what sets the atrophy threshold*, and that
+// item is a DECISION because Quantitative Promise Theory says a threshold
+// turning a signal into a decision IS ITSELF A PROMISE AND NEEDS AN AGENT
+// BEHIND IT. That argument is what retired `CONDUCTANCE_HALF_LIFE_SECS` as a
+// universal constant (READINESS item 10). So there is no score here, no
+// verdict, no ranking, and no field named `healthy` or `stale`. Every number
+// is raw and carries its own denominator, and turning any of them into an
+// action is the caller's promise to make.
+//
+// CALLER-SCOPED BY CONSTRUCTION, WHICH IS THE INVARIANT 1 DEFENCE AND IS
+// STRUCTURAL RATHER THAN A POLICY. There is no `agent` parameter. Everything
+// here comes from `agent_info()` and `query()` — the CALLING agent's own
+// source chain — or from that agent's own local cache. You cannot ask this
+// function for somebody else's tension, so it cannot become the canonical
+// per-agent scalar over an enumerable agent set that got the mutual-credit
+// ledger built, verified and then DELETED (`docs/metabolic-biosignalling-
+// currency-brief.md`, 1,020 lines, reason 3). The escape route that brief
+// itself named is the one taken here: like `AttestationPolicy`, the answers
+// are caller-scoped and legitimately differ between observers.
+//
+// FOUR SIGNALS, NOT THE FIVE THE PLAN ASKED FOR, and the fifth's absence is a
+// reported field rather than a quiet omission. `docs/open-work.md` item 2.2
+// names *closure deficit, ordering ambiguity, friction headroom, conductance
+// decay, arc width*. ARC WIDTH IS NOT REACHABLE FROM A COORDINATOR ZOME:
+// `AgentInfo` carries exactly `agent_initial_pubkey` and `chain_head`
+// (`holochain_zome_types-0.7.0/src/info.rs:10`), and the HDK exposes no
+// storage-arc call at all — checked across its whole surface, not assumed. The
+// figure exists only on the ADMIN websocket, as `storageArc` inside the
+// doubly-encoded `agentInfo` payload `scripts/live-verify/scale-dht.mjs`
+// already parses. That makes it a CLIENT-side read about the conductor, not a
+// zome-side read about the agent, and no amount of wanting it changes which
+// process holds it. `arc_width` is therefore `None` with a reason attached,
+// and `signals_bundled` / `signals_intended` report 4 and 5 so the gap is a
+// number a harness can assert on rather than a paragraph nobody rereads.
+//
+// EVERY PRIMITIVE IS CALLED, NOT REIMPLEMENTED. Closure goes through the same
+// local-only `get` that `which_entries_resolve_locally` uses, ordering calls
+// `order_records` itself, the decay math goes through
+// `effective_conductance_with_half_life`, and each of the five friction
+// figures comes from the `count_recent_*` helper that the corresponding write
+// path's own pre-check calls. A second copy of any of them would be a second
+// answer, which is this repository's shadowing failure (READINESS item 5e) —
+// and worse here than usual, because a tension read that disagreed with the
+// gate it is predicting would actively mislead the disposition reading it.
+//
+// A CRITIQUE HAS NO DOMAIN, which is the one place this read cannot be purely
+// chain-local. `Critique` carries `target` and no `domain` field — it is
+// scoped by what it criticises, not by a declared domain — so "my critiques in
+// this domain" can only be answered by resolving each target and reading the
+// domain off it. That resolution is done against LOCAL CACHE ONLY, exactly as
+// closure is, and the ones that do not resolve are COUNTED in
+// `critique_targets_unresolved` rather than dropped. An exclusion nobody can
+// see is indistinguishable from a count that is simply wrong — the lesson
+// `get_discourse_health`'s `reading_claims` field already carries.
+// ============================================================================
+
+/// One rationed write path's remaining budget (§6), from the caller's own
+/// chain. `headroom` is what a disposition needs: how many more of this it
+/// may write before the limit refuses it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FrictionHeadroom {
+    /// Which write path, named as §6 names it.
+    pub path: String,
+    pub recent_count: u32,
+    pub limit: u32,
+    pub window_secs: i64,
+    /// `limit - recent_count`, floored at zero. The actionable figure.
+    pub headroom: u32,
+    /// TRUE when the next write of this kind would be refused. Reported as
+    /// well as `headroom` because a caller checking `headroom > 0` and a
+    /// caller checking `!blocked` must not be able to disagree.
+    pub blocked: bool,
+}
+
+/// THE CLOSURE DEFICIT — the ECM metaphor's force that already exists in the
+/// graph and that nothing currently reads.
+///
+/// OVER EVERY CLAIM IN THE DOMAIN, NOT JUST THE CALLER'S OWN, and that choice
+/// is what makes the figure mean anything. The first version of this struct
+/// scoped it to the caller's own Claims, on the reasoning that proprioception
+/// is self-knowledge. It is — but a deficit over your OWN claims is very
+/// nearly always zero BY CONSTRUCTION: `validate_claim` calls `must_get_entry`
+/// on every `evidence_hash`, so each one resolved for the author at write
+/// time and is in that author's own cache. A signal that can only read zero
+/// is not a signal, and a harness asserting on it would be the kind of check
+/// that cannot go red that this repository keeps finding in its own gates.
+///
+/// The real quantity is the one Stage 1's `PeerSignal::ClosureDeficit` already
+/// names — *"of the N citations your target claims, I can resolve only M"*. It
+/// is a fact about the OBSERVER's position relative to somebody else's
+/// citations, which is exactly what proprioception means for a cell in a
+/// medium: not *what have I done* but *what can I currently reach*.
+///
+/// A deficit is not a fault. Propagation is not transactional and §5.3
+/// declines to promise when the rest arrives — it is a reason to go and fetch,
+/// which is the kind of cause Stage 2 exists to put in front of a disposition.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClosureTension {
+    /// Claims in this domain, by anyone, that this observer could read.
+    pub claims_examined: u32,
+    /// How many of those the caller wrote. Reported beside
+    /// `claims_examined` because the two together say how much of this
+    /// figure is about the observer's own reach into other people's work —
+    /// a deficit over a domain the caller wrote all of means something quite
+    /// different from one over a domain they wrote none of.
+    pub own_claims_examined: u32,
+    /// Citations across all examined claims — the denominator, carried so
+    /// `deficit` is never a bare number.
+    pub cited_total: u32,
+    /// How many of those resolve for THIS observer, from local cache only.
+    pub resolved_locally: u32,
+    /// `cited_total - resolved_locally`. Observer-relative by construction:
+    /// another agent with a different cache gets a different figure, and
+    /// neither is wrong. `resolved_locally + deficit == cited_total` always,
+    /// which is the arithmetic a harness can assert without a race.
+    pub deficit: u32,
+}
+
+/// ORDERING AMBIGUITY — how much of the order this observer would settle on
+/// is arbitrary.
+///
+/// `tie_broken` is the figure that matters, and `order_records` already
+/// computes it: the number of points at which more than one record was ready
+/// and the tie went to the action hash. A high count means the sequence is a
+/// list, and a disposition about to settle anything on it should know that
+/// before it writes rather than after.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrderingTension {
+    /// The caller's own Claims and in-domain Critiques handed to
+    /// `order_records`.
+    pub records_examined: u32,
+    pub ordered: u32,
+    pub causal_edges: u32,
+    /// HOW MANY TIMES THE ORDER WAS A COIN TOSS.
+    pub tie_broken: u32,
+    pub unresolved: u32,
+    pub cycle_detected: bool,
+    /// Critiques of the caller's own whose target did not resolve from local
+    /// cache, so this read could not tell which domain they belong to and
+    /// left them out. See the section header: counted, never dropped
+    /// silently.
+    pub critique_targets_unresolved: u32,
+    /// Named so a reader can tell which policy produced the figures above —
+    /// the same string `order_records` returns, passed through unchanged.
+    pub policy: String,
+}
+
+/// CONDUCTANCE DECAY — how much of what this agent connected has gone quiet.
+///
+/// NO THRESHOLD, and that is item 3.1 rather than an oversight. Totals are
+/// reported, not a count of links "below" anything, because the number that
+/// would turn decay into a decision is exactly the promise nobody has made
+/// yet. `total_initial` and `total_effective` are both given so the caller
+/// can form whatever ratio its own policy justifies.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConductanceTension {
+    /// SynapticLinks the caller created, found on their own chain.
+    pub links_examined: u32,
+    /// Links whose conductance could not be read at all (tag too short, or
+    /// the record missing from local cache). Counted rather than skipped: a
+    /// denominator that silently shrinks is how a decay figure flatters
+    /// itself.
+    pub links_unreadable: u32,
+    /// The half-life these figures were computed with, seconds.
+    pub half_life_secs: f64,
+    /// TRUE when the CALLER supplied it, and therefore promised it. FALSE
+    /// means the protocol's thirty-day default was used — which SPEC §7
+    /// records as still having no promiser, the unclosed half of Invariant
+    /// #1's first note. A reader is entitled to know which of those it got.
+    pub half_life_promised_by_caller: bool,
+    /// Sum of the links' base conductances, undecayed — a property of the
+    /// DHT, byte-identical for every reader.
+    pub total_initial: f32,
+    /// Sum of their read-time effective conductances under the half-life
+    /// above, Reinforcements included. NOT comparable across policies; see
+    /// `ConductancePolicy::half_life_secs`.
+    pub total_effective: f32,
+    /// Age of the caller's oldest readable SynapticLink, seconds, by the
+    /// reader's own clock. `None` when there are none.
+    pub oldest_link_age_secs: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetLocalTensionPayload {
+    /// The Membrane this read is scoped to. A `membrane` rather than free
+    /// text for the reason `GetDiscourseHealthPayload` gives: the domain is
+    /// read off the resolved entry, so a caller cannot ask about a domain
+    /// nobody ever founded.
+    pub membrane: ActionHash,
+    /// The caller's forgetting schedule, if it has one to promise. `None` is
+    /// the protocol default and exactly the previous behaviour — see
+    /// CONDUCTANCE HALF-LIFE above. Only `half_life_secs` is consulted here;
+    /// `min_effective_conductance` is a filter for aggregate reads, and
+    /// thresholding is not Stage 2's business.
+    pub conductance_policy: Option<ConductancePolicy>,
+}
+
+/// What this read is, and what it refuses to be.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LocalTension {
+    /// WHOSE tension. From `agent_info()`, never a parameter — see the
+    /// section header on why there is no way to ask for anybody else's.
+    pub observer: AgentPubKey,
+    pub domain: String,
+    /// The reader's own clock, at read time. §5.22: the only honest clock for
+    /// a question asked now is the one belonging to whoever asked.
+    pub at_secs: i64,
+
+    pub closure: ClosureTension,
+    pub ordering: OrderingTension,
+    /// Every rationed write path in §6, so a disposition can tell which
+    /// actions are open to it without five more calls.
+    pub friction: Vec<FrictionHeadroom>,
+    pub conductance: ConductanceTension,
+
+    /// ALWAYS `None`. See `arc_width_absent_because` and the section header:
+    /// a coordinator zome cannot reach it, and a field that read as a
+    /// measurement would be worse than an absent one.
+    pub arc_width: Option<f32>,
+    pub arc_width_absent_because: String,
+
+    /// 4 and 5. The gap between them is item 2.2's fifth signal, reported as
+    /// a pair of numbers so a harness asserts on it rather than trusting a
+    /// comment.
+    pub signals_bundled: u32,
+    pub signals_intended: u32,
+
+    /// WRITES NOTHING, ALWAYS. Stated as a field and asserted by
+    /// `scripts/live-verify/proprioception.mjs` against the caller's measured
+    /// chain length, the shape `metabolism.mjs` and `peer-signal.mjs`
+    /// established: a declaration beside the measurement cannot drift from it
+    /// without a check going red.
+    pub writes_nothing: bool,
+    /// The caller's own chain length at read time, which is the instrument
+    /// for `writes_nothing`.
+    pub chain_length: u32,
+
+    pub limits: String,
+}
+
+/// The caller's own Claims in one domain, off their own chain, records kept.
+///
+/// Chain-local on purpose, and for `count_own_entries`'s reason: a DHT read
+/// can defer on an unresolved dependency, and for a read whose whole subject
+/// is *what I myself have done* the agent's own chain is both authoritative
+/// and incapable of failing for a reason unrelated to the question.
+///
+/// A record whose entry will not deserialize is skipped rather than erroring
+/// the whole read: one malformed historical entry must not make an agent
+/// unable to perceive itself at all.
+fn own_claims_in_domain(domain: &str) -> ExternResult<Vec<(ActionHash, Claim)>> {
+    let filter = ChainQueryFilter::new()
+        .include_entries(true)
+        .entry_type(EntryType::App(UnitEntryTypes::Claim.try_into()?));
+    let mut out = Vec::new();
+    for record in query(filter)? {
+        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
+            if claim.domain == domain {
+                out.push((record.action_address().clone(), claim));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The caller's own Critiques, off their own chain.
+fn own_critiques() -> ExternResult<Vec<(ActionHash, Critique)>> {
+    let filter = ChainQueryFilter::new()
+        .include_entries(true)
+        .entry_type(EntryType::App(UnitEntryTypes::Critique.try_into()?));
+    let mut out = Vec::new();
+    for record in query(filter)? {
+        if let Ok(Some(critique)) = record.entry().to_app_option::<Critique>() {
+            out.push((record.action_address().clone(), critique));
+        }
+    }
+    Ok(out)
+}
+
+/// PROPRIOCEPTION. One read, the caller's own state, writing nothing.
+///
+/// A pure read — no writes, no friction spent, no validation rule, no entry
+/// type and no link type, so per SPEC §11 the DNA hash is untouched and this
+/// does not fork the network.
+#[hdk_extern]
+pub fn get_local_tension(payload: GetLocalTensionPayload) -> ExternResult<LocalTension> {
+    let observer = agent_info()?.agent_initial_pubkey;
+    let now = sys_time()?;
+    let now_secs = now.as_seconds_and_nanos().0;
+
+    let membrane_record = get(payload.membrane, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    let membrane_entry: Membrane = membrane_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let domain = membrane_entry.domain.clone();
+
+    // --- 1. CLOSURE DEFICIT ------------------------------------------------
+    // Every Claim in the domain this observer can read, not only the
+    // caller's — see `ClosureTension`'s doc comment for why the own-claims
+    // scoping was wrong and could only ever report zero.
+    let own_claims = own_claims_in_domain(&domain)?;
+    let mut claims_examined = 0u32;
+    let mut cited_total = 0u32;
+    let mut resolved_locally = 0u32;
+    for record in get_claims_by_domain(domain.clone())? {
+        let claim: Claim = match record.entry().to_app_option::<Claim>() {
+            Ok(Some(c)) => c,
+            // Not a Claim, or unreadable. Out of scope rather than a
+            // deficit: counting it as unresolved citations would invent a
+            // denominator.
+            _ => continue,
+        };
+        claims_examined += 1;
+        for eh in &claim.evidence_hashes {
+            cited_total += 1;
+            // THE SAME LOCAL-ONLY READ `which_entries_resolve_locally` MAKES.
+            // `GetOptions::local()` never causes a network fetch, so this
+            // reports what this observer can see NOW and promises nothing
+            // about when the rest arrives — §5.3's position, not a bound.
+            let any: AnyDhtHash = eh.clone().into();
+            if get(any, GetOptions::local())?.is_some() {
+                resolved_locally += 1;
+            }
+        }
+    }
+    let closure = ClosureTension {
+        claims_examined,
+        own_claims_examined: own_claims.len() as u32,
+        cited_total,
+        resolved_locally,
+        deficit: cited_total.saturating_sub(resolved_locally),
+    };
+
+    // --- 2. ORDERING AMBIGUITY --------------------------------------------
+    // The caller's own Claims in this domain, plus their own Critiques whose
+    // target resolves locally to a Claim in it. Critiques are included
+    // because they are what create the concurrent forks the O dial exists to
+    // order — two critiques written in ignorance of each other is the case
+    // `order_records` was built for.
+    let mut to_order: Vec<ActionHash> = own_claims.iter().map(|(h, _)| h.clone()).collect();
+    let mut critique_targets_unresolved = 0u32;
+    for (action, critique) in own_critiques()? {
+        let target: AnyDhtHash = match critique.target.clone().into_any_dht_hash() {
+            Some(h) => h,
+            None => {
+                critique_targets_unresolved += 1;
+                continue;
+            }
+        };
+        match get(target, GetOptions::local())? {
+            Some(record) => match record.entry().to_app_option::<Claim>() {
+                Ok(Some(claim)) if claim.domain == domain => to_order.push(action),
+                // Resolved, and it is not a Claim in this domain. Not an
+                // exclusion anybody needs told about: it is simply out of
+                // scope, the way another domain's claims are.
+                _ => {}
+            },
+            None => critique_targets_unresolved += 1,
+        }
+    }
+    let records_examined = to_order.len() as u32;
+    // CALLED, NOT REIMPLEMENTED — see the section header. `order_records` is
+    // the one implementation of this policy, and a tension read that
+    // disagreed with it would be worse than no tension read.
+    let ordered = order_records(to_order)?;
+    let ordering = OrderingTension {
+        records_examined,
+        ordered: ordered.order.len() as u32,
+        causal_edges: ordered.causal_edges,
+        tie_broken: ordered.tie_broken,
+        unresolved: ordered.unresolved.len() as u32,
+        cycle_detected: ordered.cycle_detected,
+        critique_targets_unresolved,
+        policy: ordered.policy,
+    };
+
+    // --- 3. FRICTION HEADROOM ---------------------------------------------
+    // Every §6 path, each through the counter its own pre-check calls.
+    fn headroom_of(path: &str, recent: usize, limit: usize, window_secs: i64) -> FrictionHeadroom {
+        FrictionHeadroom {
+            path: path.to_string(),
+            recent_count: recent as u32,
+            limit: limit as u32,
+            window_secs,
+            headroom: limit.saturating_sub(recent) as u32,
+            blocked: recent >= limit,
+        }
+    }
+    let since = |w: i64| Timestamp::from_micros(now.as_micros() - w * 1_000_000);
+    let friction = vec![
+        headroom_of(
+            "SynapticLink",
+            count_recent_synaptic_links(since(SYNAPTIC_LINK_WINDOW_SECS))?,
+            SYNAPTIC_LINK_MAX_PER_WINDOW,
+            SYNAPTIC_LINK_WINDOW_SECS,
+        ),
+        headroom_of(
+            "Reinforcement",
+            count_recent_reinforcements(since(REINFORCEMENT_WINDOW_SECS))?,
+            REINFORCEMENT_MAX_PER_WINDOW,
+            REINFORCEMENT_WINDOW_SECS,
+        ),
+        headroom_of(
+            "Critique",
+            count_recent_critiques(since(CRITIQUE_WINDOW_SECS))?,
+            CRITIQUE_MAX_PER_WINDOW,
+            CRITIQUE_WINDOW_SECS,
+        ),
+        headroom_of(
+            "AntibodyPattern",
+            count_recent_antibody_patterns(since(ANTIBODY_PATTERN_WINDOW_SECS))?,
+            ANTIBODY_PATTERN_MAX_PER_WINDOW,
+            ANTIBODY_PATTERN_WINDOW_SECS,
+        ),
+        headroom_of(
+            "AttestationGrant",
+            count_recent_attestation_grants(since(ATTESTATION_GRANT_WINDOW_SECS))?,
+            ATTESTATION_GRANT_MAX_PER_WINDOW,
+            ATTESTATION_GRANT_WINDOW_SECS,
+        ),
+    ];
+
+    // --- 4. CONDUCTANCE DECAY ---------------------------------------------
+    let promised = payload
+        .conductance_policy
+        .as_ref()
+        .and_then(|p| p.half_life_secs)
+        .filter(|h| *h > 0);
+    let half_life_promised_by_caller = promised.is_some();
+    let half_life_secs = promised.map_or(CONDUCTANCE_HALF_LIFE_SECS, |h| h as f64);
+
+    let synaptic_link_type: ScopedLinkType = LinkTypes::SynapticLink.try_into().map_err(|_| {
+        wasm_error!(WasmErrorInner::Guest("Could not resolve SynapticLink type.".into()))
+    })?;
+    // Base conductance and age come straight off the caller's own chain
+    // record, which is where `create_link` put them — no network needed to
+    // know what this agent itself wrote.
+    let mut links_examined = 0u32;
+    let mut links_unreadable = 0u32;
+    let mut total_initial = 0f32;
+    let mut total_effective = 0f32;
+    let mut oldest_link_age_secs: Option<i64> = None;
+    for record in query(
+        ChainQueryFilter::new()
+            .action_type(ActionType::CreateLink)
+            .include_entries(false),
+    )? {
+        let action = record.action();
+        let (base, created_at_secs) = match &action.data {
+            ActionData::CreateLink(cl)
+                if cl.zome_index == synaptic_link_type.zome_index
+                    && cl.link_type == synaptic_link_type.zome_type =>
+            {
+                if cl.tag.0.len() < 4 {
+                    links_unreadable += 1;
+                    continue;
+                }
+                match <[u8; 4]>::try_from(&cl.tag.0[0..4]) {
+                    Ok(bytes) => (
+                        f32::from_le_bytes(bytes),
+                        action.timestamp().as_seconds_and_nanos().0,
+                    ),
+                    Err(_) => {
+                        links_unreadable += 1;
+                        continue;
+                    }
+                }
+            }
+            // Not a SynapticLink. Out of scope, not unreadable.
+            _ => continue,
+        };
+        links_examined += 1;
+        total_initial += base;
+        match effective_conductance_with_half_life(record.action_address().clone(), half_life_secs) {
+            Ok(eff) => total_effective += eff,
+            // The link IS readable — its base and age were just read off this
+            // agent's own chain — so it stays in the denominator. Only its
+            // Reinforcements are missing, and the decayed base is the honest
+            // floor for a link whose reinforcement history could not be
+            // fetched.
+            Err(_) => {
+                total_effective +=
+                    base * decay_factor((now_secs - created_at_secs) as f64, half_life_secs)
+            }
+        }
+        let age = now_secs - created_at_secs;
+        oldest_link_age_secs = Some(oldest_link_age_secs.map_or(age, |o: i64| o.max(age)));
+    }
+    let conductance = ConductanceTension {
+        links_examined,
+        links_unreadable,
+        half_life_secs,
+        half_life_promised_by_caller,
+        total_initial,
+        total_effective,
+        oldest_link_age_secs,
+    };
+
+    let chain_length = query(ChainQueryFilter::new())?.len() as u32;
+
+    Ok(LocalTension {
+        observer,
+        domain,
+        at_secs: now_secs,
+        closure,
+        ordering,
+        friction,
+        conductance,
+        arc_width: None,
+        arc_width_absent_because:
+            "Not reachable from a coordinator zome. AgentInfo carries only \
+agent_initial_pubkey and chain_head, and the HDK exposes no storage-arc call; the figure \
+exists only as `storageArc` on the admin websocket's agentInfo payload, which makes it a \
+client-side read about the conductor rather than a zome-side read about the agent. See \
+scripts/live-verify/scale-dht.mjs for the parse."
+                .to_string(),
+        signals_bundled: 4,
+        signals_intended: 5,
+        writes_nothing: true,
+        chain_length,
+        limits: "Reports, never decides: no score, no verdict, no threshold — the number that \
+would turn any of these into an action is a promise nobody has made yet (open-work 3.1). \
+Caller-scoped by construction: there is no agent parameter, so this cannot become a \
+comparable per-agent figure. Observer-relative: closure is what THIS observer can resolve \
+from local cache now, and another observer legitimately gets a different answer. \
+Conductance is not comparable across half-lives. Arc width is absent, with its reason."
+            .to_string(),
+    })
+}
