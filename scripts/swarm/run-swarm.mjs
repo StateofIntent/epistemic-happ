@@ -191,6 +191,67 @@ async function main() {
   }
   log(`  ${seeds.length} claims seeded in ${DOMAIN}`);
 
+  // --- 2b. SECRETION: the taxonomy the population will actually cite ------
+  // Stage 4, `docs/open-work.md` item 2.4. Until now every critique this
+  // swarm wrote passed `species: null`, so the taxonomy was a feature nothing
+  // exercised and `get_species_adoption` had nothing to read.
+  //
+  // PROPOSE ONLY IF NOBODY HAS, OTHERWISE ADOPT. The rule is mechanical and
+  // is the whole reason adoption can be non-trivial: a disposition looks for
+  // a species already carrying its standard's name and cites THAT, proposing
+  // only when none exists. `evidential_strict` and `evidential_loose` share
+  // `unevidenced-claim`, so whichever gets there first is the proposer and
+  // the other is an independent adopter — an outcome of the run rather than
+  // a fact hardcoded in `dispositions.mjs`.
+  //
+  // RE-READ BEFORE EACH PROPOSAL, not once up front: the second disposition
+  // must see what the first just wrote, or both propose and the shared
+  // species becomes two private ones. On a real network two agents can still
+  // propose the same name concurrently — nothing here prevents that, and
+  // nothing should: `CritiqueSpecies` has no uniqueness rule and inventing
+  // one would be a validation change, hence a fork.
+  log('\n--- Secretion: each disposition proposes its standard, or adopts an existing one ---');
+  const speciesByName = new Map();
+  const findSpecies = async (agent, name) => {
+    if (speciesByName.has(name)) return speciesByName.get(name);
+    for (const record of await agent.call('get_all_critique_species', null)) {
+      const entryHash = record?.signed_action?.hashed?.content?.data?.entry_hash;
+      if (!entryHash) continue;
+      const decoded = await agent.call('get_critique_species', entryHash);
+      if (decoded?.name === name) {
+        speciesByName.set(name, entryHash);
+        return entryHash;
+      }
+    }
+    return null;
+  };
+  for (const a of agents) {
+    const name = a.disposition.speciesName;
+    if (!name) continue;
+    let hash = await findSpecies(a, name);
+    if (hash) {
+      a.species = hash;
+      a.speciesRole = 'adopter';
+      log(`  ${a.appId}  ${a.disposition.name}  ADOPTS existing "${name}"`);
+      continue;
+    }
+    await a.call('create_critique_species', {
+      name,
+      parent_species: null,
+      required_evidence: a.disposition.speciesRequiredEvidence ?? [],
+      proposer: a.me,
+      created_at: nowSecs(),
+    });
+    hash = await findSpecies(a, name);
+    if (!hash) {
+      log(`  ${a.appId}  proposed "${name}" but could not read it back — leaving species null`);
+      continue;
+    }
+    a.species = hash;
+    a.speciesRole = 'proposer';
+    log(`  ${a.appId}  ${a.disposition.name}  PROPOSES "${name}"`);
+  }
+
   // --- 3. The loop: observe, assess, publish -----------------------------
   log('\n--- Rounds: observe, assess against a declared threshold, publish ---');
   const acted = [];
@@ -247,7 +308,13 @@ async function main() {
           await a.call('create_critique', {
             target: entryHash, target_type: 'Claim', critique_mode: verdict.mode,
             content: verdict.content, author: a.me, timestamp: nowMicros(),
-            replication_attempted: false, evidence_hashes: [], species: null,
+            replication_attempted: false, evidence_hashes: [],
+            // STAGE 4: the standard this critique applies, cited rather than
+            // left null. Paired with `past_cone` below this is what makes
+            // uptake measurable at a causal distance — a later citer whose
+            // cone contains an earlier citation of the same species
+            // demonstrably wrote having seen it in use.
+            species: a.species ?? null,
             past_cone: existingHashes,
           });
           a.critiquesWritten++;
@@ -318,13 +385,43 @@ async function main() {
     log('    defaults to empty and most clients omit it. The report says so itself.');
   }
 
+  // --- 6. SECRETION, READ BACK: who took a standard up, and had they seen it
+  // Stage 4's measurement. `get_species_secretion` splits uptake by CAUSAL
+  // DISTANCE rather than by elapsed time, because a clock is the one thing
+  // nobody here can trust (§5.22, READINESS item 14). A citer whose own
+  // recorded cone already contains another citation of the species wrote
+  // DOWNSTREAM of it, provably, from retention.
+  log('\n--- Secretion read back: uptake, and whether the adopter had seen it ---');
+  const seenSpecies = new Set();
+  for (const a of agents) {
+    if (!a.species || seenSpecies.has(b64(a.species))) continue;
+    seenSpecies.add(b64(a.species));
+    const sec = await agents[0].call('get_species_secretion', a.species);
+    log(`\n  "${sec.name}"  proposed by ${b64(sec.proposer).slice(0, 10)}…`);
+    log(`    citations ${sec.total_citations} (proposer's own ${sec.proposer_citations})`);
+    log(`    DOWNSTREAM adopters ${sec.downstream_adopters.length}  `
+      + `(had already recorded seeing it in use; deepest cone ${sec.max_independent_causal_depth})`);
+    log(`    parallel adopters   ${sec.parallel_adopters.length}  `
+      + `(recorded a cone, but no prior citation of this species)`);
+    log(`    cone-silent         ${sec.cone_silent_citations}  (evidence of nothing)`);
+    log(`    ${sec.note}`);
+  }
+  log('');
+  log('  WHY NOT JUST READ IT TWICE AND DIFF IT, which is how item 2.4 phrased');
+  log('  this: because two reads are separated by a CLOCK, and §5.22 records');
+  log('  that validation cannot reach one while item 14 MEASURED a deadline');
+  log('  being backdated by moving a conductor\'s. A proposer who wants uptake');
+  log('  to look like growth controls the write times a diff would use. The');
+  log('  past cone is retained evidence instead: it cannot be re-chosen later.');
+
   log('');
   log('  THESE ARE COUNTS OF ACTION, NOT OF CORRECTNESS. Invariant 1 bars a');
   log('  comparative reputation score, and "which disposition critiqued most"');
   log('  is not a measure of which was right — only of which had the lower bar.');
   log('  Whether the minority was exploring or adding noise is visible in');
-  log('  whether anybody ADOPTS what it proposes, which get_species_adoption');
-  log('  answers and which cannot be known this early.');
+  log('  whether anybody ADOPTS what it proposes — which §6 above now reads');
+  log('  rather than deferring, though a single short run is a weak sample and');
+  log('  adoption still cannot be known in ADVANCE of the graph responding.');
   log('');
   log(`  Everything above is permanent on this scratch DHT and nowhere else.`);
   log(`  scripts/swarm.sh clean  destroys it — which is only possible BECAUSE`);

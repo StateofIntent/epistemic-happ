@@ -227,6 +227,21 @@ async function main() {
   // A miss in §4 means every one of the m backdated hashes fell below every
   // one of the n recent ones: 1 of C(n+m, m) interleavings.
   const log2MissDisjoint = (n, m) => log2Choose(n + m, m);
+  // A miss in §2 means ONE PIVOT outranked all n values it was compared
+  // against — i.e. the pivot was the maximum of n+1, which is 1/(n+1). With k
+  // independent pivots the misses multiply: (1/(n+1))^k.
+  //
+  // THIS IS THE FOURTH TIME THIS FILE HAS GOT ITS OWN ODDS WRONG, and the
+  // first three are catalogued above. The previous version read "n
+  // comparisons against one fixed hash, so n independent coins, so 2^-n" and
+  // GATED on that figure. The draws are independent; the EVENT is not. They
+  // all share the pivot, so the question is not n coins but one rank: 2^-32
+  // was really 1/33, about 3%, and CI duly drew it on run 39979768672 while
+  // the gate was printing "2^-32.0 is past the 2^-30 floor" immediately above
+  // the red. A shared pivot collapses n independent draws into one order
+  // statistic — the same shape as §3 and §4, which is why those were already
+  // fixed, and exactly the error this file exists to warn about.
+  const log2MissPivot = (n, k) => k * Math.log2(n + 1);
 
   // AND A PRINTED PROBABILITY IS NOT A GATE, which is the other half of what
   // item 1.6 asked for. Logging "2^-26" next to a passing check still leaves a
@@ -293,19 +308,36 @@ async function main() {
   check(`${CITED_N} citable claims were written, costing no friction budget`,
     cited.length === CITED_N && citedEntries.every((e) => e != null));
 
-  const citing = await a2.call('create_claim', {
-    content: `a claim citing all ${CITED_N} as evidence`, domain: DOMAIN, author: a2.me,
-    timestamp: nowMicros(), evidence_hashes: citedEntries, confidence: 'Moderate',
-    semantic_tags: [], source_mew: null,
-  });
-  // The one whose hash would invert the order if the tie-break decided.
-  const inverting = pickWhere(cited, (c) => hashLt(citing, c));
-  // The one section where the pair count IS the exponent: each cited hash is
-  // compared against ONE fixed hash, so the 32 comparisons are 32 independent
-  // coins and a miss really is 2^-32.
-  gateMiss(2, CITED_N,
-    `search space ${CITED_N} independent comparisons; a miss is 2^-${CITED_N} (~1 in ${(2 ** CITED_N).toExponential(1)})`);
-  check('at least one cited claim HASHES ABOVE the claim citing it, so hash order would invert',
+  // SEVEN CITING CLAIMS, NOT ONE, AND THE COUNT IS THE WHOLE REPAIR. One
+  // pivot gives a 1-in-33 miss no matter how wide `cited` is, because the
+  // question is whether that single hash outranks all 32 — widening the batch
+  // moves 1/(n+1) by a hair and nothing else. Independent PIVOTS are what
+  // multiply: with k of them a miss is (1/33)^k, so seven puts it at 2^-35,
+  // past the floor with room. Claims carry no friction, so the extra six cost
+  // about a second.
+  const CITING_K = 7;
+  const citings = [];
+  for (let i = 0; i < CITING_K; i++) {
+    citings.push(await a2.call('create_claim', {
+      content: `a claim citing all ${CITED_N} as evidence (${i})`, domain: DOMAIN, author: a2.me,
+      timestamp: nowMicros(), evidence_hashes: citedEntries, confidence: 'Moderate',
+      semantic_tags: [], source_mew: null,
+    }));
+  }
+  check(`${CITING_K} citing claims were written, so the miss figure below holds`,
+    citings.length === CITING_K && citings.every((c) => c != null));
+
+  // The first pivot that has a cited claim hashing above it, and that claim.
+  let citing = null, inverting = null;
+  for (const c of citings) {
+    const hit = pickWhere(cited, (x) => hashLt(c, x));
+    if (hit) { citing = c; inverting = hit; break; }
+  }
+  gateMiss(2, log2MissPivot(CITED_N, CITING_K),
+    `${CITING_K} pivots against ${CITED_N} candidates; a miss needs EVERY pivot to outrank all `
+    + `${CITED_N}, which is (1/${CITED_N + 1})^${CITING_K} — not 2^-${CITED_N}, because the `
+    + `comparisons share a pivot and are one rank rather than ${CITED_N} coins`);
+  check('at least one cited claim HASHES ABOVE a claim citing it, so hash order would invert',
     inverting !== null);
   if (inverting) {
     const r2c = await a1.call('order_records', [citing, inverting]);

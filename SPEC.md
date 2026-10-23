@@ -140,7 +140,7 @@ An evolving critique taxonomy — self-similar branching with no privileged root
 | `proposer` | `AgentPubKey` | MUST equal the creating action's author |
 | `created_at` | `u64` | |
 
-There is deliberately no stored adoption-count field — see `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7). **That count answers how many critiques, not how many agents, and it includes the proposer's own** — so `get_species_adoption` decomposes the same links by author, which is what READINESS item 11 needed to tell a species others took up from one its proposer uses alone.
+There is deliberately no stored adoption-count field — see `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7). **That count answers how many critiques, not how many agents, and it includes the proposer's own** — so `get_species_adoption` decomposes the same links by author, which is what READINESS item 11 needed to tell a species others took up from one its proposer uses alone — and `get_species_secretion` decomposes them again by **causal distance**, because "another agent cited it" still does not say whether that agent had ever seen it used.
 
 ### 2.10 `WorldlineTrace`
 An agent's own index of their source-chain history — a table of contents, with an optional HRR compression hook.
@@ -715,6 +715,8 @@ Three notes, since they materially affect conformance. The first two are carried
 
   **Two consequences an implementer or deployer MUST weigh before onboarding anyone.** First, a request to erase personal data — a right under GDPR Article 17 and comparable regimes — **cannot be complied with on this network**, by anyone, by any means short of every peer abandoning the DNA. That is a deliberate property of the design and not a defect, but it is a decision to make explicitly rather than discover: a private group among informed participants is a different proposition from a public deployment. Second, because §5.2's author binding makes retraction author-only (`validate_retraction` compares the retraction's author to the claim's), **an agent key that is lost takes the ability to retract with it** — the entries remain, permanently, un-withdrawable by anybody. Holochain offers no key recovery or rotation here, so this is not recoverable by operational means either. `INSTALL.md` states both to a prospective user in plain terms, which is the minimum this invariant obliges.
 
+  **AND THE WORDING PERMITS A READING THAT WOULD VIOLATE PROMISE THEORY, which is worth closing since this protocol derives most of its invariants from it.** *"Nothing is deleted"* can be read two ways, and only one of them is defensible. Read as **"no agent may erase another agent's record of what was promised"**, it is not merely compatible with Promise Theory but close to required: an assessment is the assessor's own, and a promiser able to delete it would be exercising authority over another agent, which autonomy forbids. Read as **"a promiser may not withdraw their own promise"**, it violates autonomy directly — withdrawal is within an agent's own authority in Promise Theory, and a system that forbids it is making a promise on the agent's behalf. **The first reading is the operative one here, and `Retraction` is what makes it so**: §2.3 lets the author withdraw the promise while leaving every observer's record of it intact. So the mechanism was already the Promise-Theory-correct one; what was missing was the sentence saying which of the two readings the invariant means. It means the first. An implementation that read it as the second — refusing retraction on the grounds that nothing may change — would be conforming to the words and violating the theory the words come from.
+
 - **On Invariant 1, a second note, and it was a tension between the note above and this one until 2026-10-19.** The note above says a hardcoded, always-applied version of a caller-supplied policy "would itself be the kind of canonical signal this invariant rules out." `CONDUCTANCE_HALF_LIFE_SECS = 30 days` was exactly that: one constant, applied to every membrane, converting elapsed time into a conductance a reader acts on — a threshold the protocol asserted universally with **no promiser behind it**. Quantitative Promise Theory states the general case, that a threshold turning a signal into a decision is itself a promise and therefore needs an agent to make it.
 
   **RESOLVED BY MAKING THE READER THE PROMISER, which is to say the note above governs.** `ConductancePolicy.half_life_secs` (§10.9) is the field: supplying it states *"for the purposes of what I am about to count, connections are stale on this schedule"*, and omitting it is exactly the previous behaviour, which is the shape every other read-layer policy here already has. A reader for a climate-science membrane and one for a market-commentary membrane no longer have to accept the same forgetting rate. **What it costs is cross-reader comparability, accepted deliberately:** two readers with different half-lives get different effective conductances for the same link and neither is wrong, because the number was never a property of the link alone. What stays comparable is what the DHT holds — the base conductance and the Reinforcement events, byte-identical for every reader.
@@ -723,7 +725,45 @@ Three notes, since they materially affect conformance. The first two are carried
 
   **HALF THE COMPLAINT SURVIVES, AND IS RECORDED RATHER THAN QUIETLY CLOSED.** A reader who supplies no policy still gets thirty days, still with no promiser. Unlike an attestation filter, a half-life has no neutral "off" position — time passes whether or not anybody promised a rate — so "omitting it is the old behaviour" cannot mean "no threshold is applied" here the way it does there. The strict reading of the note above would be: **no promiser, no decay**, with effective conductance left as base plus reinforcements undecayed. That is a change to what every existing conductance read returns, was deliberately not taken on 2026-10-19, and is the remaining half of this tension.
 
-- **On Invariant 9, and this is an admission rather than a note.** *"Death is required — unused entry types and membranes must atrophy."* Only conductance atrophies, and only at read time: `get_effective_conductance` recomputes `decay_factor` when asked and writes nothing, so the DHT is byte-identical before and after a link has decayed to nothing. Entry types and membranes do not atrophy at all. **The schedule half of that is no longer true as of 2026-10-20 and the invariant is still not satisfied, which is worth stating in that order.** `grep -c infallible` over the two zomes now returns **6 and 0** — `metabolic_tick`, in the coordinator, is the first `#[hdk_extern(infallible)]` here, and `#[hdk_extern(infallible)]` with `schedule()` is the host's only mechanism for a DNA to act without an external call. So a DNA that acts on its own clock exists, verified against a real conductor: a tick arrives with no caller and recurs on a 60s floor (`scripts/live-verify/metabolism.mjs`, READINESS item 8). **It changes nothing about Invariant 9, because the tick OBSERVES and does not act.** Atrophy that emits no events cannot drive anything, and a tick that reports decay drives nothing either — so **Invariant 9 remains the one invariant on this list with no mechanism behind it**, and a conforming implementation still cannot satisfy it. What moved is which half is missing: it was the clock and the consequence, and it is now only the consequence. **The consequence is deliberately unbuilt rather than merely absent.** Anything a scheduled observer wrote would be permanent under Invariant 6 and would spend a §6 friction budget every tick, so what it should write is a governance question and not an implementation detail. **That question was queued as READINESS item 9, item 9 CLOSED on 2026-10-20, and the question did not move anywhere — corrected 2026-10-21.** Item 9 settled the half it could: a discourse-health reading is an AGENT's signed, critiquable promise, because a membrane has no key. A scheduled tick runs as the author of the chain it runs for, so it *has* a key and the write is now possible. **What remains is the part item 8 named and nobody has decided: WHAT it writes, HOW OFTEN, and under WHOSE key** — every such entry being permanent under Invariant 6 and spending a §6 friction budget per tick, which makes switching on an autonomous writer the least reversible change available in this protocol. **DECIDED 2026-10-21 — READINESS item 22, option (a): no autonomous write.** The tick keeps emitting an ephemeral signal and a reading is published when a person chooses to. **So this invariant is now unsatisfied BY DECISION rather than by omission**, which is a different state from the one this note described for most of its life: the clock exists, and the consequence is declined. **The three reasons, shortest first.** There is no consumer — `publish_discourse_reading` is itself unsurfaced (§9), so an autonomous publisher would create permanent supply for a screen that does not exist. Invariant 6 makes it the least reversible change available, since the off switch stops future writes and nothing else. And the signature question is not about storage at all: a reading is somebody's signed, critiquable promise, so an unattended writer makes permanent attributable promises in an agent's name while they are not watching. **ENFORCED, NOT MERELY STATED:** `scripts/live-verify/metabolism.mjs` asserts the tick's own chain does not grow across ticks — chain-locally, so a write to any domain is caught — and that check has been watched failing (injection AO). The decision cannot drift into its opposite by implementation. **AND THE TENSION IS WORTH NAMING BECAUSE IT IS NOT AN IMPLEMENTATION GAP: Invariants 6 and 9 pull against each other by construction.** 9 requires atrophy to DRIVE something; 6 makes anything it drives permanent and un-deletable. The available consequences are therefore ephemeral — which does not satisfy 9 — or durable, which accumulate for ever. No implementation resolves that; it would need one of the two invariants amended, which is a larger question than the row. **Reopen condition: a surface for readings exists AND somebody wants them faster than a person will click** — both halves, and then option (b), opt-in per agent and write-on-change, rather than a heartbeat. The observation is therefore emitted as an ephemeral signal, touching neither the DHT nor the source chain. The structural rule is unchanged and is what made this possible: it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
+- **On Invariant 9, and this is an admission rather than a note.** *"Death is required — unused entry types and membranes must atrophy."* Only conductance atrophies, and only at read time: `get_effective_conductance` recomputes `decay_factor` when asked and writes nothing, so the DHT is byte-identical before and after a link has decayed to nothing. Entry types and membranes do not atrophy at all. **The schedule half of that is no longer true as of 2026-10-20 and the invariant is still not satisfied, which is worth stating in that order.** `grep -c infallible` over the two zomes now returns **6 and 0** — `metabolic_tick`, in the coordinator, is the first `#[hdk_extern(infallible)]` here, and `#[hdk_extern(infallible)]` with `schedule()` is the host's only mechanism for a DNA to act without an external call. So a DNA that acts on its own clock exists, verified against a real conductor: a tick arrives with no caller and recurs on a 60s floor (`scripts/live-verify/metabolism.mjs`, READINESS item 8). **It changes nothing about Invariant 9, because the tick OBSERVES and does not act.** Atrophy that emits no events cannot drive anything, and a tick that reports decay drives nothing either — so **Invariant 9 remains the one invariant on this list with no mechanism behind it**, and a conforming implementation still cannot satisfy it. What moved is which half is missing: it was the clock and the consequence, and it is now only the consequence. **The consequence is deliberately unbuilt rather than merely absent.** Anything a scheduled observer wrote would be permanent under Invariant 6 and would spend a §6 friction budget every tick, so what it should write is a governance question and not an implementation detail. **That question was queued as READINESS item 9, item 9 CLOSED on 2026-10-20, and the question did not move anywhere — corrected 2026-10-21.** Item 9 settled the half it could: a discourse-health reading is an AGENT's signed, critiquable promise, because a membrane has no key. A scheduled tick runs as the author of the chain it runs for, so it *has* a key and the write is now possible. **What remains is the part item 8 named and nobody has decided: WHAT it writes, HOW OFTEN, and under WHOSE key** — every such entry being permanent under Invariant 6 and spending a §6 friction budget per tick, which makes switching on an autonomous writer the least reversible change available in this protocol. **DECIDED 2026-10-21 — READINESS item 22, option (a): no autonomous write.** The tick keeps emitting an ephemeral signal and a reading is published when a person chooses to. **So this invariant is now unsatisfied BY DECISION rather than by omission**, which is a different state from the one this note described for most of its life: the clock exists, and the consequence is declined. **The three reasons, shortest first.** There is no consumer — `publish_discourse_reading` is itself unsurfaced (§9), so an autonomous publisher would create permanent supply for a screen that does not exist. Invariant 6 makes it the least reversible change available, since the off switch stops future writes and nothing else. And the signature question is not about storage at all: a reading is somebody's signed, critiquable promise, so an unattended writer makes permanent attributable promises in an agent's name while they are not watching. **ENFORCED, NOT MERELY STATED:** `scripts/live-verify/metabolism.mjs` asserts the tick's own chain does not grow across ticks — chain-locally, so a write to any domain is caught — and that check has been watched failing (injection AO). The decision cannot drift into its opposite by implementation. **THE TENSION IS WORTH NAMING, AND AS OF 2026-10-22 IT IS NARROWER THAN THIS NOTE CLAIMED FOR MOST OF ITS LIFE.** The claim was: *Invariants 6 and 9 pull against each other by construction. 9 requires atrophy to DRIVE something; 6 makes anything it drives permanent and un-deletable. The available consequences are therefore ephemeral — which does not satisfy 9 — or durable, which accumulate for ever. No implementation resolves that; it would need one of the two invariants amended.* **The second half of that is wrong, and the reason is that neither 6 nor 9 is a Promise Theory axiom.** Invariants 1, 2, 4, 5 and 8 are derivations from autonomy, typed promise bodies and observer-local assessment. 6 and 9 are **imports** — 6 from an immutable-ledger ethic and the substrate's refusal of delete ops, 9 from autopoiesis. Promise Theory therefore cannot adjudicate between them, because it speaks to neither; and the conflict is between two imported axioms rather than between two consequences of the model, which is a different kind of problem and a smaller one.
+
+**WHAT PROMISE THEORY DOES SAY IS WHAT "DEATH" MEANS, AND IT IS NOT DELETION.** A promise with no assessor has no effect — not because it has been destroyed, but because effect exists only in assessment. The Promise-Theory translation of *"death is required"* is therefore **loss of standing**, not loss of data: an entry nobody assesses stops participating while remaining exactly where it was, fetchable by anybody who asks for it directly. Read that way:
+
+  - **Invariant 6 is untouched.** Nothing is deleted. Nothing is even written: the verdict is a computation a reader performs, which anybody can recompute and dispute.
+  - **Invariant 9 gets a real consequence.** What the system PRESENTS changes, and presentation is precisely where assessment happens — so a consequence that alters what a default read returns is not a weaker substitute for atrophy, it is what atrophy means for a system whose effects are assessments.
+  - **The durable-or-ephemeral dilemma dissolves**, because it assumed the consequence must be durable to count. In Promise Theory a durable atrophy verdict would be a NEW promise about somebody else's entry, made by an agent who is not its author — a strictly stronger and more questionable act than declining to assess, and one Invariant 1 would then have to be read against.
+
+**SO THE AMENDMENT THIS NOTE CALLED FOR IS NOT NEEDED.** Neither invariant has to change; what had to change is this note's claim that no implementation resolves the tension. A read-time standing rule resolves it, satisfies both, writes nothing, and does not reopen READINESS item 22 — whose reopen condition governs autonomous WRITES and therefore does not apply to a computation performed on demand. **What remains genuinely open is the THRESHOLD, and that is a Quantitative Promise Theory problem rather than a 6-versus-9 one**: a threshold turning a signal into a decision is itself a promise and needs an agent behind it, which is the argument that retired `CONDUCTANCE_HALF_LIFE_SECS` as a universal constant with no promiser. The two available answers are therefore a **per-membrane declared promise** (§10.9's shape, and the reading under which "same DNA, different expression" is exact), or a threshold **derived** rather than chosen, so that no agent had to pick it. Nothing here yet does either, and that — not the invariant pair — is what Invariant 9 is waiting on. **Reopen condition: a surface for readings exists AND somebody wants them faster than a person will click** — both halves, and then option (b), opt-in per agent and write-on-change, rather than a heartbeat. The observation is therefore emitted as an ephemeral signal, touching neither the DHT nor the source chain. The structural rule is unchanged and is what made this possible: it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
+
+## 7b. Two disciplines that are not invariants
+
+**These are not invariants and are deliberately not numbered among them.** They are not derivations from Promise Theory, nothing in validation can enforce them, and an implementation that ignored them would still conform to §7. They are rules about how this protocol REPORTS, written down because both were already practised in several places and in none of them as a rule — which is exactly the condition under which a practice lapses without anybody deciding to drop it.
+
+**Both are adopted from Veritas (Project 89, `github.com/project-89/Veritas`), which states them as system-wide rules for an evidence-grounded ingestion pipeline.** The wording below is theirs; the instances are this repository's.
+
+### 7b.1 Grounded or silent — and counted
+
+**Anything that cannot cite what it rests on is dropped, AND THE DROP IS COUNTED.** Veritas's form: *"Claims and extracted examples must cite verifiable evidence; unverifiable ones are dropped and counted."*
+
+**The counted half is the load-bearing one**, because a silent drop is indistinguishable from an empty input. A filter that returns three things from a hundred and reports three looks identical to one that was handed three. §5.19's denominator note is this discipline applied to pre-registration — an unrevealed commitment stays countable because its deadline and question are public from the moment it is made — and §10's `order_records` applies it to reads: `unresolved` NAMES the inputs it could not read rather than omitting them, and `tie_broken` reports how many positions were decided arbitrarily so a reader can tell a sequence from a list.
+
+**Where it binds next is automated ingestion**, which is the one direction that would make this protocol's inflow problem tractable and the one most likely to erode it. An ingesting agent is safe to switch on exactly when its rejects are counted: *"dropped 400 of 500, 380 for an unresolvable citation"* is a reading somebody can dispute, while the same run reporting 100 claims is indistinguishable from a quiet day.
+
+**What it forbids:** a read that returns fewer things than it considered without saying so.
+
+### 7b.2 Every read declares the mode it ran in
+
+**A computation with more than one mode — a fallback, a sampling resolution, a cap, a tie-break — reports which mode it used, in the same structure as its answer.** Veritas's form is *"honest degradation"*: each stage declares its fallback, and outputs *"state what they filtered rather than silently shrinking."*
+
+**This repository has been bitten three times by its absence, which is why it is a rule and not a preference.** The single datacentre crossing was quoted as a latency of "5.0s" for months when it was an upper bound from a 5s sampler (corrected 2026-10-21). A 421.1s figure was read as a deterministic constant when the repetition was the sampler's step size. And on 2026-10-22 both errors were made again in one day from the opposite directions: four readers run in parallel against one conductor inflated a crossing figure through lock contention, and a diagnostic started to explain a stall erased the self-recovery figure it was run to find.
+
+**The strongest form puts the declaration and the measurement in the same structure, so a harness can compare them to each other rather than trusting either.** `MetabolismTerms` declares `writes_to_the_dht: false` and `scripts/live-verify/metabolism.mjs` asserts the tick's own chain does not grow across ticks; `SignalChannelTerms` declares `entries_written_per_signal: 0` and carries the agent's `chain_length` in the same struct so a caller can read it, send signals, and read it again. **A declaration nothing checks is a comment**, and §5.21 already records what this repository thinks of comments standing in for enforcement.
+
+**What it forbids:** an answer whose precision is implied by its format.
+
+### 7b.3 Why these are disciplines rather than rules
+
+Neither is reachable by validation. Both concern coordinator reads, harnesses and clients — the hot-swappable half — so the only enforcement available is the one 7b.2 names: a check that compares a declaration against a measurement and goes red when they disagree. That is weaker than validation and it is what is available. Stating the disciplines is what makes the absence of such a check visible as a gap rather than invisible as a habit nobody wrote down.
 
 ## 8. HRR Encoding (Holographic Reduced Representations)
 
@@ -880,6 +920,7 @@ The consequence, for the historical record and because it explains the shape of 
 | `get_all_critique_species` | — | `Vec<Record>` — DHT-wide via `TaxonomyToSpecies` (§10.0) |
 | `get_critique_species_adoption_count` | `species_hash: EntryHash` | `usize` — live count of real `CritiqueToSpecies` links, not a stored field |
 | `get_species_adoption` | `species_hash: EntryHash` | `SpeciesAdoption { species, name, proposer, total_citations, proposer_citations, independent_adopters: Vec<AgentPubKey>, unattributable_citations, warning }` — the same links DECOMPOSED BY WHO CITED THEM. `total_citations` is `get_critique_species_adoption_count`'s figure, kept so the two reads cannot drift; `independent_adopters` is distinct agents OTHER than the proposer, which is the number the count above cannot express. **Components and no score**, for the reason Invariant #1 (§7) gives — a species one agent proposed and then cited fifty times is not fifty adoptions, and a single index would read as a verdict on its proposer. READINESS item 11 |
+| `get_species_secretion` | `species_hash: EntryHash` | `SpeciesSecretion { species, name, proposer, total_citations, proposer_citations, unattributable_citations, downstream_adopters, parallel_adopters, cone_silent_citations, max_independent_causal_depth, citations, note }` — the same links decomposed by **CAUSAL DISTANCE**, which is the half `get_species_adoption` cannot reach. Three independent citers look identical whether they took the species up BECAUSE they had seen it working or arrived at the same vocabulary never having met it; the first is uptake, the second coincidence, and reading the second as the first is how a private vocabulary is mistaken for a discovery. **`downstream_adopters`** are independent citers whose own `Critique.past_cone` contains a prior citation of this species — they demonstrably wrote having seen it in use, PROVEN BY WHAT THE AUTHOR RETAINED. **`parallel_adopters`** recorded a cone that holds no prior citation: consistent with independent arrival and NOT proof of it, since the earlier citation may simply not have reached them. **`cone_silent_citations`** recorded no cone at all and are evidence of nothing either way — an author whose client omits cones is SILENT, NOT IGNORANT (the same discipline `UnseenReport` carries). **NOT A SECOND READ DIFFED AGAINST THE FIRST**, which is the obvious implementation and is wrong: two reads are separated by a CLOCK, and §5.22 records that validation cannot reach one while READINESS item 14 MEASURED a `reveal_deadline` backdated by moving a conductor's — so a proposer wanting uptake to look like growth would control the write times a diff is computed from. The past cone cannot be re-chosen afterwards. `max_independent_causal_depth` is the one figure two readings may be compared on, and it EXCLUDES the proposer specifically so a proposer citing its own species in an ever-deeper chain cannot drive it. **Components and no score**, per Invariant #1 (§7). It still cannot clear a divergent observer IN ADVANCE: adoption is visible only after others have had the chance to adopt, so item 11's measurement makes a minority OBSERVABLE, not SAFE |
 
 ### 10.6 Worldline / HRR (worldline binding)
 | Function | Payload | Returns |
@@ -946,6 +987,172 @@ A *graded* companion to this (`get_attestation_weight`/`WeightedAttestationPolic
 
 ### 10.13 Signals
 Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`, `MetabolicTick(MetabolicObservation)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts. **`MetabolicTick` is the only variant not caused by a call** — it is emitted by `metabolic_tick` (§10.14a), which the host runs on its own scheduler, and it carries `MetabolicObservation { at_secs: i64, own_claims: u32, own_critiques: u32, wrote_nothing: bool }`. `wrote_nothing` is carried explicitly rather than left implied: a client is entitled to know the tick that produced the observation changed no state, and an implementation that later DOES write MUST change this field rather than mean something different by the same payload.
+
+### 10.13a Peer signals — the medium (Stage 1)
+
+**ONE entry to open a channel, per agent, once; ZERO per signal thereafter.**
+Nothing a signal carries reaches the DHT or either source chain. The one entry
+is an unrestricted `CapGrant` on `recv_remote_signal`, which
+`send_remote_signal` requires.
+
+**WHY AN EXPLICIT EXTERN AND NOT `init`**, which is what the HDK documents. The
+host warns that an `init` callback *"may not happen immediately or ever after
+happ installation"*, so a grant created there would exist or not depending on
+whether somebody made an unrelated call — and because the host call is
+send-and-forget, a signal sent before the grant existed would be dropped in
+silence on both ends. Opening the medium is therefore a decision somebody
+takes, and its absence is diagnosable.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `open_signal_channel` | `()` | `SignalChannelTerms` — `granted_to`, `created` (TRUE only on the call that made the grant, so a caller can tell *I opened it* from *it was already open*), `entries_written_to_open: 1`, `entries_written_per_signal: 0`, `chain_length` and `limits`. Idempotent by a chain-local query for the `recv_remote_signal` tag, not by luck. `chain_length` is reported so the declaration and the measurement can be compared to each other rather than trusted |
+| `send_peer_signal` | `SendPeerSignalInput { signal: PeerSignal, recipients: Vec<AgentPubKey> }` | `PeerSignalSent { attempted, delivery_confirmed }` — `attempted` is how many recipients the host was ASKED to reach, never how many received. `delivery_confirmed` is **always false by construction**: the host call is non-blocking and reports no failures, so no other value would be truthful |
+| `recv_remote_signal` | `PeerSignal` | `()` — the receiving half the HDK requires BY NAME. Emits `SignalPayload::PeerSignal { from, signal }` to this agent's own client, where `from` is `call_info()?.provenance` — the host's answer to *who called me*, never a field the sender supplied. **The parameter is `PeerSignal`, not the `ExternIO` the HDK's own docs give** (`hdk-0.7.0/src/p2p.rs:134`): the host passes `RemoteSignal.signal`'s bytes AS the extern input, so declaring `ExternIO` tries to deserialize a map into a byte array and fails every delivery |
+
+`PeerSignal` is a closed enum carrying **no free text and no timestamp**:
+`Saturated { domain, headroom }`, `ClosureDeficit { target, resolved, cited }`,
+`Settled { target }`, `ProposingSpecies { name, parent }`. No variant carries a
+time because §5.22 records what an author-supplied one is worth to a reader:
+nothing. A signal is received in the recipient's present, so the only honest
+clock is the recipient's own, applied on arrival.
+
+**THREE LIMITS, NORMATIVE because a signal looks more trustworthy than it is.**
+
+1. **Delivery is unverifiable by the sender.** A caller that needs to know
+   something arrived MUST hear back; the absence of a reply means nothing.
+2. **The sender is host-verified, the payload is not.** An agent claiming
+   `Saturated` may not be, and nothing here can check it.
+3. **No friction budget is spent (§6)**, because nothing is written — so a
+   modified coordinator can emit without limit. This is `SECURITY.md`'s
+   standing hot-swappable-coordinator position, and it is the price of the
+   medium being free: rate-limiting a signal would require writing something
+   to count it.
+
+**SO SIGNALS ARE HINTS AND MUST NEVER BE EVIDENCE.** Nothing downstream may
+treat a received signal as a reason to WRITE, only as a reason to LOOK. A
+disposition that writes because a peer said so has made an unauthenticated
+assertion load-bearing.
+
+### 10.13b Proprioception — one read of the caller's own state (Stage 2)
+
+**`get_local_tension` makes the graph's own state available as the proximate
+cause of the next write.** Luhmann's criterion for an autopoietic system of
+communications is that a communication be produced by prior communications
+rather than by the environment; until this read existed every Claim was
+produced by a human or by something a human triggered. A disposition can now
+read its own position and act on that.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `get_local_tension` | `GetLocalTensionPayload { membrane: ActionHash, conductance_policy: Option<ConductancePolicy> }` | `LocalTension` — four signals bundled into one read, plus what it refuses to be. Writes nothing; no entry type, no link type, no validation rule, so the DNA hash is untouched (§11) |
+
+**IT REPORTS AND MUST NOT DECIDE.** There is no score, no verdict, no
+threshold and no field named `healthy` or `stale`. The number that would turn
+any of these signals into an action is itself a promise and needs an agent
+behind it — the Quantitative Promise Theory argument that retired
+`CONDUCTANCE_HALF_LIFE_SECS` as a universal constant (READINESS item 10) —
+and that promise has not been made. Every figure is raw and carries its own
+denominator. Deciding is the caller's to do.
+
+**CALLER-SCOPED BY CONSTRUCTION, WHICH IS THE INVARIANT 1 DEFENCE.** There is
+no `agent` parameter. `observer` comes from `agent_info()`, the counts come
+from the caller's own source chain, and closure is computed against the
+caller's own local cache. A caller cannot ask for anybody else's tension, so
+this cannot become the canonical per-agent scalar over an enumerable agent set
+that got the mutual-credit ledger deleted. The answers are caller-scoped and
+legitimately differ between observers, exactly as `AttestationPolicy`'s do.
+
+**THE FOUR SIGNALS.**
+
+1. **`closure`** — of every Claim in the domain this observer can read, how
+   many citations resolve for it *now*, from local cache only.
+   `resolved_locally + deficit == cited_total` always. Observer-relative by
+   construction: another agent with a different cache gets a different figure
+   and neither is wrong. **Scoped to the domain's claims and not the caller's
+   own**, because a deficit over your own claims is near-always zero by
+   construction — `validate_claim` calls `must_get_entry` on every evidence
+   hash, so each resolved for its author at write time. The quantity that
+   means something is the one `PeerSignal::ClosureDeficit` names: what *this*
+   observer cannot reach of what somebody else cited.
+2. **`ordering`** — `tie_broken` from `order_records` over the caller's own
+   Claims and in-domain Critiques: how many points in the order were decided
+   by a hash rather than by causality. A disposition about to settle anything
+   is entitled to know how arbitrary the sequence is *before* it writes.
+   Critiques whose target did not resolve locally are reported in
+   `critique_targets_unresolved` rather than dropped, since a `Critique`
+   carries no `domain` of its own and can only be placed by its target.
+3. **`friction`** — every rationed §6 path with `recent_count`, `limit`,
+   `window_secs`, `headroom` and `blocked`, each counted by the same helper
+   the corresponding write path's own pre-check calls. `blocked` is true if
+   and only if `headroom` is zero, so two callers testing the two fields
+   cannot disagree.
+4. **`conductance`** — `total_initial` and `total_effective` over the
+   caller's own SynapticLinks, under the half-life **the caller promised**.
+   `half_life_promised_by_caller` reports whether one was supplied, because a
+   reader is entitled to know whether it got its own schedule or the
+   protocol's unpromised thirty-day default. Not comparable across policies.
+
+**ARC WIDTH IS ABSENT, AND THE ABSENCE IS A FIELD.** `arc_width` is always
+`None`, with `arc_width_absent_because` giving the reason: a coordinator zome
+cannot reach it. `AgentInfo` carries only `agent_initial_pubkey` and
+`chain_head`, and the HDK exposes no storage-arc call; the figure exists only
+as `storageArc` on the admin websocket's `agentInfo` payload, which makes it a
+client-side read about the conductor rather than a zome-side read about the
+agent. `signals_bundled: 4` and `signals_intended: 5` report the gap as a
+number so it cannot rot quietly.
+
+### 10.13c Microbiome — reading another network without swallowing it (Stage 5)
+
+**`docs/open-work.md` item 2.5.** Two membranes on the SAME DHT are already
+fully interlinked; "federation" only means something once there is a real
+boundary — two conductors that genuinely share no network. Neither side can
+see the other's data, so everything here is a correlative witness, the shape
+`BridgeRecord` and `FederationRecord` already use.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `import_foreign_critique` | `ImportForeignCritiquePayload { membrane, remote_network_label, remote_membrane_ref, foreign_author_ref, foreign_mode, foreign_content, foreign_target_ref, attestation_policy, conductance_policy, confidence }` | `ImportedCritique { action_hash, entry_hash, domain, witnessed_by, read_through, foreign_content_verified, limits }` — writes a tagged `Claim` recording, under the IMPORTER's own key, that a critique saying this exists on a federated network |
+| `get_foreign_imports` | `membrane: AnyDhtHash` | `Vec<Record>` — every federation import in that membrane's domain |
+
+**A FOREIGN CRITIQUE MUST NOT BECOME A NATIVE `Critique`.** §5.2 binds
+`critique.author` to the action's author, so a `Critique` on this chain asserts
+that THIS agent wrote it; writing somebody else's objection as one would forge
+provenance, permanently, since Invariant 6 keeps it. A `ForeignCritique` entry
+type is the honest home for one and is an INTEGRITY change — §11.1 is explicit
+that a different DNA hash is a different network — so it belongs in the single
+accumulated bump, not here.
+
+**AN IMPORT IS A `Claim` WITH A TAG**, `federation-import`, which is the
+precedent `publish_discourse_reading` set and for the identical reason: a new
+entry type or link type is a fork, while a tagged Claim rides the by-domain
+index, emits the ordinary `NewClaim` signal, and is critiquable by the
+machinery every other claim uses. An import nobody could object to would be a
+poor import.
+
+**AND IT IS EXCLUDED FROM `get_discourse_health`, WHICH IS THE PART THAT WOULD
+HAVE BITTEN SILENTLY.** An import IS a Claim in the domain — that is what makes
+it discoverable — so without a filter, importing fifty critiques from a
+federated partner would raise that domain's `total_claims` by fifty without
+anybody there having said anything, and its health would be partly a reading
+of another network's discourse. `DiscourseHealth.imported_claims` reports the
+count separately, the same remedy `reading_claims` is: excluded from the
+aggregate and REPORTED, because an exclusion nobody can see is
+indistinguishable from a count that is simply wrong.
+
+**THE LENS IS PART OF THE IMPORT.** `AttestationPolicy` and
+`ConductancePolicy` are reader-supplied — the reader is the promiser (READINESS
+item 10) — so the remote's discourse read unfiltered and read under the
+importer's declared policy are DIFFERENT SETS and neither is "the" set.
+`read_through` carries the method into the permanent entry via the same
+`describe_method` a published reading uses, because a filtered import
+presented as a neutral one is a lensed result wearing a neutral face.
+
+**WHAT IT DOES NOT CLAIM.** `foreign_content_verified` is ALWAYS false. The
+foreign author, target and mode travel as OPAQUE STRINGS rather than typed
+hashes, precisely because a type would assert a validation this network never
+performed. `federation/federate.mjs --import-critiques` refuses entirely unless
+mutual federation is confirmed from both sides: importing from a membrane that
+has not recognised you back is helping yourself to somebody's discourse.
 
 ### 10.13d Standing and apoptosis — atrophy without deletion (Stage 3)
 
