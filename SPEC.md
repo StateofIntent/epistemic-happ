@@ -1154,6 +1154,74 @@ performed. `federation/federate.mjs --import-critiques` refuses entirely unless
 mutual federation is confirmed from both sides: importing from a membrane that
 has not recognised you back is helping yourself to somebody's discourse.
 
+### 10.13d Standing and apoptosis — atrophy without deletion (Stage 3)
+
+**`docs/open-work.md` item 2.3.** READINESS item 22 closed by DECIDING
+Invariant 9 stays unsatisfied, because 6 and 9 pull against each other: 9 wants
+atrophy to drive something, and 6 makes anything it drives permanent. That
+framing assumed the consequence of atrophy had to be a **write**. It does not.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `get_standing` | `GetStandingPayload { membrane, standing_policy: Option<StandingPolicy>, horizon_levels: Option<u32> }` | `StandingReport` — per-claim standing with the figures it was decided from. Writes nothing; no entry type, no link type, no validation rule, so the DNA hash is untouched (§11) |
+
+**APOPTOSIS, NOT NECROSIS.** A claim whose most recent engagement lies more
+than N causal steps behind the frontier loses standing: excluded from a default
+read, **reported** as atrophied, **still fetchable by hash**, never deleted.
+Invariant 6 is untouched, and the verdict is recomputable by anybody and
+therefore disputable. Invariant 2 is satisfied because this is a read-layer
+**observation** rather than a mechanism.
+
+**CAUSAL STEPS, NOT WALL-CLOCK**, which is the only reason it can be built. An
+atrophy rule measured in elapsed time would need a clock nobody can trust
+(§5.22; READINESS item 14 measured a deadline backdated by moving a
+conductor's). Counted in causal steps it inherits the clock refusal instead of
+fighting it — no author can shorten their own distance to the frontier by lying
+about a timestamp. And distance is counted in **causal edges, never ordinal
+position**: `order_records` reports `tie_broken` precisely because concurrent
+records are separated by an action hash, so ordinal distance is part arbitrary
+and standing computed from it would depend on how a key sorted.
+
+**ENGAGEMENT MEANS A REFERENCE, NOT A CHAIN EDGE.** Both are real causality and
+both constrain order, but a chain edge joins an author's consecutive records
+*regardless of subject* — so under a combined reading an agent writing anything
+later would count as having engaged with its own earlier claim, and a claim
+could keep standing because its author kept typing. `order_records` and
+`get_standing` share one `causal_graph` so the two reads cannot drift about
+what causality is, and it returns reference edges separately for this reason.
+
+**THE THRESHOLD IS THE CALLER'S PROMISE.** `StandingPolicy::max_causal_distance`
+is supplied by the reader, so the agent asking the question is the agent
+promising the standard — the shape `AttestationPolicy` and `ConductancePolicy`
+already use, and Quantitative Promise Theory's requirement that a threshold
+turning a signal into a decision have an agent behind it. **Unlike a half-life
+this one has a neutral off position:** `None` means no atrophy and every record
+retains standing, exactly the behaviour before this read existed. So Invariant
+#1's objection — a universal constant with no promiser — is fully answerable
+here rather than half-answered as it is for conductance.
+
+Item **3.1** still decides whether a membrane may **declare** N for its own
+domain (a governance choice, and the epigenetics metaphor landing exactly: same
+DNA hash, different expression) or whether N should be **derived** so nobody
+chose it. Both are additions to this read rather than replacements, and a
+declared N would arrive via the `Constitution` — an integrity entry, hence a
+fork, hence §4's accumulated bump.
+
+**THE HORIZON IS REPORTED, AND CONSERVATIVELY.** `horizon_levels` bounds how
+far the walk goes out from the domain's claims; `horizon_exhausted` is TRUE
+only when the walk found an empty level and therefore **verified** there was
+nothing more. A walk that collects everything but ends on the cap reports
+FALSE, because it never got that proof — and when it is FALSE every distance is
+a **lower bound**, so a claim in apparent good standing might have its real
+engagement further back than this read could see.
+
+**WHAT IT IS NOT.** Not a score, not a ranking, and never a verdict about an
+agent: standing is a property of a **claim's** causal neighbourhood, and
+Invariant 1 bars the per-agent comparative version. It does not delete, hide
+irrecoverably, or gate writes. And it **cannot tell a claim nobody engaged with
+from one nobody has YET engaged with** — a freshly written claim has no
+engagements either, which is why `own_depth_used` is reported per claim.
+
 ### 10.14 Federation
 | Function | Payload | Returns |
 |---|---|---|
