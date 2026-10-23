@@ -1801,12 +1801,40 @@ fn referenced_hashes(record: &Record) -> Vec<Vec<u8>> {
     out
 }
 
-/// Order a set of records deterministically: causality first, hash tie-break.
+/// The causal graph over a set of records — the ONE definition of causality
+/// in this zome, shared by `order_records` and `get_standing`.
 ///
-/// A pure read — no writes, no friction spent, no validation rule. Per SPEC
-/// §11 a coordinator-only addition, so the DNA hash is untouched.
-#[hdk_extern]
-pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
+/// EXTRACTED RATHER THAN COPIED, and the reason is this repository's shadowing
+/// failure (READINESS item 5e). Standing is a function of causal distance; if
+/// it computed causality from a second copy of this logic, then "how far from
+/// the frontier" and "what order do these go in" could answer differently
+/// about the same two records, and both reads would be worthless the first
+/// time they drifted.
+///
+/// REFERENCE AND CHAIN EDGES ARE KEPT SEPARATE, which `order_records` does not
+/// care about and `get_standing` depends on entirely. Both are real causality
+/// and both constrain order. But a chain edge joins an author's consecutive
+/// records REGARDLESS OF SUBJECT — so under a combined reading, an agent
+/// writing an unrelated claim later would count as having "engaged" with its
+/// own earlier one, and a claim could keep its standing because its author
+/// kept typing. Engagement must mean a REFERENCE.
+struct CausalGraph {
+    /// Records that resolved, indexed.
+    present: Vec<ActionHash>,
+    /// Inputs that could not be read.
+    unresolved: Vec<ActionHash>,
+    /// `ref_edges[i]` holds the indices of records that REFERENCE record `i`
+    /// — so the edge runs from `i` (referenced, earlier) to each of them.
+    /// These are a record's engagements.
+    ref_edges: Vec<Vec<usize>>,
+    /// Every causal edge, references and chain order together, in the form
+    /// Kahn's algorithm wants.
+    edges: Vec<Vec<usize>>,
+    indegree: Vec<u32>,
+    causal_edges: u32,
+}
+
+fn causal_graph(hashes: Vec<ActionHash>) -> ExternResult<CausalGraph> {
     let mut unresolved: Vec<ActionHash> = Vec::new();
     let mut present: Vec<ActionHash> = Vec::new();
     let mut by_entry: HashMap<Vec<u8>, usize> = HashMap::new();
@@ -1832,9 +1860,10 @@ pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
 
     let n = present.len();
     let mut edges: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut ref_edges: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut indegree: Vec<u32> = vec![0u32; n];
     let mut causal_edges = 0u32;
-    let mut add = |from: usize, to: usize, edges: &mut Vec<Vec<usize>>, indeg: &mut Vec<u32>, count: &mut u32| {
+    let add = |from: usize, to: usize, edges: &mut Vec<Vec<usize>>, indeg: &mut Vec<u32>, count: &mut u32| {
         if from != to && !edges[from].contains(&to) {
             edges[from].push(to);
             indeg[to] += 1;
@@ -1847,6 +1876,9 @@ pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
     for (i, rs) in refs.iter().enumerate() {
         for r in rs {
             if let Some(&j) = by_entry.get(r).or_else(|| by_action.get(r)) {
+                if j != i && !ref_edges[j].contains(&i) {
+                    ref_edges[j].push(i);
+                }
                 add(j, i, &mut edges, &mut indegree, &mut causal_edges);
             }
         }
@@ -1859,6 +1891,19 @@ pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
             }
         }
     }
+
+    Ok(CausalGraph { present, unresolved, ref_edges, edges, indegree, causal_edges })
+}
+
+/// Order a set of records deterministically: causality first, hash tie-break.
+///
+/// A pure read — no writes, no friction spent, no validation rule. Per SPEC
+/// §11 a coordinator-only addition, so the DNA hash is untouched.
+#[hdk_extern]
+pub fn order_records(hashes: Vec<ActionHash>) -> ExternResult<OrderedRecords> {
+    let CausalGraph { present, unresolved, edges, mut indegree, causal_edges, .. } =
+        causal_graph(hashes)?;
+    let n = present.len();
 
     // Kahn's algorithm with a deterministic tie-break: among the ready set,
     // the smallest hash wins. Every observer therefore gets the same sequence.
@@ -8366,4 +8411,368 @@ pub fn get_foreign_imports(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
         }
     }
     Ok(out)
+}
+
+// ============================================================================
+// STAGE 3 — STANDING AND APOPTOSIS. ATROPHY WITHOUT DELETION.
+//
+// WHAT THIS CLOSES, and why it was thought impossible. READINESS item 22 closed
+// by DECIDING Invariant 9 stays unsatisfied, because 6 and 9 pull against each
+// other: 9 wants atrophy to drive something, and 6 makes anything it drives
+// permanent. That framing assumed the consequence of atrophy had to be a WRITE.
+// It does not.
+//
+// STANDING IS A FUNCTION OF CAUSAL DISTANCE, COMPUTED AT READ TIME. A claim
+// whose most recent engagement lies more than N causal steps behind the
+// membrane's frontier loses standing: excluded from a default read, REPORTED as
+// atrophied, still fetchable by hash, never deleted. **Apoptosis, not
+// necrosis.** Invariant 6 is untouched — nothing is removed, and the verdict is
+// recomputable by anybody and therefore disputable. Invariant 2 is satisfied
+// because this is a read-layer OBSERVATION rather than a mechanism.
+//
+// WHY IT IS AFFORDABLE HERE AND WAS NOT IN SETTLEMENT. Settlement deferred its
+// cool-down because VALIDATION cannot afford a graph walk: SPEC §5.22 gives a
+// validator no clock and every validating peer must reach the same verdict from
+// an exact integer comparison. The READ layer can afford a walk, and since
+// items 23 and 24 it has the primitives — `order_records`, `Critique.past_cone`,
+// `get_grounding_path`, `which_entries_resolve_locally`. Coordinator-only: no
+// entry type, no link type, no validation rule, so no `protocol_version` bump
+// and no fork.
+//
+// CAUSAL STEPS, NOT WALL-CLOCK, which is the whole reason this can be built at
+// all. An atrophy rule measured in elapsed time would need a clock nobody can
+// trust (§5.22, and READINESS item 14 MEASURED a deadline being backdated by
+// moving a conductor's). Counted in causal steps it inherits the clock refusal
+// instead of fighting it: the distance between two records is a property of
+// what was written, and no author can shorten their own distance to the
+// frontier by lying about a timestamp.
+//
+// AND THE DISTANCE IS COUNTED IN CAUSAL EDGES, NEVER IN ORDINAL POSITION. The
+// obvious implementation walks `order_records`' output and counts places. That
+// would be wrong, and quietly: `order_records` reports `tie_broken` precisely
+// because concurrent records are separated by an ACTION HASH, so ordinal
+// distance is part arbitrary. Standing computed from it would depend on a hash
+// — an agent could lose standing because of how its key sorted. Height in the
+// causal DAG has no such term.
+//
+// ---------------------------------------------------------------------------
+// THE THRESHOLD IS THE CALLER'S PROMISE, AND THAT IS WHAT MAKES THIS
+// BUILDABLE TODAY.
+//
+// `docs/open-work.md` item 3.1 asks what sets the atrophy threshold, and it is
+// a DECISION because Quantitative Promise Theory says a threshold turning a
+// signal into a decision IS ITSELF A PROMISE AND NEEDS AN AGENT BEHIND IT —
+// the argument that retired `CONDUCTANCE_HALF_LIFE_SECS` as a universal
+// constant (READINESS item 10). This read does not pre-empt that decision. It
+// takes the shape every other read-layer policy here already uses:
+// `max_causal_distance` is supplied by the CALLER, so the reader asking the
+// question is the agent promising the standard, exactly as with
+// `AttestationPolicy` and `ConductancePolicy`.
+//
+// AND UNLIKE A HALF-LIFE, THIS ONE HAS A NEUTRAL OFF POSITION, which is worth
+// stating because the conductance comment had to concede the opposite. A
+// half-life has no "off" — time passes whether or not anybody promised a rate,
+// so a reader supplying no policy still gets thirty days from nowhere. Standing
+// does have one: `max_causal_distance: None` means NO ATROPHY, every record
+// retains standing, which is exactly the behaviour before this read existed.
+// So the Invariant #1 objection — a universal constant with no promiser — is
+// fully answerable here rather than half-answered.
+//
+// WHAT ITEM 3.1 STILL DECIDES: whether a membrane may DECLARE N for its own
+// domain (a governance choice, and the epigenetics metaphor landing exactly —
+// same DNA hash, different expression), or whether N should be DERIVED so that
+// nobody chose it. Both remain open, and both are additions to this read rather
+// than replacements for it: a declared N would arrive via the `Constitution`,
+// which is an integrity entry and therefore a fork, and belongs in §4's
+// accumulated bump.
+//
+// WHAT THIS IS NOT. It is not a score, not a ranking, and not a verdict about
+// an agent — standing is a property of a CLAIM's causal neighbourhood, and
+// Invariant 1 bars the per-agent comparative version. It does not delete, hide
+// irrecoverably, or gate writes. And it cannot tell a claim nobody engaged with
+// from a claim nobody has YET engaged with: a freshly written claim has no
+// engagements either, which is why `own_depth_used` is reported per claim.
+// ============================================================================
+
+/// The reader's own atrophy standard. Supplied by the caller, because a
+/// threshold is a promise and needs an agent behind it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StandingPolicy {
+    /// How many causal steps behind the frontier an engagement may lie and
+    /// still confer standing.
+    ///
+    /// `None` MEANS NO ATROPHY — every record retains standing, which is
+    /// exactly the behaviour before this read existed. This is a real neutral
+    /// position, which `ConductancePolicy::half_life_secs` does not have, so a
+    /// reader who promises nothing has nothing imposed on them.
+    ///
+    /// NOT COMPARABLE ACROSS POLICIES, and that is accepted deliberately for
+    /// `AttestationPolicy`'s reason: two readers with different thresholds get
+    /// different standing for the SAME claim, and neither is wrong. The number
+    /// was never a property of the claim alone, only of the claim read through
+    /// somebody's declared patience. What stays comparable is what the DHT
+    /// holds — the records and their references, byte-identical for everyone.
+    pub max_causal_distance: Option<u32>,
+}
+
+/// One claim's standing, with the figures it was decided from.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClaimStanding {
+    pub claim: ActionHash,
+    /// TRUE when the claim's most recent engagement is within the caller's
+    /// `max_causal_distance` of the frontier — or always, when the caller
+    /// promised no threshold.
+    pub has_standing: bool,
+    /// Causal steps from the frontier to the claim's most recent engagement:
+    /// the height, in causal edges, of the shallowest record that REFERENCES
+    /// this claim. This is the figure the threshold is compared against.
+    pub engagement_distance: u32,
+    /// How many records in the examined set reference this claim. Zero means
+    /// nothing has engaged with it — which is the state of an ABANDONED claim
+    /// and of a BRAND-NEW one, and this read cannot tell those apart.
+    pub engagements: u32,
+    /// TRUE when `engagement_distance` is the claim's OWN height because
+    /// nothing references it. A reader MUST branch on this before calling a
+    /// claim abandoned: a claim written a moment ago has no engagements either.
+    pub own_depth_used: bool,
+}
+
+/// What a standing read says, and what it refuses to say.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StandingReport {
+    pub observer: AgentPubKey,
+    pub domain: String,
+    /// The threshold this report was computed under, echoed so a reader can
+    /// tell which patience produced it.
+    pub max_causal_distance: Option<u32>,
+    /// TRUE when the CALLER supplied the threshold and therefore promised it.
+    /// FALSE means no threshold was promised and nothing atrophied — see
+    /// `StandingPolicy`.
+    pub threshold_promised_by_caller: bool,
+
+    /// Every claim examined, with its figures. Published per-claim so the
+    /// verdict is checkable rather than merely asserted — and so it is
+    /// disputable, which is what keeps Invariant 6 intact.
+    pub claims: Vec<ClaimStanding>,
+    pub records_examined: u32,
+    pub claims_examined: u32,
+    pub with_standing: u32,
+    pub atrophied: u32,
+    /// Causal edges in the examined graph, and how deep it goes. A frontier
+    /// over a graph with no edges is every record at once, which is why this
+    /// is reported: `causal_edges == 0` means every distance is 0 and no
+    /// threshold can bite.
+    pub causal_edges: u32,
+    pub max_height: u32,
+    /// How many levels of critique the walk was allowed.
+    pub horizon_levels: u32,
+    /// TRUE when the walk ran out of new critiques before hitting the cap, so
+    /// the examined set is causally COMPLETE for these claims and every
+    /// distance is final. FALSE means the horizon cut the graph short and
+    /// distances are LOWER BOUNDS — a claim reported in good standing might
+    /// have its real engagement further back than this read could see.
+    pub horizon_exhausted: bool,
+
+    /// ALWAYS TRUE. Nothing is deleted, and an atrophied claim is still
+    /// fetchable by hash — stated as fields because a reader should not have
+    /// to find the section comment to learn it.
+    pub nothing_deleted: bool,
+    pub atrophied_still_fetchable_by_hash: bool,
+    pub writes_nothing: bool,
+    /// The caller's own chain length at read time: the instrument for
+    /// `writes_nothing`, the shape `metabolism.mjs` established.
+    pub chain_length: u32,
+
+    pub limits: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetStandingPayload {
+    /// The membrane whose domain is being read. The domain comes off the
+    /// resolved entry, so a caller cannot ask about one nobody founded.
+    pub membrane: AnyDhtHash,
+    /// `None` is a complete answer: no threshold promised, nothing atrophied.
+    pub standing_policy: Option<StandingPolicy>,
+    /// How many levels of critique-of-critique to walk out from the domain's
+    /// claims. Default 4.
+    ///
+    /// THIS EXISTS BECAUSE THE FIRST VERSION HARDCODED 2 AND THAT QUIETLY
+    /// CAPPED THE MEASUREMENT. A 2-level walk over a 4-deep critique chain
+    /// collected 6 of 8 records, so the buried claim's engagement reported a
+    /// distance of 1 instead of 3 — the figure was not wrong about the set it
+    /// examined, it was a different question from the one the caller asked.
+    /// With the horizon that short, `max_causal_distance` could only ever take
+    /// two or three useful values and "N causal steps" was barely a scale.
+    ///
+    /// It is a parameter rather than a larger constant because the cost is the
+    /// caller's to accept: each level is a round of `get_critiques_for` over
+    /// everything the last level found. `horizon_exhausted` in the report says
+    /// whether the walk finished or hit this cap, so a truncated distance is
+    /// never mistaken for a settled one.
+    pub horizon_levels: Option<u32>,
+}
+
+/// HEIGHT IN CAUSAL EDGES: the longest forward path from each record.
+///
+/// Height 0 is the frontier — nothing in the examined set causally follows it.
+/// Height 3 means three generations of causal descendants have happened since,
+/// which is what "behind the frontier" means when there is no clock to measure
+/// it with.
+///
+/// LONGEST rather than shortest path, deliberately. The shortest forward path
+/// would let one stray reference from an old record to a new one declare the
+/// old record current; the longest counts the generations that actually
+/// accumulated. Iterative relaxation rather than recursion, bounded by `n`, so
+/// a cycle cannot hang it — a cycle cannot be built through this zome's write
+/// paths (a reference must resolve before its referrer commits) but a read that
+/// hangs on impossible data is worse than one that reports it.
+fn causal_heights(edges: &[Vec<usize>]) -> Vec<u32> {
+    let n = edges.len();
+    let mut height = vec![0u32; n];
+    for _ in 0..n {
+        let mut changed = false;
+        for i in 0..n {
+            for &j in &edges[i] {
+                if height[i] < height[j] + 1 {
+                    height[i] = height[j] + 1;
+                    changed = true;
+                }
+            }
+        }
+        if !changed { break; }
+    }
+    height
+}
+
+/// STANDING: which claims in a domain are still causally live, by the caller's
+/// own standard.
+///
+/// A pure read: no writes, no friction spent, no entry type, no link type and
+/// no validation rule, so per SPEC §11 this is coordinator-only and the DNA
+/// hash is untouched.
+#[hdk_extern]
+pub fn get_standing(payload: GetStandingPayload) -> ExternResult<StandingReport> {
+    let observer = agent_info()?.agent_initial_pubkey;
+    let membrane_record = get(payload.membrane.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    let membrane_entry: Membrane = membrane_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let domain = membrane_entry.domain.clone();
+
+    let threshold = payload.standing_policy.as_ref().and_then(|p| p.max_causal_distance);
+    let threshold_promised_by_caller = threshold.is_some();
+
+    // THE EXAMINED SET, and its horizon is stated rather than implied. Claims
+    // in the domain, then what critiques them, then what critiques those. Two
+    // levels because a critique of a critique is still engagement with the
+    // claim's neighbourhood, and because an unbounded walk over a shared index
+    // is a read whose cost a caller cannot predict.
+    let mut claim_actions: Vec<ActionHash> = Vec::new();
+    let mut claim_entries: Vec<EntryHash> = Vec::new();
+    for record in get_claims_by_domain(domain.clone())? {
+        // Readings and federation imports are not discourse in this domain and
+        // are not claims whose standing means anything here — the same
+        // exclusion `get_discourse_health` makes, for the same reason.
+        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
+            if claim.semantic_tags.iter().any(|t| t == DISCOURSE_READING_TAG) {
+                continue;
+            }
+            if let Some(eh) = record.action().entry_hash() {
+                claim_actions.push(record.action_address().clone());
+                claim_entries.push(eh.clone());
+            }
+        }
+    }
+
+    let horizon_levels = payload.horizon_levels.unwrap_or(4);
+    let mut all: Vec<ActionHash> = claim_actions.clone();
+    let mut frontier_entries: Vec<EntryHash> = claim_entries.clone();
+    let mut horizon_exhausted = false;
+    for _level in 0..horizon_levels {
+        let mut next: Vec<EntryHash> = Vec::new();
+        for eh in &frontier_entries {
+            let anyh: AnyDhtHash = eh.clone().into();
+            for c in get_critiques_for(anyh)? {
+                let h = c.action_address().clone();
+                if !all.contains(&h) {
+                    all.push(h);
+                    if let Some(ceh) = c.action().entry_hash() { next.push(ceh.clone()); }
+                }
+            }
+        }
+        if next.is_empty() { horizon_exhausted = true; break; }
+        frontier_entries = next;
+    }
+
+    let graph = causal_graph(all)?;
+    let heights = causal_heights(&graph.edges);
+    let max_height = heights.iter().copied().max().unwrap_or(0);
+
+    // Index the claims inside the graph so their engagements can be read off
+    // the REFERENCE edges only — see `CausalGraph`'s comment on why a chain
+    // edge is not an engagement.
+    let mut claims: Vec<ClaimStanding> = Vec::new();
+    let mut with_standing = 0u32;
+    let mut atrophied = 0u32;
+    for (idx, h) in graph.present.iter().enumerate() {
+        if !claim_actions.contains(h) { continue; }
+        let engagements = &graph.ref_edges[idx];
+        // The SHALLOWEST referencing record: the claim's most recent
+        // engagement, in causal terms.
+        let engagement_distance = engagements
+            .iter()
+            .map(|&j| heights[j])
+            .min()
+            .unwrap_or(heights[idx]);
+        let own_depth_used = engagements.is_empty();
+        let has_standing = match threshold {
+            None => true,
+            Some(n) => engagement_distance <= n,
+        };
+        if has_standing { with_standing += 1; } else { atrophied += 1; }
+        claims.push(ClaimStanding {
+            claim: h.clone(),
+            has_standing,
+            engagement_distance,
+            engagements: engagements.len() as u32,
+            own_depth_used,
+        });
+    }
+
+    let chain_length = query(ChainQueryFilter::new())?.len() as u32;
+
+    Ok(StandingReport {
+        observer,
+        domain,
+        max_causal_distance: threshold,
+        threshold_promised_by_caller,
+        records_examined: graph.present.len() as u32,
+        claims_examined: claims.len() as u32,
+        with_standing,
+        atrophied,
+        causal_edges: graph.causal_edges,
+        max_height,
+        horizon_levels,
+        horizon_exhausted,
+        claims,
+        nothing_deleted: true,
+        atrophied_still_fetchable_by_hash: true,
+        writes_nothing: true,
+        chain_length,
+        limits: "APOPTOSIS, NOT NECROSIS: nothing is deleted, an atrophied claim is still \
+fetchable by hash, and this verdict is recomputable by anybody and therefore disputable — \
+Invariant 6 untouched. The threshold is the CALLER'S PROMISE, not the protocol's: no policy \
+means no atrophy, which is a real neutral position a half-life does not have. Standing is a \
+property of a CLAIM's causal neighbourhood and never a score or ranking of an AGENT \
+(Invariant 1). Distance is counted in CAUSAL EDGES, never in ordinal position, so no hash \
+tie-break enters it and no clock is consulted (§5.22). It CANNOT tell a claim nobody engaged \
+with from one nobody has YET engaged with — check own_depth_used before calling anything \
+abandoned. Observer-relative: the examined set is what this observer can read, out to \
+horizon_levels of critique — and when horizon_exhausted is FALSE the distances are LOWER \
+BOUNDS, because the horizon cut the graph short."
+            .to_string(),
+    })
 }
