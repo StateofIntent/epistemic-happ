@@ -4272,6 +4272,15 @@ pub struct DiscourseHealth {
     /// difference, and an invisible exclusion is indistinguishable from a
     /// wrong count.
     pub reading_claims: u32,
+    /// How many Claims in this domain were SET ASIDE as FEDERATION IMPORTS —
+    /// witnesses that a critique exists on another network — rather than
+    /// counted as discourse in this one. Same remedy as `reading_claims` and
+    /// for the same measured reason: an import is a Claim in this domain (that
+    /// is what makes it discoverable), so counting it would make this domain's
+    /// health partly a reading of ANOTHER NETWORK'S discourse. Reported, never
+    /// silently dropped — an exclusion nobody can see is indistinguishable
+    /// from a count that is simply wrong.
+    pub imported_claims: u32,
     pub total_critiques: u32,
     pub critique_mode_distribution: Vec<(CritiqueMode, u32)>,
 }
@@ -4377,10 +4386,19 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
     // type, no validation rule, so the DNA hash is untouched.
     let mut claims: Vec<Record> = Vec::new();
     let mut reading_claims = 0u32;
+    let mut imported_claims = 0u32;
     for record in all_in_domain {
         match record.entry().to_app_option::<Claim>() {
             Ok(Some(claim)) if claim.semantic_tags.iter().any(|t| t == DISCOURSE_READING_TAG) => {
                 reading_claims += 1;
+            }
+            // A REPORT ABOUT ANOTHER NETWORK IS NOT DISCOURSE IN THIS DOMAIN,
+            // which is `reading_claims`' lesson one tag over. Importing fifty
+            // critiques from a federated partner would otherwise raise this
+            // domain's `total_claims` by fifty without anybody here having
+            // said anything — see the STAGE 5 section header.
+            Ok(Some(claim)) if claim.semantic_tags.iter().any(|t| t == FEDERATION_IMPORT_TAG) => {
+                imported_claims += 1;
             }
             // Anything that does not deserialize as a Claim stays counted
             // exactly as it was before this filter existed — the old code
@@ -4490,6 +4508,7 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
         warning,
         total_claims: claims.len() as u32,
         reading_claims,
+        imported_claims,
         total_critiques,
         critique_mode_distribution: mode_counts,
     })
@@ -8118,4 +8137,228 @@ arrival but do not prove it, and {} citation(s) recorded no cone.",
         citations,
         note,
     })
+}
+
+// ============================================================================
+// STAGE 5 — MICROBIOME. READING ANOTHER MEMBRANE'S DISCOURSE WITHOUT
+// SWALLOWING IT.
+//
+// `docs/open-work.md` item 2.5: *"Membranes read each other's published
+// policies and import foreign critiques."* Two halves, and the second one is
+// where every honest difficulty is.
+//
+// A FOREIGN CRITIQUE CANNOT BECOME A NATIVE `Critique`, and the reason is not
+// squeamishness. `validate_critique` binds `critique.author` to the action's
+// author (SPEC §5.2), so a `Critique` entry on this chain asserts that THIS
+// agent wrote it. Writing somebody else's objection as a native Critique would
+// therefore forge provenance — the importer's key signing another network's
+// opinion — and no later disclaimer undoes an entry Invariant 6 keeps for
+// ever. A `ForeignCritique` entry type is the honest home for one, and that is
+// an INTEGRITY change: §11.1 is explicit that a different DNA hash is a
+// different network, so it belongs in the single accumulated bump, not here.
+//
+// SO AN IMPORT IS A WITNESS, NOT A COPY — the correlative-witness shape
+// `BridgeRecord` and `FederationRecord` already use for exactly this problem.
+// The importing agent writes, under their own key, their own assertion that
+// *"a critique saying this exists over there"*. That claim is true, checkable
+// in the only way anything across a network boundary ever is (ask the other
+// side), and attributable to whoever made it. What it is NOT is the foreign
+// agent's signature, and nothing here pretends otherwise.
+//
+// IT IS A `Claim` WITH A TAG RATHER THAN A NEW ENTRY TYPE, which is the
+// precedent `publish_discourse_reading` set two hundred lines up and for the
+// identical reason: a new entry type or link type is an integrity change and
+// therefore a fork, while a tagged Claim rides the by-domain index, emits the
+// ordinary `NewClaim` signal, and is critiquable by the machinery every other
+// claim already uses. An import nobody could object to would be a poor import.
+//
+// AND THE EXCLUSION IS THE PART THAT WOULD HAVE BITTEN, which is why it ships
+// with the import rather than after it. `get_discourse_health` counts the
+// Claims in a domain. An imported witness IS a Claim in the domain — that is
+// what makes it discoverable — so without a filter, importing fifty critiques
+// from a federated partner would raise this domain's `total_claims` by fifty
+// and its health would be partly a reading of ANOTHER NETWORK'S discourse.
+// That is not a hypothetical: `reading_claims` exists because
+// `publish_discourse_reading` did precisely this to itself, measured on a live
+// conductor — one real claim and no critiques, then three readings published,
+// and `total_claims` reported 1, 2, 3, 4 while the discourse never changed. The
+// same failure, one tag over, and `imported_claims` is the same remedy:
+// excluded from the aggregate, and REPORTED so the exclusion is visible,
+// because an exclusion nobody can see is indistinguishable from a wrong count.
+//
+// WHICH LENS IT WAS READ THROUGH IS PART OF THE IMPORT. `AttestationPolicy`
+// and `ConductancePolicy` are reader-supplied — the reader is the promiser —
+// so importing under the local membrane's policy and importing unfiltered give
+// DIFFERENT SETS, and neither is "the" set. `read_through` carries the method
+// into the witness, the way `publish_discourse_reading` carries it into a
+// reading, because a filtered import presented as a neutral one is a lensed
+// number wearing a neutral face.
+//
+// WHAT THIS DOES NOT CLAIM. It does not verify the foreign critique exists —
+// no DHT can see another's data, which is the whole premise of
+// `federation/README.md`. It does not verify the foreign author's key, which
+// belongs to a chain this network has never validated. It records who said
+// they saw what, where, and through which lens. That is the most any bridge
+// between two networks has ever been able to offer here, and saying so is
+// cheaper than discovering it later.
+// ============================================================================
+
+/// Marks a Claim as a FEDERATION IMPORT rather than discourse in this domain.
+///
+/// A tag rather than a link type for `DISCOURSE_READING_TAG`'s reason: a new
+/// `LinkTypes` variant is an integrity change and therefore a DNA hash change,
+/// and the by-domain index already indexes every Claim including these.
+pub const FEDERATION_IMPORT_TAG: &str = "federation-import";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImportForeignCritiquePayload {
+    /// The LOCAL membrane doing the importing. The domain is read off the
+    /// resolved entry, as everywhere else, so a caller cannot import into a
+    /// domain nobody founded.
+    pub membrane: AnyDhtHash,
+    /// The other network, by the same opaque label `FederationRecord` uses —
+    /// never a hash on this DHT, because no hash on this DHT means anything
+    /// over there.
+    pub remote_network_label: String,
+    pub remote_membrane_ref: String,
+    /// The foreign critique's author AS A STRING, deliberately not an
+    /// `AgentPubKey`. An `AgentPubKey` here would type-check and would be a
+    /// lie: it would read as an agent of this network, and nothing on this
+    /// chain can validate a key belonging to one this network has never seen.
+    pub foreign_author_ref: String,
+    /// The foreign critique's mode as a STRING, for the same reason it is not
+    /// `CritiqueMode`: the enum means "validated under this DNA's rules", and
+    /// this was not.
+    pub foreign_mode: String,
+    pub foreign_content: String,
+    /// What the foreign critique says it targets, opaque and unresolvable
+    /// here.
+    pub foreign_target_ref: String,
+    /// The lens this import was read through. `None` means unfiltered, which
+    /// is itself a methodological choice and the most consequential one.
+    pub attestation_policy: Option<AttestationPolicy>,
+    pub conductance_policy: Option<ConductancePolicy>,
+    /// The IMPORTER's own confidence in their report of what they saw — theirs
+    /// to state, not the protocol's to compute.
+    pub confidence: ConfidenceLevel,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImportedCritique {
+    pub action_hash: ActionHash,
+    pub entry_hash: EntryHash,
+    pub domain: String,
+    /// Who actually signed this entry: the importer, never the foreign author.
+    pub witnessed_by: AgentPubKey,
+    /// The lens, rendered so a critic can dispute the method and not just the
+    /// content.
+    pub read_through: String,
+    /// ALWAYS FALSE. No DHT can see another's data, so nothing here is
+    /// verified — stated as a field because a reader should not have to find
+    /// this comment to learn it.
+    pub foreign_content_verified: bool,
+    /// What this entry is and is not, for a caller with no access to the
+    /// section header above.
+    pub limits: String,
+}
+
+/// Record, under your own key, that a critique exists on a federated network.
+///
+/// A coordinator-only addition: no entry type, no link type, no validation
+/// rule, so per SPEC §11 the DNA hash is untouched.
+#[hdk_extern]
+pub fn import_foreign_critique(
+    payload: ImportForeignCritiquePayload,
+) -> ExternResult<ImportedCritique> {
+    let membrane_record = get(payload.membrane.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    let membrane_entry: Membrane = membrane_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let domain = membrane_entry.domain.clone();
+
+    // The SAME renderer `publish_discourse_reading` uses, so a lens described
+    // on an import and a lens described on a reading cannot drift into two
+    // vocabularies for one thing.
+    let read_through = describe_method(&payload.attestation_policy, &payload.conductance_policy);
+
+    let witnessed_by = agent_info()?.agent_initial_pubkey;
+    let content = format!(
+        "FEDERATION IMPORT — a witness, not a copy.\n\
+         Network: {}\n\
+         Remote membrane: {}\n\
+         Foreign author (opaque, unverifiable here): {}\n\
+         Foreign target (opaque, unresolvable here): {}\n\
+         Foreign mode (as reported, not as validated): {}\n\
+         Read through: {}\n\
+         --- what the foreign critique says ---\n{}\n\
+         --- end ---\n\
+         This entry is the importer's own assertion that the above exists on another \
+network. It is NOT the foreign author's signature, the foreign critique is NOT verified \
+here, and no DHT can see another's data to verify it.",
+        payload.remote_network_label,
+        payload.remote_membrane_ref,
+        payload.foreign_author_ref,
+        payload.foreign_target_ref,
+        payload.foreign_mode,
+        read_through,
+        payload.foreign_content,
+    );
+
+    let claim = Claim {
+        content,
+        domain: domain.clone(),
+        author: witnessed_by.clone(),
+        timestamp: sys_time()?.as_micros() as u64,
+        evidence_hashes: vec![],
+        confidence: payload.confidence,
+        semantic_tags: vec![FEDERATION_IMPORT_TAG.to_string()],
+        source_mew: None,
+    };
+    let entry_hash = hash_entry(&claim)?;
+    // Through `create_claim` rather than `create_entry`, for the reason
+    // `publish_discourse_reading` gives: that is what indexes it by domain and
+    // emits `NewClaim`, so an import is discoverable and critiquable by the
+    // machinery every other claim uses.
+    let action_hash = create_claim(claim)?;
+
+    Ok(ImportedCritique {
+        action_hash,
+        entry_hash,
+        domain,
+        witnessed_by,
+        read_through,
+        foreign_content_verified: false,
+        limits: "A witness, not a copy. The importer signed this; the foreign author did not. \
+Nothing here is verified — no DHT can see another's data — and the foreign author, target and \
+mode are opaque strings rather than typed hashes precisely because a type would assert a \
+validation this network never performed. Excluded from get_discourse_health, which counts \
+discourse IN this domain, not reports about another network's."
+            .to_string(),
+    })
+}
+
+/// Every federation import in a membrane's domain, as their Claim records.
+///
+/// A pure read, coordinator-only.
+#[hdk_extern]
+pub fn get_foreign_imports(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
+    let membrane_record = get(membrane, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    let membrane_entry: Membrane = membrane_record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let mut out = Vec::new();
+    for record in get_claims_by_domain(membrane_entry.domain.clone())? {
+        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
+            if claim.semantic_tags.iter().any(|t| t == FEDERATION_IMPORT_TAG) {
+                out.push(record);
+            }
+        }
+    }
+    Ok(out)
 }
