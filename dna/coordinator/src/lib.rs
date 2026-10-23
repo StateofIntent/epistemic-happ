@@ -7843,3 +7843,279 @@ Conductance is not comparable across half-lives. Arc width is absent, with its r
             .to_string(),
     })
 }
+
+// ============================================================================
+// STAGE 4 — SECRETION. TELLING EXPLORATION FROM DEGRADATION BY CAUSAL
+// DISTANCE RATHER THAN BY A CLOCK.
+//
+// WHAT WAS ALREADY HERE AND WHY IT IS NOT ENOUGH. `get_species_adoption`
+// decomposes a `CritiqueSpecies`' uptake by WHO cited it, which fixed the
+// defect that `get_critique_species_adoption_count` counted the proposer's own
+// fifty citations as fifty adoptions. That is necessary and it is not
+// sufficient: a species with three independent citers looks identical whether
+// those three took it up BECAUSE they had seen it working, or arrived at the
+// same vocabulary without ever encountering it. The first is uptake. The
+// second is coincidence, and reading it as uptake is how a private vocabulary
+// gets mistaken for a discovery.
+//
+// `docs/open-work.md` item 2.4 states the requirement as *"`get_species_
+// adoption` read a second time at a causal distance from the first, which is
+// the only way exploration becomes distinguishable from degradation."* The
+// requirement is right and THE OBVIOUS IMPLEMENTATION OF IT IS WRONG, which
+// is the finding this section exists to record.
+//
+// POLLING TWICE MEASURES ELAPSED TIME, AND THIS PROTOCOL HAS ALREADY RULED
+// THAT OUT. Calling the same read twice and diffing it separates the two
+// observations by WALL CLOCK — and §5.22 records that validation cannot reach
+// a clock at all, while READINESS item 14 MEASURED a `reveal_deadline` being
+// backdated by moving the authoring conductor's clock, permanently. A
+// discriminator built on "later" inherits every one of those problems: the
+// second reading is only causally after the first if somebody's clock says so,
+// and a proposer who wants adoption to look like growth controls the write
+// times it would be computed from.
+//
+// SO THE CAUSAL DISTANCE IS TAKEN FROM RETAINED DATA INSTEAD, and the field
+// that carries it already exists. `Critique.past_cone` is what its author
+// recorded having seen of the same target's critiques — Light Cone
+// Consistency's retention, the thing `critiques_unseen_by` reads. If an
+// agent's citing critique has ANOTHER citation of the same species inside its
+// own past cone, that agent demonstrably wrote having already seen the species
+// in use. That is adoption at a causal distance, PROVEN BY WHAT THE AUTHOR
+// KEPT rather than asserted by a timestamp anybody could choose. It is the
+// same move §4 of `ordering-policy.mjs` makes for ordering: prefer the
+// recorded causal edge over the self-reported number.
+//
+// THREE THINGS ARE THEREFORE DISTINGUISHED AND MUST NOT BE CONFLATED, which
+// is why this returns a struct and not an index:
+//
+//   DOWNSTREAM   an independent citer whose cone contains a prior citation of
+//                this species. Took it up having seen it used. This is the
+//                only one of the three that is positive evidence of uptake.
+//   PARALLEL     an independent citer whose cone is non-empty — they recorded
+//                seeing sibling critiques — but contains no prior citation of
+//                this species. Consistent with independent arrival, and NOT
+//                proof of it: the prior citation may simply not have reached
+//                them yet.
+//   CONE SILENT  a citer whose cone is EMPTY. Says nothing whatever. An
+//                author whose client does not populate cones is SILENT, NOT
+//                IGNORANT — `UnseenReport` already carries this lesson and
+//                presenting silence as independence would manufacture a
+//                finding out of a missing feature.
+//
+// NO SCORE, FOR THE REASON EVERY OTHER READ HERE HAS NONE. A single
+// "exploration index" would be the fabricated scalar README §2.5 exists to
+// avoid, and it would be read as a verdict on the proposing agent, which is
+// Invariant #1. `max_independent_causal_depth` is published as the one figure
+// two readings CAN be compared on, and it is published with its limitation
+// attached: it is the deepest prior-citation count among NON-proposer citers,
+// specifically so a proposer citing their own species in an ever-deeper chain
+// cannot drive it.
+//
+// WHAT THIS STILL CANNOT DO, carried forward verbatim from
+// `get_species_adoption` because widening the measurement did not widen the
+// promise: it cannot clear a divergent observer IN ADVANCE. Adoption is
+// visible only after other agents have had the chance to adopt, so a minority
+// deployed today is unclassifiable today and stays that way until the graph
+// responds. Item 11 wanted a measurement that made running divergent
+// observers SAFE; what is on offer makes them OBSERVABLE.
+// ============================================================================
+
+/// One citation of a species, classified by what its author had recorded
+/// seeing. Published per-citation rather than only in aggregate so a reader
+/// can check the classification instead of trusting it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpeciesCitation {
+    pub critique: ActionHash,
+    pub author: AgentPubKey,
+    /// TRUE when `author` is the species' proposer.
+    pub by_proposer: bool,
+    /// How many OTHER citations of this species are inside this critique's
+    /// own recorded past cone. Greater than zero is the causal distance item
+    /// 2.4 asks for, and it is proven by retention rather than by a clock.
+    pub prior_citations_seen: u32,
+    /// FALSE when the past cone is empty. A reader MUST branch on this before
+    /// saying anything about independence — see the section header.
+    pub cone_recorded: bool,
+}
+
+/// A `CritiqueSpecies`' uptake, decomposed by CAUSAL DISTANCE.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpeciesSecretion {
+    pub species: EntryHash,
+    pub name: String,
+    pub proposer: AgentPubKey,
+
+    /// Mirrors `get_species_adoption` exactly, so the two reads cannot
+    /// quietly disagree about the same species.
+    pub total_citations: u32,
+    pub proposer_citations: u32,
+    pub unattributable_citations: u32,
+
+    /// Independent citers whose cone contains a prior citation of this
+    /// species. THE ONLY POSITIVE EVIDENCE OF UPTAKE here.
+    pub downstream_adopters: Vec<AgentPubKey>,
+    /// Independent citers who recorded a cone that contains no prior citation
+    /// of this species. Consistent with independent arrival; not proof of it.
+    pub parallel_adopters: Vec<AgentPubKey>,
+    /// Citations whose author recorded no cone at all. Evidence of nothing.
+    pub cone_silent_citations: u32,
+
+    /// The deepest `prior_citations_seen` among NON-proposer citations. The
+    /// one figure two readings can be compared on, and it cannot be driven by
+    /// the proposer alone — which is the whole reason it excludes them.
+    pub max_independent_causal_depth: u32,
+
+    /// Every citation, classified. The denominator made checkable.
+    pub citations: Vec<SpeciesCitation>,
+
+    /// Says what is and is not distinguishable. Never a verdict.
+    pub note: String,
+}
+
+/// Who took a `CritiqueSpecies` up, and whether they had seen it in use when
+/// they did.
+///
+/// A pure read: no writes, no friction spent, no entry type, no link type and
+/// no validation rule, so per SPEC §11 this is coordinator-only and the DNA
+/// hash is untouched.
+#[hdk_extern]
+pub fn get_species_secretion(species_hash: EntryHash) -> ExternResult<SpeciesSecretion> {
+    let record = get(AnyDhtHash::from(species_hash.clone()), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("CritiqueSpecies not found.".into())))?;
+    let species: CritiqueSpecies = record
+        .entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a CritiqueSpecies.".into())))?;
+
+    let links = get_links(
+        LinkQuery::try_new(species_hash.clone(), LinkTypes::CritiqueToSpecies)?,
+        GetStrategy::Network,
+    )?;
+    let total_citations = links.len() as u32;
+
+    // PASS ONE: resolve every citation. The set of citing ActionHashes is
+    // needed in full before any cone can be tested against it, because
+    // "a prior citation of this species" means "a member of THIS set".
+    let mut resolved: Vec<(ActionHash, Critique)> = Vec::new();
+    let mut unattributable_citations = 0u32;
+    for link in links {
+        let Ok(critique_hash) = ActionHash::try_from(link.target) else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Some(rec) = get(critique_hash.clone(), GetOptions::default())? else {
+            unattributable_citations += 1;
+            continue;
+        };
+        let Ok(Some(critique)) = rec.entry().to_app_option::<Critique>() else {
+            unattributable_citations += 1;
+            continue;
+        };
+        resolved.push((critique_hash, critique));
+    }
+    let citing_hashes: Vec<ActionHash> = resolved.iter().map(|(h, _)| h.clone()).collect();
+
+    // PASS TWO: classify each by what its author kept.
+    let mut proposer_citations = 0u32;
+    let mut downstream_adopters: Vec<AgentPubKey> = Vec::new();
+    let mut parallel_adopters: Vec<AgentPubKey> = Vec::new();
+    let mut cone_silent_citations = 0u32;
+    let mut max_independent_causal_depth = 0u32;
+    let mut citations: Vec<SpeciesCitation> = Vec::new();
+
+    for (critique_hash, critique) in &resolved {
+        // A critique's own hash is never a "prior citation" of itself, and
+        // past_cone should not contain it anyway — excluded explicitly rather
+        // than relied upon, since the cone is author-supplied.
+        let prior_citations_seen = critique
+            .past_cone
+            .iter()
+            .filter(|h| *h != critique_hash && citing_hashes.contains(h))
+            .count() as u32;
+        let cone_recorded = !critique.past_cone.is_empty();
+        // `critique.author` rather than the action's author: validation binds
+        // the two (SPEC §5.2), and every other read here uses the entry field.
+        let by_proposer = critique.author == species.proposer;
+
+        if by_proposer {
+            proposer_citations += 1;
+        } else if prior_citations_seen > 0 {
+            if !downstream_adopters.contains(&critique.author) {
+                downstream_adopters.push(critique.author.clone());
+            }
+            max_independent_causal_depth = max_independent_causal_depth.max(prior_citations_seen);
+        } else if cone_recorded {
+            if !parallel_adopters.contains(&critique.author) {
+                parallel_adopters.push(critique.author.clone());
+            }
+        }
+        // Counted for every citation including the proposer's, because an
+        // empty cone is a fact about the write whoever made it.
+        if !cone_recorded {
+            cone_silent_citations += 1;
+        }
+
+        citations.push(SpeciesCitation {
+            critique: critique_hash.clone(),
+            author: critique.author.clone(),
+            by_proposer,
+            prior_citations_seen,
+            cone_recorded,
+        });
+    }
+
+    // An agent can appear in `downstream_adopters` from one critique and would
+    // otherwise also appear in `parallel_adopters` from another. Downstream is
+    // the stronger finding, so it wins and the weaker listing is dropped —
+    // otherwise the same agent reads as two different kinds of evidence.
+    parallel_adopters.retain(|a| !downstream_adopters.contains(a));
+
+    let note = if total_citations == 0 {
+        "No critique cites this species yet. Nothing here distinguishes exploration from \
+degradation, and an uncited species is not evidence of either."
+            .to_string()
+    } else if downstream_adopters.is_empty() && parallel_adopters.is_empty() {
+        format!(
+            "All {} citation(s) are the proposer's own. Uptake by other agents is 0, so this is \
+indistinguishable from one agent using a private vocabulary.",
+            total_citations
+        )
+    } else if downstream_adopters.is_empty() {
+        format!(
+            "{} independent citer(s), NONE of them provably downstream: no citing critique \
+recorded having already seen another citation of this species. That is consistent with \
+independent arrival at the same vocabulary and is NOT proof of it — the earlier citation may \
+simply not have reached them. {} citation(s) recorded no cone at all and are evidence of \
+nothing either way.",
+            parallel_adopters.len(),
+            cone_silent_citations
+        )
+    } else {
+        format!(
+            "{} agent(s) cited this species having ALREADY RECORDED SEEING another citation of \
+it — uptake at a causal distance, from retention rather than from a clock. Deepest independent \
+cone: {} prior citation(s). {} further independent citer(s) are consistent with independent \
+arrival but do not prove it, and {} citation(s) recorded no cone.",
+            downstream_adopters.len(),
+            max_independent_causal_depth,
+            parallel_adopters.len(),
+            cone_silent_citations
+        )
+    };
+
+    Ok(SpeciesSecretion {
+        species: species_hash,
+        name: species.name,
+        proposer: species.proposer,
+        total_citations,
+        proposer_citations,
+        unattributable_citations,
+        downstream_adopters,
+        parallel_adopters,
+        cone_silent_citations,
+        max_independent_causal_depth,
+        citations,
+        note,
+    })
+}
