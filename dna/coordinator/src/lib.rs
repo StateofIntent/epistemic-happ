@@ -6086,6 +6086,11 @@ mod tests {
             // before, which is the normal state for anything being observed,
             // and render_reading must not start quoting it as discourse.
             reading_claims: 3,
+            // Non-zero for the same reason, one tag over: this domain has
+            // imported critiques witnessed from a federated network, and
+            // render_reading must not start quoting those as discourse in it
+            // either. See the STAGE 5 section on why an import is excluded.
+            imported_claims: 2,
             total_critiques: 4,
             critique_mode_distribution: vec![],
         };
