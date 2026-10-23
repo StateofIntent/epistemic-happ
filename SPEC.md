@@ -966,6 +966,74 @@ treat a received signal as a reason to WRITE, only as a reason to LOOK. A
 disposition that writes because a peer said so has made an unauthenticated
 assertion load-bearing.
 
+### 10.13b Proprioception — one read of the caller's own state (Stage 2)
+
+**`get_local_tension` makes the graph's own state available as the proximate
+cause of the next write.** Luhmann's criterion for an autopoietic system of
+communications is that a communication be produced by prior communications
+rather than by the environment; until this read existed every Claim was
+produced by a human or by something a human triggered. A disposition can now
+read its own position and act on that.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `get_local_tension` | `GetLocalTensionPayload { membrane: ActionHash, conductance_policy: Option<ConductancePolicy> }` | `LocalTension` — four signals bundled into one read, plus what it refuses to be. Writes nothing; no entry type, no link type, no validation rule, so the DNA hash is untouched (§11) |
+
+**IT REPORTS AND MUST NOT DECIDE.** There is no score, no verdict, no
+threshold and no field named `healthy` or `stale`. The number that would turn
+any of these signals into an action is itself a promise and needs an agent
+behind it — the Quantitative Promise Theory argument that retired
+`CONDUCTANCE_HALF_LIFE_SECS` as a universal constant (READINESS item 10) —
+and that promise has not been made. Every figure is raw and carries its own
+denominator. Deciding is the caller's to do.
+
+**CALLER-SCOPED BY CONSTRUCTION, WHICH IS THE INVARIANT 1 DEFENCE.** There is
+no `agent` parameter. `observer` comes from `agent_info()`, the counts come
+from the caller's own source chain, and closure is computed against the
+caller's own local cache. A caller cannot ask for anybody else's tension, so
+this cannot become the canonical per-agent scalar over an enumerable agent set
+that got the mutual-credit ledger deleted. The answers are caller-scoped and
+legitimately differ between observers, exactly as `AttestationPolicy`'s do.
+
+**THE FOUR SIGNALS.**
+
+1. **`closure`** — of every Claim in the domain this observer can read, how
+   many citations resolve for it *now*, from local cache only.
+   `resolved_locally + deficit == cited_total` always. Observer-relative by
+   construction: another agent with a different cache gets a different figure
+   and neither is wrong. **Scoped to the domain's claims and not the caller's
+   own**, because a deficit over your own claims is near-always zero by
+   construction — `validate_claim` calls `must_get_entry` on every evidence
+   hash, so each resolved for its author at write time. The quantity that
+   means something is the one `PeerSignal::ClosureDeficit` names: what *this*
+   observer cannot reach of what somebody else cited.
+2. **`ordering`** — `tie_broken` from `order_records` over the caller's own
+   Claims and in-domain Critiques: how many points in the order were decided
+   by a hash rather than by causality. A disposition about to settle anything
+   is entitled to know how arbitrary the sequence is *before* it writes.
+   Critiques whose target did not resolve locally are reported in
+   `critique_targets_unresolved` rather than dropped, since a `Critique`
+   carries no `domain` of its own and can only be placed by its target.
+3. **`friction`** — every rationed §6 path with `recent_count`, `limit`,
+   `window_secs`, `headroom` and `blocked`, each counted by the same helper
+   the corresponding write path's own pre-check calls. `blocked` is true if
+   and only if `headroom` is zero, so two callers testing the two fields
+   cannot disagree.
+4. **`conductance`** — `total_initial` and `total_effective` over the
+   caller's own SynapticLinks, under the half-life **the caller promised**.
+   `half_life_promised_by_caller` reports whether one was supplied, because a
+   reader is entitled to know whether it got its own schedule or the
+   protocol's unpromised thirty-day default. Not comparable across policies.
+
+**ARC WIDTH IS ABSENT, AND THE ABSENCE IS A FIELD.** `arc_width` is always
+`None`, with `arc_width_absent_because` giving the reason: a coordinator zome
+cannot reach it. `AgentInfo` carries only `agent_initial_pubkey` and
+`chain_head`, and the HDK exposes no storage-arc call; the figure exists only
+as `storageArc` on the admin websocket's `agentInfo` payload, which makes it a
+client-side read about the conductor rather than a zome-side read about the
+agent. `signals_bundled: 4` and `signals_intended: 5` report the gap as a
+number so it cannot rot quietly.
+
 ### 10.14 Federation
 | Function | Payload | Returns |
 |---|---|---|
