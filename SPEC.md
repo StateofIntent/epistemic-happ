@@ -1101,6 +1101,59 @@ client-side read about the conductor rather than a zome-side read about the
 agent. `signals_bundled: 4` and `signals_intended: 5` report the gap as a
 number so it cannot rot quietly.
 
+### 10.13c Microbiome — reading another network without swallowing it (Stage 5)
+
+**`docs/open-work.md` item 2.5.** Two membranes on the SAME DHT are already
+fully interlinked; "federation" only means something once there is a real
+boundary — two conductors that genuinely share no network. Neither side can
+see the other's data, so everything here is a correlative witness, the shape
+`BridgeRecord` and `FederationRecord` already use.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `import_foreign_critique` | `ImportForeignCritiquePayload { membrane, remote_network_label, remote_membrane_ref, foreign_author_ref, foreign_mode, foreign_content, foreign_target_ref, attestation_policy, conductance_policy, confidence }` | `ImportedCritique { action_hash, entry_hash, domain, witnessed_by, read_through, foreign_content_verified, limits }` — writes a tagged `Claim` recording, under the IMPORTER's own key, that a critique saying this exists on a federated network |
+| `get_foreign_imports` | `membrane: AnyDhtHash` | `Vec<Record>` — every federation import in that membrane's domain |
+
+**A FOREIGN CRITIQUE MUST NOT BECOME A NATIVE `Critique`.** §5.2 binds
+`critique.author` to the action's author, so a `Critique` on this chain asserts
+that THIS agent wrote it; writing somebody else's objection as one would forge
+provenance, permanently, since Invariant 6 keeps it. A `ForeignCritique` entry
+type is the honest home for one and is an INTEGRITY change — §11.1 is explicit
+that a different DNA hash is a different network — so it belongs in the single
+accumulated bump, not here.
+
+**AN IMPORT IS A `Claim` WITH A TAG**, `federation-import`, which is the
+precedent `publish_discourse_reading` set and for the identical reason: a new
+entry type or link type is a fork, while a tagged Claim rides the by-domain
+index, emits the ordinary `NewClaim` signal, and is critiquable by the
+machinery every other claim uses. An import nobody could object to would be a
+poor import.
+
+**AND IT IS EXCLUDED FROM `get_discourse_health`, WHICH IS THE PART THAT WOULD
+HAVE BITTEN SILENTLY.** An import IS a Claim in the domain — that is what makes
+it discoverable — so without a filter, importing fifty critiques from a
+federated partner would raise that domain's `total_claims` by fifty without
+anybody there having said anything, and its health would be partly a reading
+of another network's discourse. `DiscourseHealth.imported_claims` reports the
+count separately, the same remedy `reading_claims` is: excluded from the
+aggregate and REPORTED, because an exclusion nobody can see is
+indistinguishable from a count that is simply wrong.
+
+**THE LENS IS PART OF THE IMPORT.** `AttestationPolicy` and
+`ConductancePolicy` are reader-supplied — the reader is the promiser (READINESS
+item 10) — so the remote's discourse read unfiltered and read under the
+importer's declared policy are DIFFERENT SETS and neither is "the" set.
+`read_through` carries the method into the permanent entry via the same
+`describe_method` a published reading uses, because a filtered import
+presented as a neutral one is a lensed result wearing a neutral face.
+
+**WHAT IT DOES NOT CLAIM.** `foreign_content_verified` is ALWAYS false. The
+foreign author, target and mode travel as OPAQUE STRINGS rather than typed
+hashes, precisely because a type would assert a validation this network never
+performed. `federation/federate.mjs --import-critiques` refuses entirely unless
+mutual federation is confirmed from both sides: importing from a membrane that
+has not recognised you back is helping yourself to somebody's discourse.
+
 ### 10.14 Federation
 | Function | Payload | Returns |
 |---|---|---|
