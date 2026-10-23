@@ -140,7 +140,7 @@ An evolving critique taxonomy — self-similar branching with no privileged root
 | `proposer` | `AgentPubKey` | MUST equal the creating action's author |
 | `created_at` | `u64` | |
 
-There is deliberately no stored adoption-count field — see `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7). **That count answers how many critiques, not how many agents, and it includes the proposer's own** — so `get_species_adoption` decomposes the same links by author, which is what READINESS item 11 needed to tell a species others took up from one its proposer uses alone.
+There is deliberately no stored adoption-count field — see `get_critique_species_adoption_count`, a live query over real links, not a self-declared number (Invariant #1, §7). **That count answers how many critiques, not how many agents, and it includes the proposer's own** — so `get_species_adoption` decomposes the same links by author, which is what READINESS item 11 needed to tell a species others took up from one its proposer uses alone — and `get_species_secretion` decomposes them again by **causal distance**, because "another agent cited it" still does not say whether that agent had ever seen it used.
 
 ### 2.10 `WorldlineTrace`
 An agent's own index of their source-chain history — a table of contents, with an optional HRR compression hook.
@@ -920,6 +920,7 @@ The consequence, for the historical record and because it explains the shape of 
 | `get_all_critique_species` | — | `Vec<Record>` — DHT-wide via `TaxonomyToSpecies` (§10.0) |
 | `get_critique_species_adoption_count` | `species_hash: EntryHash` | `usize` — live count of real `CritiqueToSpecies` links, not a stored field |
 | `get_species_adoption` | `species_hash: EntryHash` | `SpeciesAdoption { species, name, proposer, total_citations, proposer_citations, independent_adopters: Vec<AgentPubKey>, unattributable_citations, warning }` — the same links DECOMPOSED BY WHO CITED THEM. `total_citations` is `get_critique_species_adoption_count`'s figure, kept so the two reads cannot drift; `independent_adopters` is distinct agents OTHER than the proposer, which is the number the count above cannot express. **Components and no score**, for the reason Invariant #1 (§7) gives — a species one agent proposed and then cited fifty times is not fifty adoptions, and a single index would read as a verdict on its proposer. READINESS item 11 |
+| `get_species_secretion` | `species_hash: EntryHash` | `SpeciesSecretion { species, name, proposer, total_citations, proposer_citations, unattributable_citations, downstream_adopters, parallel_adopters, cone_silent_citations, max_independent_causal_depth, citations, note }` — the same links decomposed by **CAUSAL DISTANCE**, which is the half `get_species_adoption` cannot reach. Three independent citers look identical whether they took the species up BECAUSE they had seen it working or arrived at the same vocabulary never having met it; the first is uptake, the second coincidence, and reading the second as the first is how a private vocabulary is mistaken for a discovery. **`downstream_adopters`** are independent citers whose own `Critique.past_cone` contains a prior citation of this species — they demonstrably wrote having seen it in use, PROVEN BY WHAT THE AUTHOR RETAINED. **`parallel_adopters`** recorded a cone that holds no prior citation: consistent with independent arrival and NOT proof of it, since the earlier citation may simply not have reached them. **`cone_silent_citations`** recorded no cone at all and are evidence of nothing either way — an author whose client omits cones is SILENT, NOT IGNORANT (the same discipline `UnseenReport` carries). **NOT A SECOND READ DIFFED AGAINST THE FIRST**, which is the obvious implementation and is wrong: two reads are separated by a CLOCK, and §5.22 records that validation cannot reach one while READINESS item 14 MEASURED a `reveal_deadline` backdated by moving a conductor's — so a proposer wanting uptake to look like growth would control the write times a diff is computed from. The past cone cannot be re-chosen afterwards. `max_independent_causal_depth` is the one figure two readings may be compared on, and it EXCLUDES the proposer specifically so a proposer citing its own species in an ever-deeper chain cannot drive it. **Components and no score**, per Invariant #1 (§7). It still cannot clear a divergent observer IN ADVANCE: adoption is visible only after others have had the chance to adopt, so item 11's measurement makes a minority OBSERVABLE, not SAFE |
 
 ### 10.6 Worldline / HRR (worldline binding)
 | Function | Payload | Returns |
@@ -986,6 +987,172 @@ A *graded* companion to this (`get_attestation_weight`/`WeightedAttestationPolic
 
 ### 10.13 Signals
 Emitted (not called) — `SignalPayload` variants: `NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash }`, `NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash }`, `NewCritique(Critique)`, `NewRetraction(Retraction)`, `NewBridgeRecord(BridgeRecord)`, `MetabolicTick(MetabolicObservation)`. Consumed by `bridge/src/index.ts` to trigger outbound Twitter posts. **`MetabolicTick` is the only variant not caused by a call** — it is emitted by `metabolic_tick` (§10.14a), which the host runs on its own scheduler, and it carries `MetabolicObservation { at_secs: i64, own_claims: u32, own_critiques: u32, wrote_nothing: bool }`. `wrote_nothing` is carried explicitly rather than left implied: a client is entitled to know the tick that produced the observation changed no state, and an implementation that later DOES write MUST change this field rather than mean something different by the same payload.
+
+### 10.13a Peer signals — the medium (Stage 1)
+
+**ONE entry to open a channel, per agent, once; ZERO per signal thereafter.**
+Nothing a signal carries reaches the DHT or either source chain. The one entry
+is an unrestricted `CapGrant` on `recv_remote_signal`, which
+`send_remote_signal` requires.
+
+**WHY AN EXPLICIT EXTERN AND NOT `init`**, which is what the HDK documents. The
+host warns that an `init` callback *"may not happen immediately or ever after
+happ installation"*, so a grant created there would exist or not depending on
+whether somebody made an unrelated call — and because the host call is
+send-and-forget, a signal sent before the grant existed would be dropped in
+silence on both ends. Opening the medium is therefore a decision somebody
+takes, and its absence is diagnosable.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `open_signal_channel` | `()` | `SignalChannelTerms` — `granted_to`, `created` (TRUE only on the call that made the grant, so a caller can tell *I opened it* from *it was already open*), `entries_written_to_open: 1`, `entries_written_per_signal: 0`, `chain_length` and `limits`. Idempotent by a chain-local query for the `recv_remote_signal` tag, not by luck. `chain_length` is reported so the declaration and the measurement can be compared to each other rather than trusted |
+| `send_peer_signal` | `SendPeerSignalInput { signal: PeerSignal, recipients: Vec<AgentPubKey> }` | `PeerSignalSent { attempted, delivery_confirmed }` — `attempted` is how many recipients the host was ASKED to reach, never how many received. `delivery_confirmed` is **always false by construction**: the host call is non-blocking and reports no failures, so no other value would be truthful |
+| `recv_remote_signal` | `PeerSignal` | `()` — the receiving half the HDK requires BY NAME. Emits `SignalPayload::PeerSignal { from, signal }` to this agent's own client, where `from` is `call_info()?.provenance` — the host's answer to *who called me*, never a field the sender supplied. **The parameter is `PeerSignal`, not the `ExternIO` the HDK's own docs give** (`hdk-0.7.0/src/p2p.rs:134`): the host passes `RemoteSignal.signal`'s bytes AS the extern input, so declaring `ExternIO` tries to deserialize a map into a byte array and fails every delivery |
+
+`PeerSignal` is a closed enum carrying **no free text and no timestamp**:
+`Saturated { domain, headroom }`, `ClosureDeficit { target, resolved, cited }`,
+`Settled { target }`, `ProposingSpecies { name, parent }`. No variant carries a
+time because §5.22 records what an author-supplied one is worth to a reader:
+nothing. A signal is received in the recipient's present, so the only honest
+clock is the recipient's own, applied on arrival.
+
+**THREE LIMITS, NORMATIVE because a signal looks more trustworthy than it is.**
+
+1. **Delivery is unverifiable by the sender.** A caller that needs to know
+   something arrived MUST hear back; the absence of a reply means nothing.
+2. **The sender is host-verified, the payload is not.** An agent claiming
+   `Saturated` may not be, and nothing here can check it.
+3. **No friction budget is spent (§6)**, because nothing is written — so a
+   modified coordinator can emit without limit. This is `SECURITY.md`'s
+   standing hot-swappable-coordinator position, and it is the price of the
+   medium being free: rate-limiting a signal would require writing something
+   to count it.
+
+**SO SIGNALS ARE HINTS AND MUST NEVER BE EVIDENCE.** Nothing downstream may
+treat a received signal as a reason to WRITE, only as a reason to LOOK. A
+disposition that writes because a peer said so has made an unauthenticated
+assertion load-bearing.
+
+### 10.13b Proprioception — one read of the caller's own state (Stage 2)
+
+**`get_local_tension` makes the graph's own state available as the proximate
+cause of the next write.** Luhmann's criterion for an autopoietic system of
+communications is that a communication be produced by prior communications
+rather than by the environment; until this read existed every Claim was
+produced by a human or by something a human triggered. A disposition can now
+read its own position and act on that.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `get_local_tension` | `GetLocalTensionPayload { membrane: ActionHash, conductance_policy: Option<ConductancePolicy> }` | `LocalTension` — four signals bundled into one read, plus what it refuses to be. Writes nothing; no entry type, no link type, no validation rule, so the DNA hash is untouched (§11) |
+
+**IT REPORTS AND MUST NOT DECIDE.** There is no score, no verdict, no
+threshold and no field named `healthy` or `stale`. The number that would turn
+any of these signals into an action is itself a promise and needs an agent
+behind it — the Quantitative Promise Theory argument that retired
+`CONDUCTANCE_HALF_LIFE_SECS` as a universal constant (READINESS item 10) —
+and that promise has not been made. Every figure is raw and carries its own
+denominator. Deciding is the caller's to do.
+
+**CALLER-SCOPED BY CONSTRUCTION, WHICH IS THE INVARIANT 1 DEFENCE.** There is
+no `agent` parameter. `observer` comes from `agent_info()`, the counts come
+from the caller's own source chain, and closure is computed against the
+caller's own local cache. A caller cannot ask for anybody else's tension, so
+this cannot become the canonical per-agent scalar over an enumerable agent set
+that got the mutual-credit ledger deleted. The answers are caller-scoped and
+legitimately differ between observers, exactly as `AttestationPolicy`'s do.
+
+**THE FOUR SIGNALS.**
+
+1. **`closure`** — of every Claim in the domain this observer can read, how
+   many citations resolve for it *now*, from local cache only.
+   `resolved_locally + deficit == cited_total` always. Observer-relative by
+   construction: another agent with a different cache gets a different figure
+   and neither is wrong. **Scoped to the domain's claims and not the caller's
+   own**, because a deficit over your own claims is near-always zero by
+   construction — `validate_claim` calls `must_get_entry` on every evidence
+   hash, so each resolved for its author at write time. The quantity that
+   means something is the one `PeerSignal::ClosureDeficit` names: what *this*
+   observer cannot reach of what somebody else cited.
+2. **`ordering`** — `tie_broken` from `order_records` over the caller's own
+   Claims and in-domain Critiques: how many points in the order were decided
+   by a hash rather than by causality. A disposition about to settle anything
+   is entitled to know how arbitrary the sequence is *before* it writes.
+   Critiques whose target did not resolve locally are reported in
+   `critique_targets_unresolved` rather than dropped, since a `Critique`
+   carries no `domain` of its own and can only be placed by its target.
+3. **`friction`** — every rationed §6 path with `recent_count`, `limit`,
+   `window_secs`, `headroom` and `blocked`, each counted by the same helper
+   the corresponding write path's own pre-check calls. `blocked` is true if
+   and only if `headroom` is zero, so two callers testing the two fields
+   cannot disagree.
+4. **`conductance`** — `total_initial` and `total_effective` over the
+   caller's own SynapticLinks, under the half-life **the caller promised**.
+   `half_life_promised_by_caller` reports whether one was supplied, because a
+   reader is entitled to know whether it got its own schedule or the
+   protocol's unpromised thirty-day default. Not comparable across policies.
+
+**ARC WIDTH IS ABSENT, AND THE ABSENCE IS A FIELD.** `arc_width` is always
+`None`, with `arc_width_absent_because` giving the reason: a coordinator zome
+cannot reach it. `AgentInfo` carries only `agent_initial_pubkey` and
+`chain_head`, and the HDK exposes no storage-arc call; the figure exists only
+as `storageArc` on the admin websocket's `agentInfo` payload, which makes it a
+client-side read about the conductor rather than a zome-side read about the
+agent. `signals_bundled: 4` and `signals_intended: 5` report the gap as a
+number so it cannot rot quietly.
+
+### 10.13c Microbiome — reading another network without swallowing it (Stage 5)
+
+**`docs/open-work.md` item 2.5.** Two membranes on the SAME DHT are already
+fully interlinked; "federation" only means something once there is a real
+boundary — two conductors that genuinely share no network. Neither side can
+see the other's data, so everything here is a correlative witness, the shape
+`BridgeRecord` and `FederationRecord` already use.
+
+| Function | Payload | Returns |
+|---|---|---|
+| `import_foreign_critique` | `ImportForeignCritiquePayload { membrane, remote_network_label, remote_membrane_ref, foreign_author_ref, foreign_mode, foreign_content, foreign_target_ref, attestation_policy, conductance_policy, confidence }` | `ImportedCritique { action_hash, entry_hash, domain, witnessed_by, read_through, foreign_content_verified, limits }` — writes a tagged `Claim` recording, under the IMPORTER's own key, that a critique saying this exists on a federated network |
+| `get_foreign_imports` | `membrane: AnyDhtHash` | `Vec<Record>` — every federation import in that membrane's domain |
+
+**A FOREIGN CRITIQUE MUST NOT BECOME A NATIVE `Critique`.** §5.2 binds
+`critique.author` to the action's author, so a `Critique` on this chain asserts
+that THIS agent wrote it; writing somebody else's objection as one would forge
+provenance, permanently, since Invariant 6 keeps it. A `ForeignCritique` entry
+type is the honest home for one and is an INTEGRITY change — §11.1 is explicit
+that a different DNA hash is a different network — so it belongs in the single
+accumulated bump, not here.
+
+**AN IMPORT IS A `Claim` WITH A TAG**, `federation-import`, which is the
+precedent `publish_discourse_reading` set and for the identical reason: a new
+entry type or link type is a fork, while a tagged Claim rides the by-domain
+index, emits the ordinary `NewClaim` signal, and is critiquable by the
+machinery every other claim uses. An import nobody could object to would be a
+poor import.
+
+**AND IT IS EXCLUDED FROM `get_discourse_health`, WHICH IS THE PART THAT WOULD
+HAVE BITTEN SILENTLY.** An import IS a Claim in the domain — that is what makes
+it discoverable — so without a filter, importing fifty critiques from a
+federated partner would raise that domain's `total_claims` by fifty without
+anybody there having said anything, and its health would be partly a reading
+of another network's discourse. `DiscourseHealth.imported_claims` reports the
+count separately, the same remedy `reading_claims` is: excluded from the
+aggregate and REPORTED, because an exclusion nobody can see is
+indistinguishable from a count that is simply wrong.
+
+**THE LENS IS PART OF THE IMPORT.** `AttestationPolicy` and
+`ConductancePolicy` are reader-supplied — the reader is the promiser (READINESS
+item 10) — so the remote's discourse read unfiltered and read under the
+importer's declared policy are DIFFERENT SETS and neither is "the" set.
+`read_through` carries the method into the permanent entry via the same
+`describe_method` a published reading uses, because a filtered import
+presented as a neutral one is a lensed result wearing a neutral face.
+
+**WHAT IT DOES NOT CLAIM.** `foreign_content_verified` is ALWAYS false. The
+foreign author, target and mode travel as OPAQUE STRINGS rather than typed
+hashes, precisely because a type would assert a validation this network never
+performed. `federation/federate.mjs --import-critiques` refuses entirely unless
+mutual federation is confirmed from both sides: importing from a membrane that
+has not recognised you back is helping yourself to somebody's discourse.
 
 ### 10.14 Federation
 | Function | Payload | Returns |

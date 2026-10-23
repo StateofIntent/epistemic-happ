@@ -51,6 +51,30 @@ const CONFIDENCE_RANK = {
 
 export const confidenceRank = (c) => CONFIDENCE_RANK[c] ?? -1;
 
+// SECRETION — WHICH SPECIES A DISPOSITION PROPOSES, AND WHY TWO OF THEM SHARE
+// ONE (Stage 4, `docs/open-work.md` item 2.4).
+//
+// `speciesName` is keyed to THE STANDARD BEING APPLIED, never to the agent
+// applying it. That single choice is what makes adoption measurable at all:
+// if every disposition proposed its own private species, every citation would
+// be its proposer's own, `get_species_secretion` would correctly report "one
+// agent using a private vocabulary" for all of them, and the measurement
+// would be vacuous by construction — the swarm would have been built so that
+// it could never show uptake.
+//
+// So `evidential_strict` and `evidential_loose` SHARE `unevidenced-claim`.
+// They object to the same property — a claim asserting confidence while
+// citing nothing — and differ only in the threshold at which they bother. One
+// of them proposes the species; the other becomes an INDEPENDENT ADOPTER of
+// it, and where the second writes having already recorded seeing the first's
+// citation, a DOWNSTREAM one. `methodological` asks a different question and
+// therefore gets its own.
+//
+// WHICH ONE PROPOSES IS NOT FIXED, and that is deliberate rather than
+// untidy: whoever reaches a qualifying claim first proposes, and the run
+// records who that was. A hardcoded proposer would make the proposer/adopter
+// split an artefact of this file instead of an outcome of the round.
+//
 // THE DISPOSITIONS.
 //
 // `minConfidenceToFlag` is the threshold item 11 means by "looser": an agent
@@ -65,6 +89,8 @@ export const DISPOSITIONS = {
     minConfidenceToFlag: CONFIDENCE_RANK.High,
     mode: 'Evidential',
     minority: false,
+    speciesName: 'unevidenced-claim',
+    speciesRequiredEvidence: ['at least one evidence_hash resolving to Evidence'],
     promise:
       'I will publish an Evidential critique of any claim asserting High confidence or above '
       + 'while citing no evidence, and of no other claim. I state this threshold so that my '
@@ -76,6 +102,12 @@ export const DISPOSITIONS = {
     minConfidenceToFlag: CONFIDENCE_RANK.Tentative,
     mode: 'Evidential',
     minority: true,
+    // THE SAME SPECIES AS THE MAJORITY HOLDS, by design — see SECRETION
+    // above. The minority's divergence is its THRESHOLD, not its vocabulary,
+    // and sharing the vocabulary is what lets the graph answer the question
+    // this disposition's own promise says is not its to decide.
+    speciesName: 'unevidenced-claim',
+    speciesRequiredEvidence: ['at least one evidence_hash resolving to Evidence'],
     promise:
       'I will publish an Evidential critique of any claim citing no evidence at Tentative '
       + 'confidence or above. This is a deliberately looser threshold than the majority holds, '
@@ -90,6 +122,8 @@ export const DISPOSITIONS = {
     minConfidenceToFlag: CONFIDENCE_RANK.Moderate,
     mode: 'Methodological',
     minority: false,
+    speciesName: 'method-unstated',
+    speciesRequiredEvidence: ['a stated method of arriving at the cited evidence'],
     promise:
       'I will publish a Methodological critique of any claim at Moderate confidence or above '
       + 'that cites evidence but states no method of arriving at it. I do not object to the '

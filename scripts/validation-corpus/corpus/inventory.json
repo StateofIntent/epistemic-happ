@@ -30,7 +30,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6902,
+      "line": 6931,
       "condition": "if input.prediction.trim().is_empty()",
       "refuses_with": "prediction must not be empty",
       "reached_by": [
@@ -42,7 +42,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 6905,
+      "line": 6934,
       "condition": "if input.salt.trim().is_empty()",
       "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
       "reached_by": [
