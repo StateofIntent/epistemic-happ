@@ -4734,6 +4734,11 @@ pub enum SignalPayload {
     NewCritique(Critique),
     NewRetraction(Retraction),
     NewBridgeRecord(BridgeRecord),
+    /// A typed ephemeral signal from another agent — Stage 1, the medium.
+    /// `from` is `call_info()?.provenance`, which the host verified, never a
+    /// field the sender supplied. Nothing about this signal was written
+    /// anywhere by anybody.
+    PeerSignal { from: AgentPubKey, signal: PeerSignal },
     /// THE ONLY SIGNAL NOT CAUSED BY A CALL — READINESS item 8. Emitted by
     /// `metabolic_tick`, which runs on the host's scheduler with no caller.
     /// Carries an observation and nothing else: the tick writes nothing, so
@@ -7074,4 +7079,220 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
     }
 
     Ok(ForesightRecord { revealed, expired, pending })
+}
+
+// ============================================================================
+// STAGE 1 — THE MEDIUM. TYPED EPHEMERAL PEER SIGNALS.
+//
+// WHY THIS EXISTS, in the terms the gap was named in. Every inter-agent
+// communication in this protocol has until now cost a permanent entry: a
+// `Claim`, a `Critique`, an `Assessment`. That makes the cell all bone and no
+// cytoplasm — there is no medium an agent can speak into without writing
+// something Invariant 6 will keep for ever. `emit_signal` already provided
+// that locally (`MetabolicTick`, READINESS item 8), but only to the agent's
+// own client. This provides it BETWEEN agents.
+//
+// WHAT IT COSTS, exactly: ONE entry to open the channel, per agent, once —
+// the `CapGrant` below — and then ZERO per signal, for ever. Nothing a signal
+// carries reaches the DHT or either chain. That ratio is the entire point, and
+// `scripts/live-verify/peer-signal.mjs` asserts the zero half rather than
+// trusting this comment.
+//
+// WHY AN EXPLICIT EXTERN AND NOT `init`, which is what the HDK docs tell you
+// to do. `send_remote_signal` requires `recv_remote_signal` to hold an
+// unrestricted cap grant, and the documented place for that is `init`. This
+// file already declines `init` once, for `start_metabolism`, and the reason
+// transfers verbatim: the host warns that an `init` callback "may not happen
+// immediately or ever after happ installation", so a grant created there would
+// exist or not depending on whether somebody happened to make an unrelated
+// call. Worse here than there, because `send_remote_signal` is documented
+// non-blocking and "will not return an error if the calls fail" — a signal
+// sent before the grant exists is dropped in silence, on both ends. So
+// opening the medium is a decision somebody takes, and its absence is
+// diagnosable rather than invisible.
+//
+// THREE LIMITS, STATED BECAUSE A SIGNAL LOOKS MORE TRUSTWORTHY THAN IT IS.
+//
+//   1. DELIVERY IS UNVERIFIABLE BY THE SENDER. The host call is send-and-
+//      forget; `send_peer_signal` returns how many recipients it ATTEMPTED,
+//      never how many received. A caller that needs to know something arrived
+//      must hear back, and the absence of a reply means nothing.
+//   2. THE SENDER IS HOST-VERIFIED, THE PAYLOAD IS NOT. `from` is taken from
+//      `call_info()?.provenance`, which the host signs, and NEVER from a field
+//      in the signal — a self-reported sender would make every signal
+//      spoofable. The signal's CONTENTS remain an unverified assertion: an
+//      agent claiming `Saturated` may not be, and nothing here can check it.
+//   3. NO FRICTION BUDGET IS SPENT (§6), because nothing is written. A
+//      modified coordinator can therefore emit signals without limit. That is
+//      the hot-swappable-coordinator position `SECURITY.md` already takes, and
+//      it is the price of the medium being free: anything that rate-limited a
+//      signal would have to write something to count it.
+//
+// SO: SIGNALS ARE HINTS AND MUST NEVER BE EVIDENCE. Nothing downstream may
+// treat a received signal as a reason to write, only as a reason to look. A
+// disposition that writes because a peer said so has made an unauthenticated
+// assertion load-bearing, which is the one way this medium could damage the
+// graph it exists to serve.
+// ============================================================================
+
+/// Peer signals are typed, closed, and carry no free text — the same
+/// discipline Invariant 4 imposes on critique modes, for the same reason: an
+/// open string is a channel for anything, and a reader cannot act on it
+/// mechanically.
+///
+/// NO VARIANT CARRIES A TIMESTAMP, deliberately. §5.22 records what an
+/// author-supplied time is worth to anybody checking it: nothing. A signal is
+/// received in the recipient's present, so the only honest clock is the
+/// recipient's own, applied on arrival. A `sent_at` field would be a number
+/// its sender chose.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PeerSignal {
+    /// "I am at my friction cap in this domain and will not be writing."
+    /// Lets a peer stop waiting on a contribution that cannot come, and lets
+    /// a disposition back off instead of retrying into a wall (§6).
+    Saturated { domain: String, headroom: u32 },
+    /// "Of the N citations your target claims, I can resolve only M."
+    /// The closure deficit the ECM metaphor names: a force that already exists
+    /// in the graph and that nothing currently reads.
+    ClosureDeficit { target: ActionHash, resolved: u32, cited: u32 },
+    /// "I consider this target settled and am not pursuing it further."
+    /// Not a verdict and not a score — one agent's stance on its own
+    /// attention, which is why it is a signal and not an `Assessment`.
+    Settled { target: ActionHash },
+    /// "I am about to propose this critique species." Stage 4's hook: it lets
+    /// a second agent adopt or contest a species before it is written, so
+    /// speciation can be discussed in the medium rather than only in the bone.
+    ProposingSpecies { name: String, parent: Option<String> },
+}
+
+/// What `open_signal_channel` promises, returned on every call including the
+/// ones that change nothing — a caller asking again is entitled to the same
+/// answer, as with `MetabolismTerms`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignalChannelTerms {
+    pub granted_to: AgentPubKey,
+    /// TRUE only on the call that actually created the grant. A caller can
+    /// therefore tell "I opened it" from "it was already open", which
+    /// `init`-based grants cannot report at all.
+    pub created: bool,
+    /// One, once, for the grant itself. Signals add nothing to this.
+    pub entries_written_to_open: u32,
+    /// Zero, per signal, for ever. Asserted by
+    /// `scripts/live-verify/peer-signal.mjs`, not merely stated here.
+    pub entries_written_per_signal: u32,
+    /// THIS AGENT'S CHAIN LENGTH, chain-local, at the moment of the call —
+    /// and it is here to be the INSTRUMENT, the way `MetabolicObservation`'s
+    /// `own_claims` is for the tick. A caller reads it, sends signals, reads
+    /// it again: unchanged is the whole claim this section makes. Reporting it
+    /// in the terms means the declaration and the measurement cannot drift
+    /// apart, because a harness compares them to each other.
+    pub chain_length: u32,
+    pub limits: String,
+}
+
+const SIGNAL_CAP_TAG: &str = "recv_remote_signal";
+
+/// Open this agent's side of the medium. Idempotent: a grant with this tag
+/// already on the chain is left alone rather than duplicated, so calling this
+/// on every client start costs one entry on the first run and none after.
+#[hdk_extern]
+pub fn open_signal_channel(_: ()) -> ExternResult<SignalChannelTerms> {
+    let me = agent_info()?.agent_initial_pubkey;
+
+    // Already open? A CapGrant is an entry on this agent's own chain, so this
+    // is a chain-local query — no network, no DHT.
+    let existing = query(
+        ChainQueryFilter::new()
+            .entry_type(EntryType::CapGrant)
+            .include_entries(true),
+    )?;
+    let already_open = existing.iter().any(|record| {
+        matches!(record.entry().as_option(), Some(Entry::CapGrant(grant)) if grant.tag == SIGNAL_CAP_TAG)
+    });
+
+    let created = if already_open {
+        false
+    } else {
+        let mut functions: HashSet<(ZomeName, FunctionName)> = HashSet::new();
+        functions.insert((zome_info()?.name, FunctionName::from(SIGNAL_CAP_TAG)));
+        create_cap_grant(CapGrantEntry {
+            tag: SIGNAL_CAP_TAG.to_string(),
+            // Unrestricted is what the HDK requires for remote signals, and it
+            // is narrower than it sounds: the grant names exactly one
+            // function, which writes nothing and can only cause a local
+            // `emit_signal`. The capability being granted is "make my client
+            // hear something", not "act as me".
+            access: CapAccess::Unrestricted,
+            functions: GrantedFunctions::Listed(functions),
+        })?;
+        true
+    };
+
+    // Counted AFTER any grant above, so a caller comparing two calls is
+    // comparing like with like.
+    let chain_length = query(ChainQueryFilter::new())?.len() as u32;
+
+    Ok(SignalChannelTerms {
+        granted_to: me,
+        created,
+        entries_written_to_open: 1,
+        entries_written_per_signal: 0,
+        chain_length,
+        limits: "Delivery is unverifiable by the sender; the sender identity is host-verified but \
+the signal's contents are an unchecked assertion; no friction budget is spent, so a modified \
+coordinator can emit without limit. Signals are hints, never evidence."
+            .to_string(),
+    })
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SendPeerSignalInput {
+    pub signal: PeerSignal,
+    pub recipients: Vec<AgentPubKey>,
+}
+
+/// What a send can honestly report. Not a delivery receipt — see limit 1.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PeerSignalSent {
+    /// How many recipients the host was asked to reach. NOT how many heard it.
+    pub attempted: u32,
+    pub delivery_confirmed: bool,
+}
+
+/// Send one typed signal to a list of peers. Writes nothing, anywhere.
+#[hdk_extern]
+pub fn send_peer_signal(input: SendPeerSignalInput) -> ExternResult<PeerSignalSent> {
+    let attempted = input.recipients.len() as u32;
+    send_remote_signal(input.signal, input.recipients)?;
+    Ok(PeerSignalSent {
+        attempted,
+        // Always false, by construction rather than by omission. The host call
+        // is non-blocking and does not report failures, so there is no value
+        // this field could truthfully carry other than false.
+        delivery_confirmed: false,
+    })
+}
+
+/// The receiving half the HDK requires by name. Hands the signal to this
+/// agent's own client, attaching the sender the HOST identified.
+///
+/// THE PARAMETER IS `PeerSignal`, NOT `ExternIO`, AND THE HDK'S OWN
+/// DOCUMENTATION SAYS OTHERWISE. `hdk-0.7.0/src/p2p.rs:134` gives the required
+/// signature as `fn recv_remote_signal(signal: ExternIO)`. Against a real
+/// conductor that fails every delivery: the host passes `RemoteSignal.signal`'s
+/// bytes AS the extern input, so what arrives is already the msgpack of the
+/// payload, and `#[hdk_extern]` then tries to deserialize a map into
+/// `ExternIO`'s byte array. The error is `Deserialize([129, 169, 83, 97, 116,
+/// 117, 114, 97, 116, 101, 100, ...])` — `0x81` a one-entry map, `0xA9` a
+/// nine-byte string, "Saturated" — i.e. the enum itself, reported by the
+/// RECEIVER and therefore invisible to the sender, which cannot see errors at
+/// all (limit 1). Declaring the real type lets the macro decode it directly.
+#[hdk_extern]
+pub fn recv_remote_signal(signal: PeerSignal) -> ExternResult<()> {
+    // `provenance` is the host's answer to "who called me", not the payload's
+    // claim about itself. See limit 2 — this is the whole reason the signal
+    // type has no `from` field for a sender to fill in.
+    let from = call_info()?.provenance;
+    emit_signal(&SignalPayload::PeerSignal { from, signal })?;
+    Ok(())
 }
