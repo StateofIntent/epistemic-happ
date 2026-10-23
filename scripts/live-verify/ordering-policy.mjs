@@ -52,6 +52,17 @@
 // DIFFERENT answers on the data. So every section here now chooses records
 // whose hash order CONTRADICTS the order the rule must produce.
 //
+// AND A SECOND GENERAL FORM, learned three times in this one file: WHEN A
+// SETUP SEARCHES FOR THE DATA A CHECK NEEDS, THE SEARCH CAN MISS, AND THE SIZE
+// OF THE SEARCH SPACE IS NOT THE ODDS OF MISSING. "Under 1%" was 1 in 256.
+// "About 1 in 10^19" was 1 in 12,870. `2^-496` and `2^-256` were 2^-118 and
+// 2^-26. Every one came from counting the PAIRS a search examines and reading
+// the count as an exponent, when pairs drawn from a shared pool of records are
+// not independent draws. The miss probabilities are computed by
+// `log2MissSorted` / `log2MissDisjoint` below and logged at runtime, so the
+// figure a reader sees is derived from the batch sizes that actually ran
+// rather than from a number somebody wrote down once and nobody rechecked.
+//
 //   BO: the tie-break switched from action hash to the self-reported
 //   `timestamp`. First version: PASSED — the backdated record was its
 //   author's second write, so a chain edge pinned it behind regardless, and
@@ -73,8 +84,10 @@
 // distinguishes "the write was refused" from "the predicate missed"; before
 // that it looked like twenty-five improbable misses. Nothing is retried now:
 // one batch of Claims is written and the pair is CHOSEN from it, Claims and
-// Evidence carry no friction, and §4 searches 64 pairs rather than 8
-// candidates after an 8-candidate search missed on a 1-in-256 draw.
+// Evidence carry no friction, and the batches are 32 wide rather than 8 after
+// an 8-candidate search missed on a 1-in-256 draw. Width is cheap precisely
+// because Claims are unrationed: §2 now misses at 2^-32, §3 at 2^-118, §4 at
+// 2^-61.
 //
 // Prereqs: a sandbox conductor (scripts/sandbox.sh clean && start) and a built
 // .happ. Two agents, because records by one author are chain-ordered and the
@@ -183,11 +196,56 @@ async function main() {
   // and the job failed with nothing wrong. A harness that is green 255 times
   // out of 256 is not a gate, it is a coin with a long memory.
   //
-  // §2 now draws from 32, so a miss is 2^-32 — about 1 in 4.3 billion, which
-  // is the same order as §4's 64 pairs and costs ~2s of unrationed writes.
-  // §3 reads the same batch, where 32 records give 496 ordered pairs.
+  // §2 now draws from 32, so a miss is 2^-32 — about 1 in 4.3 billion, and it
+  // costs ~2s of unrationed writes. §3 reads the same batch, where a miss
+  // needs all 32 already sorted: 2^-118. §4 writes 32 of its own against
+  // those 32: 2^-61. All three are DECLARED and GATED below rather than
+  // asserted in prose here, because prose is what rotted the first three
+  // times — and the floor is what makes a thin setup a red with a reason
+  // instead of a mystery once every few hundred runs.
   const pickWhere = (candidates, predicate) => candidates.find(predicate) ?? null;
   const hashLt = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) < 0;
+
+  // HOW LIKELY A SETUP SEARCH IS TO MISS — and the reason these are functions
+  // rather than numbers in a comment. The first version of this file wrote
+  // "under 1%" for what was 1 in 256 and accepted it; the version that fixed
+  // that wrote "about 1 in 10^19" for what is 1 in 12,870, and then wrote
+  // `2^-496` and `2^-256` for the widened searches below. All four are the
+  // SAME MISTAKE: counting the PAIRS a search examines and treating each as an
+  // independent coin. Pairs drawn from a shared pool are not independent —
+  // 496 pairs over 32 records are 496 views of only 32 random values — so
+  // 2^-(pair count) understates the miss by orders of magnitude every time.
+  //
+  // A SEARCH SPACE IS A COUNT; A MISS PROBABILITY IS A DISTRIBUTION. Only §2
+  // happens to be a row of independent coins. The other two are order
+  // statistics and are computed as such:
+  const log2Fact = (n) => { let t = 0; for (let i = 2; i <= n; i++) t += Math.log2(i); return t; };
+  // log2 C(n, k)
+  const log2Choose = (n, k) => { let t = 0; for (let i = 1; i <= k; i++) t += Math.log2((n - k + i) / i); return t; };
+  // A miss in §3 means all n hashes landed already in chain order: 1 of n!.
+  const log2MissSorted = (n) => log2Fact(n);
+  // A miss in §4 means every one of the m backdated hashes fell below every
+  // one of the n recent ones: 1 of C(n+m, m) interleavings.
+  const log2MissDisjoint = (n, m) => log2Choose(n + m, m);
+
+  // AND A PRINTED PROBABILITY IS NOT A GATE, which is the other half of what
+  // item 1.6 asked for. Logging "2^-26" next to a passing check still leaves a
+  // human to notice that 26 bits is thin; the figure that mattered on run
+  // 39705302447 was printed nowhere and nobody was watching for it anyway. So
+  // each setup search DECLARES its miss probability and the harness REFUSES a
+  // setup weaker than the floor — a red with a reason, before the policy under
+  // test is ever called, rather than a mysterious setup failure once every few
+  // hundred runs.
+  //
+  // 30 bits is chosen, not derived: ~1 in a billion, so across this suite's
+  // whole plausible lifetime of CI runs a setup miss should never be seen once.
+  // Every section currently clears it with room (32, 118, 61).
+  const MIN_MISS_BITS = 30;
+  const gateMiss = (section, bits, how) => {
+    log(`    ${how}`);
+    check(`§${section}'s setup cannot miss by luck: 2^-${bits.toFixed(1)} is past the 2^-${MIN_MISS_BITS} floor`,
+      bits >= MIN_MISS_BITS);
+  };
 
   // === 1. DETERMINISM: the same set, however it arrives =================
   log('--- 1. Determinism: the same set in any input order ---');
@@ -236,12 +294,17 @@ async function main() {
     cited.length === CITED_N && citedEntries.every((e) => e != null));
 
   const citing = await a2.call('create_claim', {
-    content: 'a claim citing all eight as evidence', domain: DOMAIN, author: a2.me,
+    content: `a claim citing all ${CITED_N} as evidence`, domain: DOMAIN, author: a2.me,
     timestamp: nowMicros(), evidence_hashes: citedEntries, confidence: 'Moderate',
     semantic_tags: [], source_mew: null,
   });
   // The one whose hash would invert the order if the tie-break decided.
   const inverting = pickWhere(cited, (c) => hashLt(citing, c));
+  // The one section where the pair count IS the exponent: each cited hash is
+  // compared against ONE fixed hash, so the 32 comparisons are 32 independent
+  // coins and a miss really is 2^-32.
+  gateMiss(2, CITED_N,
+    `search space ${CITED_N} independent comparisons; a miss is 2^-${CITED_N} (~1 in ${(2 ** CITED_N).toExponential(1)})`);
   check('at least one cited claim HASHES ABOVE the claim citing it, so hash order would invert',
     inverting !== null);
   if (inverting) {
@@ -255,17 +318,22 @@ async function main() {
 
   // === 3. CHAIN ORDER: one author's own sequence ========================
   log('\n--- 3. Chain order: two records by one author follow the chain ---');
-  // Chosen from the same batch rather than minted: `cited` is eight claims on
+  // Chosen from the same batch rather than minted: `cited` is 32 claims on
   // agent 1's chain IN ORDER, so any pair where the later one hashes below the
-  // earlier is a case where chain order and hash order disagree. Among the
-  // 496 ordered pairs of a 32-record batch, one such pair is certain in any
-  // run that is not adversarially constructed.
+  // earlier is a case where chain order and hash order disagree. A miss means
+  // the batch arrived ALREADY SORTED by hash — 1 in 32!, around 2^-118 — so
+  // this is the strongest of the three setups by a wide margin, and the
+  // 496-pair count that looks like the big number is not what makes it so.
   let chainEarly = null, chainLate = null;
   outer: for (let i = 0; i < cited.length; i++) {
     for (let j = i + 1; j < cited.length; j++) {
       if (hashLt(cited[j], cited[i])) { chainEarly = cited[i]; chainLate = cited[j]; break outer; }
     }
   }
+  // 496 pairs, but only 32 underlying values: a miss needs all 32 to have
+  // landed in increasing hash order, which is 1 of 32!, NOT 2^-496.
+  gateMiss(3, log2MissSorted(CITED_N),
+    `search space ${(CITED_N * (CITED_N - 1)) / 2} pairs over ${CITED_N} records; a miss is 1/${CITED_N}! = 2^-${log2MissSorted(CITED_N).toFixed(1)}`);
   check('a chain pair was found whose HASH order contradicts its CHAIN order',
     chainEarly !== null && chainLate !== null);
   if (chainEarly && chainLate) {
@@ -289,19 +357,43 @@ async function main() {
   // chain-order edge pinned it behind. The assertion read "timestamps do not
   // move records" and tested "this record cannot be first".
   log('\n--- 4. A backdated timestamp does not move a record ---');
+  // 32, NOT 8 — and the reason is the arithmetic above rather than symmetry.
+  // §4's miss is an interleaving, 1 of C(recent + backdated, backdated), and
+  // that figure is governed by the SMALLER batch: 32 recent against 8
+  // backdated is 256 pairs but only 2^-26, which made §4 the weakest check in
+  // this file by some ninety powers of two while displaying the largest pair
+  // count. 32 against 32 is 2^-61. Claims carry no friction budget, so the
+  // extra 24 writes cost about a second and nothing else.
+  const BACKDATED_N = 32;
   const backdatedBatch = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < BACKDATED_N; i++) {
     backdatedBatch.push(await a2.call('create_claim', {
       content: `claims to be a year old (${i})`, domain: DOMAIN, author: a2.me,
       timestamp: nowMicros() - 365 * 24 * 3600 * 1_000_000, evidence_hashes: [],
       confidence: 'Moderate', semantic_tags: [], source_mew: null,
     }));
   }
+  // GATED THE WAY `cited` IS. The miss probability below is a function of both
+  // batch SIZES, and an assumed size is the thing that turns a certainty into a
+  // coin without anybody noticing — so both are asserted, deterministically,
+  // before any probability is claimed about them.
+  check(`${BACKDATED_N} backdated claims were written, so the miss figure below holds`,
+    backdatedBatch.length === BACKDATED_N && backdatedBatch.every((h) => h != null));
+
   // A PAIR, NOT A CANDIDATE: the RECENT record must win on hash, so that a
   // timestamp policy — which puts the year-old one first — gives a visibly
   // different answer. Searching one batch against a fixed partner was a 1-in-
-  // 256 miss and it missed; searching the eight recent claims from §2 against
-  // the eight backdated ones is 64 pairs, where missing is about 1 in 10^19.
+  // 256 miss and it missed.
+  //
+  // THE REPLACEMENT WAS SOLD WITH A WRONG NUMBER, which is the part worth
+  // keeping on the record. Eight recent against eight backdated was described
+  // here as "64 pairs, where missing is about 1 in 10^19". A miss needs all
+  // eight backdated hashes to fall below all eight recent ones — 1 of C(16,8),
+  // which is 1 in 12,870, or about 1e-4. The claim was wrong by fifteen orders
+  // of magnitude, and a 1-in-12,870 flake on a required gate is exactly the
+  // defect the "1 in 256" paragraph above was written to stop. Counting pairs
+  // and reading the count as an exponent is what produced both.
+  //
   // The §2 claims are concurrent with agent 2's: different authors, and
   // neither references the other.
   let concurrentA = null, backdated = null;
@@ -310,6 +402,10 @@ async function main() {
       if (hashLt(recent, old)) { concurrentA = recent; backdated = old; break outer4; }
     }
   }
+  gateMiss(4, log2MissDisjoint(CITED_N, BACKDATED_N),
+    `search space ${CITED_N} x ${BACKDATED_N} = ${CITED_N * BACKDATED_N} pairs over ${CITED_N + BACKDATED_N} records; `
+    + `a miss is 1/C(${CITED_N + BACKDATED_N},${BACKDATED_N}) = `
+    + `2^-${log2MissDisjoint(CITED_N, BACKDATED_N).toFixed(1)} — NOT 2^-${CITED_N * BACKDATED_N}, the pairs are not independent`);
   check('a concurrent pair was found whose hash order DISAGREES with its timestamp order',
     concurrentA !== null && backdated !== null);
   if (backdated && concurrentA) {
