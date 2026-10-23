@@ -43,6 +43,89 @@ on the code, read [README.md](README.md) §6 instead.
 > permanent, and §9 treats a stale instruction as a defect rather than a
 > detail.
 
+## Running two installs side by side (for release step 3's "against that build")
+
+**Established 2026-10-23 by inspecting and launching the real `v0.2.0`
+artifact.** Release step 3 still carries the clause *"against that build"*
+because every cross-internet crossing measured so far used `hc sandbox`
+conductors, which use no network seed and therefore cannot see desktop peers.
+Closing it needs the packaged app. Here is what that actually takes, and what
+stops it being automatable.
+
+**The app does take the flags you need.** Hidden in the bundle, not documented
+anywhere until now:
+
+| flag | what it does |
+|---|---|
+| `-p, --profile <string>` | a **separate data store**, under `~/.config/org.stateofintent.epistemic-resonance/<version>/<profile>/` |
+| `-n, --network-seed <string>` | overrides the derived seed, on first run of that profile |
+| `-b, --bootstrap-url <url>` | not persisted across restarts |
+| `--relay-url <url>`, `-s, --signal-url <url>`, `--ice-urls <csv>` | likewise |
+| `ADMIN_PORT=<n>` (env) | pins the admin websocket; **without it a free port is chosen dynamically**, so there is nothing to connect a harness to |
+
+So two installs CAN share one machine, with distinct profiles and pinned admin
+ports. The `default` profile is untouched by this.
+
+**The derived seed is confirmed, not merely asserted.** The bundle computes it
+as `${productName}-${breakingAppVersion()}` → `Epistemic Resonance-0.2.x`, and
+the release notes embedded in the artifact itself state both hashes exactly as
+the notice above does: the packaged artifact at
+`uhC0kUHSiD5aAt7BH6XJ3j7XGfdaxLL3oFUj6f-2OPU29caU0ZkxF`, and the cell a desktop
+install actually runs at
+`uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0`.
+
+**AND IT CANNOT BE DRIVEN HEADLESS, which is the real reason this item needs
+hands rather than only two machines.** `passwordMode` is `password-optional`, so
+the app opens a **Setup** screen — *Setup With Password* / *Setup Without
+Password* — and **the Holochain conductor does not launch until somebody
+clicks**. Measured on a fresh profile: the profile directory, `data/conductor`
+and `data/keystore` are all created, `data/.pw` is **not**, the pinned
+`ADMIN_PORT` never listens, and the app's own log file stays empty at zero
+bytes. There is no CLI path past that screen.
+
+So the procedure is: launch twice with different `--profile` and `ADMIN_PORT`,
+**click through Setup in each window by hand**, and only then can a harness
+attach to the two admin ports and check that a claim written in one appears in
+the other.
+
+**THE PROTOCOL ITSELF WORKS ON THE PACKAGED BUILD, verified 2026-10-23 against
+a running `v0.2.0` install.** This is the half of step 3 that does not need two
+machines, and it is now done rather than assumed:
+
+- the cell the install runs hashes to
+  `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUw…` — **the seeded desktop
+  hash this file records, confirmed live rather than quoted**;
+- the zome reports `declared_version: 9, implemented_version: 9`, so the
+  artifact's protocol version is confirmed from the cell and not from the
+  release notes;
+- a `Claim` written through the app's own conductor was **indexed by domain and
+  rendered in the app's UI**, with the author shown as the same agent the window
+  reports as connected, and the grounding read correctly flagging it *"Not
+  grounded — no cited evidence chain reaches a source"* for a claim citing no
+  evidence;
+- a `Retraction` against it was written, linked to the claim, and **the UI then
+  showed the claim as retracted by its author** — while the claim itself
+  **remained readable by hash**. Invariant 6 behaving as designed: a retraction
+  adds provenance, it does not remove the record.
+
+The conductor is reachable for this: admin on the port the app logs as
+`###ADMIN_PORT:…###` with origin `kangaroo`, and the app interface with origin
+`webhapp://webhappwindow` (both from `conductor-config.yaml`'s
+`allowed_origins`). So a harness CAN attach to a running install without
+driving the GUI — which is what makes the two-machine test automatable once two
+installs are up.
+
+**WHAT STILL NEEDS HANDS IS NARROWER THAN THE ROW SUGGESTS.** Not the protocol
+work — that is scriptable through the conductor, as above. Only two things: the
+Setup click on first run of each profile, and the second machine.
+
+**ONE THING TO SETTLE BEFORE DOING IT.** `v0.2.0` carries `protocol_version: 9`;
+this repository's `main` is now at **11**. The zome has forked twice since the
+release, so a two-install test against `v0.2.0` validates the packaging of an
+artifact two protocol versions behind what the repository describes — which may
+be exactly what step 3's clause means, or may mean the clause should be
+re-scoped to the next release instead. That is a decision, not a measurement.
+
 ## Installing
 
 Download the build for your system from the
@@ -195,11 +278,22 @@ you write anything you would mind standing behind forever:
   same second the other machine wrote it, so the time was spent filing the
   record locally rather than moving it between the houses.
 
-  **What is still untested is a machine that comes back after being offline.**
-  Every run so far had both ends up and waiting for each other, which is not
-  the same as catching up on what you missed. So: the case this section
-  existed to warn you about has now been measured, and what remains is
-  rejoining rather than connecting.
+  **A machine that comes back after being offline is a different story, and a
+  worse one.** This was tested the same day: one machine was taken off the
+  network for fourteen minutes while three records were written, then brought
+  back. Fifteen minutes later it still had none of them — while a freshly
+  installed machine, joining for the first time at that same moment, received
+  all three within seconds of starting up.
+
+  **It does catch up on its own, and the wait grows with how long you were
+  away.** Two further runs measured it with nothing else on the network: about
+  five minutes of catch-up after two and a half minutes offline, and about
+  eleven and a half minutes after fifteen minutes offline. So expect minutes,
+  not seconds — and more of them the longer you were gone.
+
+  When it does catch up, it catches up **completely**. There is no half-synced
+  state where some records arrive and others go missing quietly, which would be
+  a worse problem than the waiting.
 - **A node that has been offline is not current the moment it returns.**
   With only one other person on the network, a node that tried to reach a
   peer while it was down waits out a retry backoff before trying again;
