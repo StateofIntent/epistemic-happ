@@ -88,6 +88,37 @@ So the procedure is: launch twice with different `--profile` and `ADMIN_PORT`,
 attach to the two admin ports and check that a claim written in one appears in
 the other.
 
+**THE PROTOCOL ITSELF WORKS ON THE PACKAGED BUILD, verified 2026-10-23 against
+a running `v0.2.0` install.** This is the half of step 3 that does not need two
+machines, and it is now done rather than assumed:
+
+- the cell the install runs hashes to
+  `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUw…` — **the seeded desktop
+  hash this file records, confirmed live rather than quoted**;
+- the zome reports `declared_version: 9, implemented_version: 9`, so the
+  artifact's protocol version is confirmed from the cell and not from the
+  release notes;
+- a `Claim` written through the app's own conductor was **indexed by domain and
+  rendered in the app's UI**, with the author shown as the same agent the window
+  reports as connected, and the grounding read correctly flagging it *"Not
+  grounded — no cited evidence chain reaches a source"* for a claim citing no
+  evidence;
+- a `Retraction` against it was written, linked to the claim, and **the UI then
+  showed the claim as retracted by its author** — while the claim itself
+  **remained readable by hash**. Invariant 6 behaving as designed: a retraction
+  adds provenance, it does not remove the record.
+
+The conductor is reachable for this: admin on the port the app logs as
+`###ADMIN_PORT:…###` with origin `kangaroo`, and the app interface with origin
+`webhapp://webhappwindow` (both from `conductor-config.yaml`'s
+`allowed_origins`). So a harness CAN attach to a running install without
+driving the GUI — which is what makes the two-machine test automatable once two
+installs are up.
+
+**WHAT STILL NEEDS HANDS IS NARROWER THAN THE ROW SUGGESTS.** Not the protocol
+work — that is scriptable through the conductor, as above. Only two things: the
+Setup click on first run of each profile, and the second machine.
+
 **ONE THING TO SETTLE BEFORE DOING IT.** `v0.2.0` carries `protocol_version: 9`;
 this repository's `main` is now at **11**. The zome has forked twice since the
 release, so a two-install test against `v0.2.0` validates the packaging of an
