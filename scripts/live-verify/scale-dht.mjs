@@ -196,6 +196,19 @@ async function main() {
   } catch (e) {
     log(`    agentInfo failed — ${String(e).slice(0, 120)}`);
   }
+  // POLLED, NOT RACED. A peer info can arrive before the arc field is
+  // readable, and at 48 members the first read showed 42 of 43 — which failed
+  // the completeness check below for a reason that had nothing to do with arc
+  // sizing and was green on a re-read moments later. A check that reds on
+  // propagation timing teaches a reader to ignore it.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const probe = infos.map(arcOf).filter((a) => a.kind !== 'unknown');
+    if (infos.length > 0 && probe.length === infos.length) break;
+    await sleep(5000);
+    try {
+      infos = await shared[0].admin.agentInfo({ dna_hashes: [shared[0].dna] });
+    } catch { /* keep the previous read */ }
+  }
   const arcs = infos.map(arcOf).filter((a) => a.kind !== 'unknown');
   const fullCount = arcs.filter((a) => a.full).length;
   const narrowed = arcs.filter((a) => !a.full);
@@ -209,7 +222,7 @@ async function main() {
 
   check('arc sizing is OBSERVABLE, so this harness can tell routing from storage',
     arcs.length > 0);
-  check(`every member the network knows about has a readable arc (${arcs.length} of ${infos.length})`,
+  check(`every member the network knows about has a readable arc (${arcs.length} of ${infos.length}, after polling)`,
     infos.length > 0 && arcs.length === infos.length);
 
   // WHETHER ARCS NARROW AT TWELVE IS NOT THIS REPOSITORY'S PROPERTY TO ASSERT,
@@ -228,11 +241,23 @@ async function main() {
     log('    entry from any of them is guaranteed by STORAGE and not by ROUTING.');
     log('    Section 3 will pass and will NOT have tested scale.');
     log('');
-    log('    This is a finding about where narrowing begins, not a failure. Twelve');
-    log('    members is not enough to make this substrate shrink an arc, so the');
-    log('    next experiment is MORE MEMBERS rather than a different assertion —');
-    log('    and the figure worth recording is the N at which an arc first');
-    log('    narrows. Nothing above twelve has been run.');
+    log('    AND MORE MEMBERS WILL NOT CHANGE IT, which is the answer as of');
+    log('    2026-10-23 and replaces this file\'s previous advice to go wider.');
+    log('    Measured at 48 members: 48 of 48 still FULL, none narrowed, stable');
+    log('    across a full gossip period. The reason is not the member count —');
+    log('    THERE IS NO NARROWING CODE PATH COMPILED IN. kitsune2_gossip\'s');
+    log('    update_storage_arcs only ever GROWS an arc, and its one action');
+    log('    outside `#[cfg(feature = "sharding")]` is set_cur_storage_arc(FULL)');
+    log('    (storage_arc.rs:99-104). The sharding feature is off: holochain');
+    log('    0.7.0 declares `unstable-sharding = []`, an EMPTY feature that does');
+    log('    not forward to kitsune2_gossip/sharding at all, and the installed');
+    log('    binary contains the non-sharding branch\'s own log string');
+    log('    ("Updating storage arc to full"), which is how that was confirmed');
+    log('    rather than assumed.');
+    log('');
+    log('    So "the N at which an arc first narrows" HAS NO ANSWER in this');
+    log('    build. It is a feature-flag question, not a scale question, and');
+    log('    section 3 cannot be made a routing result by adding conductors.');
   }
 
   // === 3. RESOLVABILITY: the DHT's actual promise ========================
