@@ -447,6 +447,29 @@ left in a run log.** The observations pool two harnesses with different window
 semantics, so treat the rate as an order of magnitude rather than a
 measurement.
 
+**NINTH OBSERVATION, 2026-10-22, and it is the slowest single crossing on this
+list.** `partition-rejoin` failed on PR #309's run with a **426.0s** crossing
+and the harness itself named the figure rather than the cap it blew: *"THE
+426.0s IS THE FINDING, not this cap. real-gossip's own window is 330s, so a
+crossing this slow is a FAILURE over there and was only recorded here"* — so
+this one observation is simultaneously a pass-with-a-warning in one harness and
+a failure in the other, which is exactly the pooling caveat above made
+concrete. The divergence assertion then returned **`INCONCLUSIVE`** rather than
+failing, by design: nodeB showed 0 in claimA's domain with the dwell capped, so
+"not diverged" and "not arrived yet" were indistinguishable and the harness
+counted it as neither. nodeB's census carried **`All agents with overlapping
+arcs are on timeout=265`** and **`No agents to gossip with=285`**, which is the
+per-peer timeout signature §3 already describes rather than a new mode.
+
+**So the count is nine observations, five of them slow enough to fail without a
+retry.** Five of nine is the first time this has not been a minority, and
+`real-gossip.mjs`'s own retirement condition — *"a retry needed on most runs is
+not an intermittency being absorbed, it is a routine failure being hidden"* —
+turns on that word. Five of nine is not yet "most", and the next occurrence
+decides whether it becomes so. **Recorded here rather than left in a run log,
+which is the whole reason this count exists** — it was observed on 2026-10-22
+while merging an unrelated pull request and nearly left in the CI output.
+
 **One thing this occurrence settles that no stubbed scenario could: three
 attempts rather than two was load-bearing, and not as a statistical hedge.**
 The comment's reason is the burst limiter — 15 initiations per peer per 10
