@@ -375,3 +375,198 @@ One further log line worth keeping: the relay dropped a connection at
 about six minutes after the last crossing and after the away machine had
 stopped. It affected no sample, and it is the kind of thing that would look
 like a protocol fault if it had landed mid-window.
+
+---
+
+## 8. The returning node, 2026-10-22 evening
+
+The case §6 and §7 could not reach: every crossing they measured had both peers
+up and waiting, which is connecting rather than catching up. This procedure
+tests a node that was **offline while history was written**.
+
+**Take the network down, not the conductor.** `cross-internet-node.sh stop`
+does `rm -rf` on the state directory, so a node restarted after it has a new
+database and a new agent key — a *new* node, which is the case already known to
+sync in seconds. What makes a returning node is the conductor surviving:
+
+```bash
+date -u +"OFFLINE at %H:%M:%S"; nmcli device disconnect wlp1s0   # on the away host
+#   ... the other host writes history here ...
+date -u +"BACK ONLINE at %H:%M:%S"; nmcli connection up "<ssid>"
+```
+
+`nmcli device disconnect` also suppresses autoconnect until an explicit
+`connection up`, which is what keeps the outage an outage. Verify the agent key
+printed after the return matches the one from before it — that is the proof it
+is the same node and not a replacement.
+
+**Use `nmcli connection up "<ssid>"`, not `nmcli device connect`.** The latter
+picks whichever saved profile is available, which on a machine that has been
+moved around is not necessarily the one the test assumes. Ours silently chose a
+different network, and ten minutes of `nothing yet` was nearly read as a
+protocol result before the fingerprint check (§1.1) caught it.
+
+**What it measured:**
+
+| case | result |
+|---|---|
+| address change, conductor alive | claim readable **368-373s** after the write |
+| return after 861s offline, 3 claims in the gap | **nothing after 905s** |
+| brand-new node, same seed, same moment | **all three claims, first poll**, ~15s from not existing |
+| completeness once recovery came | `gap2` and `gap3` also first-poll — **all-or-nothing, never partial** |
+| round 2: return after 154s offline, nothing else joining | **self-recovered in 304-309s** from reconnect — *the "300s per-peer initiate floor" this once cited does not exist; see "The rejoin mechanism" below* |
+| round 3: return after 884s offline, nothing else joining | **self-recovered in 687-692s** — unaided; the *"scales with the absence"* reading is retired below |
+
+**AND THE DIAGNOSTIC SPOILED THE HEADLINE NUMBER, which is the lesson worth
+carrying.** The brand-new node was started to distinguish "the serving host
+will not re-reach the returning peer" from "the host is not serving at all". It
+answered that cleanly — all three claims, immediately — and then the returning
+node crossed **65 seconds later**, after fifteen minutes of silence. Whether it
+self-recovered or the third node's arrival unblocked it cannot be separated
+from one run.
+
+So: **decide before running whether you are measuring self-recovery or
+diagnosing a stall, because the diagnosis destroys the measurement.** If the
+figure matters, let the window expire untouched first and diagnose afterwards.
+Only the lower bound survives a perturbed run — here, no recovery for at least
+905s, measured to the moment before the third node existed.
+
+The same mistake in a different costume as §7's four parallel readers: the
+instrument interfering with its own subject, twice in one day, once inflating a
+number and once erasing one.
+
+**Rounds 2 and 3 are how to do it**: one variable changed at a time, the reader
+started within seconds of the reconnect, and nothing else allowed near the
+network for the whole window. Round 3 matched round 1's outage to within 23s
+and its write offsets to within 2s, so the only remaining difference from round
+1 was that nothing interfered — and it self-recovered in 687-692s. Recovery is
+therefore unaided. **The "scales with the absence" reading of ~305s after 154s
+and ~690s after 884s is retired** — see "The rejoin mechanism" below: the
+figure is governed by the residual lifetime of the peer's agent info at the
+drop, which neither round recorded, and the mechanism predicts no dependence on
+outage length at all.
+
+**And round 3 doubled as a test of a hypothesis, which is the cheapest thing a
+repeat run can also do.** Round 2's recovery coincided to the second with a
+`PeerBehaviorError: Unsolicited Accept message` on the serving conductor, which
+looked like the mechanism. Round 3 predicted the same line at its crossing. It
+did not appear — the serving conductor logged nothing at all — so the signature
+was coincidence. Writing the prediction down before the run is what made that
+knowable instead of a story told afterwards.
+
+## The rejoin mechanism, read out of kitsune2's source (item 3.3)
+
+**Answered 2026-10-23 by reading the scheduler rather than running a fourth
+round.** The question was *why was round 1 slower than round 3, from a shorter
+outage?* — 861s away and dry at 905s, against 884s away and recovered in
+687-692s. The answer is that **the experiment has a latent variable none of the
+three rounds recorded**, and round 1 therefore needs no separate cause.
+
+Read against `kitsune2_gossip-0.5.0`, which is the version the runs used —
+confirmed by the log paths, and its `initiate.rs` and `config.rs` are
+**byte-identical** to 0.5.2, so the reading holds for both.
+
+### What actually gates a returning peer
+
+| step | source |
+|---|---|
+| Any failed connection, failed send, or disconnect event marks the peer unresponsive | `kitsune2_api-0.5.2/src/transport.rs:258-262` — *"Call this whenever a connection to a peer fails to get established, sending a message to a peer fails or when we get a disconnected event"* |
+| The marker is stored **keyed on the peer's URL**, with **the peer's `agent_info.expires_at` as its own expiry** | `kitsune2_core-0.5.2/src/factories/core_space.rs:310-314` |
+| It is a TTL — `put(..., Some(expiry))` — so it clears at that absolute timestamp and not before | `kitsune2_api-0.5.2/src/peer_meta_store.rs:52-57` |
+| Gossip target selection **skips any peer carrying the marker** | `kitsune2_gossip-0.5.0/src/initiate.rs:268-277` |
+| With two nodes that leaves no target, so the loop logs *"All agents with overlapping arcs are on timeout"* then *"No agents to gossip with"* | `initiate.rs` `select_next_target` |
+| An agent info lives **20 minutes**, is re-signed once under **5 minutes** remain, checked every **60s** | `core_space.rs:539-545`; `CoreSpaceConfig` defaults `re_sign_freq_ms: 60_000`, `re_sign_expire_time_ms: 300_000` |
+
+**So the controlling quantity is the residual lifetime of the peer's agent
+info at the moment contact was lost** — call it R. The marker expires R seconds
+after the drop, and R was fixed *before* the outage began. Because an info is
+re-signed only once it is within five minutes of a twenty-minute expiry, R at
+any arbitrary moment is spread across roughly **300-1200s**.
+
+Round 1 and round 3 differ by **23s of outage** and by **up to ~900s of R**.
+Round 1 being slower than round 3 is inside the spread this mechanism
+produces, from a variable neither run controlled.
+
+### Three recorded claims this correction retires
+
+**1. There is no 300s per-peer initiate floor.** Both this file and
+`READINESS.md` read round 2's 304-309s as landing "within seconds of the 300s
+per-peer initiate floor". `min_initiate_interval_ms` (default `300_000`)
+appears **four times** in `kitsune2_gossip`'s `src/` — the field declaration,
+its default, a doc cross-reference, and a test-harness override — and **no code
+reads it**, in 0.5.0 or 0.5.2. Its own doc comment carries a commented-out
+`#[deprecated]` saying it is *"being replaced by a burst mechanism instead"*.
+The real limiter on accepting rounds is `AcceptBurstTracker::check_accept`
+(`respond/initiate.rs:176`), permitting `initiate_burst_factor ×
+initiate_burst_window_count` = **3 × 5 = 15** rounds per `initiate_interval ×
+window_count` = **600s** — not a constraint at two nodes. Round 2's 304-309s
+coinciding with 300s was a coincidence, and the same class of error as the
+`Unsolicited Accept` hypothesis round 3 killed.
+
+**2. "Recovery scales with absence" is unsupported.** It rests on two clean
+points (154s→305s, 884s→690s), and both are equally consistent with R varying
+between runs. The mechanism above predicts **no dependence on outage length at
+all** for outages shorter than the info lifetime.
+
+**3. The first initiate attempt is at ~120-130s, not ~1s.** The loop *sleeps*
+`initiate_interval` (120s) plus 0-10s jitter **before** each attempt
+(`initiate.rs`, the `tokio::select!` on `compute_delay(initiate_interval)`).
+`initial_initiate_interval_ms: 1000` applies only on the branch where an agent
+is still growing its arc and the fetch queue drains early — not to a returning
+peer that already holds a full arc.
+
+### The naive closed form, and why it is already refuted
+
+The tempting formula is
+
+    recovery ≈ max(0, expires_at − t_reconnect) + one initiate tick (120-130s)
+
+**and round 3 kills it, which is worth writing down before anybody else
+derives it.** Round 2 fits: 304-309s recovery after a 154s outage implies
+R ≈ 335s, comfortably inside the possible range. Round 3 does not: 687-692s
+after 884s offline implies **R ≈ 1449s**, and R cannot exceed the 1200s info
+lifetime. So a single marker with a single TTL is not the whole mechanism.
+
+What the source says is at work is a **conjunction**, and each term has its own
+clock:
+
+- **two markers, not one.** The laptop marks the server unresponsive and the
+  server marks the laptop, independently, each with that peer's own
+  `expires_at`. Recovery needs a path, so it waits on whichever side is needed.
+- **re-marking extends it.** The trigger fires on *every* failed send or
+  connect, not once per outage (`transport.rs:258-262`). A failed send *after*
+  reconnect re-marks with the then-current `expires_at` — and if a fresh agent
+  info has been learned from bootstrap by then, that is a **new** expiry up to
+  1200s out. The clock is not monotonically counting down from the drop.
+- **the fetch queue is a second gate past gossip.**
+  `kitsune2_core-0.5.2/src/factories/core_fetch.rs:337` consults
+  `get_unresponsive(peer_url)` and drops the op from the request set, and the
+  drop at `:346` has **no log line at any level** — which is exactly where the
+  peering-rate batch's investigation stopped, with 35 `NoDiff` messages
+  carrying non-empty `new_ops` that were enqueued and never arrived. So a round
+  can complete and still transfer nothing.
+
+**That is enough to answer item 3.3 and not enough to predict a number.** Round
+1 needs no cause of its own: the spread between it and round 3 is produced by
+clocks the experiment never recorded. But the reading does not yield a formula,
+and the three rounds cannot be fitted to one.
+
+### What a fourth round must capture
+
+None of the first three recorded any of this, which is why they cannot
+discriminate:
+
+- the agent info `created_at` and `expires_at` for **each side's view of the
+  other**, at the moment of disconnect and again at reconnect;
+- the peer URL before and after reconnect, since a changed URL releases a
+  marker by making it unreachable under the old key;
+- every *"on timeout"* / *"No agents to gossip with"* line with a timestamp —
+  the marker being consulted;
+- and `kitsune2_core::factories::core_fetch=debug`, so the silent drop at
+  `:346` becomes visible. `scripts/network.sh`'s `EPI_GOSSIP_LOG_FILTER`
+  already carries that target; `RUST_LOG` will not work, because
+  `network.sh:592-593` exports `CUSTOM_FILTER` at base `warn` and that
+  overrides it.
+
+The discriminating observation is whether recovery lands at a time explained by
+the recorded expiries, or still tracks outage length once they are known.
