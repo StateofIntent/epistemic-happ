@@ -73,8 +73,8 @@ But it proves *order*, not a *date*. There's no clock a validator can reach, so
 a timestamp is only ever the author's own assertion. Against a patent office or
 an infringer the date is usually the thing that matters, which means you need a
 **notary: a named agent who promises the timestamp and can be blamed for it.**
-I'm working that problem right now for exactly this reason, and it's the same
-gap as my forecasting deadlines.
+It's the open problem I'm stuck on, and it's the same gap as my forecasting
+deadlines.
 
 Which is the honest summary of *"proofs of origin via authentications"*: **the
 authentication is strong, the origin is ordinal, and the date needs a promiser.**
