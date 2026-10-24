@@ -22,12 +22,13 @@ third-party.
 
 ## 0. In flight right now
 
-**Two documentation pull requests, queued to merge one at a time.** #332
-closes 3.1; #333 adds the superior-egg case (7.9/7.10 below). Both are docs
-only and all seven drift checkers pass on each. If either is still open when
-this is next read, **check whether a required check went red rather than
-assuming the queue stalled** — and merge in number order, because #333 was
-branched off main before #332 landed.
+**One documentation pull request.** #332 closed 3.1 and merged 2026-10-24 as
+`c2e6dd6`; #333 adds the superior-egg case (7.9/7.10 below) and is the only
+thing open. It was branched before #332 landed, so `strict: true` left it
+`BEHIND` and it was updated from `main` rather than moving the rule. **The
+cold-read instruction below earned its keep on the first try**: #333 was open
+because a required check had gone red, not because the queue had stalled. If
+it is still open when this is next read, check the same thing first.
 
 Before those two this section said **nothing**, and had listed five items on
 2026-10-22; all five merged, and so did everything they were waiting on. The
@@ -38,20 +39,33 @@ the status.
 cost was paid in full: fourteen pull requests landed one at a time, each merge
 putting the rest behind and forcing a fresh ~20-minute cycle. It was relaxed
 for the nine documentation PRs — verified safe first by building the combined
-tree locally and running all seven drift checkers against it — and **restored
+tree locally and running all six drift checkers against it — and **restored
 immediately after**. `enforce_admins` is true, so there is no lighter
 alternative: `--admin` does not bypass it, the rule itself has to move.
 **Whether `strict` earns its keep on a repository where most pull requests
 touch only Markdown remains a decision [D]**, and the evidence for taking it is
 now concrete.
 
-**AND CI CONTENTION IS REAL, measured rather than suspected.** Six branches
-pushed at once produced four `ui` failures, every one `taxonomy-ui` §5 —
-*"proposing a species from the UI"* — timing out on `waitForSelector`. The same
-branches passed run one at a time: `ui` went 4-for-4 solo against 4-for-4
-failing in the batch. Two concurrent jobs is within tolerance; six is not.
-**Push one branch at a time and re-run on a quiet queue** — item 1.3's advice
-is otherwise untrue.
+**AND THE CONTENTION EXPLANATION IS WRONG — the mechanism cannot exist on this
+CI.** The 2026-10-23 correlation stands as an observation: six branches at
+once, four `ui` failures, every one `taxonomy-ui` §5 — *"proposing a species
+from the UI"* — timing out on `waitForSelector`, against 4-for-4 green when the
+same branches ran solo. But every workflow is `runs-on: ubuntu-latest`
+(`.github/workflows/ui.yml:115` and its six siblings), so **each job gets its
+own VM**: jobs share no CPU and no ports, since `sandbox.sh` binds 8887-8889 on
+`127.0.0.1` inside the runner it is given. And on 2026-10-24 #333's `ui` failed
+on the same selector at 04:17:38, **by which time every other job in both
+batches had finished except its own `conductor`** — one sibling, on another
+machine — then passed on re-run with the tree unchanged.
+
+So two things are now established and one is not. **Established**: §5 has an
+intermittent race that does not need a loaded queue, and a re-run clears it.
+**Not established**: why six branches correlated with four failures at all —
+there is no sharing between hosted runners to carry it. Until that is settled,
+**"push one branch at a time" is a remedy with no mechanism behind it**, and
+1.3's *"contention, not content"* — plus its siblings in `README.md` and
+`scripts/live-verify/README.md` — is a claim the evidence no longer supports.
+**Item 1.7 carries the correction.**
 
 ---
 
@@ -65,6 +79,7 @@ is otherwise untrue.
 | 1.4 | **Two desktop installs talking to each other.** Closes the clause still open in release step 3 — *"against that build"* — since both ends of every 2026-10-22 crossing were `hc sandbox` conductors. The relay path is measured; the packaging is not **NARROWED 2026-10-23 (#325): the protocol half is DONE and the blocker is smaller than this row said.** Verified against a running `v0.2.0` — the cell hashes to the seeded desktop hash recorded here, the zome reports `declared_version: 9`, a Claim written through the app's own conductor rendered in its UI, and a Retraction showed it retracted by its author while the claim stayed readable by hash. The conductor is reachable **without the GUI** (admin origin `kangaroo`, app interface `webhapp://webhappwindow`), so the crossing test is scriptable. **What remains: one Setup click per profile** — `passwordMode` is `password-optional` and the conductor does not launch until somebody clicks — **and a second machine.** Note `v0.2.0` is `protocol_version: 9` against main's 11, so testing it validates packaging two forks behind; whether that is what *"against that build"* means is a decision. | H | the Setup click, and a second machine |
 | 1.5 | ~~**Record the 426.0s `partition-rejoin` occurrence.**~~ It failed again on 2026-10-22 with a 426.0s crossing and an `INCONCLUSIVE` divergence verdict, and nodeB's census carried `All agents with overlapping arcs are on timeout=265`. §3 keeps a **running count** of these occurrences precisely so a premise going stale is visible as a rate; this one was observed and never written down **CLOSED 2026-10-23 (#315).** Two further occurrences recorded since, on #321 and #323 — both the baseline crossing failing with nodeB at 0 through t+260s, on a check deliberately non-required so a red informs rather than blocks. | — | done |
 | 1.6 | ~~**The parked gate.**~~ Branch `chore/gate-probabilistic-setup`, no commits, to gate probabilistic setup searches in `ordering-policy.mjs` (three sites, lines 244/266/310) **CLOSED 2026-10-23 (#317), then corrected again in #326.** The gate was right; its arithmetic was not. §2 compares 32 hashes against ONE pivot, so a miss is *"is the pivot the maximum of 33"* = **1/33 ≈ 3%**, not 2^-32 — and CI drew it while the gate printed the false figure one line above the red. Repaired with seven independent pivots: (1/33)^7 = 2^-35.3. **Four wrong odds in one file, three of them in the commits that fixed the others.** | — | done |
+| 1.7 | **The `ui` §5 race, and the three places that call it contention.** On 2026-10-24 #333's `ui` timed out after 25s on `[data-species="ProposedCritique…"]` with exactly one sibling job alive on another VM, then passed on re-run against an unchanged tree — so the failure is `taxonomy-ui` §5's own race, and `runs-on: ubuntu-latest` leaves jobs nothing to contend over. The suspect is the write-then-render path: `mobile-ui/src/main.ts:3382-3402` awaits `create_critique_species`, sets `proposingSpecies = false`, then `await loadTaxonomy()` — the card exists only after that refetch returns, while the harness's independent-client read on the next line would still pass, which localises it to the render half. Wanted: the wait declaring its own mode per §7b.2, and the correction swept through 1.3, `README.md:3789` and `scripts/live-verify/README.md:98` rather than §0 alone. | [M] | nothing — the evidence is in hand |
 
 ---
 
