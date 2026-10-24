@@ -22,13 +22,26 @@ third-party.
 
 ## 0. In flight right now
 
-**One documentation pull request.** #332 closed 3.1 and merged 2026-10-24 as
-`c2e6dd6`; #333 adds the superior-egg case (7.9/7.10 below) and is the only
-thing open. It was branched before #332 landed, so `strict: true` left it
-`BEHIND` and it was updated from `main` rather than moving the rule. **The
-cold-read instruction below earned its keep on the first try**: #333 was open
-because a required check had gone red, not because the queue had stalled. If
-it is still open when this is next read, check the same thing first.
+**Five pull requests merged on 2026-10-24, and this section did not move until
+the fifth of them** — which is the failure this file exists to catch, performed
+by the file itself. In order: **#332** closed 3.1 (`c2e6dd6`); **#333** added
+the superior-egg case (`2edb6ab`); **#334** swept the contention claim and put
+4.5 on §4 (`80364d0`); **#335** repaired §7's self-contradicting Invariant 9
+note and struck 5.1 (`27b8376`); **#336** built the egg-case walkthrough as a
+harness, striking 7.10. This entry is the sixth, and if it is the only thing
+open when you read this, that is the expected state.
+
+**THE COLD-READ INSTRUCTION BELOW EARNED ITS KEEP ON THE FIRST TRY.** #333 was
+found open because a required check had gone red — `ui`, `taxonomy-ui` §5 —
+not because the queue had stalled. Check that first, every time. And note what
+the red turned out to be worth: chasing it produced item 1.7 and overturned a
+documented cause (see the contention entry below).
+
+**Each of the five was branched before the one ahead of it landed**, so
+`strict: true` left each `BEHIND` in turn and each was updated from `main`
+rather than moving the rule. Five sequential ~20-minute cycles for five
+documentation changes is the concrete cost of that rule, and it is the evidence
+the `[D]` below is asking for.
 
 Before those two this section said **nothing**, and had listed five items on
 2026-10-22; all five merged, and so did everything they were waiting on. The
@@ -80,6 +93,7 @@ there is no sharing between hosted runners to carry it. Until that is settled,
 | 1.5 | ~~**Record the 426.0s `partition-rejoin` occurrence.**~~ It failed again on 2026-10-22 with a 426.0s crossing and an `INCONCLUSIVE` divergence verdict, and nodeB's census carried `All agents with overlapping arcs are on timeout=265`. §3 keeps a **running count** of these occurrences precisely so a premise going stale is visible as a rate; this one was observed and never written down **CLOSED 2026-10-23 (#315).** Two further occurrences recorded since, on #321 and #323 — both the baseline crossing failing with nodeB at 0 through t+260s, on a check deliberately non-required so a red informs rather than blocks. | — | done |
 | 1.6 | ~~**The parked gate.**~~ Branch `chore/gate-probabilistic-setup`, no commits, to gate probabilistic setup searches in `ordering-policy.mjs` (three sites, lines 244/266/310) **CLOSED 2026-10-23 (#317), then corrected again in #326.** The gate was right; its arithmetic was not. §2 compares 32 hashes against ONE pivot, so a miss is *"is the pivot the maximum of 33"* = **1/33 ≈ 3%**, not 2^-32 — and CI drew it while the gate printed the false figure one line above the red. Repaired with seven independent pivots: (1/33)^7 = 2^-35.3. **Four wrong odds in one file, three of them in the commits that fixed the others.** | — | done |
 | 1.7 | **The `ui` §5 race, and the three places that call it contention.** On 2026-10-24 #333's `ui` timed out after 25s on `[data-species="ProposedCritique…"]` with exactly one sibling job alive on another VM, then passed on re-run against an unchanged tree — so the failure is `taxonomy-ui` §5's own race, and `runs-on: ubuntu-latest` leaves jobs nothing to contend over. The suspect is the write-then-render path: `mobile-ui/src/main.ts:3382-3402` awaits `create_critique_species`, sets `proposingSpecies = false`, then `await loadTaxonomy()` — the card exists only after that refetch returns, while the harness's independent-client read on the next line would still pass, which localises it to the render half. Wanted: the wait declaring its own mode per §7b.2, and the correction swept through 1.3 and `README.md`'s *"contention profile of the pull-request queue"* (§ the `ui` rate caveat) rather than §0 alone. **`scripts/live-verify/README.md` is NOT wrong and was not changed**: its hypothesis is intra-job — a busy runner integrating ops — which survives intact, and it already names the §7b.2 wait as what would settle it. **Swept 2026-10-24; the §7b.2 half is the work that remains.** | [M] | nothing — the evidence is in hand |
+| 1.8 | **Nothing verifies the artifact that is actually ON the registry — only the next one.** `published-packages.mjs` packs the **local** tree and installs those tarballs, deliberately: during a version bump the replacement SDK is not published yet, so resolving the registry copy would verify precisely the code being replaced. Its own step-2 comment says that, and READINESS records it. **The consequence nobody drew**: a green `conductor` run means *the tarball we would publish from HEAD works against a real conductor*, and says nothing about what a stranger installing today gets. **THIS FAILURE CLASS HAS ALREADY HAPPENED** — the registry copy of `0.1.3` was broken from 2026-10-15 until `0.1.4` because a dependency RANGE resolved to a bad version, which no local-tarball test can see by construction. Wanted: a by-version install **from the registry** into an empty project, driven against a conductor, reporting which version it resolved so the check cannot quietly pass against a stale pin — and run on a schedule rather than per-push, since it tests the registry and not the diff. Negative evidence is cheap here: point it at `0.1.1`, which is still on the registry and still broken. | M | nothing — `published-packages.mjs` already has the conductor half, and this is its `npm install <name>@latest` variant |
 
 ---
 
