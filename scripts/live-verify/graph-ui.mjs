@@ -46,6 +46,7 @@ import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CHROMIUM } from './chromium.mjs';
+import { waitDeclaringMode } from './declared-wait.mjs';
 
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
 let chromium;
@@ -156,7 +157,26 @@ async function main() {
 
     log('=== The list view shows depth 1 only ===');
     await page.getByRole('button', { name: /view \/ add critiques/i }).first().click();
-    await page.waitForSelector('.critique-item', { timeout: 20000 });
+    // §7b.2. The fourth of the four observed `ui` failures was this selector.
+    // Unlike taxonomy-ui's two this is a REVEAL of data seeded above rather
+    // than a write-then-wait, which makes the mode answer sharper rather than
+    // weaker: the critiques are known to exist, so a NOT-readable answer here
+    // would mean the seed itself did not integrate, and a READABLE one puts it
+    // squarely on the panel.
+    await waitDeclaringMode(page, '.critique-item', {
+      timeout: 20000,
+      probeLabel: 'whether the seeded critiques are readable for this claim',
+      log,
+      probe: async () => {
+        const claims = await call('get_claims_by_domain', DOMAIN);
+        if (claims.length === 0) {
+          return { readable: false, detail: 'the seeded claim is not readable by domain' };
+        }
+        const target = claims[0].signed_action.hashed.content.data.entry_hash;
+        const rows = await call('get_critiques_for', target);
+        return { readable: rows.length > 0, detail: `${rows.length} direct critiques on the seeded claim` };
+      },
+    });
     const listed = await page.locator('.critique-item').count();
     log(`  critique panel lists ${listed}`);
     check('the flat list shows only the 2 direct critiques', listed === 2);
