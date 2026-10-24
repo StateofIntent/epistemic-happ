@@ -39,7 +39,7 @@ by twelve harnesses on every push.
 
 **And the agent-facing path is not orphaned the way the desktop app is.**
 `scripts/live-verify/published-packages.mjs` packs `@stateofintent/agent-sdk`
-and `@stateofintent/mcp-server` — both at `0.1.2`, the published version —
+and `@stateofintent/mcp-server` — both at **`0.1.5`, the published version, CORRECTED 2026-10-24** (this line said `0.1.2` for weeks after `0.1.3`, `0.1.4` and `0.1.5` had each shipped; `dist-tags.latest` is `0.1.5` for both, read off the registry rather than inferred) —
 installs them into an empty project **with a fresh dependency resolve**, and
 drives them against a real conductor on every push. It has stayed green through
 all six protocol forks. So a stranger who installs the SDK or points an
@@ -951,9 +951,12 @@ same day — so NO row here is blocked on nothing but effort any more.** What 15
 needs a person: `npm login` and a browser second factor.
 
 **What every remaining open row is blocked on, so the state is readable without
-reading them all.** **15** — the publish, and it needs credentials. **6** — the
+reading them all.** ~~**15** — the publish, and it needs credentials. **6** — the
 same publish run; its `0.1.4` half shipped and the row is corrected, what is
-outstanding is `agent-sdk` `0.1.5`. ~~**7** — nothing, but it blocks no merge by
+outstanding is `agent-sdk` `0.1.5`.~~ **BOTH CLOSED — the `0.1.5` publish ran on
+2026-10-20 and this paragraph did not move; see the sequence below, which
+records it as DONE. `0.1.5` is `latest` on the registry for both packages,
+re-verified 2026-10-24.** ~~**7** — nothing, but it blocks no merge by
 construction and its most likely red is now an intermittency rather than its
 subject.~~ **7 closed on 2026-10-20 by its second option**, and its blocker was
 wrong too: stating in the harness why the red is deliberate was blocked on
@@ -978,11 +981,15 @@ first on cost alone — about fifteen minutes, since `package.json` already
 declares `^1.30.0` and a plain relock picks up the fix, against 1–2 hours for
 5e. Its advisories are still unreachable by the analysis in its own row, so
 this is priority by hygiene rather than by exposure: four standing advisories,
-one labelled critical, train everyone to ignore `npm audit`. **It now carries a
+one labelled critical, train everyone to ignore `npm audit`. ~~**It now carries a
 real publish with it** — `agent-sdk` is `0.1.5` in this tree and `0.1.4` on the
 registry (checked against the registry, not inferred), so item 12's `closureOf`
 is unpublished, and the publish sequence below applies with its ordering
-constraint.
+constraint.~~ **DONE 2026-10-20 — `agent-sdk@0.1.5` and `mcp-server@0.1.5` are
+both on the registry and both `latest`, so item 12's `closureOf` IS published.
+Re-read against the registry 2026-10-24.** The tree and the registry now agree
+at `0.1.5`, which is the state in which `publish-packages.sh` correctly refuses
+to do anything.
 
 **TWO ROWS BELOW HAVE BLOCKERS THAT NEED RE-READING BEFORE THEY ARE TRUSTED,
 and neither is a row this session touched.** Row **6** says the `0.1.4` publish
