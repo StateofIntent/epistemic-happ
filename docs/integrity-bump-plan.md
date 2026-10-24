@@ -39,7 +39,7 @@ Current state: `PROTOCOL_VERSION = 11`, sixteen entry types.
 
 ---
 
-## 2. The candidate set — five, not three
+## 2. The candidate set — four, after 3.1 was decided
 
 §4 lists three. This session added two more, and they belong in the same bump
 because they are the same kind of change.
@@ -49,12 +49,16 @@ because they are the same kind of change.
 | 4.1 | **Foresight ordinal anchor** — `PreRegistration.reveal_deadline` becomes a position in a declared order; `Revelation` gains an association; `Membrane` gains a declared notary key; validation checks shape only | 3 entry structs, 1 validation rule | **blocked**: Andras's three answers (asked, 7.6) |
 | 4.2 | **Observers as entries** — prompts, heuristics and thresholds as signed entries, so selection acts on the agents | 1 new entry type (appended) | **blocked**: 3.5's cost, priced |
 | 4.3 | **Species provenance + metabolic policy fields** | fields on `CritiqueSpecies`; policy fields TBD | **blocked**: 3.4 (a budget at all), and 2.4 is now done |
-| **4.4** | **Declared atrophy threshold N** — a `Constitution` field, so a membrane declares how fast its own domain forgets | 1 field on `Constitution` | **blocked**: 3.1, and only if 3.1 goes the *declared* way rather than *derived* |
+| ~~4.4~~ | ~~**Declared atrophy threshold N**~~ — a `Constitution` field | — | **DROPPED 2026-10-24.** 3.1 decided: the reader is the promiser, per-reader is enough. No declared-N field is being built. |
 | **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | 1 new entry type (appended), 1 validation rule | **ready whenever the bump is cut** — no decision outstanding |
 
-**4.4 and 4.5 are new.** 4.4 came out of Stage 3 (#324): the threshold works as
-the caller's promise, and the *declared-per-membrane* variant is the thing 3.1
-decides, which is a `Constitution` field and therefore integrity. 4.5 came out
+**4.4 and 4.5 were both added by this session's work, and 4.4 has already been
+dropped again.** 4.4 came out of Stage 3 (#324): the threshold works as the
+caller's promise, and the *declared-per-membrane* variant was the thing 3.1
+decided. **3.1 was decided on 2026-10-24 — per-reader is enough — so 4.4 is
+off the list and the bump is four items**, which is a useful demonstration
+that the blocked items here are blocked on real questions: answering one
+removed a candidate rather than scheduling it. 4.5 came out
 of Stage 5 (#321): the witness-as-tagged-`Claim` was chosen precisely to avoid
 forking, and it is a workaround with a real cost — a reader must filter by tag,
 and `get_discourse_health` needed `imported_claims` to keep its own count
@@ -66,10 +70,10 @@ honest. A typed entry removes both.
 
 Ordered by what blocks what, not by preference.
 
-1. **3.1 must be decided** — declared-per-membrane, or derived. This gates 4.4
-   entirely, and it is the one decision that changes the *shape* of the bump
-   rather than just its contents. If derived, 4.4 disappears and the bump is
-   four items.
+1. ~~**3.1 must be decided**~~ — **DONE 2026-10-24: the reader is the
+   promiser, per-reader is enough.** 4.4 is dropped and the bump is four
+   items. This was the only blocker fully inside the project's control, and
+   it is now gone.
 2. **Andras must answer** — 4.1's three questions, asked in 7.6. Until then the
    ordinal anchor cannot be specified, only sketched. Note the 2026-10-19
    decision still stands that the anchor is **not adopted**; the reopen order
@@ -120,8 +124,12 @@ expensive part of every item above is a decision rather than code — 4.1's
 hardest question is what a non-participant can check, not what the struct looks
 like.
 
-And it does not recommend cutting the bump. **The cheapest correct action
-today is to decide 3.1**, because it is the only blocker fully inside this
-project's control, it changes the bump's shape rather than its contents, and
-Stage 3 already ships without it — so deciding it costs nothing that is not
-already built.
+And it does not recommend cutting the bump. With 3.1 decided, **every
+remaining blocker is outside this project's control**: 4.1 waits on Andras,
+4.2 on pricing 3.5, 4.3 on settling 3.4. Only 4.5 — `ForeignCritique` as a
+real entry type — is ready, and one item is not a batch.
+
+So the bump waits, and the next thing that could move it is an answer rather
+than a decision. The scheduling question in §4 above is now the live one: a
+bump and release step 4's invitation collide, and that ordering is still
+unmade.
