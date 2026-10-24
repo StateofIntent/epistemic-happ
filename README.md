@@ -2723,9 +2723,14 @@ harness had never recorded before.
 
 **So the rate is about 7% for the shape that has been failing all along** (2 in
 30), consistent with "about once a day". And the method carries its own warning:
-dispatched runs on a quiet account need not reproduce the contention profile of
-the pull-request queue where this flake has historically appeared, and wave three
-is a concrete reason to distrust any rate pooled out of such a batch.
+dispatched runs on a quiet account need not reproduce the load profile of the
+pull-request queue where this flake has historically appeared, and wave three is
+a concrete reason to distrust any rate pooled out of such a batch. **Corrected
+2026-10-24: that profile is not inter-job contention.** Every workflow is
+`runs-on: ubuntu-latest`, so each job holds its own VM and shares neither CPU nor
+the ports `sandbox.sh` binds; a `ui` failure on 2026-10-24 came with one sibling
+job alive on another machine entirely. Whatever separates a queue from a quiet
+account, it is not jobs loading each other — see `docs/open-work.md` 1.7.
 
 **And then the cause was found by reading the substrate rather than by waiting
 for another occurrence, and it is two ordinary things colliding.** The sources
