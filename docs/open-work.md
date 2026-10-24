@@ -22,9 +22,17 @@ third-party.
 
 ## 0. In flight right now
 
-**Nothing.** This section listed five items on 2026-10-22; all five merged, and
-so did everything they were waiting on. Kept as a heading rather than deleted,
-because an empty in-flight list is itself the status.
+**Two documentation pull requests, queued to merge one at a time.** #332
+closes 3.1; #333 adds the superior-egg case (7.9/7.10 below). Both are docs
+only and all seven drift checkers pass on each. If either is still open when
+this is next read, **check whether a required check went red rather than
+assuming the queue stalled** — and merge in number order, because #333 was
+branched off main before #332 landed.
+
+Before those two this section said **nothing**, and had listed five items on
+2026-10-22; all five merged, and so did everything they were waiting on. The
+heading is kept rather than deleted because an empty in-flight list is itself
+the status.
 
 `main` has branch protection with **`strict: true`**, and on 2026-10-23 that
 cost was paid in full: fourteen pull requests landed one at a time, each merge
@@ -157,6 +165,8 @@ cannot become live by any other route.
 | 7.6 | ~~**Send the drafted reply to Andras.**~~ Drafted 2026-10-22 and **SENT** — confirmed by the human 2026-10-24, who has the message. It carries all three questions 4.1 is blocked on, verbatim: whether a closed version is citable by value **and signed**, what the closure cadence is, and whether a node learns which version its request landed in. It also carries the narrowing — *"inclusion is binary and self-evident to whoever asked, that's exactly why Lamport's happened-before is free, it says nothing about content. Judgement isn't"* — and the reason for keeping them apart: **conflating them is how a system that refuses scores ends up shipping one.** | — | done |
 | 7.7 | **The HDK documentation bug, upstream.** `hdk-0.7.0/src/p2p.rs:138` gives the required receiving signature as `fn recv_remote_signal(signal: ExternIO)`. That fails every delivery: the host passes the payload's bytes *as* the extern input, so the macro tries to deserialize a map into a byte array, the receiver logs `Deserialize([129, 169, "Saturated"…])`, and the sender — which cannot see errors at all — sees nothing. Reproduced and worked around here | X | **the human's account and call; the model does not file upstream** |
 | 7.8 | **The returning-node asymmetry, upstream.** A known peer returning behaves far worse than a stranger arriving — reproducibly, with a fresh node getting the full history in ~15s while a returning one had nothing after 905s. Plausibly worth reporting | X | **the human's account and the human's call; the model does not file upstream** |
+| 7.9 | **Send the egg-case reply to Luck Light** (Decent community). Drafted at `docs/cases/luck-light-egg-reply.md`, with the full verified mapping beside it. The substance: **his IP question is his peg question** — proof of origin is authorship plus *ordinal* order, and a **date needs a notary**, which is 4.1's gap exactly. Sending it makes 7.10 an outstanding promise to a named person | H | nothing; the draft is final apart from voice |
+| 7.10 | **Build the egg-case walkthrough as a `live-verify` harness** — one membrane, producer/tester/buyer, one certification, one pre-registered capacity forecast, one redemption settled 2-of-2 with `max_dissent: 0`, and the buyer calling `get_standing` **twice** (once `None`, once tight) to see the same flock with and without standing. **That last step is the whole demonstration**: the franchise standard lives in the reader, not the protocol. Needs no new zome surface — every function is shipped at v11. Negative evidence discipline applies: each check must be able to go red | M | nothing technically; **`luck-light-egg.md` §7 is marked NOT YET BUILT and must stay marked until this passes** |
 
 ---
 
