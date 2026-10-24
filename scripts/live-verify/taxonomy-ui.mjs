@@ -50,6 +50,7 @@ import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CHROMIUM } from './chromium.mjs';
+import { waitDeclaringMode } from './declared-wait.mjs';
 
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
 let chromium;
@@ -264,7 +265,26 @@ async function main() {
     await picker.first().selectOption({ label: ROOT });
     await page.locator('.critique-form textarea').fill('Sample size is not reported.');
     await page.getByRole('button', { name: 'Add critique', exact: true }).click();
-    await page.waitForSelector('.critique-item', { timeout: 25000 });
+    // The suite's other write-then-wait at this ceiling, same discipline. The
+    // probe runs on the harness's FIRST client because the independent one is
+    // opened a few lines below — which is fine here: the question is whether
+    // the DHT has it, not which socket asked.
+    await waitDeclaringMode(page, '.critique-item', {
+      timeout: 25000,
+      probeLabel: 'whether any critique for this claim is readable',
+      log,
+      probe: async () => {
+        // Resolve the claim first: create_claim's hash is not kept above, and
+        // the critique targets the CLAIM, not the species.
+        const claims = await call('get_claims_by_domain', DOMAIN);
+        if (claims.length === 0) {
+          return { readable: false, detail: 'the seeded claim itself is not readable by domain' };
+        }
+        const target = claims[0].signed_action.hashed.content.data.entry_hash;
+        const rows = await call('get_critiques_for', target);
+        return { readable: rows.length > 0, detail: `${rows.length} critiques on the seeded claim` };
+      },
+    });
 
     // INDEPENDENT confirmation — the UI's own word is not evidence that
     // the field reached the DHT. This is the convention the directory
@@ -362,7 +382,24 @@ async function main() {
     await page.locator('[data-testid="species-name-input"]').fill(PROPOSED);
     await page.locator('[data-testid="species-parent-select"]').selectOption({ label: `Child of ${ROOT}` });
     await page.getByRole('button', { name: 'Propose', exact: true }).click();
-    await page.waitForSelector(`[data-species="${PROPOSED}"]`, { timeout: 25000 });
+    // §7b.2, and THE read in this suite with the worst record: three of the
+    // four observed `ui` failures were this line. On timeout it now asks the
+    // DHT whether the species is there, which separates "the write landed and
+    // the tree did not re-render" from "the write had not integrated yet" —
+    // indistinguishable before, and the gap a documented cause was invented
+    // to fill. See docs/open-work.md 1.7.
+    await waitDeclaringMode(page, `[data-species="${PROPOSED}"]`, {
+      timeout: 25000,
+      probeLabel: `whether the proposed species ${PROPOSED} is on the DHT`,
+      log,
+      probe: async () => {
+        const rows = await call2('get_all_critique_species', null);
+        const decoded = await Promise.all(rows.map((r) =>
+          call2('get_critique_species', r.signed_action.hashed.content.data.entry_hash)));
+        const found = decoded.filter(Boolean).some((sp) => sp.name === PROPOSED);
+        return { readable: found, detail: `${rows.length} species visible to an independent client` };
+      },
+    });
 
     // Read back through get_critique_species rather than inspecting the
     // raw Record: a Record's entry arrives msgpack-encoded, so matching

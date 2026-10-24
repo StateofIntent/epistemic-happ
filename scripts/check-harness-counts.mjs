@@ -126,11 +126,27 @@ const LV_DIR = new URL('../scripts/live-verify', import.meta.url).pathname;
 const LV_README = new URL('../scripts/live-verify/README.md', import.meta.url).pathname;
 const UI_WORKFLOW = new URL('../.github/workflows/ui.yml', import.meta.url).pathname;
 
-/** The harnesses, by name. `chromium.mjs` is the shared browser resolver rather
- *  than a harness, and is the only file in there that is neither. */
+/** Files in `scripts/live-verify/` that are SHARED MODULES rather than
+ *  harnesses: they export helpers, run no checks, and exit no status, so they
+ *  have nothing to count and nothing to say in the suite table. The
+ *  distinction is behavioural rather than nominal — a harness runs `check()`
+ *  calls and exits non-zero on failure; these do neither.
+ *
+ *  This was a single `!== 'chromium.mjs'` with a comment calling it "the only
+ *  file in there that is neither", which stopped being true the moment
+ *  `declared-wait.mjs` was added (SPEC §7b.2, open-work 1.7). A list says what
+ *  a hardcoded exception could not. */
+const SHARED_MODULES = new Set([
+  'chromium.mjs',      // resolves the browser binary for the UI harnesses
+  'declared-wait.mjs', // §7b.2's wait: declares its mode on timeout
+]);
+
+/** The harnesses, by name — everything in the directory that is not a module
+ *  above. Adding a module here without adding it to SHARED_MODULES reports as
+ *  "a harness with no row", which is the correct nudge: say which it is. */
 function harnessNames() {
   return readdirSync(LV_DIR)
-    .filter((f) => f.endsWith('.mjs') && f !== 'chromium.mjs')
+    .filter((f) => f.endsWith('.mjs') && !SHARED_MODULES.has(f))
     .map((f) => f.slice(0, -4))
     .sort();
 }
