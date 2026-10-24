@@ -7346,7 +7346,7 @@ pub fn send_peer_signal(input: SendPeerSignalInput) -> ExternResult<PeerSignalSe
 /// agent's own client, attaching the sender the HOST identified.
 ///
 /// THE PARAMETER IS `PeerSignal`, NOT `ExternIO`, AND THE HDK'S OWN
-/// DOCUMENTATION SAYS OTHERWISE. `hdk-0.7.0/src/p2p.rs:134` gives the required
+/// DOCUMENTATION SAYS OTHERWISE. `hdk-0.7.0/src/p2p.rs:138` gives the required
 /// signature as `fn recv_remote_signal(signal: ExternIO)`. Against a real
 /// conductor that fails every delivery: the host passes `RemoteSignal.signal`'s
 /// bytes AS the extern input, so what arrives is already the msgpack of the
