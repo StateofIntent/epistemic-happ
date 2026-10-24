@@ -142,7 +142,7 @@ does not reach the ordered list by itself.
 
 | # | item | who | blocked on |
 |---|---|---|---|
-| 5.1 | **SPEC §7b, the two disciplines** — *grounded or silent, and counted*; *every read declares the mode it ran in* | M | in #312 |
+| 5.1 | ~~**SPEC §7b, the two disciplines** — *grounded or silent, and counted*; *every read declares the mode it ran in*~~ **DONE in #312, which merged; struck 2026-10-24.** `§7b.1` and `§7b.2` are both in `SPEC.md` — the row sat open for days with its blocker column still reading *"in #312"*, which is the same rot as 4.5 in the other direction: the work landed and the list did not move. 7b.2 is now load-bearing elsewhere — item 1.7's open half is an application of it, not a test fix. | M | done |
 | 5.2 | **Apply 7b.1 to an ingestion path.** The discipline's point is that automated inflow becomes safe to switch on exactly when its rejects are counted. Nothing ingests yet, so the rule currently binds nothing | M | a decision to build ingestion at all [D] |
 | 5.3 | **A typed source-ownership class on `Evidence`**, applied bloc-agnostically — independent / public-broadcaster / state-media / state-official. `Evidence` currently carries only `source_url` and a free `EvidenceType`. **This is expressiveness without ranking**: a type, not a score, and the symmetry is what stops it being a politics | M | an integrity change, so §4's bump |
 | 5.4 | **Divergence-by-perspective-class as a read.** Veritas does not adjudicate; it surfaces how the same event is told to different audiences. That is Invariant 2 and Invariant 10 implemented as a feature rather than a slogan, and the strongest evidence seen that *"creates conditions for truth to resonate"* is buildable | M | 5.3 |
