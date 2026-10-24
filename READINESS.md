@@ -4,9 +4,14 @@
 is cut. To a crowd, and on phones, no — and the phone part is not a scheduling
 problem.**
 
-**`v0.2.0` of the desktop app was published on 2026-10-12** carrying
-`protocol_version: 9`, which closes §1 below and makes step 1 and step 2 of
-*The order to do things in* done. The next thing that matters is step 3:
+**`v0.3.0` of the desktop app was published on 2026-10-24** carrying
+`protocol_version: 11` — the version this repository actually describes, which
+`v0.2.0` did not. It closes §1 below and makes step 1 and step 2 of *The order
+to do things in* done. `v0.2.0` (protocol 9) stays available and is now two
+forks behind; the two never gossip, and nobody on 0.2.x is offered an
+auto-update, so they download by hand. **The gap this closes is the one that
+made step 4 fiction**: until 2026-10-24 anyone invited would have joined a
+network two forks behind the protocol documented here. The next thing that matters is step 3:
 two consumer networks, **measured on 2026-10-22, including the two-home-router
 case** — a mobile CGNAT pair both directions with a negative control, then four
 crossings between two separate households on two ISPs, all under seven seconds
@@ -65,7 +70,44 @@ Previously this had only ever been observed in CI.
 
 ## What blocks a release today
 
-### 1. ~~There is no release of the current protocol~~ — CLOSED 2026-10-12
+### 1. ~~There is no release of the current protocol~~ — CLOSED 2026-10-12, AND RE-CLOSED AT PROTOCOL 11 ON 2026-10-24
+
+**`v0.3.0` is published and is the current release.** The section below is kept
+as the record of `v0.2.0`, because its argument is still the argument — a
+release that implements none of the protocol this repository describes should
+not be recommended to anybody, and that was true of `v0.1.1` then and of
+`v0.2.0` now.
+
+| | `v0.2.0` | `v0.3.0` |
+|---|---|---|
+| protocol | 9 | **11** |
+| published | 2026-10-12 | **2026-10-24** |
+| artifact DNA hash | `uhC0kUHSiD5aAt7BH6XJ3j7XGfdaxLL3oFUj6f-2OPU29caU0ZkxF` | **`uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`** |
+| running network hash | `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0` | **`uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`** |
+
+**A repack WAS needed this time, which is the one way the procedure differed.**
+The `v0.2.0` run recorded "no repack was needed — nothing in `dna/`,
+`mobile-ui/src/` or the manifests is newer than the artifact". Checked the same
+way on 2026-10-24, that was false: the bundle predated `protocol_version` 10 and
+11 and all five autopoiesis stages. **Verify it rather than assume it from last
+time.**
+
+**Verified as the artifact rather than as the tree it came from**, which is the
+standard `v0.2.0` set and the reason to trust either: the bundle was unpacked
+and its own `dna.yaml` declares `protocol_version: 11`; the `.happ` inside it is
+byte-identical to the one the repository built (`sha256 7ef913d7`); all 101
+checks of `attachment-links.mjs` pass against a conductor generated from it;
+`latest-linux.yml`'s `sha512` matches the published AppImage **byte for byte**
+(base64, not hex — a `sha512sum` comparison can never match and reads as
+corruption); and the installed app created a **fresh `0.3.x` data directory**
+and logged `Installing happ...` / `Happ installed.` rather than reusing the
+0.2.x cell, which is the minor-bump trap confirmed empirically rather than
+trusted.
+
+**One wording correction for the next person.** `v0.2.0`'s record says the
+AppImage was run to `Conductor ready.`; this build logs `Connected to admin
+websocket.` and `Attached app interface port` instead. The milestone is the
+same and the string is not — do not grep for it.
 
 **`v0.2.0` shipped**, carrying `protocol_version: 9`: run
 [`38240998611`](https://github.com/StateofIntent/epistemic-resonance-desktop/actions/runs/38240998611),
