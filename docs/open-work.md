@@ -22,14 +22,42 @@ third-party.
 
 ## 0. In flight right now
 
-**Five pull requests merged on 2026-10-24, and this section did not move until
-the fifth of them** — which is the failure this file exists to catch, performed
-by the file itself. In order: **#332** closed 3.1 (`c2e6dd6`); **#333** added
-the superior-egg case (`2edb6ab`); **#334** swept the contention claim and put
-4.5 on §4 (`80364d0`); **#335** repaired §7's self-contradicting Invariant 9
-note and struck 5.1 (`27b8376`); **#336** built the egg-case walkthrough as a
-harness, striking 7.10. This entry is the sixth, and if it is the only thing
-open when you read this, that is the expected state.
+**NOTHING IS IN FLIGHT. Checkpoint 2026-10-25.** Fourteen pull requests
+merged across 2026-10-24/25 and the desktop release was cut. If this entry is
+the only thing open when you read it, that is the expected state.
+
+**START HERE: `[M]` IS EMPTY.** Every row the model could take unblocked is
+struck — 1.7, 1.8, 5.1, 7.9, 7.10, 7.11, 7.12. What remains is decisions,
+hands, and third parties. Do not go looking for bounded work; there isn't any
+until a decision below is taken.
+
+**THE ONE THING THAT MOVED FURTHEST: `v0.3.0` SHIPPED AT `protocol_version:
+11`** (2026-10-24, tag pinned to `9372f558`, 15 assets, Latest). Until then an
+invitee would have joined a network two forks behind the protocol this
+repository describes, which made release step 4 fiction whatever else was
+decided. **So 7.4 is now blocked on 1.4 alone** — its release half closed with
+the release, its decision half with 7.1, and 7.3 never gated it. One Setup
+click per profile and a second machine, both `[H]`.
+
+**AND 7.1 IS DECIDED: vouch for honesty, not for safety.** The commitment is
+that these documents say accurately what the protocol does and does not do —
+explicitly not that it is adversary-resistant, which `SECURITY.md` contradicts
+in writing. It obliges keeping them true, and #344 was the first payment:
+`INSTALL.md` was telling the ten people about to be invited that cross-network
+discovery was untested, three days after it was measured.
+
+**THE DECISION THAT GATES THE MOST, and it is not on any row above:** whether
+the integrity bump goes **before** inviting ten people, **after**, or **never**
+— §4's own plan calls it the scheduling question nobody had asked. Four of five
+candidates wait on answers outside this project and 4.5 can be written and
+held, so "invite first, and tell them their data is disposable" is the standing
+recommendation and has not been taken.
+
+**Research opened rather than closed:** 3.7 states the sybil question once,
+with its boundary written down — *the cheapest promise structure that makes
+sybil cost high enough without creating a centre* — and fences off the version
+that cannot be answered, since validation can no more observe a person than it
+can read a clock. Candidate (1), attestation capacity, is already shipped.
 
 **THE COLD-READ INSTRUCTION BELOW EARNED ITS KEEP ON THE FIRST TRY.** #333 was
 found open because a required check had gone red — `ui`, `taxonomy-ui` §5 —
