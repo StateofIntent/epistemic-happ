@@ -214,23 +214,43 @@ xattr -r -d com.apple.quarantine "/Applications/Epistemic Resonance.app"
 
 On Windows, SmartScreen will warn you; "More info" then "Run anyway".
 
-**Whether two installs on different networks can find each other is
-untested.** Everything on this project was verified with several conductors
-on one machine — real separate processes, real transport, real gossip, but
-one physical host. Two laptops behind different home routers is the one case
-nobody has been able to check. If you and a friend both install this and
-never see each other's claims, that is the most likely explanation, and it
-is worth reporting.
+**Two installs on different networks CAN find each other, and that is now
+measured rather than hoped.** On 2026-10-22 four claims were crossed between
+two separate households on two different ISPs, in both directions, all of
+them in under seven seconds and two of them sub-second in transit — plus a
+mobile-CGNAT pair with a negative control. This was the one case nobody had
+been able to check, and it was the largest open question about whether this
+is usable by two people at all. **This paragraph said "untested" for weeks
+after it stopped being true**, which is worth knowing about a document you
+are reading before you install something.
+
+What is still unverified is **two desktop installs** specifically: every
+crossing above used conductors run from the repository, not the packaged
+app. The transport is the same; the packaging is not. So if you and a friend
+both install this and never see each other's claims, that is still worth
+reporting — but it is no longer the likeliest explanation.
 
 **Peer discovery runs on `dev-test-bootstrap2.holochain.org`.** That is
 Holochain's own development and testing infrastructure. It is not run by
 this project and nobody has promised to keep it running. If it goes away,
 installed copies stop finding each other.
 
-**Your data will not survive an incompatible upgrade.** Versions 0.1.x share
-a conductor and its databases; a future 0.2.0 — which any Holochain version
-change requires — starts fresh. Treat what you publish with this build as
-impermanent.
+**Your data will not survive an incompatible upgrade, and two have already
+happened.** Each minor version has its own conductor and its own databases:
+`0.1.x`, `0.2.x` and `0.3.x` are three separate networks that never gossip
+with each other, and a machine that has run all three has three independent
+data directories on it right now. `v0.3.0` (2026-10-24) carries
+`protocol_version: 11`; `v0.2.0` carried 9 and `v0.1.1` predated the
+versioning mechanism entirely.
+
+So: **install the latest release and expect the next minor version to start
+you fresh.** Auto-update will not offer it to you, by design — a patch
+release would put a new interface in front of your old data, so breaking
+changes are deliberately made visible as a manual download. Treat what you
+publish with this build as impermanent *across upgrades*, while noting that
+within one network nothing you write can ever be deleted. Those two facts
+sound contradictory and are not: the network can be left behind, and the
+record inside it cannot be edited.
 
 ## Finding other people
 
@@ -364,9 +384,12 @@ Two things you will notice are missing, and both are deliberate:
   your own to confirm writing works.
 - **You cannot see a friend's claims.** First check you are both on the same
   release — different versions mean different networks and will not see each
-  other at all. If you are, this may be the untested case described at the
-  top of this page: two machines on different networks finding each other has
-  never been verified, and a report of it failing is genuinely useful.
+  other at all — and since `0.1.x`, `0.2.x` and `0.3.x` are three separate
+  networks, "different versions" includes anyone who has not upgraded. If you
+  are on the same release, cross-network discovery itself is **measured
+  working** (see the top of this page), so a failure is worth reporting rather
+  than expected — most likely in the packaged-app case, which is the half that
+  has not been verified.
 - **It was working and now seems stale.** See the backoff note above.
 - **The same release looks different on two of your machines** — a white page
   with muted green on one, a dark page with brighter green on the other. Both
