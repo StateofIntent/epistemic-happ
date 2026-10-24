@@ -379,6 +379,24 @@ async function main() {
     log('\n=== 5. The other write half: proposing a species from the UI ===');
     await page.locator('[data-testid="propose-species-toggle"]').click();
     await page.waitForSelector('[data-testid="propose-species-form"]', { timeout: 20000 });
+    // SETTLE BEFORE TYPING — the same wait section 3 above already takes, for
+    // the same reason, and its absence here is the bug that made this harness
+    // the worst-behaved check in CI.
+    //
+    // `render()` rebuilds `app.innerHTML` wholesale (mobile-ui/src/main.ts) and
+    // the propose form is rebuilt with it. A re-render landing between the
+    // `fill` below and the `Propose` click therefore destroys the input and its
+    // value, so the form submits an EMPTY NAME — which the integrity zome
+    // correctly refuses ("CritiqueSpecies name cannot be empty"). The species
+    // is then never written, never readable, and the wait below times out.
+    //
+    // WHICH IS WHY IT ONLY EVER FAILED IN CI. A development machine wins that
+    // race every time; a runner carrying vite, Playwright, lair and a conductor
+    // on four cores does not. Four failures were blamed on CI contention, then
+    // on the render path, before `declared-wait.mjs` reported the species as
+    // NOT READABLE at the moment of timeout twice in a row — which ruled out
+    // rendering and pointed here. See docs/open-work.md 1.7.
+    await page.waitForTimeout(3000);
     await page.locator('[data-testid="species-name-input"]').fill(PROPOSED);
     await page.locator('[data-testid="species-parent-select"]').selectOption({ label: `Child of ${ROOT}` });
     await page.getByRole('button', { name: 'Propose', exact: true }).click();
