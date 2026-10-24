@@ -87,8 +87,27 @@ export async function waitDeclaringMode(page, selector, opts) {
       log('         Look at the component and its refetch, not at the conductor.');
     } else if (readable === false) {
       log(`      NOT readable by an independent zome call at the moment of timeout${detail ? ` (${detail})` : ''}`);
-      log('      => THE DATA WAS NOT THERE YET: an INTEGRATION failure, not a render one.');
-      log('         The screen was correct to show nothing. Look at commit-to-readable latency.');
+      log('      => THE DATA WAS NOT THERE YET, so the screen was correct to show nothing.');
+      log('         This is NOT yet a latency finding: a write that was REFUSED and a write');
+      log('         that is merely SLOW look identical from here. Check the page for a');
+      log('         displayed error before concluding anything about integration time —');
+      log('         the first time this branch fired in CI the cause was a refused write,');
+      log('         not a slow one, and the refusal was visible on screen.');
+      // Read it rather than telling the reader to: the error text is the thing
+      // that separates "refused" from "slow", and asking for it here costs one
+      // locator call on a path that has already failed.
+      try {
+        const box = page.locator('.error-box:not([hidden])');
+        if (await box.count() > 0) {
+          const text = (await box.first().innerText()).replace(/\s+/g, ' ').trim();
+          if (text) log(`      AND THE PAGE IS DISPLAYING AN ERROR: "${text.slice(0, 200)}"`);
+          log('         => a REFUSED write, not a slow one. The screen already knew.');
+        } else {
+          log('      (no error is displayed on the page, so a slow write is the likelier half)');
+        }
+      } catch {
+        log('      (could not read the page for a displayed error)');
+      }
     } else {
       log(`      UNDETERMINED${detail ? ` — ${detail}` : ''}`);
       log('      => the mode question could not be answered, which §7b.1 says must be');
