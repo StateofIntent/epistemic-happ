@@ -458,6 +458,158 @@ pub fn get_claims_by_domain(domain: String) -> ExternResult<Vec<Record>> {
     Ok(claims)
 }
 
+// ============================================================================
+// THE INDEX READ, WITH THE LENS ON IT — docs/open-work.md item 7.12.
+//
+// WHY THIS EXISTS. `SECURITY.md` records that nothing in this protocol
+// resists sybil creation, that containment is topological rather than
+// preventive, and — the honest half — that **containment holds for what you
+// traverse to and nothing for what you look up**. A critique-graph walk
+// degrades gracefully when a flood arrives; `get_claims_by_domain` returns
+// the flood in full, because an anchor link read has no notion of who wrote
+// what.
+//
+// The same file names the right shape of a fix as a read-layer lens rather
+// than friction on the generative act, and that shape is not a preference —
+// it is what is left once the alternatives are foreclosed. Charging for
+// identity needs a scarce resource the protocol does not have (and a
+// running balance would be the canonical per-agent scalar Invariant #1
+// rules out, which is why the mutual-credit ledger was built and removed).
+// Refusing sybils at write time would need the protocol to decide who is
+// real, which Invariant #10 forbids and for which there is no faculty —
+// validation cannot observe a person any more than it can read a clock
+// (§5.22). And cleaning up afterwards is impossible under Invariant #6.
+// Prevention and cleanup both gone, the read is the only place left to act.
+//
+// THE LENS EXISTED AND DID NOT REACH HERE. `AttestationPolicy` and
+// `is_agent_attested` have been in this file since the ATTESTATION POLICY
+// section below, and `get_discourse_health` already takes one. This applies
+// the identical, opt-in, caller-supplied policy to the by-domain claim
+// index — the read a flood actually pollutes.
+//
+// ANCHORED TO A MEMBRANE RATHER THAN TO A BARE DOMAIN STRING, for the
+// reason `GetDiscourseHealthPayload` already gives: a bare string lets a
+// caller ask about a domain nobody ever founded, and the
+// `AttestationGrant` source of attestation is membrane-scoped because that
+// is where its tenure requirement is anchored. The domain queried is read
+// off the resolved `Membrane` entry's own field.
+//
+// AND THE DROPS ARE COUNTED, WHICH IS §7b.1 AND NOT DECORATION. "Anything
+// that cannot cite what it rests on is dropped, AND THE DROP IS COUNTED" —
+// the discipline's own words, and what it forbids is "a read that returns
+// fewer things than it considered without saying so". A filter that
+// returned three claims from a hundred and said only "three" would be
+// indistinguishable from a domain that had three. So this returns what it
+// examined, what it could not resolve, and what the policy excluded. Note
+// that `get_claims_by_domain` above drops unresolvable links SILENTLY; that
+// is a pre-existing uncounted drop, and this read counts it instead.
+//
+// `attestation_filtered` is §7b.2: every read declares the mode it ran in.
+// FALSE means no policy was supplied and nothing was excluded — the old
+// behaviour exactly, and a real neutral position rather than a default.
+// ============================================================================
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetMembraneClaimsPayload {
+    /// The membrane whose domain is being listed. The domain comes off the
+    /// resolved entry, so a caller cannot ask about one nobody founded.
+    pub membrane: AnyDhtHash,
+    /// Opt-in, and never a protocol default — see the ATTESTATION POLICY
+    /// section below. `None` means exactly the unfiltered behaviour of
+    /// `get_claims_by_domain`: every claim in the domain is returned and no
+    /// attestation check is performed at all. When `Some`, this membrane is
+    /// also what scopes the `AttestationGrant` source of the check.
+    pub attestation_policy: Option<AttestationPolicy>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MembraneClaims {
+    /// Read off the Membrane entry, not supplied by the caller.
+    pub domain: String,
+    pub claims: Vec<Record>,
+    /// How many index links were considered, before anything was dropped.
+    pub examined: u32,
+    /// Links whose target did not resolve. Counted rather than silently
+    /// skipped — one unavailable claim should degrade a listing, and say so.
+    pub unresolvable: u32,
+    /// Claims excluded because their author did not satisfy the caller's
+    /// policy. Always 0 when no policy was supplied.
+    pub filtered_unattested: u32,
+    /// TRUE when the CALLER supplied a policy and therefore promised it.
+    /// FALSE means nothing was filtered.
+    pub attestation_filtered: bool,
+}
+
+#[hdk_extern]
+pub fn get_membrane_claims(payload: GetMembraneClaimsPayload) -> ExternResult<MembraneClaims> {
+    let membrane_record = get(payload.membrane, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Membrane not found.".into())))?;
+    // BOTH WRONG-TARGET PATHS SAY THE SAME THING, and the harness is why.
+    // A hash that resolves to some OTHER app entry fails in serde rather
+    // than returning None, so the bare `format!("{:?}", e)` this was copied
+    // from surfaced `Deserialize("missing field ...")` — an internal, from
+    // which a caller cannot tell "you passed the wrong hash" apart from "the
+    // zome is broken". index-lens.mjs asserted on the message and went red,
+    // which is the check earning its place. The underlying error is kept
+    // after the plain sentence rather than instead of it.
+    let membrane_entry: Membrane = membrane_record.entry()
+        .to_app_option()
+        .map_err(|e| wasm_error!(WasmErrorInner::Guest(
+            format!("Target is not a Membrane — it did not deserialize as one: {:?}", e))))?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    let membrane_hash = hash_entry(&membrane_entry)?;
+    let domain = membrane_entry.domain.clone();
+
+    let anchor = domain_anchor_hash(&domain)?;
+    let links = get_links(LinkQuery::try_new(anchor, LinkTypes::DomainToClaim)?, GetStrategy::Network)?;
+
+    let mut claims = Vec::new();
+    let mut examined: u32 = 0;
+    let mut unresolvable: u32 = 0;
+    let mut filtered_unattested: u32 = 0;
+    // One walk per AUTHOR, not per claim: the attestation check is a bounded
+    // web-of-trust walk and a domain is usually many claims by few authors.
+    // Same cache shape as get_discourse_health's.
+    let mut attestation_cache: HashMap<AgentPubKey, bool> = HashMap::new();
+
+    for link in links {
+        let Ok(hash) = ActionHash::try_from(link.target) else { continue };
+        examined += 1;
+        let Some(record) = get(hash, GetOptions::default())? else {
+            unresolvable += 1;
+            continue;
+        };
+        if let Some(ref policy) = payload.attestation_policy {
+            let author = record.action().author().clone();
+            let attested = match attestation_cache.get(&author) {
+                Some(&cached) => cached,
+                None => {
+                    let result = is_agent_attested(IsAgentAttestedPayload {
+                        candidate: author.clone(),
+                        membrane: membrane_hash.clone().into(),
+                        policy: policy.clone(),
+                    })?;
+                    attestation_cache.insert(author.clone(), result);
+                    result
+                }
+            };
+            if !attested {
+                filtered_unattested += 1;
+                continue;
+            }
+        }
+        claims.push(record);
+    }
+
+    Ok(MembraneClaims {
+        domain,
+        claims,
+        examined,
+        unresolvable,
+        filtered_unattested,
+        attestation_filtered: payload.attestation_policy.is_some(),
+    })
+}
+
 #[hdk_extern]
 pub fn get_claims_by_agent(agent: AgentPubKey) -> ExternResult<Vec<Record>> {
     let anchor = agent_anchor_hash(&agent)?;
