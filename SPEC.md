@@ -1200,12 +1200,19 @@ retains standing, exactly the behaviour before this read existed. So Invariant
 #1's objection — a universal constant with no promiser — is fully answerable
 here rather than half-answered as it is for conductance.
 
-Item **3.1** still decides whether a membrane may **declare** N for its own
-domain (a governance choice, and the epigenetics metaphor landing exactly: same
-DNA hash, different expression) or whether N should be **derived** so nobody
-chose it. Both are additions to this read rather than replacements, and a
-declared N would arrive via the `Constitution` — an integrity entry, hence a
-fork, hence §4's accumulated bump.
+**Item 3.1 was decided on 2026-10-24: the reader is the promiser, and
+per-reader is enough.** The two alternatives it had carried are therefore not
+being built — a **declared** N per membrane (a governance choice, and the
+epigenetics metaphor landing exactly: same DNA hash, different expression),
+and a **derived** N chosen by nobody. A declared N would have arrived via the
+`Constitution`, an integrity entry and therefore a fork; that is now off §4's
+accumulated bump.
+
+What settled it is the neutral off position above: `None` means no atrophy
+rather than a default, so the reader who promises nothing has nothing imposed
+on them. That is a property a half-life cannot have, because time passes
+whether or not anybody promised a rate — which is why the same objection could
+only be half-answered for conductance and is answered in full here.
 
 **THE HORIZON IS REPORTED, AND CONSERVATIVELY.** `horizon_levels` bounds how
 far the walk goes out from the domain's claims; `horizon_exhausted` is TRUE
