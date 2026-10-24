@@ -273,3 +273,127 @@ of the tight one, the demonstration goes red — 2 failures, exit 1.
 **And the injection caught the harness narrating success underneath its own
 red checks**, which is §7b.1's failure mode performed by a test. That line is
 now conditional on there being no failures.
+
+---
+
+## 8. Excluding a violator: you can stop counting them, not remove them
+
+**His ask, 2026-10-24:** *"preventing someone who entered my network and clearly
+went against the collective intent … they would be excluded and not be able to
+recertify themselves because of my judgement of their actions."*
+
+**Verified against the source rather than assumed: there is no revocation path
+at all.** No `leave_membrane`, no `revoke_*` of any kind in the coordinator, and
+no delete op accepted anywhere (§5.1, Invariant 6). Membership is an
+`AgentToMembrane` link and nothing unmakes it.
+
+**What does exist is exactly his "my judgement", and it is caller-scoped.**
+`is_agent_attested(IsAgentAttestedPayload { candidate, membrane, policy })` takes
+an `AttestationPolicy` whose `require_attestation_from` is **a trusted root set
+supplied by the caller**. So a reader who passes his key as the root set sees an
+agent he has not vouched for as unattested; `None` means no restriction and
+everyone counts. This is the same shape as 3.1's answer — the reader promises the
+policy — which is now the third place that shape has turned up unprompted.
+
+**So the honest answer is narrower than the ask, in one specific way.** He cannot
+stop a violator *writing* a certification: the integrity zome is the only trust
+boundary and a modified coordinator stays on the network (§7.1's open position).
+What he can do is ensure it counts for nobody reading through his policy. **The
+exclusion is in the reading, not in the record** — and that must be said plainly,
+because a design that assumes removal will be wrong at the moment it is relied
+on.
+
+**And `AntibodyPattern` fits his imposter case by name.** Its kinds are
+`SpamFlood`, `SybilCluster`, `Plagiarism`, `CoordinatedManipulation` and
+**`Impersonation` — "content misrepresenting its own provenance or authorship"**.
+Published by anyone, signed, additive: it attaches to the claim permanently and
+leaves it readable with the objection on it.
+
+---
+
+## 9. He brought his own notary, which closes the gap §5 left open
+
+**His plan:** *"I always planned to have the events proofed to have occurred by
+referencing the transactions on the public crypto ledger hashes."*
+
+§5 told him a date needs a notary — a named agent who promises it and can be
+blamed for it — and that this is item 4.1, blocked on three questions with
+Andras. **He had already chosen a notary, before the problem was put to him.** A
+public chain is a promiser whose timestamps are backed by its own consensus and
+whose failure is attributable.
+
+**The precise caveat, which does not weaken it.** Validation cannot reach that
+chain any more than it can reach a clock (§5.22), so the transaction hash lives
+as `Evidence` on the claim and a **reader** verifies it out of band. The
+composition is: ordinal order from `order_records`, date from the ledger, and the
+join performed by whoever cares. **4.1 is therefore not on his critical path** —
+an in-protocol ordinal anchor is one way to get a promiser, and he has supplied
+another.
+
+---
+
+## 10. The 72-hour deadline, and why his own answer rescues it
+
+**His plan:** a 72-hour expiry mirroring contract-law deal validation; partial
+fulfilment updating the outstanding amount; fulfilment before the deadline
+closing the request as fulfilled.
+
+**Not enforceable here, structurally.** §5.22: validation cannot read a clock.
+`get_foresight_record` already has exactly this shape and is honest about it — it
+classifies `expired` by calling `sys_time()` **at read time in the coordinator**,
+so a deadline is a reader's judgement and a late reveal is socially visible
+rather than protocol-prevented.
+
+**But §9's ledger converts it.** A deadline expressed against a block height
+rather than a wall clock makes *"was this fulfilled in time"* a question about the
+ledger, answerable by anyone. His two plans fix each other, which neither side of
+this exchange predicted.
+
+**One design consequence to state before he builds on it.** *"The requested
+amount would update"* cannot be a mutable field — nothing is editable. It becomes
+a sequence of signed partial deliveries with the outstanding amount **derived** by
+the reader. `get_settlement_statuses_for` returns **all** statuses including ones
+that disagree, because picking a winner would be the deletion Invariant 6 forbids,
+performed by a reader instead of a writer (SPEC §10's own note). So there is no
+single number to read; there is a reproducible derivation, which is the trade.
+
+---
+
+## 11. What a challengeable claim is, in a bazaar
+
+**His question:** *"Could you give an example of what a challengeable claim might
+look like in an open bazaar setting?"*
+
+**A challengeable claim is one that says what would make it wrong.** That is the
+whole content of the idea, and it is §7b.1's *grounded or silent* discipline
+pointed at a market.
+
+| | |
+|---|---|
+| **Not challengeable** | *"Our eggs are superior."* Nothing could contradict it |
+| **Challengeable** | *"Flock 14 measured 410mg choline per egg on 1 October; lab panel attached"* |
+
+Three challenge shapes, all shipped, and `superior-egg.mjs` drives the first:
+
+1. **The evidence does not say that** — `Critique { critique_mode: Evidential }`,
+   a retest measuring 361mg. Retesting is not a separate subsystem; it is the
+   ordinary objection path aimed at a certification.
+2. **The method was wrong** — `Critique { critique_mode: Methodological }`. The
+   measurement is not disputed, its meaning is.
+3. **The provenance is false** — `AntibodyPattern { kind: Impersonation }`.
+
+None deletes or edits the claim; each attaches permanently and signed. The
+seller's remedy is additive too: `create_retraction` with `replacement_claim`
+pointing at the corrected figure, the superseded number staying visible —
+uncomfortable, and correct, because a track record with the bad quarters removed
+is not a track record.
+
+**The load-bearing point, and the one worth sending him.** What makes a market
+contestable is not adjudication — Invariant 10 forbids it and the protocol cannot
+do it. It is the requirement that a claim name what it rests on, **so that a
+challenge has somewhere to land**. A market of unfalsifiable boasts is not
+contestable whatever software it runs on.
+
+**And his own formulation is better than anything in this document:** *"The
+author is the first witness."* That is §5.22's position exactly — authorship and
+order are strong, priority against the outside world is not.
