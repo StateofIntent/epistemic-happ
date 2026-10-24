@@ -235,7 +235,12 @@ One membrane, three agents, no currency:
    action, domain, modality }` each, which is where *voluntary verified
    non-binding* becomes machine-readable rather than aspirational.
 2. `create_membrane { domain: "SuperiorEgg", required_promises, constitution }`,
-   then `join_membrane` and `grant_attestation`.
+   then `join_membrane`. **NOT `grant_attestation` — corrected 2026-10-24 by
+   building this.** `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` is 30 days,
+   so a membrane minutes old cannot grant an attestation at all; the harness
+   asserts the refusal instead. That is the more flattering result rather than
+   a gap: attestation here cannot be minted on day one, which is the property
+   a franchise actually wants from it.
 3. Producer certifies a flock (§2); tester retests as an `Evidential` critique.
 4. Producer pre-registers a capacity forecast; reveals at period end (§4).
 5. One redemption settled 2-of-2 with `max_dissent: 0` (§3).
@@ -245,9 +250,26 @@ One membrane, three agents, no currency:
 Step 6 is the demonstration, and it is the one that would land, because it shows
 the franchise standard living in the reader instead of in the protocol.
 
-**Status: not yet built.** The functions above are shipped and the payloads are
-accurate, but this sequence has not been run end to end as a fixture, so it is a
-design and not a result. Building it as a `scripts/live-verify/` harness —
-negative evidence discipline included, so each check can actually go red — is
-the next step, and the honest thing to tell him is that the membrane exists when
-that harness passes.
+**Status: BUILT AND PASSING, 2026-10-24.**
+`scripts/live-verify/superior-egg.mjs`, 33 checks, green against a real
+three-agent sandbox conductor. The condition this section set for itself —
+*"the membrane exists when that harness passes"* — is met, so the sequence
+above is a result and no longer a design.
+
+**What the build changed in this document.** Step 2's `grant_attestation`, as
+above. Nothing else: every payload was accurate, which is the part that had
+been verified against the source already. The temporal validation rule was not,
+because reading a struct does not tell you a membrane must be a month old.
+
+**Two flocks, not one, and the reason is the discipline.** This section
+describes one certification read twice. A one-flock fixture cannot distinguish
+*the tight read dropped the stale flock* from *the tight read drops
+everything* — both look identical from a single row. So the harness buries
+flock 14 under critique-of-critique (engagement distance 3) and leaves flock 7
+engaged on the frontier (distance 0), and the tight read must drop one and keep
+the other. Verified sensitive by injection: with the slack threshold in place
+of the tight one, the demonstration goes red — 2 failures, exit 1.
+
+**And the injection caught the harness narrating success underneath its own
+red checks**, which is §7b.1's failure mode performed by a test. That line is
+now conditional on there being no failures.

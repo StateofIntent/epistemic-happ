@@ -94,9 +94,16 @@ blueprint can't be unrevealed; reveal in a dispute, not as routine. The
 forecasting deadline isn't enforced yet, so don't price grant money off it. And
 I can make a lab reading attributable and contestable, but I can't make it true.
 
-If you want, I'll build the smallest runnable version: one membrane, a producer,
-a tester and a buyer, one certification, one forecast, one redemption settled
-2-of-2 — and the buyer calling for standing twice, once with no threshold and
-once with a tight one, seeing the same flock with and without standing. That
-last bit is the demonstration, because it shows the franchise standard living in
-the reader rather than in the protocol.
+I've built the smallest runnable version, so this isn't a sketch: one membrane,
+a producer, a tester and a buyer, one certification, one forecast, one
+redemption settled 2-of-2 — and the buyer calling for standing twice, once with
+no threshold and once with a tight one, seeing the same flock with and without
+standing. That last bit is the demonstration, because it shows the franchise
+standard living in the reader rather than in the protocol. Thirty-three checks,
+all green against a real node — and I made the important one fail on purpose
+first, because a check that can't go red isn't evidence of anything.
+
+Building it corrected me on one thing, which I'd rather tell you than have you
+find. I'd listed vouching for a member as part of the walkthrough. It can't be:
+a vouch needs thirty days of membership, so a domain a day old can't mint its
+own credibility. That's the right way round, but I had it wrong.
