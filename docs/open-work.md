@@ -296,6 +296,8 @@ fourth.
 | 1.13 | ~~**`direct_attesters_of`'s two sources are each documented and their UNION is not, and the union is the security property.**~~ **CLOSED 2026-10-26.** Written down where the costs are claimed rather than where the union happens — the `ATTESTATION GRANT` section header spent twenty lines on tenure and budget and then noted the union in a single trailing clause, so a reader met both costs and never met the sentence that nullifies them. It now says that **a set union costs what its CHEAPEST member costs**, names the free member, gives the K-minted-keys arithmetic, records that 3.7 asserted the opposite and that 7.12 had the premise as an aside about test setup, and — the part that is not merely a correction — states **what the two costs are still for**: they make conferring attestation deliberate for an agent who HAS tenure, which is what makes a grant worth more than a critique as a signal. What they never could do is make attestation scarce in aggregate beside a free source. 3.7's row was corrected in #357. | M | nothing | Source 1 (SynapticLink-derived) is free, global and unscoped by membrane; source 2 (`AttestationGrant`) is gated by a 30-day tenure bar and a 5-per-week budget. They are unioned, and **a set union costs what its cheapest member costs.** Nothing says this anywhere. Consequence: 3.7 asserted that `AttestationGrant`'s bars mean *"a thousand minted keys buy nothing"* — false; a thousand minted keys buy a thousand attesters, and the tenure bar never fires because the attack never touches source 2. **The repo already held the premise without the conclusion**: 7.12 records *"a critique's `SynapticLink` attests its target's author, globally and free"* as a note about test setup — the harness took the cheap path because the expensive one was unreachable, which is the attack performed in CI and described as a convenience. Write the union down once, and correct 3.7. | M | nothing |
 | 1.14 | ~~**`SECURITY.md`'s free-identity position overstates what the attestation machinery provides.**~~ **CLOSED 2026-10-26, and it understated as well as overstated.** `SECURITY.md` was already honest that identity is free and containment is topological — what it had wrong was *"the right shape of a fix **is understood to be** a read-layer lens"*, written before 7.12 built it. So it was telling readers a protection was hypothetical while it shipped. It now states the lens exists and states its limit as the one sentence that matters: **a reader who names a root set is unaffected by a sybil flood; a reader who does not is unprotected** — nothing in between, nothing automatic. Plus the two mechanisms that look stronger than they are: the `AttestationGrant` union (1.13) and `min_attestations` with no roots (1.12, inert). **The sweep found two siblings and both understated** — `READINESS.md`'s known-and-deliberate summary still described containment as the only thing there, and `README.md` §2.3's *honest ceiling* passage said global sybil resistance needs a global scarce resource the DHT lacks and that containment is all that is free. That passage gains the third thing: a **per-reader** scarce resource, scarce because no transaction adds you to somebody else's root set, and per-reader rather than global is exactly why it needs no centre. | M | done | The honest statement is not *sybils are expensive* but **a reader who names a root set is unaffected, and a reader who does not is unprotected** — because `require_attestation_from` is the only input a minted key cannot obtain for itself, there being no transaction that adds you to somebody's root set. 7.1 committed to vouching for honesty rather than safety, and this is a live gap between what the documents imply and what the code does. Depends on 1.12's decision for the exact wording. | M | 1.12 |
 
+| 1.15 | ~~**SPEC §2.4 said `past_cone` has four validation rules and then listed five.**~~ **CLOSED 2026-10-26, found while verifying a cross-reference for the §6 brief — which is the only reason it surfaced.** The sentence read *"Validation MUST enforce **four** rules and MUST NOT claim a fifth"* and immediately enumerated (1)–(5). `validate_critique` enforces all five, as **six** refusals (rule 3 fails separately for *does not resolve* and *is not a `Critique`*). **The miscount was not cosmetic: it made rule 5 — transitive closure, the one the same paragraph calls load-bearing, and the only rule that makes claimed IGNORANCE non-selective — read as the thing being DISCLAIMED.** A reader counting four enforced rules would take the fifth listed item as the unenforceable one, which is exactly backwards; the genuinely unenforceable thing is that the author actually saw them, which the paragraph goes on to say. Now *five rules, and MUST NOT claim the sixth thing a reader will assume.* | M | nothing |
+
 ---
 
 ## 2. The autopoiesis staging — in dependency order, not preference order
@@ -380,10 +382,33 @@ read is wired, the publish is not.
 
 | # | item | who | blocked on |
 |---|---|---|---|
-| 6.1 | `critiques_unseen_by` — the honest screen must render `cone_recorded` as prominently as `unseen`, or silence reads as ignorance | D | a design decision |
+| 6.1 | `critiques_unseen_by` — the honest screen must render `cone_recorded` as prominently as `unseen`, or silence reads as ignorance **— RECLASSIFIED 2026-10-26: the screen is not the binding constraint. `cone_recorded` is false for every critique in existence because no client populates `past_cone`, so this screen can render one state and only one. Blocked on 6.5, not on a design decision** | D | **6.5** (was: a design decision) |
 | 6.2 | `publish_discourse_reading` | D | same |
 | 6.3 | the settlement screen | D | same |
 | 6.4 | the assessment screen | D | same |
+| 6.5 | **A client populates `past_cone` — which is what 6.1 is actually blocked on.** *Opened 2026-10-26 by the §6 brief.* Nothing sends the field: `grep -rn 'past_cone' mobile-ui/src/*.ts agent-sdk/` is empty, it is `#[serde(default)]`, so every `create_critique` commits an empty cone and `cone_recorded` is false everywhere. **This is not a wiring task either**, which is why it is `[D]` and not `[M]`: populating a cone means a CLIENT ASSERTING WHAT ITS USER READ, which is a promise under that user's key with its own honesty problem — a client that over-claims makes its user appear better informed than they were, and **SPEC §2.4 is explicit that validation bites only on under-claiming**: over-claiming is *"possible and harmless"* **to the protocol**, and is not harmless to the person it is attributed to. Until this is decided, 6.1's screen has nothing to show. | D | a decision about what a client may assert on its user's behalf |
+
+**BRIEFED 2026-10-26 — `docs/four-interaction-calls-one-decision.md`. THE FOUR
+ARE ONE DECISION, AND 6.1 IS MIS-FILED.** Each of the four is the same question
+asked four times — *what must be on screen before a user signs?* — and the
+useful split is not per-screen: **6.2/6.3/6.4 are writes that commit the
+signer; 6.1 is a read that describes a third party.** Within the first family
+the rule is identical and the protocol **already publishes** every precondition
+the screen must show (6.2 the lens, via `describe_method`'s string already
+carried into the entry; 6.3 the policy by hash, the inputs, and every competing
+status; 6.4 the objections already raised). So it is one component, not three,
+and the through-line is **Invariant 1 at the view layer** — a screen rendering
+one agent's output without its method rebuilds the canonical measure where no
+validation rule reaches. Recommended order **6.2 → 6.4 → 6.3**, with each row's
+counter-argument stated in the brief.
+
+**AND 6.1 IS NOT BLOCKED ON A DESIGN DECISION — see 6.5.** Measured
+2026-10-26: **no client populates `past_cone`** (zero hits across
+`mobile-ui/src` and `agent-sdk/`; the field is `#[serde(default)]`), and
+`cone_recorded = !critique.past_cone.is_empty()`, so it is **false for every
+critique that exists**. A 6.1 screen built today can render exactly one state —
+*no cone recorded* — for every critique, which is what `critiques_unseen_by`'s
+own note already says. **The feature has no true positives available to it.**
 
 **Item 22's reopen condition is structurally gated on 6.2**, which is a useful
 property rather than a coincidence. Both halves are required — *a surface for
