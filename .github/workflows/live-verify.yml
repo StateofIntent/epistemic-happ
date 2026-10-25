@@ -79,6 +79,19 @@ jobs:
       - name: workflow-setup-drift — network.yml's two jobs still share one setup
         run: node scripts/check-workflow-setup-drift.mjs
 
+      # AND THE ONE THAT GUARDS A GREEN RATHER THAN A RED. Everything above
+      # catches a claim that has gone stale. This catches four required checks
+      # reporting success having run nothing: `ci-scope.mjs` lets a
+      # documentation-only pull request skip `conductor`, `network`, `ui` and
+      # `zomes`, and if it ever calls a diff documentation when it is not, an
+      # unverified merge lands on `main` under a full row of green ticks.
+      #
+      # It belongs HERE, in the one workflow the gate does not touch, and that
+      # placement is the whole design: a gated checker could be skipped by the
+      # mistake it exists to find.
+      - name: ci-scope — the docs-only gate cannot clear a diff that touches code
+        run: node scripts/check-ci-scope.mjs
+
       # Newest in that family, and the only one that guards a harness's own
       # ASSERTION rather than a document, a count or a workflow. Added
       # 2026-10-22, after a measurement rather than a worry: `past-cone.mjs`
