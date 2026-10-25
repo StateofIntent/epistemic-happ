@@ -29,8 +29,12 @@ detail there is long and current.
 **The protocol's validation layer is in good shape, and that is measured rather
 than asserted.** A security review of the zomes on 2026-10-11 found five
 defects of one shape — links and update ops that bound nothing to the entry they
-carried — and all five are closed. Eighteen link types are bound, which is every
-link type anything writes; app-entry updates are refused. Both halves of all
+carried — and all five are closed. Eighteen link types were bound by that
+review's fork (SPEC §5.19's table); **twenty-three are bound today, and all
+twenty-seven link types anything writes are validated** — measured 2026-10-25
+and gated by `check-spec-drift.mjs`, where this sentence previously said
+"eighteen, which is every link type anything writes" and had been overtaken by
+three more protocol versions. App-entry updates are refused. Both halves of all
 eighteen rules have been watched failing on their own probe across six
 deliberate injections. `scripts/live-verify/attachment-links.mjs` runs 101
 checks against a live conductor on every push, and is a required check.

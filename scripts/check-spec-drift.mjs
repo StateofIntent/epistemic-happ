@@ -860,6 +860,104 @@ function authorBinding() {
   return out;
 }
 
+/** SPEC §5.19's and §5.17's LINK-TYPE COUNTS, which are four numbers about the
+ * zome that nothing held to the zome.
+ *
+ * WHY THIS EXISTS, AND IT IS A MEASURED ROT RATHER THAN A HYPOTHETICAL ONE.
+ * §5.19 said "**eighteen** link types MUST bind ... that is **every link type
+ * anything writes**". The eighteen was right — it is §5.19's own table — and
+ * the clause after the semicolon was overtaken by three protocol versions:
+ * `protocol_version: 11` alone added two bound link types. By 2026-10-25 the
+ * zome declared 31, wrote 27 and bound 23, and the same stale pair of claims
+ * had been copied into `READINESS.md` and `README.md`.
+ *
+ * It also went the other way. `scripts/validation-corpus/README.md` listed
+ * `ClaimToBridgeRecord` as having "no `validate_create_link` branch at all",
+ * telling a reader a validated link type was unvalidated — because the
+ * INVENTORY names 26 types, not 27, and the sweep read that as a fact about
+ * the zome. The inventory is right about itself: `ClaimToBridgeRecord` shares
+ * one branch with `MewToBridgeRecord` (`else if A || B`) and `enumerate.mjs`
+ * files a branch under the first type its regex sees. Seven rules, all
+ * asserted, one type counted under its sibling's name.
+ *
+ * SO THE CHECK IS DELIBERATELY NOT "DOES THE INVENTORY AGREE". It reads the
+ * Rust directly, because the inventory is a tool's view and the claim is about
+ * the zome. Multi-type branch conditions are parsed as the several types they
+ * are, which is the precise thing the corpus's enumerator does not do.
+ *
+ * THE LOAD-BEARING ASSERTION IS THE SET EQUALITY, not the integers. "Every
+ * link type anything writes is validated" is checked as
+ * `written === has-a-branch` in BOTH directions. A new link type written by
+ * the coordinator with no validation branch fails here, which is §5.17's
+ * promise ("each acquires a rule with its first writer") enforced instead of
+ * hoped for. The integers are then asserted against SPEC's stated figures so
+ * the prose cannot drift away from the sets.
+ *
+ * Injection: delete the `TargetToAssessment` arm from `validate_create_link`.
+ * Result: red twice over — the set equality breaks (written, not validated)
+ * and the stated 27 no longer matches the derived 26.
+ */
+function linkTypeCounts() {
+  const src = readFileSync(INTEGRITY, 'utf8');
+  const zome = readFileSync(ZOME, 'utf8');
+
+  const em = /pub enum LinkTypes \{([\s\S]*?)\n\}/.exec(src);
+  if (!em) return null;
+  const declared = [...em[1].matchAll(/^\s{4}([A-Z][A-Za-z]*),/gm)].map((m) => m[1]);
+  if (declared.length === 0) return null;
+
+  const start = src.indexOf('fn validate_create_link');
+  if (start === -1) return null;
+  const rest = src.slice(start);
+  const end = rest.indexOf('\nfn ', 10);
+  const lines = rest.slice(0, end === -1 ? undefined : end).split('\n');
+
+  // Each branch carries EVERY type its condition names, not just the first.
+  const branches = [];
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (/(?:^|\})\s*(?:else\s+)?if\s*\(?\s*link_type\s*==\s*LinkTypes::/.test(lines[i])) {
+      let cond = lines[i];
+      for (let j = i; !/\{\s*$/.test(lines[j]) && j < i + 8; ) cond += ' ' + lines[++j];
+      cur = { types: [...cond.matchAll(/LinkTypes::([A-Za-z]+)/g)].map((m) => m[1]), text: '' };
+      branches.push(cur);
+    } else if (cur) cur.text += lines[i] + '\n';
+  }
+  if (branches.length === 0) return null;
+
+  const branched = new Set(branches.flatMap((b) => b.types));
+  const authorBound = new Set(
+    branches.filter((b) => /may only be created by/i.test(b.text)).flatMap((b) => b.types),
+  );
+  const written = new Set([...zome.matchAll(/LinkTypes::([A-Za-z]+)/g)].map((m) => m[1]));
+
+  return {
+    declared,
+    branched,
+    written,
+    authorBound,
+    // Written but never validated — §5.17's promise broken.
+    writtenUnvalidated: [...written].filter((t) => !branched.has(t)).sort(),
+    // Validated but written by nothing — a branch guarding a dead type.
+    validatedUnwritten: declared.filter((t) => branched.has(t) && !written.has(t)).sort(),
+    unconditional: declared.filter((t) => !branched.has(t)).sort(),
+    notAuthorBound: [...written].filter((t) => !authorBound.has(t)).sort(),
+  };
+}
+
+/** The four figures SPEC §5.19 states about those sets, so the prose cannot
+ * drift away from the zome it describes. Each is anchored to its own sentence
+ * rather than scraped as a loose number. */
+function statedLinkCounts(spec) {
+  const grab = (re) => { const m = re.exec(spec); return m ? Number(m[1]) : null; };
+  return {
+    declared: grab(/- \*\*(\d+)\*\* link types are declared\./),
+    written: grab(/- \*\*(\d+)\*\* are written by the coordinator/),
+    unconditional: grab(/- \*\*(\d+)\*\* are written by nothing and have no branch/),
+    authorBound: grab(/- \*\*(\d+)\*\* carry the two-part base\/author binding/),
+  };
+}
+
 /** Every function §9 names in its "Shipped so far:" sentence.
  *
  * THE MIRROR OF `accountedFor`, AND THE HALF THAT WAS NOT CHECKED. That
@@ -1214,6 +1312,67 @@ if (fedBroken.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
+// SPEC §5.19 / §5.17 link-type counts. The set equality is the real check; the
+// four integers keep the prose tied to it.
+// ---------------------------------------------------------------------------
+const links = linkTypeCounts();
+const linkBroken = [];
+if (links === null) {
+  linkBroken.push('the LinkTypes enum or validate_create_link could not be read — '
+    + '§5.17 and §5.19 describe a shape that is not there');
+} else {
+  for (const t of links.writtenUnvalidated) {
+    linkBroken.push(`${t}: the coordinator writes it and validate_create_link has no branch for it — `
+      + '§5.17 promises each link type "acquires a rule with its first writer", and this one did not');
+  }
+  for (const t of links.validatedUnwritten) {
+    linkBroken.push(`${t}: has a validation branch but nothing writes it — either §5.17's list of `
+      + 'unwritten types is stale, or a writer was removed and left its rule behind');
+  }
+  const stated = statedLinkCounts(readFileSync(SPEC, 'utf8'));
+  const derived = {
+    declared: links.declared.length,
+    written: links.written.size,
+    unconditional: links.unconditional.length,
+    authorBound: links.authorBound.size,
+  };
+  for (const k of Object.keys(derived)) {
+    if (stated[k] === null) {
+      linkBroken.push(`§5.19 no longer states the ${k} count — the gate cannot check what the document does not commit to`);
+    } else if (stated[k] !== derived[k]) {
+      linkBroken.push(`${k}: SPEC §5.19 says ${stated[k]}, the zome says ${derived[k]}`);
+    }
+  }
+  const named = (re) => {
+    const m = re.exec(readFileSync(SPEC, 'utf8'));
+    return m ? [...m[1].matchAll(/`([A-Za-z]+)`/g)].map((x) => x[1]).sort() : null;
+  };
+  const specUncond = named(/have no branch at all[^:]*\(§5\.17\): ([^\n]*?)\./)
+    ?? named(/no branch \(§5\.17\): ([^\n]*?)\./);
+  if (specUncond && specUncond.join() !== links.unconditional.join()) {
+    linkBroken.push(`§5.19 names the unconditional types as [${specUncond.join(', ')}], the zome says [${links.unconditional.join(', ')}]`);
+  }
+  const specNotBound = named(/The remaining \*\*\d+\*\* written types — ([^—]*?)—/);
+  if (specNotBound && specNotBound.join() !== links.notAuthorBound.join()) {
+    linkBroken.push(`§5.19 names the validated-but-not-bound types as [${specNotBound.join(', ')}], the zome says [${links.notAuthorBound.join(', ')}]`);
+  }
+}
+
+if (linkBroken.length > 0) {
+  log('DRIFT — §5.17/§5.19 link-type accounting:');
+  for (const m of linkBroken) log(`  ${m}`);
+  log('  "Every link type anything writes is validated" is the claim these');
+  log('  sections rest on, and it is a claim about two sets being equal.');
+  log('  A count in prose is not held to the zome by anything else.');
+  log('');
+} else {
+  log(`§5.17/§5.19 link types: ${links.declared.length} declared, ${links.written.size} written,`);
+  log(`  and those ${links.written.size} are exactly the ones with a validate_create_link branch —`);
+  log(`  checked both ways. ${links.authorBound.size} carry §5.19's base/author binding;`);
+  log(`  ${links.unconditional.length} are written by nothing and have no rule (§5.17).`);
+}
+
+// ---------------------------------------------------------------------------
 // Every constant SPEC names with its value. Four figures stated as fact in the
 // document and defined independently in Rust.
 // ---------------------------------------------------------------------------
@@ -1389,6 +1548,7 @@ const countDrift = ghosts.length > 0 || stated.length === 0 || wrongRatios.lengt
   || refUndocumented.length > 0 || refStaleException.length > 0 || refSetupFailed.length > 0
   || xcheckBroken.length > 0
   || boundsBroken.length > 0
+  || linkBroken.length > 0
   || fedBroken.length > 0
   || nonEmptyBroken.length > 0 || nonEmptySetup.length > 0;
 

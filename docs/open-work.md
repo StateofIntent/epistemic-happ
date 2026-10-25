@@ -22,7 +22,11 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-10-25 EVENING. ONE THING HELD, NOTHING ELSE IN FLIGHT.**
+**CHECKPOINT, 2026-10-25 EVENING. ONE THING HELD; ONE PR IN FLIGHT.**
+**In flight: item 1.11** — the link-type counts, corrected in five documents
+and gated as a set equality in `check-spec-drift.mjs`. It was found by doing
+what paragraph 2 below says to do, which is the third time that paragraph has
+paid for itself.
 PR #350 is 4.5, written, verified and deliberately not merged — it changes the
 DNA hash, so it lands when the bump is cut and not before. **Sixteen pull
 requests merged on 2026-10-25**, eight of them this session: #347 swept the
@@ -35,15 +39,28 @@ link rules.
 looking for work, because three of them are about how this list lies to a
 reader who trusts it.
 
-**1. `[M]` IS EMPTY, AND THIS TIME THE SWEEP WAS DONE.** Every unstruck row is
+**1. `[M]` IS EMPTY AGAIN — AND READ PARAGRAPH 2 BEFORE BELIEVING IT, WHICH
+IS NOW ADVICE WITH A THIRD DATA POINT BEHIND IT.** Every unstruck row is
 `[D]`, `[H]` or `[X]`. The only `[M]` rows with no blocker are **3.2 and 3.7**,
 both explicitly research rather than tasks, and 3.7's first candidate is
 already shipped. `[M]` rows that exist but are blocked: 4.3 (on 3.4), 5.2 (on a
 decision), 5.3/5.4/7.5 (on the bump), 4.5 (held). **Do not go hunting for
 bounded work — but do read paragraph 2 before concluding there is none.**
 
-**2. "`[M]` IS EMPTY" WAS SAID THIS MORNING AND WAS WRONG, twice over.** It is
-the sentence this file is most likely to be wrong about, because a closed row
+**2. "`[M]` IS EMPTY" WAS SAID THIS MORNING AND WAS WRONG, THREE TIMES OVER —
+and the third was found by acting on this very paragraph.** Item **1.11**
+(2026-10-25, after the evening checkpoint): four counted claims about link
+types, wrong in BOTH directions at once. SPEC §5.19 overstated how much it
+covered (*"eighteen ... every link type anything writes"*, when 27 are written),
+and the corpus README understated what the protocol validates, listing
+`ClaimToBridgeRecord` as having no validation branch when it has seven rules
+and a case. **The second was written by the sweep that was fixing the first
+kind of rot, the same day** — it read the inventory's denominator as a fact
+about the zome. Now gated as a SET EQUALITY rather than a number.
+**So paragraph 4's instruction has a corollary: read counts from the commands,
+and check WHICH command — a tool's denominator is a claim about the tool.**
+
+**It is the sentence this file is most likely to be wrong about.** A closed row
 is not a closed claim. What it missed on 2026-10-25: four documents still
 telling readers the published build was `v0.2.0` (#347); `check-packages.mjs`
 wired to no workflow at all (#352, item 1.9); and ten validation rules the
@@ -274,6 +291,8 @@ fourth.
 
 | 1.9 | ~~**`check-packages.mjs` is gated by nothing, and the reason is a reflex rather than a decision.**~~ **CLOSED 2026-10-25.** It is now a `live-verify.yml` step, and the sentence that hid it is fixed. **THE ROW UNDERSTATED ITS OWN SURFACE, which is the second time in one day** — it said *"wiring it into `live-verify.yml` is the whole change — it needs no conductor, no DHT and no browser"*, all true and not the whole change: `check-packages.mjs` runs `npm run build` itself, so it needs both packages' dependency trees, and `mcp-server` must resolve the SDK from THIS checkout rather than the registry copy, which is broken on npm. So `conductor.yml`'s two build steps are now a marked shared block in both files, gated byte-for-byte by `check-workflow-setup-drift.mjs` — a drifted copy would make the publish check green about a package nobody ran. 4.5 did the same thing with a link type (#350). **Both were found by building the thing, not by re-reading the row.** It asks whether `npm publish` would produce a *working* package by reading what `npm pack --dry-run` actually puts in the tarball — `files` missing so `src/` ships, `dist` listed but never built, a `file:../thing` dependency that resolves here and nowhere else, a licence declared in metadata and absent from the tarball. None of those is visible until somebody installs the published package, by which point the version number is spent. `scripts/live-verify/README.md` records it as *"not a live-verify harness, but run by the same reflex"*, which was the accurate description when there was no CI at all. **There is CI now, and that passage is ALREADY STALE for its other example**: `check-harness-counts.mjs` is introduced the same way, two paragraphs down, and has been a step in `live-verify.yml` for weeks. **1.8 does not cover this**: `published-packages.mjs` drives the tarball the REGISTRY is serving, from `conductor.yml`; this one asks whether the local tree would publish something installable, which is the question a release asks and the one `v0.3.0` asked four times. Wiring it into `live-verify.yml` is the whole change — it needs no conductor, no DHT and no browser. **One thing it is NOT, recorded because it was discovered by trying**: the fix to that stale passage cannot ride a documentation-only pull request, because `scripts/live-verify/README.md` classifies as *code* under the scope gate — `check-harness-counts.mjs` reads it. That is the classifier being right rather than coarse. | [M] | nothing |
 | 1.10 | ~~**Ten validation rules the corpus demands nothing of.**~~ **CLOSED 2026-10-25 — the cases are written and both declarations are deleted.** Note what was NOT in the way: both link types have been `AttachmentLinkKind` variants since `protocol_version: 11`, so `attempt_false_attachment_link` reached all ten rules the whole time and `needs_prober` was correctly 0. **Nothing was blocked; the rules simply had no cases, and the corpus could not say so** because its per-type loop iterates `COVERED_LINKS`. The five rules of each type are a CHAIN — ActionHash, resolves, right type, base matches the entry's own target, author is the owner — so each owner case moves the base as well as the target, to agent 2's own target, or the base rule fires one line above the rule being probed and the case passes for the wrong reason. The original text follows. **Ten validation rules the corpus demands nothing of.** `TargetToAssessment` and `TargetToSettlementStatus` carry **five assertable rules each** and are absent from `replay.mjs`'s `COVERED_LINKS`, so the per-type coverage loop never looks at them: the corpus reports *"0 failed, 0 skipped"* and an `N of N` line for every type it is asked about, and it is not asked about these. Shipped that way at `protocol_version: 11` — settlement's three ENTRY types went into `COVERED` and its two LINK types did not go into `COVERED_LINKS` — and it stayed green for four days. **Found 2026-10-25 while measuring the corpus README's rotted figures, and the same omission was made again on the 4.5 branch the same day**, caught there only because its cases happened to name rules and tripped the orphan check from the other side. **The structural half is now closed**: `check-corpus-coverage.mjs` fails on any type with assertable rules that is neither covered nor declared, and both of these are declared with their reason pointing here, so the number stays visible. What remains is the work itself — ten link cases with their fixtures, in the shape 5a/5b/5c already are. | [M] | nothing |
+| 1.11 | ~~**Four counted claims about link types, and the two that were wrong in opposite directions.**~~ **CLOSED 2026-10-25 — corrected in five documents and gated in `check-spec-drift.mjs`.** SPEC §5.19 said *"**eighteen** link types MUST bind ... that is **every link type anything writes**"*. **The eighteen was right — it is §5.19's own table — and the clause after it was overtaken by three protocol versions**, `protocol_version: 11` alone adding two bound types; `READINESS.md` and `README.md` carried the same stale pair. Measured: **31 declared, 27 written, 27 with a `validate_create_link` branch, 23 bound, 4 unconditional.** **The error ran the other way too, and that one understated the protocol.** `scripts/validation-corpus/README.md` — swept the same day — listed `ClaimToBridgeRecord` as having *"no `validate_create_link` branch at all"*, telling a reader a validated link type was unvalidated. It has a branch, **seven** rules and a case. **The cause is worth more than the fix: the sweep read the INVENTORY's 26 as a fact about the zome.** `ClaimToBridgeRecord` shares one branch with `MewToBridgeRecord` (`else if A || B`) and `enumerate.mjs` files a branch under the first `LinkTypes::` its regex finds — so all seven rules sit under `MewToBridgeRecord`, which IS in `COVERED_LINKS`, so the per-type loop demands all seven and `replay.mjs` asserts all seven. **Nothing was untested; one type is counted under its sibling's name, and `replay.mjs` said so at its bridge spec the whole time.** A denominator borrowed from a tool is a claim about the tool. SPEC §5.17, which says four, was right and was not consulted. **WHAT IS NOW GATED is the set equality, not the integers**: `written === has-a-branch`, both directions, so a link type the coordinator writes with no rule fails CI — §5.17's *"each acquires a rule with its first writer"* enforced rather than hoped for. Watched failing twice: a stale SPEC count (red, `says 26, the zome says 27`) and a retargeted branch (red four ways, naming both types). Added to `check-spec-drift.mjs` rather than as a ninth checker, so the gate count stays **8**. | [M] | nothing |
+
 ---
 
 ## 2. The autopoiesis staging — in dependency order, not preference order

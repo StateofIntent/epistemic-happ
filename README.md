@@ -1859,9 +1859,12 @@ probed are the link types nobody validated, and coverage looked complete
 because every link type anybody had **tried** to forge was refused. **A prober
 proves the rule it probes and silently flatters the rules it does not.**
 
-**Eighteen link types are bound, not four — which is every link type
-anything writes.** The four that remain unconditional are types nothing
-creates, and a link type nothing creates cannot be forged. The review found
+**Eighteen link types were bound by this fork, not four** — and the count has
+moved twice since: **twenty-three are bound today, and all twenty-seven link
+types anything writes are validated** (measured 2026-10-25, gated by
+`check-spec-drift.mjs`; SPEC §5.19 carries the breakdown). The four that remain
+unconditional are types nothing creates, and a link type nothing creates cannot
+be forged. The review found
 five defects;
 four more were named in the same pass as the same shape and bound in the same
 fork; a tenth — `SpeciesToParent` — followed at `protocol_version: 6`; and
