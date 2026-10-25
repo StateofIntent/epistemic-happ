@@ -271,7 +271,7 @@ analogues, not a ready-made "biosignalling token" that already exists.
 
 ## 3. Invariant #1 — the constraint that reshaped this design
 
-`README.md`'s Appendix A states ten invariants this codebase holds as
+`README.md`'s Appendix A states nine invariants and one declared aspiration (relabelled 2026-10-26; it read *ten invariants* when this was written) which this codebase holds as
 binding, not aspirational. The first is load-bearing for everything in
 this document:
 

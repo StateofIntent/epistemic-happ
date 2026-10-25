@@ -5578,7 +5578,7 @@ each of these is currently exactly that.
 - [x] Integrity zome with all entry types
 - [x] Coordinator zome with CRUD, N4L export, bridge integration
 - [x] Bridge service with real-time and polling modes
-- [x] Validation rules enforcing all 10 invariants
+- [x] Validation rules enforcing the nine invariants that have mechanisms — **this said "all 10" until 2026-10-26 and was false for as long as it stood**: Invariant 9 (*death is required*) has no validation rule and never has, which is why it is now labelled a declared aspiration rather than an invariant (Appendix A)
 - [x] WorldlineTrace with HRR hooks (payloads empty)
 - [x] **Coordinator zome deduplicated** — the file previously had `Mew`/`Retraction`/`Constitution` functions and the `SignalPayload` enum each defined 2–3 times across incremental edits that appended "updated" versions without removing the old ones, which would not have compiled (`E0119`/`E0428`). Consolidated to one copy of each, keeping the more complete version where they differed (e.g. `promote_mew_to_claim` links the resulting Claim from the agent anchor; the superseded `enrich_mew_to_claim` didn't).
 - [x] **Fixed systemic `EntryHash`/`ActionHash` return-type mismatch** — every `create_X` function declared `ExternResult<EntryHash>` while returning `create_entry()`'s actual `ActionHash`. Fixed across all 12 affected functions.
@@ -6805,7 +6805,9 @@ claim and the reason AGPL, a licence this project does not use, could have been
 quoted back at it in good faith. Recorded here because a licence is exactly the
 kind of fact somebody acts on without asking.
 
-## Appendix A: The 10 Invariants
+## Appendix A: Nine Invariants and One Declared Aspiration
+
+**Relabelled 2026-10-26.** This was *The 10 Invariants*, and item 9 has never held: it has no mechanism, and since item 22 it is unsatisfied by decision rather than omission. **Item 9 keeps its number** — documents throughout this repository reference invariants by position — and states its own status where it sits.
 
 1. **Never compute or expose a canonical, comparative reputation score.** Raw promise-keeping history stays open and queryable — nothing is hidden or deleted. But no karma, no stars, no trust index, and no sorted "top agents" or "top species" leaderboard. Interpretation of that history stays local to the observer, per Promise Theory's subjective-trust model.
 2. **The topology is the truth function**, not an algorithm.
@@ -6815,7 +6817,7 @@ kind of fact somebody acts on without asking.
 6. **Nothing is deleted — only witnessed or atrophied.**
 7. **The bridge must preserve dimensionality**, not extract it.
 8. **Agents are cells with membranes**, not users with accounts.
-9. **Death is required** — unused entry types and membranes must atrophy.
+9. **Death is required** — unused entry types and membranes must atrophy. **— A DECLARED ASPIRATION, NOT AN INVARIANT, AND RELABELLED 2026-10-26 FOR SAYING SO.** It keeps its number because other documents reference invariants by position, but it is not a constraint this protocol holds: it is **the one thing on this list with no mechanism behind it**, and since item 22 it is unsatisfied **by decision** rather than by omission — anything a scheduled process wrote in order to retire something would itself be permanent under Invariant 6, so the consequence was declined. What IS built is the read-layer half: conductance and standing atrophy at read time, computed when asked and writing nothing. Entry types and membranes do not atrophy at all. **It is kept rather than deleted because it is the only thing in these documents that flags the accretion problem** — a system that cannot delete cannot heal, only accrete and lose standing, which is why `docs/open-work.md` settles on *coral reef rather than cell*. **An invariant that knowingly does not hold is a goal, and calling it invariant was a category error in a document whose credibility rests on precision.**
 10. **The system doesn't compute truth. It creates conditions for truth to resonate.**
 
 *A note on Invariant 7:* this means the DHT's own dimensionality must never be flattened by the bridge's presence — not that every external platform the bridge touches can itself carry that dimensionality. Inbound (Twitter → DHT), the invariant holds fully: replies become typed `ExternalCritique` entries, not flattened text. Outbound (DHT → Twitter), a 280-character platform cannot carry a typed critique graph by construction, so the bridge sends a lossy excerpt plus a link back to the full record instead. The invariant is satisfied by making that loss legible and one-directional — the DHT stays the sole source of truth — not by pretending the excerpt is dimensionally complete.
