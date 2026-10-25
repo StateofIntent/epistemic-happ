@@ -221,9 +221,11 @@ accurate.
   path. Reveal in a dispute, not as routine hygiene.
 - **A certification is only as good as the panel behind it.** The protocol makes
   a lab reading attributable and contestable. It cannot make it true.
-- **The forecasting deadline is unhardened** (§4), and the live network is
-  `protocol_version: 11` while the published desktop build carries 9 — so a
-  trial today runs against a build two forks behind this repository.
+- **The forecasting deadline is unhardened** (§4). The version gap that stood
+  here is closed: `v0.3.0` (2026-10-24) carries `protocol_version: 11`, the
+  same as this repository, so **a trial today runs against the documented
+  protocol** — but it must be run on `v0.3.0`, since `v0.2.0` is a separate
+  DHT two forks behind and auto-update does not cross a minor bump.
 
 ---
 

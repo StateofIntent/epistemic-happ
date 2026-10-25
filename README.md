@@ -6730,26 +6730,33 @@ page on what is ready, what blocks a release, what will generate false bug
 reports, and what is deliberate rather than broken — including the fact that
 **there are no phone builds and that is upstream, not scheduling**.
 
-**THE PUBLISHED RELEASE NOW MATCHES THIS TREE, as of 2026-10-12.** `v0.2.0`
-of the desktop app carries `protocol_version: 9` — §5.19's eighteen link
-rules, the refusal of entry updates, the two new entry fields — so what a
-stranger downloads finally implements what this document describes. **This
-paragraph said the opposite for five weeks and was right to**: until that day
-the only release was `v0.1.1`, packed 2026-09-04, from before six deliberate
-forks of the integrity zome. The DNA hash is computed over that zome, so
-`v0.1.1` remains a separate DHT that implements none of those rules — it is an
-older network rather than a broken one, and **auto-update does not cross a
-minor bump**, so anyone on `0.1.x` downloads `v0.2.0` by hand or stays there.
+**THE PUBLISHED RELEASE NOW MATCHES THIS TREE, as of 2026-10-24.** `v0.3.0`
+of the desktop app carries `protocol_version: 11` — the version this document
+describes, including §5.19's eighteen link rules, the refusal of entry updates
+and all five autopoiesis stages — so what a stranger downloads implements what
+they are reading. **This paragraph has been stale twice and in both
+directions**: for five weeks it pointed at `v0.1.1`, packed 2026-09-04, from
+before six deliberate forks of the integrity zome; then it pointed at `v0.2.0`
+and `protocol_version: 9`, which the zome forked past twice. The lesson is the
+one §9 states — a release is not finished until the files that tell strangers
+what to download have been re-read.
+
+**Each minor version is a separate DHT.** The DNA hash is computed over the
+integrity zome, so `0.1.x`, `0.2.x` and `0.3.x` never gossip; an older release
+is an older network rather than a broken one, and **auto-update does not cross
+a minor bump**, so anyone on `0.1.x` or `0.2.x` downloads `v0.3.0` by hand or
+stays where they are.
 
 **The hash a release quotes is the artifact's, not the cell's.** The desktop
 app installs the bundle under a version-derived network seed
-(`Epistemic Resonance-0.2.x`), and the hash covers the seed as well as the
-zome — so a `v0.2.0` install runs
-`uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0` while the notes quote
-the artifact's `uhC0kUHSi…`. All desktop installs share that one network. **A
-conductor you run from this repository does not join it**, because the bundle's
-own seed is null — which looks exactly like broken propagation if you test a
-desktop install against a local conductor and expect them to meet.
+(`Epistemic Resonance-0.3.x`), and the hash covers the seed as well as the
+zome — so a `v0.3.0` install runs
+`uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o` while the notes quote
+the artifact's `uhC0kb-i4…`. All desktop installs of one minor version share
+that one network. **A conductor you run from this repository does not join
+it**, because the bundle's own seed is null — which looks exactly like broken
+propagation if you test a desktop install against a local conductor and expect
+them to meet.
 
 See **[INSTALL.md](INSTALL.md)**. The short version: download the installer for
 your system from

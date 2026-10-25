@@ -108,11 +108,20 @@ decision rather than a detail:
   Worth stating as an option because it is the only one with no cost, and
   because four of five are blocked anyway.
 
-There is also a live inconsistency to resolve: `v0.2.0` on the desktop carries
-`protocol_version: 9`, while `main` is at **11**. Anyone invited today is
-invited onto a network two forks behind what this repository describes, so
-*some* release has to happen before step 4 regardless of whether this bump
-does. See 1.4's note on what "against that build" can mean.
+~~There is also a live inconsistency to resolve~~ **— AND IT IS RESOLVED.**
+This paragraph said `v0.2.0` carried `protocol_version: 9` against `main`'s 11,
+so anyone invited would join a network two forks behind what this repository
+describes, and *some* release had to happen before step 4 regardless of this
+bump. **That release was cut: `v0.3.0`, 2026-10-24, `protocol_version: 11`.**
+The precondition that was not about the bump at all is therefore gone, and what
+remains below is only the bump's own ordering.
+
+Note what this does and does not change for the scheduling question. It
+**removes the argument that step 4 must wait on something anyway** — which was
+the cheapest reason to prefer "bump first", because the invitation was blocked
+regardless. With the release shipped, "invite first" costs only the testers'
+data, knowingly and in advance, while "bump first" now costs the whole
+invitation waiting on three answers nobody in this project controls.
 
 ---
 
@@ -132,4 +141,6 @@ real entry type — is ready, and one item is not a batch.
 So the bump waits, and the next thing that could move it is an answer rather
 than a decision. The scheduling question in §4 above is now the live one: a
 bump and release step 4's invitation collide, and that ordering is still
-unmade.
+unmade. **It is now the only thing standing between this plan and step 4** —
+the release half closed on 2026-10-24 and 7.1 was decided the same day, so
+nothing else in this file is waiting on anything inside the project.
