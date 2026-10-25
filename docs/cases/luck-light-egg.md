@@ -399,3 +399,129 @@ contestable whatever software it runs on.
 **And his own formulation is better than anything in this document:** *"The
 author is the first witness."* That is §5.22's position exactly — authorship and
 order are strong, priority against the outside world is not.
+
+---
+
+## 12. The big freeze — his sharpest question, and the one I answer worst
+
+**He closed the loop on §9–§11 and then asked the best technical question
+anybody has asked of this project:** *"How do you remedy the increasing data
+load of immutable sequencing? This seems an ongoing challenge for blockchains
+to solve for, how to avoid the big freeze, when the data becomes too large to
+efficiently reference at all."*
+
+**It deserves recording because the honest answer is that this is not solved,
+and because the measurement showing it is not solved already exists in this
+repository** — filed as a scale result rather than as a limitation, which is
+how it went unnoticed as one.
+
+### 12.1 One sharpening of his summary
+
+His formulation: *"an immutable stack of events with additional states
+maintaining a continuous sequence of before and after but not when"* — correct,
+and better compressed than §5.22 manages.
+
+But he then called the result an *"unchallengeable claim"*, and that inverts the
+property. **Challengeability is the feature.** A claim stays contestable for
+ever; what cannot be rearranged afterwards is the **order**. The protection is
+not *nobody can object*, it is *nobody can object retroactively about what came
+first* — and §11's point stands, that a claim nobody can test is the weak link
+whatever ledger it sits on.
+
+### 12.2 The structural answer exists upstream and is OFF in this build
+
+Holochain's answer to unbounded growth is **sharding**: each agent holds an
+*arc* of the DHT rather than all of it, so total storage grows with the network
+while per-agent storage does not. That is the real difference from a blockchain,
+where every full node holds everything for ever.
+
+**Measured 2026-10-23 at 48 members: 48 of 48 storage arcs still FULL.**
+`kitsune2_gossip`'s narrowing path sits behind a `sharding` cargo feature that
+is not enabled, so **there is no N at which an arc narrows in this build**.
+Every node holds everything.
+
+So on storage this project currently has **blockchain economics, not DHT
+economics.** README files that measurement under *scale beyond twelve* as a
+feature-flag question rather than a scale question — which is accurate, and is
+also the reason it does not read as the growth limitation it is. It is tractable
+rather than handled, and the difference is worth stating to anybody asking this
+question seriously.
+
+### 12.3 What does hold, and it is narrower than solving it
+
+- **Weight decays even though bytes do not.** Conductance decays at READ time:
+  `get_effective_conductance` recomputes when asked and writes nothing, so the
+  DHT is byte-identical before and after a link has decayed to nothing. Standing
+  atrophies over causal distance the same way (`get_standing`). **Decay is a
+  property of the reading, not of the record** — which is the same move §5.22
+  makes for time and §8 makes for exclusion, and is the third instance of it in
+  this document.
+- **Reads are bounded rather than exhaustive, by construction and on purpose.**
+  `MAX_NEIGHBORHOOD_CRITIQUES` 512, `MAX_RESONANCE_QUERY_PERIODS` 4096,
+  `MAX_ATTESTATION_SEARCH_NODES` 100 — documented as heuristic rather than
+  complete. A read that must touch everything stops working at scale; a bounded
+  read that says it is bounded does not.
+- **And the uncomfortable one: the integrity forks are functioning as garbage
+  collection.** Each incompatible version is a separate network that never
+  gossips with the previous one, two have happened and a third is planned, and
+  SPEC's ratchet means hashes cannot cross that boundary — so history resets at
+  every fork. **That is a side effect and not a design**, and it is the actual
+  reason accumulated data has not become a problem yet. Recorded here rather
+  than presented to him as a feature.
+
+### 12.4 The deepest version of his question is Invariant 9
+
+**He has independently arrived at the invariant this project cannot satisfy.**
+Invariant 9 — *death is required; unused entry types and membranes must
+atrophy* — is the only one on the list with no mechanism behind it, and since
+item 22 it is **unsatisfied by decision rather than by omission**: anything a
+scheduled process wrote in order to clean up would itself be permanent under
+Invariant 6, so the consequence was declined.
+
+The framing given to him is the one `docs/open-work.md` already settled on:
+**a system that cannot delete cannot heal, only accrete and lose standing —
+coral reef rather than cell**, durable accretion with living tissue on the
+surface. The old structure stays and stops being load-bearing. That is honest
+about what it is, and it is a different promise from self-repair.
+
+### 12.5 His framing of the purpose is better than this repository's
+
+Two things he wrote that are worth keeping verbatim:
+
+**On IP:** *"The best way to protect IP is to have a trail of verifiable
+evidence that would be unchallengable. The best way to refute a challenge is
+before it begins."* That is what a commitment chain actually buys — not proof of
+novelty, which nothing can supply, but proof of **order**, which nobody can
+rearrange later. §5's hash-then-reveal is the mechanism and he validated it
+independently.
+
+**On purpose:** *"Responsibility for ones actions is the sequence I have
+interest in tracking so that liability can be proven at scale without
+centralized authority enforcing consequence."* **That is a better statement of
+what this protocol is for than anything currently in `README.md`** — those
+affected are the only ones who can challenge, and the protocol's whole job is
+to ensure their challenge has something to grip and cannot be tidied away.
+
+### 12.6 He offered to design simulations, and it was accepted
+
+He offered: *"If you have any need for designing simulations to test the
+capabilities of what you have built I may be able to assist as I have done
+extensive pondering on variables to arrive at how my systems can achieve the
+greatest probabilities of intended results."*
+
+**Taken, and pointed at three specific open questions** — all of which are
+population-and-adversary questions rather than engineering ones, which is
+exactly what three conductors on one laptop cannot answer:
+
+| | question | row |
+|---|---|---|
+| 1 | What makes identity cost enough without creating a centre — current answer is that a reader names whose vouches they trust and nothing is verified globally; unknown how it behaves against a coordinated minority | **3.7** |
+| 2 | Whether ten observers are actually ten, or one model in different hats — the defence is dispositions published as promises beforehand and checkable against behaviour | **3.5** |
+| 3 | Whether a derived measure can exist that does not classify a divergent minority as dead on sight | **3.2** |
+
+**And he named the sequencing problem himself:** *"I feel my systems would have
+to have launched before enough data would be available to harden your happ in
+the wild."* That is right, and it does not block the useful half —
+**simulation is how those three get probed before either party has a
+population**, which is the one thing his offer is better positioned for than
+anything in this repository.
