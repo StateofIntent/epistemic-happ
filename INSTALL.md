@@ -274,6 +274,34 @@ within one network nothing you write can ever be deleted. Those two facts
 sound contradictory and are not: the network can be left behind, and the
 record inside it cannot be edited.
 
+> ### ⚠️ A THIRD BREAK IS PLANNED, NOT HYPOTHETICAL
+>
+> **Decided 2026-10-25.** The paragraph above says to expect the next minor
+> version to start you fresh. That is not a general caution here: **a further
+> integrity change is queued and intended**, and when it is cut, everything
+> written on `protocol_version: 11` — every claim, critique, assessment and
+> membrane — stays on a network that the new version will not join.
+>
+> **It is being told to you now because afterwards is too late.** Nothing in
+> this protocol can be deleted (Invariant 6), and that cuts both ways: your
+> record cannot be tampered with, and it also cannot be migrated, exported
+> into the new network, or cleaned up. There is no in-place upgrade and there
+> is no mechanism to build one. So knowing in advance is the only protection
+> available, which is why it is written here rather than in a release note you
+> would read afterwards.
+>
+> **What this is not**: it is not a warning that the software is unreliable,
+> and it is not a prediction that your data will be lost by accident. The break
+> is deliberate, scheduled by people, and the reason to accept it is that the
+> alternative was to delay this release until three questions outside this
+> project were answered. **The honest trade is: use it now, and treat what you
+> write as a conversation rather than an archive.**
+>
+> **No date.** The bump waits on `docs/integrity-bump-plan.md`'s batch, three
+> of whose four items wait on answers nobody here controls. It will not arrive
+> as a silent auto-update — it cannot, since auto-update does not cross a minor
+> bump — so it arrives as a download you choose.
+
 ## Finding other people
 
 Everyone running the same release lands on the **same network**. The app
