@@ -22,12 +22,60 @@ third-party.
 
 ## 0. In flight right now
 
-**ONE THING HELD, NOTHING ELSE IN FLIGHT.** PR #350 is 4.5, written and
-deliberately not merged — it changes the DNA hash, so it lands when the bump is
-cut and not before. Merged across 2026-10-24/25: fourteen pull requests, the
-desktop release, #347's sweep of the four documents the release left stale, and
-#348's CI scope gate (which took the `strict` decision below, and #349 measured
-its skip path).
+**CHECKPOINT, 2026-10-25 EVENING. ONE THING HELD, NOTHING ELSE IN FLIGHT.**
+PR #350 is 4.5, written, verified and deliberately not merged — it changes the
+DNA hash, so it lands when the bump is cut and not before. **Sixteen pull
+requests merged on 2026-10-25**, eight of them this session: #347 swept the
+documents the release left stale, #348 moved the CI cost off `strict: true`,
+#349 measured the skip path, #351 took the bump-ordering decision, #352 wired
+the publish check, #353 gated corpus coverage, #354 wrote the ten settlement
+link rules.
+
+**START HERE, AND THE ORDER MATTERS.** Read the four paragraphs below before
+looking for work, because three of them are about how this list lies to a
+reader who trusts it.
+
+**1. `[M]` IS EMPTY, AND THIS TIME THE SWEEP WAS DONE.** Every unstruck row is
+`[D]`, `[H]` or `[X]`. The only `[M]` rows with no blocker are **3.2 and 3.7**,
+both explicitly research rather than tasks, and 3.7's first candidate is
+already shipped. `[M]` rows that exist but are blocked: 4.3 (on 3.4), 5.2 (on a
+decision), 5.3/5.4/7.5 (on the bump), 4.5 (held). **Do not go hunting for
+bounded work — but do read paragraph 2 before concluding there is none.**
+
+**2. "`[M]` IS EMPTY" WAS SAID THIS MORNING AND WAS WRONG, twice over.** It is
+the sentence this file is most likely to be wrong about, because a closed row
+is not a closed claim. What it missed on 2026-10-25: four documents still
+telling readers the published build was `v0.2.0` (#347); `check-packages.mjs`
+wired to no workflow at all (#352, item 1.9); and ten validation rules the
+corpus demanded nothing of (#353/#354, item 1.10). **None of those was a row.**
+So after anything ships, grep for the fact it falsified before deciding the
+list is empty.
+
+**3. TWO ROWS UNDERSTATED THEIR OWN SURFACE IN ONE DAY, and both times
+BUILDING the thing is what found out.** 4.5 was costed at one entry type and
+one validation rule; discovery needs a link type too, so it is nine validation
+sites. 1.9 said wiring a checker in "is the whole change"; it also needs both
+packages' dependency trees. **The standing instruction for whoever assembles
+the bump: re-price 4.1, 4.2 and 4.3 on the question that caught 4.5 — *what
+indexes it?***
+
+**4. COUNTED CLAIMS ROTTED FASTER THAN THEY WERE WRITTEN.** The drift-checker
+count moved three times on 2026-10-25 (six of seven wired, then seven, then
+eight) and each move falsified prose written an hour earlier. The corpus
+README's live figure was **72 checks behind**. The zome's link-type count was
+written as 32 and is 31. **Read counts from the commands, not from prose —
+`ls scripts/check-*.mjs`, `grep -c 'run: node scripts/check-'
+.github/workflows/live-verify.yml`, and the conductor job's own output for
+anything the corpus prints.**
+
+**WHAT CHANGED STRUCTURALLY, so it is not re-derived.** A docs-only pull
+request now skips `conductor`, `network`, `ui` and `zomes` and costs about two
+minutes instead of fifteen — `scripts/ci-scope.mjs`, gated by
+`check-ci-scope.mjs`, with `live-verify` deliberately ungated because every
+checker that reads a document runs there. **Eight drift checkers, all eight in
+CI.** Corpus coverage is now demanded rather than hoped for:
+`check-corpus-coverage.mjs` fails on any type with assertable rules that is
+neither covered nor declared. Corpus totals: **332 on `main`, 346 on #350**.
 
 ~~**START HERE: `[M]` IS EMPTY.**~~ **IT WASN'T, AND THE WAY IT WASN'T IS THE
 POINT.** Every *row* the model could take unblocked was indeed struck — 1.7,
