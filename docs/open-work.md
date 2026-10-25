@@ -22,11 +22,12 @@ third-party.
 
 ## 0. In flight right now
 
-**ONE THING IN FLIGHT: the CI scope gate** (`scripts/ci-scope.mjs`,
-`scripts/check-ci-scope.mjs`, four gated workflows), which takes the `strict`
-decision below. Before it, **nothing was** — fourteen pull requests merged
-across 2026-10-24/25, the desktop release was cut, and #347 swept the four
-documents the release left stale.
+**ONE THING HELD, NOTHING ELSE IN FLIGHT.** PR #350 is 4.5, written and
+deliberately not merged — it changes the DNA hash, so it lands when the bump is
+cut and not before. Merged across 2026-10-24/25: fourteen pull requests, the
+desktop release, #347's sweep of the four documents the release left stale, and
+#348's CI scope gate (which took the `strict` decision below, and #349 measured
+its skip path).
 
 ~~**START HERE: `[M]` IS EMPTY.**~~ **IT WASN'T, AND THE WAY IT WASN'T IS THE
 POINT.** Every *row* the model could take unblocked was indeed struck — 1.7,
@@ -63,12 +64,32 @@ in writing. It obliges keeping them true, and #344 was the first payment:
 `INSTALL.md` was telling the ten people about to be invited that cross-network
 discovery was untested, three days after it was measured.
 
-**THE DECISION THAT GATES THE MOST, and it is not on any row above:** whether
-the integrity bump goes **before** inviting ten people, **after**, or **never**
-— §4's own plan calls it the scheduling question nobody had asked. Four of five
-candidates wait on answers outside this project and 4.5 can be written and
-held, so "invite first, and tell them their data is disposable" is the standing
-recommendation and has not been taken.
+~~**THE DECISION THAT GATES THE MOST, and it is not on any row above:** whether
+the integrity bump goes **before** inviting ten people, **after**, or
+**never**~~ — **TAKEN 2026-10-25: INVITE FIRST, BUMP SECOND.** The ten are
+invited onto `protocol_version: 11` and told before they write that what they
+publish does not survive the next integrity change.
+
+**`v0.3.0` is what decided it.** While the published build was two forks
+behind, step 4 was blocked whatever anybody decided, so the bump could ride a
+delay that already existed — that was the only cheap argument for *bump first*,
+and the release closed it. *Bump first* now means the invitation waits on three
+answers nobody here controls: Andras's three for 4.1, pricing 3.5 for 4.2,
+settling 3.4 for 4.3.
+
+**THE OBLIGATION IS THE DECISION, not a courtesy attached to it.** Under
+Invariant 6 nothing can be deleted afterwards, so knowing in advance is a
+tester's only protection, and 7.1's commitment is to honesty rather than to
+safety. `INSTALL.md` now says a further break is **planned rather than
+hypothetical** — that sentence is the decision being kept.
+
+**AND 4.5 IS WRITTEN AND HELD (PR #350, draft).** It was the one candidate
+ready, and writing it found that `docs/integrity-bump-plan.md` §2 had
+**understated its own integrity surface**: discovery needs a link type too,
+because the tagged-`Claim` witness it replaces was findable for free by riding
+the domain index and a typed entry cannot. Nine validation sites, not one. The
+other three candidates should be re-priced on the same question — *what
+indexes it?*
 
 **Research opened rather than closed:** 3.7 states the sybil question once,
 with its boundary written down — *the cheapest promise structure that makes
@@ -258,7 +279,7 @@ does not reach the ordered list by itself.
 | 4.1 | **The foresight ordinal anchor.** `PreRegistration.reveal_deadline` changes type to a position in a declared order; `Revelation` gains an association; `Membrane` gains a declared notary key. Validation then checks shape only — the association resolves, its author is the declared notary, its counter precedes the deadline's. **Not adopted** — the 2026-10-19 decision stands, since no surface grants this timestamp authority — but the reopen order changed: repair 3 first because it is free, then **repair 4**, and countersigning only if an ordinal anchor is unavailable **THE QUESTIONS ARE ASKED (7.6, sent). This now waits on ANSWERS, not on anybody writing an email** — which is a different blocker and outside this repository's control. Nothing else in §4 depends on them, so the bump is not held up by 4.1 alone. | D | Andras's three answers |
 | 4.2 | **Observers as entries**, if adopted — prompts, heuristics and thresholds as signed entries, so selection acts on the agents. Contrary to one claim on file, this **is** a new entry type and therefore does fork | D | 3.5's cost, priced |
 | 4.3 | **Species provenance and metabolic policy fields**, if Stage 4 and a budget are adopted | M | 2.4, 3.4 |
-| 4.5 | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, in place of the tagged-`Claim` witness Stage 5 (#321) ships. That workaround was chosen precisely to avoid a fork and carries a real cost: a reader must filter by tag, and `get_discourse_health` needed `imported_claims` to keep its own count honest. One new entry type, **appended** — entry types are position-indexed, so it cannot go anywhere else. See `docs/integrity-bump-plan.md` §2. | [M] once the bump is cut | the bump itself, which is **[D]**: whether it goes before or after inviting ten people |
+| 4.5 | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, in place of the tagged-`Claim` witness Stage 5 (#321) ships. That workaround was chosen precisely to avoid a fork and carries a real cost: a reader must filter by tag, and `get_discourse_health` needed `imported_claims` to keep its own count honest. One new entry type, **appended** — entry types are position-indexed, so it cannot go anywhere else. See `docs/integrity-bump-plan.md` §2. | ~~[M] once the bump is cut~~ **WRITTEN AND HELD: PR #350, draft** | ~~the bump itself, which is **[D]**~~ — **[D] TAKEN 2026-10-25: the bump goes AFTER inviting ten people.** So this waits on the batch, not on a decision: 4.1 (Andras), 4.2 (3.5 priced), 4.3 (3.4 settled). One item is not a batch |
 
 ---
 
