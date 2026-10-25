@@ -4594,6 +4594,17 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
             // critiques from a federated partner would otherwise raise this
             // domain's `total_claims` by fifty without anybody here having
             // said anything — see the STAGE 5 section header.
+            //
+            // AND AT protocol_version 12 THIS BRANCH IS KEPT DELIBERATELY,
+            // though `import_foreign_critique` no longer writes a tagged
+            // Claim at all. It is not dead code and it is not nostalgia:
+            // coordinator zomes are hot-swappable and are not in the DNA
+            // hash, so a custom client can still write a Claim bearing this
+            // tag, and the integrity zome permits it — `SECURITY.md`'s own
+            // test for whether a thing is possible. What item 4.5 removed is
+            // the need for a reader to filter by tag to understand an import;
+            // it did not remove anyone's ability to write the tag. The count
+            // stays honest for both shapes.
             Ok(Some(claim)) if claim.semantic_tags.iter().any(|t| t == FEDERATION_IMPORT_TAG) => {
                 imported_claims += 1;
             }
@@ -8487,44 +8498,41 @@ pub fn import_foreign_critique(
     let read_through = describe_method(&payload.attestation_policy, &payload.conductance_policy);
 
     let witnessed_by = agent_info()?.agent_initial_pubkey;
-    let content = format!(
-        "FEDERATION IMPORT — a witness, not a copy.\n\
-         Network: {}\n\
-         Remote membrane: {}\n\
-         Foreign author (opaque, unverifiable here): {}\n\
-         Foreign target (opaque, unresolvable here): {}\n\
-         Foreign mode (as reported, not as validated): {}\n\
-         Read through: {}\n\
-         --- what the foreign critique says ---\n{}\n\
-         --- end ---\n\
-         This entry is the importer's own assertion that the above exists on another \
-network. It is NOT the foreign author's signature, the foreign critique is NOT verified \
-here, and no DHT can see another's data to verify it.",
-        payload.remote_network_label,
-        payload.remote_membrane_ref,
-        payload.foreign_author_ref,
-        payload.foreign_target_ref,
-        payload.foreign_mode,
-        read_through,
-        payload.foreign_content,
-    );
 
-    let claim = Claim {
-        content,
+    // ITEM 4.5, protocol_version 12: a typed entry, where this used to
+    // interpolate six fields and a preamble into a `Claim.content` string and
+    // tag it. What changed and why is in the integrity zome's FOREIGN
+    // CRITIQUE section header; what changed HERE is that nothing has to parse
+    // prose to get a part of an import, and the distinction that matters most
+    // about this entry — nobody on this network signed for its content — is
+    // carried by its type instead of by an author-chosen tag.
+    let foreign = ForeignCritique {
+        witnessed_by: witnessed_by.clone(),
         domain: domain.clone(),
-        author: witnessed_by.clone(),
-        timestamp: sys_time()?.as_micros() as u64,
-        evidence_hashes: vec![],
+        foreign_content: payload.foreign_content,
+        remote_network_label: payload.remote_network_label,
+        remote_membrane_ref: payload.remote_membrane_ref,
+        foreign_author_ref: payload.foreign_author_ref,
+        foreign_target_ref: payload.foreign_target_ref,
+        foreign_mode: payload.foreign_mode,
+        read_through: read_through.clone(),
         confidence: payload.confidence,
-        semantic_tags: vec![FEDERATION_IMPORT_TAG.to_string()],
-        source_mew: None,
+        imported_at: sys_time()?.as_micros() as u64,
     };
-    let entry_hash = hash_entry(&claim)?;
-    // Through `create_claim` rather than `create_entry`, for the reason
-    // `publish_discourse_reading` gives: that is what indexes it by domain and
-    // emits `NewClaim`, so an import is discoverable and critiquable by the
-    // machinery every other claim uses.
-    let action_hash = create_claim(claim)?;
+    let entry_hash = hash_entry(&foreign)?;
+    let action_hash = create_entry(&EntryTypes::ForeignCritique(foreign))?;
+
+    // Its own index, under the same `domain_{name}` anchor every other
+    // by-domain read uses. The tagged-Claim witness was discoverable for free
+    // because it WAS a Claim; this is the cost of it not being one, and it is
+    // the line docs/integrity-bump-plan.md §2 did not price.
+    let domain_anchor = domain_anchor_hash(&domain)?;
+    create_link(
+        domain_anchor,
+        action_hash.clone(),
+        LinkTypes::DomainToForeignCritique,
+        LinkTag::new(Vec::<u8>::new()),
+    )?;
 
     Ok(ImportedCritique {
         action_hash,
@@ -8536,15 +8544,20 @@ here, and no DHT can see another's data to verify it.",
         limits: "A witness, not a copy. The importer signed this; the foreign author did not. \
 Nothing here is verified — no DHT can see another's data — and the foreign author, target and \
 mode are opaque strings rather than typed hashes precisely because a type would assert a \
-validation this network never performed. Excluded from get_discourse_health, which counts \
-discourse IN this domain, not reports about another network's."
+validation this network never performed. As of protocol_version 12 this is a ForeignCritique \
+and NOT a Claim, so it is absent from get_discourse_health's count by construction rather \
+than by a tag filter: a report about another network was never discourse in this domain."
             .to_string(),
     })
 }
 
-/// Every federation import in a membrane's domain, as their Claim records.
+/// Every federation import in a membrane's domain, as their `ForeignCritique`
+/// records.
 ///
-/// A pure read, coordinator-only.
+/// A pure read, coordinator-only. As of protocol_version 12 this reads the
+/// `DomainToForeignCritique` index rather than filtering the claim index by
+/// tag — the filter is gone because the thing being filtered for is now a
+/// type. The signature is unchanged so that callers do not have to care.
 #[hdk_extern]
 pub fn get_foreign_imports(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
     let membrane_record = get(membrane, GetOptions::default())?
@@ -8554,10 +8567,27 @@ pub fn get_foreign_imports(membrane: AnyDhtHash) -> ExternResult<Vec<Record>> {
         .to_app_option()
         .map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Membrane.".into())))?;
+    get_foreign_critiques_by_domain(membrane_entry.domain.clone())
+}
+
+/// Every `ForeignCritique` filed under a domain.
+///
+/// Link-only, for the reason `get_claims_by_domain` gives about itself: a read
+/// that falls back to a source-chain query would keep working when the index
+/// is broken or unwritten, and would then be passing a test about nothing. A
+/// link whose target no longer resolves is skipped rather than erroring the
+/// whole read — one unavailable import should degrade a listing, not empty it.
+#[hdk_extern]
+pub fn get_foreign_critiques_by_domain(domain: String) -> ExternResult<Vec<Record>> {
+    let anchor = domain_anchor_hash(&domain)?;
+    let links = get_links(
+        LinkQuery::try_new(anchor, LinkTypes::DomainToForeignCritique)?,
+        GetStrategy::Network,
+    )?;
     let mut out = Vec::new();
-    for record in get_claims_by_domain(membrane_entry.domain.clone())? {
-        if let Ok(Some(claim)) = record.entry().to_app_option::<Claim>() {
-            if claim.semantic_tags.iter().any(|t| t == FEDERATION_IMPORT_TAG) {
+    for link in links {
+        if let Ok(hash) = ActionHash::try_from(link.target) {
+            if let Some(record) = get(hash, GetOptions::default())? {
                 out.push(record);
             }
         }

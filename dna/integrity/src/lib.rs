@@ -34,7 +34,7 @@ use hdi::prelude::*;
 ///
 /// BUMP THIS whenever anything in this file changes in a way that alters what
 /// is accepted or what an entry means. Do not bump it for a coordinator change.
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 12;
 
 /// The DNA's `properties`, as authored in `dna/dna.yaml`.
 ///
@@ -509,6 +509,74 @@ pub struct ExternalCritique {
 }
 
 // ============================================================================
+// FOREIGN CRITIQUE — the honest home for an import, replacing a tagged Claim
+// ============================================================================
+// Added at `protocol_version: 12`. This is open-work item 4.5, and what it
+// replaces is a WORKAROUND THAT WAS CHOSEN FOR A GOOD REASON: Stage 5 (#321)
+// recorded a federated import as a `Claim` carrying
+// `FEDERATION_IMPORT_TAG`, precisely so that importing would not require a
+// fork. That bought a release and cost three things, all of which this type
+// pays off:
+//
+//   - A READER HAD TO FILTER BY TAG to tell an import from an assertion. The
+//     tag is author-chosen data, so the distinction that matters most about
+//     this entry — nobody here signed for its content — was carried by the
+//     least trustworthy field in it.
+//   - `get_discourse_health` NEEDED `imported_claims` to stay honest, because
+//     an imported witness IS a Claim in the domain and would otherwise raise
+//     a domain's `total_claims` by one per import, making its health partly a
+//     reading of another network's discourse.
+//   - THE CONTENT WAS A FORMATTED STRING. Network label, remote membrane,
+//     foreign author, foreign target, foreign mode and the foreign text were
+//     interpolated into one `content` field with a human-readable preamble.
+//     Anything wanting a part of that had to parse prose.
+//
+// WHAT THIS TYPE DOES NOT DO, and the reason it cannot: it does not verify
+// that the foreign critique exists. No DHT can see another's data — that is
+// the premise federation starts from, not a limitation of this entry. So
+// `foreign_content_verified` is absent rather than false: a field that is
+// always false is a field someone will eventually read as sometimes true.
+// What is verifiable here is who witnessed, and that is bound by validation.
+//
+// THE TWO PEOPLE PROBLEM, handled the way `ExternalCritique` already handles
+// it. There are two agents in an import and conflating them would be worse
+// than omitting one. `witnessed_by` is the local agent who chose to import,
+// which is the only accountability this DHT can enforce; the foreign author
+// is `foreign_author_ref`, an opaque unverifiable string from elsewhere.
+// Neither is called `author`.
+#[hdk_entry_helper]
+#[derive(Clone, PartialEq)]
+pub struct ForeignCritique {
+    /// The local agent who imported this, bound to the action author by
+    /// validation. NOT the foreign author — see the section header.
+    pub witnessed_by: AgentPubKey,
+    /// The domain this import is filed under, so it is discoverable by the
+    /// same question every other read here asks.
+    pub domain: String,
+    /// What the foreign critique says, as reported. Unverifiable, and the
+    /// only field in here that is the foreign author's words.
+    pub foreign_content: String,
+    /// Where it was seen. Opaque strings, every one of them: this network
+    /// cannot resolve any of these references, and typing them as `String`
+    /// rather than as hashes says so in the schema instead of in a comment.
+    pub remote_network_label: String,
+    pub remote_membrane_ref: String,
+    pub foreign_author_ref: String,
+    pub foreign_target_ref: String,
+    /// The foreign critique's mode AS REPORTED, not as validated. This
+    /// network's `CritiqueMode` is not authoritative over another's.
+    pub foreign_mode: String,
+    /// The lens the importer read through, rendered by the same
+    /// `describe_method` that `publish_discourse_reading` uses, so a filtered
+    /// import cannot present itself as a neutral one.
+    pub read_through: String,
+    /// The IMPORTER's confidence in their own report of what they saw —
+    /// theirs to state, never the protocol's to compute.
+    pub confidence: ConfidenceLevel,
+    pub imported_at: u64,
+}
+
+// ============================================================================
 // ENUMS
 // ============================================================================
 
@@ -750,6 +818,16 @@ pub enum LinkTypes {
     // this enum's own comments give: link types are position-indexed.
     TargetToAssessment,
     TargetToSettlementStatus,
+    // Item 4.5, protocol_version 12, appended for the same position-indexing
+    // reason. AND IT IS THE PART THE BUMP PLAN UNDERSTATED: §2 of
+    // docs/integrity-bump-plan.md costed 4.5 at "1 new entry type (appended),
+    // 1 validation rule", which is what the ENTRY needs. Discovery needs more
+    // than an entry. The tagged-Claim witness it replaces was discoverable
+    // for free because it WAS a Claim and rode the existing domain index; a
+    // ForeignCritique is not a Claim and cannot, and a link type whose base
+    // and target types are unconstrained is the thing §5.19 exists to refuse.
+    // So: one link type, and one link rule below.
+    DomainToForeignCritique,
 }
 
 // ============================================================================
@@ -895,6 +973,11 @@ pub enum EntryTypes {
     Assessment(Assessment),
     SettlementPolicy(SettlementPolicy),
     SettlementStatus(SettlementStatus),
+    // Item 4.5, protocol_version 12. Appended at the END for the reason this
+    // enum has carried since version 10: entry types are position-indexed, so
+    // inserting above any existing variant renumbers everything after it and
+    // silently reinterprets stored entries.
+    ForeignCritique(ForeignCritique),
 }
 
 // ============================================================================
@@ -1237,6 +1320,7 @@ fn validate_create_entry(entry: OpEntry<EntryTypes>) -> ExternResult<ValidateCal
                 EntryTypes::ExternalCritique(ext) => validate_external_critique(&ext, &action),
                 EntryTypes::AntibodyPattern(pattern) => validate_antibody_pattern(&pattern, &action),
                 EntryTypes::FederationRecord(record) => validate_federation_record(&record, &action),
+                EntryTypes::ForeignCritique(fc) => validate_foreign_critique(&fc, &action),
             }
         }
         // THE OTHER HALF OF VERSION 9'S REFUSAL, and the half that was
@@ -2168,6 +2252,47 @@ fn validate_external_critique(ext: &ExternalCritique, action: &TypedAction<Creat
     }
     if must_get_entry(ext.linked_holochain_claim.clone()).is_err() {
         return Ok(ValidateCallbackResult::Invalid("ExternalCritique linked claim not found.".into()));
+    }
+    Ok(ValidateCallbackResult::Valid)
+}
+
+/// `ForeignCritique` — item 4.5's validation rule.
+///
+/// WHAT IT CAN CHECK IS NARROW, AND THE NARROWNESS IS THE POINT. Every
+/// reference in this entry points at another network, and no DHT can see
+/// another's data, so there is nothing here to resolve and no foreign
+/// signature to verify. A rule that pretended otherwise would be the
+/// adversary-resistance claim `SECURITY.md` explicitly refuses.
+///
+/// So this binds the ONE agent this network can hold responsible, and refuses
+/// the empty cases that would make an import unreadable. `witnessed_by`
+/// against the action author is the same binding `ExternalCritique.importer`
+/// carries, for the same reason: an import signed by one agent and attributed
+/// to another is a forgery with extra steps.
+fn validate_foreign_critique(fc: &ForeignCritique, action: &TypedAction<CreateData>) -> ExternResult<ValidateCallbackResult> {
+    if &fc.witnessed_by != action.author() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "ForeignCritique witnessed_by must match action author. This is the IMPORTING \
+             agent, not the foreign author in foreign_author_ref — see the entry type.".into()
+        ));
+    }
+    if fc.domain.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("ForeignCritique domain cannot be empty.".into()));
+    }
+    if fc.foreign_content.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid("ForeignCritique foreign_content cannot be empty.".into()));
+    }
+    if fc.remote_network_label.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "ForeignCritique remote_network_label cannot be empty: an import that does not say \
+             where it came from is indistinguishable from an assertion.".into()
+        ));
+    }
+    if fc.read_through.is_empty() {
+        return Ok(ValidateCallbackResult::Invalid(
+            "ForeignCritique read_through cannot be empty: a filtered import presented without \
+             its lens is a lensed reading wearing a neutral face.".into()
+        ));
     }
     Ok(ValidateCallbackResult::Valid)
 }
@@ -3783,6 +3908,27 @@ fn validate_create_link(
             return Ok(ValidateCallbackResult::Invalid(
                 "A TargetToSettlementStatus link may only be created by the status's own \
                  aggregator.".into()));
+        }
+    } else if link_type == LinkTypes::DomainToForeignCritique {
+        // Item 4.5. Two rules, both of them about the thing a link type can
+        // actually be lied about: what it points at, and who hung it.
+        let Ok(target_hash) = ActionHash::try_from(target_address.clone()) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A DomainToForeignCritique link must target an ActionHash.".into()));
+        };
+        let Ok(record) = must_get_valid_record(target_hash) else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A DomainToForeignCritique link's target record was not found.".into()));
+        };
+        let Ok(Some(fc)) = record.entry().to_app_option::<ForeignCritique>() else {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A DomainToForeignCritique link must point at a ForeignCritique.".into()));
+        };
+        if &fc.witnessed_by != action.author() {
+            return Ok(ValidateCallbackResult::Invalid(
+                "A DomainToForeignCritique link may only be created by the import's own \
+                 witness. Indexing somebody else's import under a domain is how one agent \
+                 would put another's name on a reading they never made.".into()));
         }
     }
     Ok(ValidateCallbackResult::Valid)

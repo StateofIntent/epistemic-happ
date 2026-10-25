@@ -1114,6 +1114,7 @@ see the other's data, so everything here is a correlative witness, the shape
 |---|---|---|
 | `import_foreign_critique` | `ImportForeignCritiquePayload { membrane, remote_network_label, remote_membrane_ref, foreign_author_ref, foreign_mode, foreign_content, foreign_target_ref, attestation_policy, conductance_policy, confidence }` | `ImportedCritique { action_hash, entry_hash, domain, witnessed_by, read_through, foreign_content_verified, limits }` — writes a tagged `Claim` recording, under the IMPORTER's own key, that a critique saying this exists on a federated network |
 | `get_foreign_imports` | `membrane: AnyDhtHash` | `Vec<Record>` — every federation import in that membrane's domain |
+| `get_foreign_critiques_by_domain` | `domain: String` | `Vec<Record>` — every `ForeignCritique` filed under a domain, read from the `DomainToForeignCritique` index. Added at `protocol_version: 12` with the typed entry; the by-membrane read above now delegates to it |
 
 **A FOREIGN CRITIQUE MUST NOT BECOME A NATIVE `Critique`.** §5.2 binds
 `critique.author` to the action's author, so a `Critique` on this chain asserts
