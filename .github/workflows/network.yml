@@ -1,5 +1,11 @@
 # =============================================================================
-# Three conductors on a real network, on every push and pull request.
+# Three conductors on a real network.
+#
+# ON EVERY PULL REQUEST THAT COULD CHANGE THE ANSWER, which since 2026-10-25 is
+# not every pull request. The `scope` job below skips this one when the diff is
+# documentation and nothing else — see `scripts/ci-scope.mjs` for why that is
+# safe, why it is a conditional rather than a `paths:` filter, and what still
+# runs regardless. A push to `main` always runs everything.
 #
 # WHAT THIS ANSWERS THAT NOTHING ELSE HERE DOES. `conductor.yml`'s own header
 # ends by saying that a green tick there "says nothing about gossip, partition
@@ -171,7 +177,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # >>> SCOPE GATE — byte-identical in conductor.yml, network.yml, ui.yml and
+  # zomes.yml; scripts/check-workflow-setup-drift.mjs fails if they diverge,
+  # and scripts/check-ci-scope.mjs gates the classifier they share. Both of
+  # those run in live-verify.yml, which carries NO gate of its own: every
+  # checker that reads a document lives there, so a documentation claim is
+  # still gated by CI on every pull request. What is skipped below is the jobs
+  # that read no prose.
+  #
+  # WHY THIS IS A JOB AND AN `if:` RATHER THAN THE `paths:` FILTER IT LOOKS
+  # LIKE IT SHOULD BE. A job skipped by a conditional reports SUCCESS to branch
+  # protection. A workflow skipped by a `paths:` filter creates no check run at
+  # all, and a required context with no check run leaves the pull request on
+  # "Expected — waiting for status" forever. The documented remedy for that is
+  # a stub workflow sharing the job name, and it is unsound here — see
+  # scripts/ci-scope.mjs, which explains why `paths` and `paths-ignore` are not
+  # complements and what a mixed diff would do to a pair of same-named jobs.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Can this diff change what the jobs below measure?
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-scope.mjs
+  # <<< SCOPE GATE <<<
+
   network:
+    needs: scope
+    # Skipped when scope says the diff is documentation. `!cancelled()` is load
+    # bearing: a failed `needs` skips its dependents, and a skipped job reports
+    # SUCCESS to branch protection — so without it an error in `scope` would
+    # satisfy this required check having run nothing. With it, the `if:` is
+    # evaluated anyway, the output is empty, and the job runs.
+    if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     # RAISED FOR THE WORST CASE, NOT THE TYPICAL ONE. This job took 3m35s with
     # real-gossip alone, so the expected total is well under ten minutes even
@@ -405,6 +450,13 @@ jobs:
   # kept in step by hand, which is the cost of this split.
   # ===========================================================================
   partition-rejoin:
+    needs: scope
+    # Skipped when scope says the diff is documentation. `!cancelled()` is load
+    # bearing: a failed `needs` skips its dependents, and a skipped job reports
+    # SUCCESS to branch protection — so without it an error in `scope` would
+    # satisfy this required check having run nothing. With it, the `if:` is
+    # evaluated anyway, the output is empty, and the job runs.
+    if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     # 45, AND DELIBERATELY NOT `network`'s 60. The two jobs run different
     # harnesses with different worst cases, so one number for both would be

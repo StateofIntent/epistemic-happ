@@ -22,9 +22,11 @@ third-party.
 
 ## 0. In flight right now
 
-**NOTHING IS IN FLIGHT. Checkpoint 2026-10-25.** Fourteen pull requests
-merged across 2026-10-24/25 and the desktop release was cut. If this entry is
-the only thing open when you read it, that is the expected state.
+**ONE THING IN FLIGHT: the CI scope gate** (`scripts/ci-scope.mjs`,
+`scripts/check-ci-scope.mjs`, four gated workflows), which takes the `strict`
+decision below. Before it, **nothing was** — fourteen pull requests merged
+across 2026-10-24/25, the desktop release was cut, and #347 swept the four
+documents the release left stale.
 
 ~~**START HERE: `[M]` IS EMPTY.**~~ **IT WASN'T, AND THE WAY IT WASN'T IS THE
 POINT.** Every *row* the model could take unblocked was indeed struck — 1.7,
@@ -95,19 +97,58 @@ the status.
 cost was paid in full: fourteen pull requests landed one at a time, each merge
 putting the rest behind and forcing a fresh ~20-minute cycle. It was relaxed
 for the nine documentation PRs — verified safe first by building the combined
-tree locally and running all six drift checkers against it — and **restored
+tree locally and running all seven drift checkers against it — and **restored
 immediately after**. `enforce_admins` is true, so there is no lighter
 alternative: `--admin` does not bypass it, the rule itself has to move.
-**Whether `strict` earns its keep on a repository where most pull requests
-touch only Markdown remains a decision [D]**, and the evidence for taking it is
-now concrete.
+
+~~**Whether `strict` earns its keep on a repository where most pull requests
+touch only Markdown remains a decision [D]**~~ — **DECIDED 2026-10-25:
+`strict: true` STAYS, AND THE COST WAS IN THE WRONG PLACE.** The bill was read
+as the price of the rule, and it is not. It is the price of **what the rule is
+bound to**: five required contexts, none of them path-filtered, four of which
+cannot be affected by a Markdown-only diff and all of which ran anyway. #347
+is the receipt — a five-document change, nothing else, and it spent `conductor`
+11m59s and `ui` 12m37s proving that sentences about `v0.2.0` had not broken a
+real DHT.
+
+**`strict` itself earns its keep, and there is a demonstrated catch rather than
+an argument.** Two pull requests each inserting into
+`dna/coordinator/src/lib.rs` regenerate the validation inventory
+independently, are green alone, and red `main` when the second lands carrying
+the first's line numbers. That is exactly the semantic conflict `strict` exists
+to prevent, and it went red in CI on 2026-10-24 for that reason. Dropping the
+rule would trade a proven catch for throughput.
+
+**So the binding moved instead.** `conductor`, `network`, `ui` and `zomes` now
+carry a `scope` job that skips them when the diff is documentation and nothing
+else; `live-verify` is deliberately ungated, because every checker that reads a
+document runs there. A docs-only pull request satisfies all five contexts in
+about ninety seconds, and `strict: true` keeps its teeth on everything that
+touches `dna/` or `scripts/`. **It is a conditional and not a `paths:`
+filter**, which is not a detail: a workflow skipped by `paths:` creates no
+check run, and a required context with no check run hangs the pull request on
+*"Expected — waiting for status"* forever, while a job skipped by a conditional
+reports success. The documented remedy — a stub workflow sharing the job name —
+is unsound here, because `paths` and `paths-ignore` are not complements and a
+mixed diff would have both jobs reporting under one name.
+
+**The new risk is a green that means nothing**, which is worse than the red
+that means nothing this repository already refuses: a classifier that calls a
+code diff documentation would have four required checks pass having run
+nothing. Three things answer it rather than one — the classifier is
+**default-deny** (anything not root-level `*.md` or `docs/**.md` is code, so a
+mistake is a slow pull request and never an unverified merge), the gate
+expression carries `!cancelled()` (without it a failed `scope` job would skip
+its dependents into success), and `check-ci-scope.mjs` asserts all of it from
+inside the one workflow the gate cannot touch — including that no harness any
+gated job runs reads a document. See `scripts/ci-scope.mjs`.
 
 **AND THE CONTENTION EXPLANATION IS WRONG — the mechanism cannot exist on this
 CI.** The 2026-10-23 correlation stands as an observation: six branches at
 once, four `ui` failures, every one `taxonomy-ui` §5 — *"proposing a species
 from the UI"* — timing out on `waitForSelector`, against 4-for-4 green when the
 same branches ran solo. But every workflow is `runs-on: ubuntu-latest`
-(`.github/workflows/ui.yml:115` and its six siblings), so **each job gets its
+(`.github/workflows/ui.yml:160` and its six siblings), so **each job gets its
 own VM**: jobs share no CPU and no ports, since `sandbox.sh` binds 8887-8889 on
 `127.0.0.1` inside the runner it is given. And on 2026-10-24 #333's `ui` failed
 on the same selector at 04:17:38, **by which time every other job in both
