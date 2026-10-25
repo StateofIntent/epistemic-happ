@@ -44,9 +44,47 @@
 //   EPI_XNET_DOMAIN    the shared domain string    (required, same both sides)
 //   EPI_XNET_HOLD_S    seconds to hold/poll        (default 600)
 //   EPI_XNET_ADMIN     admin port                  (default 9899)
-//   EPI_XNET_APP       app port                    (default 9898)
+//   EPI_XNET_APP       app port                    (default 9898, or
+//                      DISCOVERED via listAppInterfaces when unset and
+//                      EPI_XNET_PACKAGED=1)
+//   EPI_XNET_PACKAGED  1 to drive an INSTALLED desktop app — see below
 //
 // Run: EPI_XNET_ROLE=publisher EPI_XNET_DOMAIN=xnet-123 node scripts/live-verify/cross-internet.mjs
+//
+// ----------------------------------------------------------------------------
+// DRIVING AN INSTALLED DESKTOP APP (EPI_XNET_PACKAGED=1)
+//
+// This harness was written for `hc sandbox` conductors, and the thing release
+// step 3's "against that build" clause needed was two PACKAGED installs — a
+// different target, because a sandbox conductor declares no network seed and
+// therefore cannot see a desktop peer at all. Item 1.4 closed that by hand on
+// 2026-10-26; this flag is so it does not have to be done by hand twice.
+//
+// Three things differ from a sandbox, and the first two are why pointing this
+// at an install used to fail on its first line:
+//
+//   - ORIGINS. The packaged app's conductor-config.yaml allows `kangaroo` on
+//     admin and `webhapp://webhappwindow` on the app interface, and a
+//     conductor REJECTS a handshake whose origin is not allowed — as it does
+//     one with no Origin header at all, even under `allowed_origins: Any`
+//     (README §9's bridge finding). `live-verify` is allowed by neither.
+//   - THE APP PORT IS DYNAMIC. A sandbox gets a port we chose; an install
+//     attaches its own, so it is read from `listAppInterfaces` rather than
+//     assumed. The ADMIN port is dynamic too unless ADMIN_PORT was pinned at
+//     launch — read it from the app's log, where it appears as
+//     `###ADMIN_PORT:<n>###`.
+//   - THE APP ID is `kangaroo.happ`, not this harness's own.
+//
+// **AND IT IS NOT A READ-ONLY OBSERVER OF SOMEBODY'S INSTALL.** `connect()`
+// calls `authorizeSigningCredentials`, because a zome call from outside the
+// app's own window cannot be signed without it — and authorising WRITES A CAP
+// GRANT TO THAT AGENT'S SOURCE CHAIN, which under Invariant 6 is permanent and
+// deletable by nobody. The publisher role then writes a Claim, which is also
+// permanent. So this flag is an explicit opt-in rather than a default: running
+// it against a real install spends two permanent entries on that agent's
+// chain, and there is no version of this that "just looks". The read-only
+// route is the admin API's own state dump.
+// ----------------------------------------------------------------------------
 // ============================================================================
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 
@@ -54,8 +92,12 @@ const ROLE = process.env.EPI_XNET_ROLE ?? '';
 const DOMAIN = process.env.EPI_XNET_DOMAIN ?? '';
 const HOLD_MS = Number(process.env.EPI_XNET_HOLD_S ?? 600) * 1000;
 const ADMIN_PORT = Number(process.env.EPI_XNET_ADMIN ?? 9899);
-const APP_PORT = Number(process.env.EPI_XNET_APP ?? 9898);
-const APP_ID = 'epistemic-xnet';
+const PACKAGED = process.env.EPI_XNET_PACKAGED === '1';
+// Unset under PACKAGED means "discover it"; 0 is not a usable port either way.
+const APP_PORT = Number(process.env.EPI_XNET_APP ?? (PACKAGED ? 0 : 9898));
+const ADMIN_ORIGIN = PACKAGED ? 'kangaroo' : 'live-verify';
+const APP_ORIGIN = PACKAGED ? 'webhapp://webhappwindow' : 'live-verify';
+const APP_ID = PACKAGED ? 'kangaroo.happ' : 'epistemic-xnet';
 const POLL_MS = 5_000;
 
 const log = (...a) => console.log(...a);
@@ -71,6 +113,20 @@ if (!DOMAIN) {
   console.error('EPI_XNET_DOMAIN is required and must match on both hosts.');
   process.exit(2);
 }
+if (PACKAGED) {
+  // Said before anything connects, because by the time it has written there is
+  // no undo — Invariant 6 applies to the cap grant exactly as it does to the
+  // Claim. Printed rather than prompted: this runs unattended on two hosts.
+  console.log('EPI_XNET_PACKAGED=1 — driving an INSTALLED app.');
+  console.log(`  admin origin ${JSON.stringify(ADMIN_ORIGIN)}, `
+    + `app origin ${JSON.stringify(APP_ORIGIN)}, app id ${JSON.stringify(APP_ID)}`);
+  console.log('  THIS WRITES TO THAT AGENT\'S CHAIN AND NOTHING CAN DELETE IT:');
+  console.log('    - a cap grant, because authorizeSigningCredentials is how a');
+  console.log('      zome call from outside the app window gets signed at all;');
+  if (ROLE === 'publisher') console.log('    - and a Claim, this role being the one that publishes.');
+  console.log('  Both are permanent under Invariant 6. Use a profile you are');
+  console.log('  willing to spend, not the one you keep.');
+}
 
 let failures = 0;
 const check = (label, cond) => {
@@ -80,11 +136,28 @@ const check = (label, cond) => {
 
 async function connect() {
   const admin = await AdminWebsocket.connect({
-    url: new URL(`ws://localhost:${ADMIN_PORT}`), wsClientOptions: { origin: 'live-verify' },
+    url: new URL(`ws://localhost:${ADMIN_PORT}`), wsClientOptions: { origin: ADMIN_ORIGIN },
   });
+  // An installed app attaches its own app interface on a port it chose, so ask
+  // rather than assume. Reported with its allowed origin, which is the other
+  // half of what a handshake needs — a mismatch there is a 400 and not a
+  // protocol fault, so it is worth printing before anything else can fail.
+  let appPort = APP_PORT;
+  if (!appPort) {
+    const ifaces = await admin.listAppInterfaces();
+    if (ifaces.length === 0) {
+      throw new Error('no app interface attached — nothing to connect to. '
+        + 'Has the app finished launching? (its log prints ###ADMIN_PORT:<n>### '
+        + 'and then `Conductor ready.`)');
+    }
+    appPort = ifaces[0].port;
+    console.log(`  app interface discovered: port ${appPort}, `
+      + `allowed_origins=${JSON.stringify(ifaces[0].allowed_origins)} `
+      + `(connecting with origin ${JSON.stringify(APP_ORIGIN)})`);
+  }
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: APP_ID });
   const app = await AppWebsocket.connect({
-    url: new URL(`ws://localhost:${APP_PORT}`), token, wsClientOptions: { origin: 'live-verify' },
+    url: new URL(`ws://localhost:${appPort}`), token, wsClientOptions: { origin: APP_ORIGIN },
   });
   const info = await app.appInfo();
   const cellIds = [];
