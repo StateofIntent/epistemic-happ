@@ -918,12 +918,22 @@ them.
    `webhapp://webhappwindow` for the app interface, which `listAppInterfaces`
    reports on a dynamically chosen port.
 
-   **The reverse direction is a separate measurement and is NOT claimed here**
-   unless its own line appears below. Machine 1 had been offline about a day
-   before this run, and §3b's returning-node figures are about records written
-   DURING an absence rather than after it — so a reverse test with both
-   machines up and the receiver already attached is the favourable case, not
-   the slow one, and should be recorded as its own result either way.
+   **AND THE REVERSE DIRECTION CROSSED TOO, measured separately the same
+   day.** A second `Claim`, published on **machine 2** into a fresh domain
+   `xnet-1026-b` that machine 1 had loaded and seen empty first, appeared on
+   machine 1 on its `Load claims`. So the path is confirmed **both ways
+   between two packaged installs**, not merely outward from the machine that
+   happened to publish first — which matters, because a one-directional
+   result is consistent with a receiver that can only ever receive, and ten
+   invited people will all be publishers.
+
+   It was run as its own measurement rather than assumed from the first.
+   Machine 1 had been offline about a day before the session, and §3b's
+   returning-node figures concern records written DURING an absence rather
+   than after it — so with both machines up and the receiver attached before
+   the write, this was the favourable case and behaved like it. **§3b's
+   five-to-twelve-minute catch-up is therefore still the number to quote for
+   somebody who closed their laptop, and this result does not soften it.**
 
    The protocol question this step existed to answer — if it fails, mass
    adoption fails — is answered, and it passed.

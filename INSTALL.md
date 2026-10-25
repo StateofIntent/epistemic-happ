@@ -128,7 +128,10 @@ Setup click on first run of each profile, and the second machine.
 > interface and hashes to
 > `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`, the documented
 > `0.3.x` hash. A `Claim` published on machine 1 into domain `xnet-1026-a`
-> appeared on machine 2 **on its first `Load claims`**. Both reached
+> appeared on machine 2 **on its first `Load claims`** — and the reverse was
+> then measured separately: a claim published on machine 2 into a fresh domain
+> `xnet-1026-b`, which machine 1 had loaded and seen empty first, appeared on
+> machine 1. **Both directions, between two packaged installs.** Both reached
 > `Conductor ready.` with dynamically chosen admin ports (42253 and 33239), and
 > the two origins above are confirmed — `kangaroo` on admin,
 > `webhapp://webhappwindow` on the app interface, whose port
