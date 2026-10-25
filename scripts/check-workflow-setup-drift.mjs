@@ -120,6 +120,13 @@ if (a.body.join('\n') === b.body.join('\n')) {
 // ============================================================================
 
 const GATED = ['conductor.yml', 'network.yml', 'ui.yml', 'zomes.yml'];
+// Item 1.9: the two steps that install and build the publishable packages,
+// written once in the workflow whose harnesses drive them and once in the
+// workflow that checks whether they would publish. See the block's own header
+// in conductor.yml for what drift would cost.
+const PKG_FILES = ['conductor.yml', 'live-verify.yml'];
+const P_OPEN = '# >>> PACKAGE BUILD';
+const P_CLOSE = '# <<< PACKAGE BUILD <<<';
 const UNGATED = 'live-verify.yml';
 const REQUIRED = ['zomes', 'no-conductor', 'conductor', 'ui', 'network'];
 const S_OPEN = '# >>> SCOPE GATE';
@@ -225,6 +232,54 @@ for (const ctx of REQUIRED) {
     + `${UNGATED}. Branch protection requires it by name, so it has to be one or the other — `
     + `if it moved, update REQUIRED here.`);
 }
+
+// ============================================================================
+// THIRD SUBJECT: the package build, shared by conductor.yml and live-verify.yml.
+//
+// Same shape as the two above and a different consequence. A drifted copy here
+// does not skip a check and does not red the wrong job: it makes
+// `check-packages.mjs` answer "would this publish?" about a package built
+// against a different dependency tree than the harnesses ran against. The
+// green stays green and stops being evidence.
+// ============================================================================
+const pkgBlocks = PKG_FILES.map((f) => {
+  const src = read(f);
+  const ls = src.split('\n');
+  const found = [];
+  let o = null;
+  ls.forEach((line, i) => {
+    if (line.includes(P_OPEN)) o = i;
+    else if (line.includes(P_CLOSE)) {
+      if (o === null) fatal(`${f}:${i + 1}: "${P_CLOSE}" with no opening marker above it`);
+      found.push({ file: f, startLine: o + 2, body: ls.slice(o + 1, i) });
+      o = null;
+    }
+  });
+  if (o !== null) fatal(`${f}:${o + 1}: "${P_OPEN}" is never closed`);
+  if (found.length !== 1) {
+    fatal(`${f}: expected exactly 1 marked package-build block, found ${found.length}. `
+      + `If one of these workflows no longer builds the packages, remove it from `
+      + `PKG_FILES here and delete its markers.`);
+  }
+  return found[0];
+});
+const [pa, pb] = pkgBlocks;
+if (pa.body.join('\n') !== pb.body.join('\n')) {
+  const n = Math.max(pa.body.length, pb.body.length);
+  for (let i = 0; i < n; i++) {
+    if (pa.body[i] === pb.body[i]) continue;
+    console.error(`FAIL: the package build has drifted between ${pa.file} and ${pb.file}.`);
+    console.error(`      first difference at offset ${i} into the block:`);
+    console.error(`        ${pa.file}:${pa.startLine + i}  ${pa.body[i] === undefined ? '(block ends here)' : JSON.stringify(pa.body[i])}`);
+    console.error(`        ${pb.file}:${pb.startLine + i}  ${pb.body[i] === undefined ? '(block ends here)' : JSON.stringify(pb.body[i])}`);
+    console.error(`      check-packages.mjs runs its own build, so what these steps supply is`);
+    console.error(`      the dependency tree. One copy resolving the SDK from the registry and`);
+    console.error(`      the other from this checkout makes the publishability check green about`);
+    console.error(`      a package nobody ran.`);
+    process.exit(1);
+  }
+}
+console.log(`package build: identical in ${PKG_FILES.join(' and ')} (${pa.body.length} lines)`);
 
 console.log(`scope gate: identical in all four of ${GATED.join(', ')} (${canon.body.length} lines)`);
 console.log(`            ${[...gatedJobs].sort().join(', ')} gated; ${[...ungatedJobs].join(', ')} deliberately not`);
