@@ -503,25 +503,37 @@ async function otherAgentFixtures() {
     "the other agent's CritiqueSpecies",
   );
 
-  // Agent 2's own import, for DomainToForeignCritique's witness rule. Through
-  // the RAW prober rather than `import_foreign_critique`, and for once that is
-  // not about reaching a field: the real extern needs a Membrane argument and
-  // derives the domain from it, so driving it here would couple this fixture to
-  // agent 2's membrane for no gain. `witnessed_by` is agent 2's either way,
-  // which is the only property the rule is about.
-  const otherForeignAction = await callOther('attempt_raw_foreign_critique', {
-    witnessed_by: otherKey,
-    domain,
-    foreign_content: 'corpus foreign critique, witnessed by the OTHER agent',
+  // Agent 2's own import, for DomainToForeignCritique's witness rule.
+  //
+  // THROUGH THE REAL EXTERN AND NOT THE RAW PROBER, and the first attempt got
+  // this wrong in a way worth recording. `attempt_raw_foreign_critique` is a
+  // bare `create_entry`: it writes the entry and deliberately creates NO
+  // `DomainToForeignCritique` link, because the link is what three of that
+  // type's four rules are about and a prober that indexed its own writes could
+  // not be used to probe the index. But `get_foreign_critiques_by_domain` is
+  // link-only, on purpose — a read that fell back to a chain query would keep
+  // working while the index was broken — so a raw-published entry is
+  // PERMANENTLY invisible to it, and the wait below could only ever time out.
+  // It did, for 20s, eleven times.
+  //
+  // `import_foreign_critique` writes both halves, which is what makes agent 2's
+  // import readable at all. It derives the domain from the membrane it is
+  // handed, and agent 2's membrane above was founded in `domain`, so the index
+  // this lands in is the one being polled. It returns the `ImportedCritique`
+  // DTO rather than a bare hash.
+  const otherImport = await callOther('import_foreign_critique', {
+    membrane: membraneEntry,
     remote_network_label: 'corpus-remote-net-other',
     remote_membrane_ref: 'corpus-remote-ref-other',
     foreign_author_ref: 'corpus-foreign-author-other',
-    foreign_target_ref: 'corpus-foreign-target-other',
     foreign_mode: 'Methodological',
-    read_through: 'unfiltered (no policy supplied)',
+    foreign_content: 'corpus foreign critique, witnessed by the OTHER agent',
+    foreign_target_ref: 'corpus-foreign-target-other',
+    attestation_policy: null,
+    conductance_policy: null,
     confidence: 'Moderate',
-    imported_at: nowMicros(),
   });
+  const otherForeignAction = otherImport.action_hash;
   await awaitVisibleToMe(
     async () => {
       const found = await call('get_foreign_critiques_by_domain', domain);
