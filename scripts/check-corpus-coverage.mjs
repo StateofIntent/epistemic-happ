@@ -63,14 +63,13 @@ const DECLARED = {
       + '`scripts/live-verify/attachment-links.mjs` through `attempt_entry_update`, which is '
       + 'why `enumerate.mjs` classes it `crafted` rather than unreachable.',
   },
-  links: {
-    TargetToAssessment: 'Settlement\'s two link types, five assertable rules each, added at '
-      + '`protocol_version: 11` and never added to `COVERED_LINKS`. Ten rules with no case '
-      + 'and no gap — see `docs/open-work.md` item 1.10. Declared rather than silently '
-      + 'tolerated so the number stays visible until somebody writes the cases.',
-    TargetToSettlementStatus: 'The other half of the same omission — see `TargetToAssessment` '
-      + 'above and item 1.10.',
-  },
+  // EMPTY, AND IT WAS NOT WHEN THIS FILE WAS WRITTEN. `TargetToAssessment` and
+  // `TargetToSettlementStatus` were declared here on 2026-10-25 with their ten
+  // rules named, and the cases were written the same day (item 1.10), so both
+  // declarations were deleted — which this checker's own second direction
+  // would have forced anyway: a declaration left standing beside real coverage
+  // fails as an excuse that outlived its gap.
+  links: {},
 };
 
 let failed = 0;
@@ -162,7 +161,9 @@ const declaredRules = (declared, rules) =>
 console.log(`CORPUS COVERAGE DEMANDED: every type with assertable rules is listed or declared.`);
 console.log(`  entry types  ${entryRules.size} with rules — ${COVERED.size} covered, ${Object.keys(DECLARED.entries).length} declared`);
 console.log(`  link types   ${linkRules.size} with rules — ${COVERED_LINKS.size} covered, ${Object.keys(DECLARED.links).length} declared`);
+const underDeclaration =
+  declaredRules(DECLARED.entries, entryRules) + declaredRules(DECLARED.links, linkRules);
 console.log(`  rules        ${sum(entryRules) + sum(linkRules)} assertable, of which `
-  + `${declaredRules(DECLARED.entries, entryRules) + declaredRules(DECLARED.links, linkRules)} sit under a declaration`);
+  + `${underDeclaration} ${underDeclaration === 1 ? 'sits' : 'sit'} under a declaration`);
 console.log(`  (This counts what the corpus is ASKED for, not what it ran. The run's own`);
 console.log(`   total needs a conductor — scripts/validation-corpus/README.md records it.)`);
