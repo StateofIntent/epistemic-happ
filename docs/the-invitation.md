@@ -16,6 +16,17 @@
 > **§1 is ready to paste. §2 and §3 are the parts a person has to decide**
 > — who, and what you ask of them — and they are marked rather than
 > guessed.
+>
+> **ONE DISCLOSURE GAP IS KNOWN AND NOT YET FILLED — see open-work 7.16.**
+> §1 tells an invitee their data is permanent, which is the obligation 7.1
+> names. It says nothing about the possibility that, because every peer
+> stores other peers' data, an invitee in the EU or UK **may be acquiring
+> obligations of their own** rather than only accepting a risk to theirs.
+> That is arguably the larger omission: permanence affects their data,
+> controllership affects their duties. Whether it belongs in §1 depends on
+> where the cohort is and on advice this repository cannot supply, which is
+> why 7.16 is a `[D]` with outside counsel attached rather than a sentence
+> added here.
 
 ---
 
