@@ -9,39 +9,43 @@ on the code, read [README.md](README.md) §6 instead.
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **`v0.2.0`, published 2026-10-12, carries `protocol_version: 9`** — the
-> eighteen link validation rules of SPEC.md §5.19, the refusal of entry
-> updates, and the two new entry fields. For the first time since
-> 2026-09-04, what you download implements what this repository describes,
-> and building from source is no longer the only way to run the current
-> protocol.
+> **`v0.3.0`, published 2026-10-24, carries `protocol_version: 11`** — the
+> version this repository actually describes, including SPEC.md §5.19's
+> eighteen link validation rules, the refusal of entry updates, and all five
+> autopoiesis stages. Building from source is not the only way to run the
+> current protocol.
 >
-> **`v0.1.1` is still a different network, and always will be.** The DNA hash
-> is computed over the integrity zome (README §11.1), the zome forked six
-> times between the two releases, and only peers sharing that hash share a
-> DHT. So a `v0.1.1` install is not broken; it is a separate, older network
-> that implements none of the rules above. **Auto-update will not move anyone
-> across** — `0.1.x` → `0.2.0` is a minor bump and electron-updater only
-> offers semver-compatible releases, so anyone already running `0.1.x`
-> must download `v0.2.0` by hand. They keep their old data directory; the two
-> versions install side by side.
+> **Download the latest release and not `v0.2.0`.** `v0.2.0` (2026-10-12)
+> carries `protocol_version: 9`; the integrity zome has forked twice since,
+> so it is now two forks behind this repository rather than level with it.
+> It remains available and it is not broken — it is an older network.
+>
+> **Every minor version is a different network, and always will be.** The DNA
+> hash is computed over the integrity zome (README §11.1), so `0.1.x`, `0.2.x`
+> and `0.3.x` are three separate DHTs and only peers sharing a hash gossip at
+> all. **Auto-update will not move anyone across** — each step is a minor bump
+> and electron-updater only offers semver-compatible releases, so anyone
+> already running `0.1.x` or `0.2.x` must download `v0.3.0` by hand. They keep
+> their old data directory; the versions install side by side.
 >
 > **The hash in the release notes is the artifact's, not your cell's.** The
 > desktop app installs the bundle with a network seed derived from its version
-> (`Epistemic Resonance-0.2.x`), and the DNA hash covers that seed as well as
-> the zome. So the cell a `v0.2.0` install runs hashes to
-> `uhC0kozkSiLXO9mxkIAVWCRm6Qos6FYnyH65_gMkkP10hXUwtxVX0`, not to the
-> `uhC0kUHSi…` the notes quote. Every desktop install derives the same seed, so
+> (`Epistemic Resonance-0.3.x`), and the DNA hash covers that seed as well as
+> the zome. So the cell a `v0.3.0` install runs hashes to
+> `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`, not to the
+> `uhC0kb-i4…` the notes quote. Every desktop install derives the same seed, so
 > they are all on one network — but a conductor you run yourself from this
 > repository uses no seed and therefore **will not see desktop peers**, which
 > looks exactly like broken propagation if you test one against the other.
 >
-> This notice replaces one that said the opposite, and said it correctly at the
-> time: for five weeks the only published release was `v0.1.1` and this file
-> told readers to download it while describing a protocol it does not
-> implement. The release is what changed; the failure mode it warned about is
-> permanent, and §9 treats a stale instruction as a defect rather than a
-> detail.
+> This notice has now been wrong in both directions, and the second way is the
+> instructive one. For five weeks it told readers to download `v0.1.1` while
+> describing a protocol that release did not implement. Then `v0.2.0` closed
+> that gap and this notice was rewritten to say so — and stayed pointed at
+> `v0.2.0` for a day after `v0.3.0` superseded it, because a release was cut
+> and the file that tells strangers what to download was not re-read. The
+> failure mode is permanent even though each particular wording is not, and §9
+> treats a stale instruction as a defect rather than a detail.
 
 ## Running two installs side by side (for release step 3's "against that build")
 
@@ -119,12 +123,30 @@ installs are up.
 work — that is scriptable through the conductor, as above. Only two things: the
 Setup click on first run of each profile, and the second machine.
 
-**ONE THING TO SETTLE BEFORE DOING IT.** `v0.2.0` carries `protocol_version: 9`;
-this repository's `main` is now at **11**. The zome has forked twice since the
-release, so a two-install test against `v0.2.0` validates the packaging of an
-artifact two protocol versions behind what the repository describes — which may
-be exactly what step 3's clause means, or may mean the clause should be
-re-scoped to the next release instead. That is a decision, not a measurement.
+~~**ONE THING TO SETTLE BEFORE DOING IT.**~~ **SETTLED BY THE RELEASE, NOT BY A
+DECISION.** This paragraph asked whether a two-install test against `v0.2.0`
+— `protocol_version: 9` against `main`'s 11 — validated the packaging of the
+protocol this repository describes or of an artifact two forks behind it.
+`v0.3.0` shipped on 2026-10-24 at `protocol_version: 11`, so the question has
+no subject any more: **run the test against `v0.3.0`**, where the packaged
+artifact and `main` are the same protocol and *"against that build"* means the
+build the repository documents.
+
+**WHAT CARRIES OVER TO `v0.3.0` AND WHAT DOES NOT.** The flags, the pinned
+`ADMIN_PORT`, the Setup-click block and the two admin origins are properties of
+the Kangaroo wrapper rather than of the protocol, so they carry. Three things
+change with the version and must not be copied from above:
+
+- the derived seed becomes `Epistemic Resonance-0.3.x`, so the cell a running
+  install hashes to
+  `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`, while the release
+  notes quote the artifact's `uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`;
+- the profile path is under `<version>`, so `0.3.x` profiles are a fresh tree
+  and a machine that has run both carries both;
+- **the launch milestone string changed.** `v0.2.0` logged `Conductor ready.`;
+  `v0.3.0` logs `Connected to admin websocket.` and `Attached app interface
+  port` instead (`READINESS.md` §1). Do not grep for the old string and
+  conclude the conductor never came up.
 
 ## Installing
 
