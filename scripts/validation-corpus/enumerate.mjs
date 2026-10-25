@@ -496,6 +496,12 @@ const SINGLE_PURPOSE_PROBERS = {
   DomainToClaim: 'attempt_false_domain_index',
   MembraneRegistry: 'attempt_false_membrane_registry',
   TaxonomyToSpecies: 'attempt_false_taxonomy_index',
+  // Item 4.5's index, registered WITH the link type rather than after it. A
+  // link type absent from here is classed `needs_prober`, and `needs_prober`
+  // had been driven to zero — so adding a link type without its prober would
+  // have undone that silently and left three rules inventoried as assertable
+  // with nothing able to assert them.
+  DomainToForeignCritique: 'attempt_false_foreign_critique_index',
 };
 
 // Each single-purpose prober must actually EXIST, or this list is the same kind

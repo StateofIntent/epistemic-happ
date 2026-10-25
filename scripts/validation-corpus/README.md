@@ -27,10 +27,18 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 > **MEASURED 2026-10-25, because the figures below it had rotted badly.** This
 > paragraph said *"Ten entry types and TWENTY-FOUR link types — every link type
 > in the zome"* and *"244 checks"*. Taken from the runs themselves rather than
-> recounted by hand: **eighteen entry types, twenty-six link types, 332 checks,
-> 0 failed, 0 skipped** (run `40165642682`). It had been **316** two hours
-> earlier (run `40160703198`); the sixteen new checks are item 1.10's ten
-> settlement link rules with their baselines and coverage lines.
+> recounted by hand, on `main`: **eighteen entry types, twenty-six link types,
+> 332 checks, 0 failed, 0 skipped** (run `40165642682`). It had been **316**
+> two hours earlier (run `40160703198`); the sixteen new checks are item 1.10's
+> ten settlement link rules with their baselines and coverage lines.
+>
+> **ON THIS BRANCH, WHICH IS HELD: nineteen entry types and twenty-seven link
+> types**, adding `foreign_critique` and `DomainToForeignCritique` (item 4.5,
+> `protocol_version: 12`). **346 checks, 0 failed, 0 skipped** (run
+> `40167900253`), with `foreign_critique: 5 of 5` and
+> `DomainToForeignCritique: 4 of 4`. Taken from that run rather than predicted
+> from `main`'s 332, because predicting a total from a neighbouring run is how
+> the figure above came to be 72 behind.
 >
 > **NOTHING GATES THE CHECK TOTAL, which is why it drifted 72 behind.**
 > `replay.mjs` needs a conductor to produce the number, so no static checker
@@ -49,8 +57,12 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 > *"0 failed, 0 skipped"* over them for four days.
 >
 > **AND *"every link type in the zome"* NEEDED THE PRECISION IT LACKED.** The
-> zome declares **31** link types. **26 have validation sites, and all 26 are
-> now covered.** The other five — `CritiqueToEvidence`, `ClaimToEvidence`,
+> zome declares **31** link types on `main` and **32** on this branch, which
+> adds `DomainToForeignCritique`. **26 have validation sites on `main` and 27
+> here, and all of them are covered.** (An earlier draft of this notice, on
+> this branch, said 32 for `main` — counted with a regex loose enough to catch
+> a line that is not a variant. The number was wrong for a day, which is the
+> whole subject of this notice.) The other five — `CritiqueToEvidence`, `ClaimToEvidence`,
 > `MembraneToClaim`, `ClaimToBridgeRecord`, `SpeciesToCritique` — have no
 > `validate_create_link` branch at all and are accepted unconditionally, which
 > is **SPEC §5.17**, stated there deliberately and with its three categories.
@@ -64,9 +76,11 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ~~**Ten entry types and TWENTY-FOUR link types — every link type in the zome,
 with every rule either asserted or declared unreachable with its reason.**~~
-**Eighteen entry types and twenty-six link types** — every link type that has
-a rule — with every rule either asserted or declared with its reason, and that
-is gated rather than asserted (see the notice above). ~~244~~ **332**
+**Nineteen entry types and twenty-seven link types on this held branch**
+(eighteen and twenty-six on `main`) — every link type that has a rule — with
+every rule either asserted or declared with its reason, and that is gated
+rather than asserted (see the notice above). ~~244~~ **346 here, 332 on
+`main`**
 checks, **twenty-three of which need a second agent** — see *A second agent*
 below — and **three of which are driven with no baseline at all**, because a
 valid `AttestationGrant` needs thirty days of prior membership: see *Refusals
