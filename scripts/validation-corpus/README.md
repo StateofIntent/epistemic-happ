@@ -34,9 +34,11 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 >
 > **ON THIS BRANCH, WHICH IS HELD: nineteen entry types and twenty-seven link
 > types**, adding `foreign_critique` and `DomainToForeignCritique` (item 4.5,
-> `protocol_version: 12`). Its own check total is whatever this merge's
-> `conductor` job prints and is recorded here from that run — not predicted
-> from `main`'s, which is how the figure above came to be 72 behind.
+> `protocol_version: 12`). **346 checks, 0 failed, 0 skipped** (run
+> `40167900253`), with `foreign_critique: 5 of 5` and
+> `DomainToForeignCritique: 4 of 4`. Taken from that run rather than predicted
+> from `main`'s 332, because predicting a total from a neighbouring run is how
+> the figure above came to be 72 behind.
 >
 > **NOTHING GATES THE CHECK TOTAL, which is why it drifted 72 behind.**
 > `replay.mjs` needs a conductor to produce the number, so no static checker
@@ -77,8 +79,8 @@ with every rule either asserted or declared unreachable with its reason.**~~
 **Nineteen entry types and twenty-seven link types on this held branch**
 (eighteen and twenty-six on `main`) — every link type that has a rule — with
 every rule either asserted or declared with its reason, and that is gated
-rather than asserted (see the notice above). ~~244~~ **332 on `main`; this
-branch's own total is recorded in the notice above**
+rather than asserted (see the notice above). ~~244~~ **346 here, 332 on
+`main`**
 checks, **twenty-three of which need a second agent** — see *A second agent*
 below — and **three of which are driven with no baseline at all**, because a
 valid `AttestationGrant` needs thirty days of prior membership: see *Refusals
