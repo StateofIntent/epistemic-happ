@@ -92,6 +92,22 @@ jobs:
       - name: ci-scope — the docs-only gate cannot clear a diff that touches code
         run: node scripts/check-ci-scope.mjs
 
+      # SEVENTH IN THE FAMILY, AND THE SECOND THAT GUARDS A GREEN RATHER THAN A
+      # RED. `replay.mjs` reports "0 failed, 0 skipped" and a line reading
+      # "N of N" for every type it is ASKED about — and its per-type loop
+      # iterates the coverage lists, so a type absent from them is never looked
+      # at and the green says nothing about its rules. Its orphan check fires
+      # for a case naming a missing rule, which by construction cannot fire for
+      # a rule naming no case.
+      #
+      # That is what happened at `protocol_version: 11`: settlement's three
+      # entry types went into COVERED, its two link types did not go into
+      # COVERED_LINKS, and ten assertable rules sat undemanded under a green
+      # corpus for four days. This is the thing that would have said so, in
+      # milliseconds, on the pull request that did it.
+      - name: corpus-coverage — no type with rules is demanded by nothing
+        run: node scripts/check-corpus-coverage.mjs
+
       # Newest in that family, and the only one that guards a harness's own
       # ASSERTION rather than a document, a count or a workflow. Added
       # 2026-10-22, after a measurement rather than a worry: `past-cone.mjs`
