@@ -25,8 +25,38 @@ preventive — claims become unreachable by traversal rather than refused. The
 honest limit, stated in README §2.3: *containment holds for what you traverse
 to, and nothing for what you look up.* A sybil flood pollutes
 `get_claims_by_domain` in full. This is a design position, taken consciously,
-and the right shape of a fix is understood to be a read-layer lens rather than
+and the right shape of a fix was understood to be a read-layer lens rather than
 friction on the generative act.
+
+**That lens now exists, and what it protects is narrower than "sybils are
+expensive".** `get_membrane_claims` (2026-10-25) takes an optional
+`AttestationPolicy` and counts its own drops; `get_discourse_health` takes the
+same. Stated precisely, because the difference matters to anyone relying on it:
+
+> **A reader who names a root set is unaffected by a sybil flood. A reader who
+> does not is unprotected.** Nothing in between, and nothing automatic.
+
+The lens is opt-in and defaults to `None`, which is the unfiltered read exactly
+— deliberately, since a filter applied by default would be the canonical
+comparative signal Invariant #1 rules out (README §4.4: a lens is one *the user
+aims and can see, never one that aims itself*). So the protection is real and it
+is **entirely contingent on a reader having named roots.**
+
+**Sybil creation is not made expensive by any of this, and two mechanisms that
+look like they do are weaker than they appear.** `AttestationGrant` carries a
+thirty-day tenure bar and a five-per-week budget, but `direct_attesters_of`
+**unions** that source with a free one — a `SynapticLink` attests its target's
+author, and critique creation gates on a per-agent rate limit alone — and a set
+union costs what its cheapest member costs. K minted keys critiquing an agent's
+claims make it appear attested by K distinct attesters without the tenure bar
+ever being consulted. Separately, `min_attestations` with
+`require_attestation_from: None` filters **nothing** (`is_agent_attested`
+returns `true`; the lens reports itself as `INERT`), because the quantity it
+would count is the free one. **The root set is load-bearing precisely because
+it is the only input a minted key cannot obtain for itself** — there is no
+transaction that adds you to somebody else's. Full reasoning in
+`docs/sybil-cost-and-the-root-set.md`; corrected here 2026-10-25/26 after
+open-work 3.7 found the opposite claim on the record.
 
 **A modified coordinator zome stays on the network.** Coordinator zomes are not
 part of the DNA hash and are hot-swappable (`SPEC.md` §11.1). So the integrity

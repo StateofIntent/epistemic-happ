@@ -4092,6 +4092,44 @@ pub fn get_twitter_replies_for_claim(claim_hash: EntryHash) -> ExternResult<Vec<
 // refinement applied to the right to confer attestation, not to the act
 // of critiquing itself — direct_attesters_of (below) unions this source
 // with the existing SynapticLink-derived one.
+//
+// AND THE UNION IS WHERE THOSE TWO COSTS STOP MATTERING, WHICH IS THE
+// MOST IMPORTANT SENTENCE IN THIS COMMENT. Everything above describes
+// what it costs to grant an attestation THROUGH THIS SOURCE. It says
+// nothing about what it costs to BE attested, because
+// direct_attesters_of unions this source with the SynapticLink-derived
+// one — and a set union costs what its CHEAPEST member costs.
+//
+// The cheapest member is free. A SynapticLink attests its target's
+// author; create_critique makes one; critique creation gates on
+// check_critique_friction (20 per rolling hour, PER AGENT) and nothing
+// else — no membership, no tenure, no attestation of the critic. So to
+// make an agent appear attested by K distinct attesters: mint K keys
+// (key generation is not a DHT op and nothing rate-limits it) and have
+// each critique one of that agent's claims. The thirty-day tenure bar is
+// never consulted, because that attack never touches this source.
+//
+// This was asserted the other way round in open-work 3.7 — that the
+// tenure bar and budget mean "a thousand minted keys buy nothing" — and
+// corrected on 2026-10-25. The premise was already on the record and the
+// conclusion had not been drawn: item 7.12 notes that "a critique's
+// SynapticLink attests its target's author, globally and free" as an
+// aside about test setup, the harness having taken the cheap path
+// precisely because grant_attestation's tenure made the costly one
+// unreachable.
+//
+// WHAT THIS SOURCE IS STILL FOR. The costs above are real and they
+// bound the right thing: they make conferring attestation deliberate for
+// an agent who HAS tenure in a membrane, which is what makes an
+// AttestationGrant worth more than a critique as a signal. What they do
+// not do, and were never able to do, is make attestation scarce in
+// aggregate while a free source is unioned in.
+//
+// WHAT ACTUALLY BOUNDS A SYBIL is the reader's root set
+// (AttestationPolicy::require_attestation_from), because it is the only
+// input a minted key cannot obtain for itself: there is no transaction
+// that adds you to somebody else's root set. See that field's doc and
+// docs/sybil-cost-and-the-root-set.md.
 // ============================================================================
 
 const ATTESTATION_GRANT_WINDOW_SECS: i64 = 7 * 24 * 3600;
