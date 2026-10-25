@@ -1,0 +1,147 @@
+# The invitation — release step 4
+
+> ## STATUS: THE OBLIGATIONS ARE DISCHARGED HERE. THE CHOICES ARE NOT MADE.
+>
+> Release step 4 is *"invite ten people on desktop"*, and as of 2026-10-26
+> it has no structural blocker left: `v0.3.0` ships `protocol_version: 11`,
+> two packaged installs exchanged claims in both directions (item 1.4), and
+> 7.1 decided what is being vouched for.
+>
+> **What was missing was an artifact.** 7.1's commitment obliges "the
+> permanence disclosure reaching every invitee *before* they write
+> anything — because under Invariant 6 that disclosure is the only
+> protection they get," and there was nothing written to send. This file is
+> that, plus the two other things step 4 names.
+>
+> **§1 is ready to paste. §2 and §3 are the parts a person has to decide**
+> — who, and what you ask of them — and they are marked rather than
+> guessed.
+
+---
+
+## 1. The message
+
+Everything in this section is determined by decisions already taken. It is
+written to be sent as-is, or edited for tone but not for content.
+
+---
+
+> I've built something and I'd like you to try it. Before you do, there are
+> three things I'm obliged to tell you, and one of them is permanent.
+>
+> **Nothing you write in it can ever be deleted.** Not by you, not by me,
+> not by anyone. There is no delete button, no edit, and no admin who can
+> remove it for you — the capability is absent from the protocol rather
+> than withheld. If you publish a claim and regret it, the only remedy is
+> to publish a *retraction*, which adds a record saying you no longer
+> stand behind it. The original stays readable.
+>
+> That is a deliberate design property, not a missing feature, and it is
+> the single thing I most want you to understand before you type anything.
+> **Write as though it is public and permanent, because it is both.**
+>
+> **Your data will not survive the next upgrade, and that upgrade is
+> planned.** Each minor version is a separate network that never talks to
+> the previous one. Two such breaks have already happened, and a third is
+> planned rather than hypothetical. So what you publish now is permanent
+> *within this network* and will not carry over to the next one. Both of
+> those are true at once, and neither cancels the other.
+>
+> **It is honest about what it does, and it is not secure against someone
+> trying.** I can vouch for the first: the documentation says accurately
+> what the protocol does and does not do, and where I have found it wrong
+> I have corrected it. I explicitly cannot vouch for the second. Anyone
+> can generate any number of identities, and a determined person can run a
+> modified client. For a handful of people who know each other that is
+> theoretical; I would not want you to learn it later from someone else.
+>
+> **What it is.** A place to publish claims and critique each other's,
+> where disagreement is the point rather than a failure mode. There are no
+> scores, no rankings and no reputation numbers anywhere, for anyone — that
+> is the first thing the design commits to. Critiques are rate-limited on
+> purpose, so disagreeing costs something.
+>
+> **What to expect mechanically**, because this is the thing everyone
+> reports as "it's broken" and it isn't:
+>
+> - When we are both online, things appear in **seconds**.
+> - If you close your laptop and come back, expect to wait **five to twelve
+>   minutes** to catch up — and longer the longer you were away. The app
+>   looks stale during that time. It is not; it is syncing.
+> - You will see **nothing at all** until you type a domain name and load
+>   it. An empty screen on first open is correct.
+>
+> **Installing** is at `INSTALL.md`. Two things worth knowing in advance:
+> it is not code-signed, so macOS and Windows will both object and the file
+> tells you the exact incantation; and you must click through a **Setup**
+> screen once, because nothing starts until you do.
+>
+> Install the **same version** I am on — different versions are different
+> networks and see nothing of each other. I am on `v0.3.0`.
+>
+> If you hit something that looks wrong, tell me. Most of what I know about
+> how this behaves came from someone hitting it.
+
+---
+
+## 2. Who — and this is a decision, not a step
+
+Step 4 says ten. **Ten is a proxy, not a threshold:** its stated purpose is
+*"enough to find what three conductors on one machine cannot, few enough
+that the propagation latency can be explained to each of them by hand."*
+
+So the number is doing two jobs — enough **independent operators, machines,
+networks and usage patterns** to surface what a single host cannot, and few
+enough to hand-hold. Four real people on four connections serve both better
+than ten identities on one.
+
+**Open-work 7.13 is the live question here** — whether an agent may be one
+of the ten. Its conclusion: agents *instead of* people fails on three
+counts (7.1's honesty commitment, step 4's purpose, and 3.5's one-actor
+problem), while agents *alongside* declared people, or ten people each
+running an agent, fail none. If ten humans is the binding constraint, the
+recommendation on record is **fewer than ten, declared** — because 7.5 and
+the scalability work gate on step 4 having produced **real reports**, not
+on a headcount.
+
+**Not decided here:** who, how many, and whether the cohort is mixed.
+
+## 3. What you ask of them — also a decision
+
+The protocol has an opinion about this that the invitation above
+deliberately does not act on. Founding a domain *"costs nothing. Instead
+you state what you promise, and what the domain will ask of anyone who
+works in it"* — an entry condition instead of a fee.
+
+So there is a real choice about whether invitees are asked for anything at
+all:
+
+- **Nothing.** They try it and report what breaks. Simplest, and §1 as
+  written assumes this.
+- **A promise.** They publish a `Constitution` — what they commit to when
+  they write here. This is the mechanism the protocol actually offers, and
+  it makes the cohort participants rather than testers. It is also
+  permanent under Invariant 6, so asking for it is asking for something
+  real.
+- **A domain each.** Heavier, and probably premature before anyone has
+  used it.
+
+**7.1 declined "invite as a pure experiment"** on the grounds that it
+*"gets testers rather than users and teaches less, since people behave
+differently when told nothing counts."* That argues against the first
+option, and is the reason this section exists rather than defaulting.
+
+## 4. What this file is not
+
+It is not a launch announcement, and step 4 is explicit that this is ten
+people rather than ten thousand. It is also not a substitute for
+`INSTALL.md`, which carries the install path, the four things to know, and
+the troubleshooting — all re-verified on 2026-10-26, including two
+corrections that would otherwise have told an invitee their conductor had
+failed when it had not.
+
+**The one obligation this file exists to discharge** is 7.1's: that the
+permanence disclosure reaches every invitee *before* they write. If the
+message in §1 is sent after someone has already published, that obligation
+has not been met, and under Invariant 6 there is no way to go back and meet
+it.
