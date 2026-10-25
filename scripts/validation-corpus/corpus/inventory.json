@@ -18,7 +18,7 @@
   "prechecks_without_validator": [
     {
       "in_fn": "assert_expertise",
-      "line": 3363,
+      "line": 3414,
       "condition": "if trace.agent != author",
       "refuses_with": "Can only assert expertise backed by your own WorldlineTrace.",
       "reached_by": [
@@ -30,7 +30,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 7139,
+      "line": 7190,
       "condition": "if input.prediction.trim().is_empty()",
       "refuses_with": "prediction must not be empty",
       "reached_by": [
@@ -42,7 +42,7 @@
     },
     {
       "in_fn": "pre_register",
-      "line": 7142,
+      "line": 7193,
       "condition": "if input.salt.trim().is_empty()",
       "refuses_with": "salt must not be empty; without it a guessable prediction is recoverable from its hash",
       "reached_by": [
@@ -55,9 +55,9 @@
   ],
   "by_class": {
     "honest": 28,
-    "crafted": 169,
+    "crafted": 172,
     "deferred": 23,
-    "needs_prober": 3,
+    "needs_prober": 0,
     "needs_extern": 0,
     "remote": 4,
     "passthrough": 12,
@@ -1299,7 +1299,8 @@
       "formatted": false,
       "guard": "if &fc.witnessed_by != action.author()",
       "class": "crafted",
-      "entry": "foreign_critique"
+      "entry": "foreign_critique",
+      "write_path": "attempt_raw_foreign_critique(ForeignCritique)"
     },
     {
       "line": 2280,
@@ -1309,7 +1310,8 @@
       "formatted": false,
       "guard": "if fc.domain.is_empty()",
       "class": "honest",
-      "entry": "foreign_critique"
+      "entry": "foreign_critique",
+      "write_path": "attempt_raw_foreign_critique(ForeignCritique)"
     },
     {
       "line": 2283,
@@ -1319,7 +1321,8 @@
       "formatted": false,
       "guard": "if fc.foreign_content.is_empty()",
       "class": "honest",
-      "entry": "foreign_critique"
+      "entry": "foreign_critique",
+      "write_path": "attempt_raw_foreign_critique(ForeignCritique)"
     },
     {
       "line": 2286,
@@ -1329,7 +1332,8 @@
       "formatted": false,
       "guard": "if fc.remote_network_label.is_empty()",
       "class": "honest",
-      "entry": "foreign_critique"
+      "entry": "foreign_critique",
+      "write_path": "attempt_raw_foreign_critique(ForeignCritique)"
     },
     {
       "line": 2292,
@@ -1339,7 +1343,8 @@
       "formatted": false,
       "guard": "if fc.read_through.is_empty()",
       "class": "honest",
-      "entry": "foreign_critique"
+      "entry": "foreign_critique",
+      "write_path": "attempt_raw_foreign_critique(ForeignCritique)"
     },
     {
       "line": 2557,
@@ -2728,7 +2733,7 @@
       "formatted": false,
       "guard": "} else if link_type == LinkTypes::DomainToForeignCritique",
       "link_type": "DomainToForeignCritique",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -2750,7 +2755,7 @@
       "formatted": false,
       "guard": null,
       "link_type": "DomainToForeignCritique",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {
@@ -2761,7 +2766,7 @@
       "formatted": false,
       "guard": "if &fc.witnessed_by != action.author()",
       "link_type": "DomainToForeignCritique",
-      "class": "needs_prober",
+      "class": "crafted",
       "entry": "create_link"
     },
     {

@@ -503,6 +503,33 @@ async function otherAgentFixtures() {
     "the other agent's CritiqueSpecies",
   );
 
+  // Agent 2's own import, for DomainToForeignCritique's witness rule. Through
+  // the RAW prober rather than `import_foreign_critique`, and for once that is
+  // not about reaching a field: the real extern needs a Membrane argument and
+  // derives the domain from it, so driving it here would couple this fixture to
+  // agent 2's membrane for no gain. `witnessed_by` is agent 2's either way,
+  // which is the only property the rule is about.
+  const otherForeignAction = await callOther('attempt_raw_foreign_critique', {
+    witnessed_by: otherKey,
+    domain,
+    foreign_content: 'corpus foreign critique, witnessed by the OTHER agent',
+    remote_network_label: 'corpus-remote-net-other',
+    remote_membrane_ref: 'corpus-remote-ref-other',
+    foreign_author_ref: 'corpus-foreign-author-other',
+    foreign_target_ref: 'corpus-foreign-target-other',
+    foreign_mode: 'Methodological',
+    read_through: 'unfiltered (no policy supplied)',
+    confidence: 'Moderate',
+    imported_at: nowMicros(),
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_foreign_critiques_by_domain', domain);
+      return found.length ? true : null;
+    },
+    "the other agent's ForeignCritique",
+  );
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
     mewAction, traceAction, preRegAction, revelationAction,
@@ -512,6 +539,7 @@ async function otherAgentFixtures() {
     parentSpecies: otherParentSpecies, parentSpeciesEntry: otherParentEntry,
     childSpecies: otherChildSpecies, critiqueAction: otherCritique,
     antibodyAction: otherAntibody,
+    foreignAction: otherForeignAction,
     preRegPrediction: OTHER_PREDICTION, preRegSalt: OTHER_SALT,
   };
   return _others;
@@ -588,6 +616,11 @@ const COVERED = [
   // and the coverage loop reports "0 of 0" while cases run and gate nothing
   // (finding 10's shape).
   'assessment', 'settlement_policy', 'settlement_status',
+  // Item 4.5, protocol_version 12. Added WITH the entry type for the reason
+  // settlement's three were: a type absent from this list has its rules
+  // demanded by nothing, and the coverage loop reports "0 of 0" while cases
+  // run and gate nothing.
+  'foreign_critique',
 ];
 
 // --- Rules that are inventoried as assertable and are NOT reachable from this
@@ -1682,6 +1715,55 @@ const entries = [
         rule: 'ExternalCritique linked claim not found.',
         expect: 'deferral',
         mutate: (e) => { e.linked_holochain_claim = danglingHash('entry', 124); },
+      },
+    ],
+  },
+  {
+    entry: 'foreign_critique',
+    label: 'ForeignCritique',
+    // THE RAW PROBER, AND IT IS NOT OPTIONAL HERE. `import_foreign_critique`
+    // derives four of the five fields these rules are about — `witnessed_by`
+    // from agent_info, `domain` from the membrane it is handed, `read_through`
+    // from describe_method, `imported_at` from sys_time — so through the real
+    // extern an empty domain or a mismatched witness is unconstructible and
+    // four of these five refusals could never be watched happening.
+    fn: 'attempt_raw_foreign_critique',
+    chainNote: 'nothing — every reference in this entry points at another network',
+    // NO SETUP, and that is the entry type's whole point rather than an
+    // economy. Every reference here is an opaque string about a network this
+    // DHT cannot see, so there is nothing local to publish first and nothing
+    // for validation to resolve. Compare ExternalCritique directly above,
+    // which needs a real Claim to link back to.
+    baseline: () => ({
+      witnessed_by: myKey,
+      domain: `CorpusForeign${Date.now()}`,
+      foreign_content: 'The control group was self-selected.',
+      remote_network_label: 'corpus-remote-net',
+      remote_membrane_ref: 'corpus-remote-membrane-ref',
+      foreign_author_ref: 'corpus-foreign-author',
+      foreign_target_ref: 'corpus-foreign-target',
+      foreign_mode: 'Methodological',
+      read_through: 'unfiltered (no policy supplied)',
+      confidence: 'Moderate',
+      imported_at: nowMicros(),
+    }),
+    cases: [
+      // WHICH OF THE TWO PEOPLE THIS RULE IS ABOUT: `witnessed_by` is the local
+      // agent who imported, `foreign_author_ref` an unverifiable string from
+      // elsewhere. Only the first is bindable, which is why only it is bound.
+      {
+        rule: 'ForeignCritique witnessed_by must match action author. This is the IMPORTING agent, not the foreign author in foreign_author_ref — see the entry type.',
+        mutate: (e) => { e.witnessed_by = danglingHash('agent', 141); },
+      },
+      { rule: 'ForeignCritique domain cannot be empty.', mutate: (e) => { e.domain = ''; } },
+      { rule: 'ForeignCritique foreign_content cannot be empty.', mutate: (e) => { e.foreign_content = ''; } },
+      {
+        rule: 'ForeignCritique remote_network_label cannot be empty: an import that does not say where it came from is indistinguishable from an assertion.',
+        mutate: (e) => { e.remote_network_label = ''; },
+      },
+      {
+        rule: 'ForeignCritique read_through cannot be empty: a filtered import presented without its lens is a lensed reading wearing a neutral face.',
+        mutate: (e) => { e.read_through = ''; },
       },
     ],
   },
@@ -3062,6 +3144,66 @@ const linkEntries = [
     }),
     cases: [
       { rule: 'SynapticLink tag must contain at least 4 bytes (f32 conductance).', mutate: (l) => { l.tag = [0x00, 0x00, 0x80]; } },
+    ],
+  },
+  {
+    linkType: 'DomainToForeignCritique',
+    label: 'DomainToForeignCritique',
+    // ITS PAYLOAD TYPES `target` AS AnyLinkableHash AND NOT ActionHash, which
+    // is the one way this prober differs from `attempt_false_domain_index`'s
+    // shape. One of the four rules is "must target an ActionHash", and a
+    // payload typed as ActionHash would make that rule unreachable by
+    // construction — inventoried as assertable with nothing able to assert it,
+    // which is the silent gap this whole corpus exists to refuse.
+    fn: 'attempt_false_foreign_critique_index',
+    chainNote: "this agent's own ForeignCritique, plus a Constitution of the wrong entry type",
+    setup: async () => {
+      const domain = `CorpusLinkD2F${Date.now()}`;
+      const foreignAction = await call('attempt_raw_foreign_critique', {
+        witnessed_by: myKey,
+        domain,
+        foreign_content: 'corpus foreign critique, for the index rules',
+        remote_network_label: 'corpus-remote-net',
+        remote_membrane_ref: 'corpus-remote-membrane-ref',
+        foreign_author_ref: 'corpus-foreign-author',
+        foreign_target_ref: 'corpus-foreign-target',
+        foreign_mode: 'Methodological',
+        read_through: 'unfiltered (no policy supplied)',
+        confidence: 'Moderate',
+        imported_at: nowMicros(),
+      });
+      const constitution = await call('publish_constitution', {
+        agent: myKey,
+        promises: [{ action: 'index imports honestly', domain, modality: null }],
+        conditions: [], published_at: nowSecs(), expires_at: null,
+      });
+      return { domain, foreignAction, constitution, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({ target: ctx.foreignAction, domain: ctx.domain }),
+    cases: [
+      // An ENTRY hash where an action hash is required. This is the case the
+      // prober's AnyLinkableHash parameter exists for.
+      {
+        rule: 'A DomainToForeignCritique link must target an ActionHash.',
+        mutate: (l) => { l.target = danglingHash('entry', 142); },
+      },
+      {
+        rule: "A DomainToForeignCritique link's target record was not found.",
+        expect: 'deferral',
+        mutate: (l) => { l.target = danglingHash('action', 143); },
+      },
+      {
+        rule: 'A DomainToForeignCritique link must point at a ForeignCritique.',
+        mutate: (l, ctx) => { l.target = ctx.constitution; },
+      },
+      // THE WITNESS RULE, and note what it does NOT need. There is no base rule
+      // on this link type — a ForeignCritique's domain is its own field and the
+      // anchor is derived here — so unlike DomainToClaim's owner case this one
+      // needs no coordination of agent 2's domain. Only the author differs.
+      {
+        rule: "A DomainToForeignCritique link may only be created by the import's own witness. Indexing somebody else's import under a domain is how one agent would put another's name on a reading they never made.",
+        mutate: (l, ctx) => { l.target = ctx.others.foreignAction; },
+      },
     ],
   },
 ];

@@ -2256,6 +2256,57 @@ pub fn attempt_raw_external_critique(critique: ExternalCritique) -> ExternResult
     create_entry(EntryTypes::ExternalCritique(critique))
 }
 
+/// Raw-payload prober for `ForeignCritique`, item 4.5's entry type.
+///
+/// WHY `import_foreign_critique` CANNOT DRIVE THESE RULES. It derives four of
+/// the fields the rules are about — `witnessed_by` from `agent_info()`,
+/// `domain` from the membrane it is handed, `read_through` from
+/// `describe_method`, `imported_at` from `sys_time()` — so through that path an
+/// empty domain or a mismatched witness is unconstructible, and four of the
+/// five refusals below could never be watched happening. Same terms as
+/// `attempt_raw_external_critique` directly above: the whole struct is the
+/// caller's, so validation is the only thing standing between a hostile client
+/// and the DHT, which is exactly the claim worth testing.
+#[hdk_extern]
+pub fn attempt_raw_foreign_critique(critique: ForeignCritique) -> ExternResult<ActionHash> {
+    create_entry(EntryTypes::ForeignCritique(critique))
+}
+
+/// `target` is an `AnyLinkableHash` RATHER THAN AN `ActionHash`, and that is
+/// the whole reason this payload is not shaped like
+/// `FalseDomainIndexPayload`'s. One of the four rules is *"must target an
+/// ActionHash"*, and a payload typed as `ActionHash` makes it unreachable by
+/// construction — the rule would be inventoried as assertable and no case
+/// could ever drive it, which is the silent shape of gap this corpus exists to
+/// refuse.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FalseForeignCritiqueIndexPayload {
+    pub target: AnyLinkableHash,
+    pub domain: String,
+}
+
+/// Negative-path prober for the by-domain foreign-critique index, on the same
+/// terms as `attempt_false_domain_index`: it derives the real anchor from
+/// `domain`, so the only thing a caller can get wrong is what the link points
+/// at — which is what three of this link type's four rules are about.
+///
+/// Not an attack surface. Every call that would gain anything is refused by
+/// `validate_create_link`, and that is the point: an index whose validation is
+/// untested is a list anyone can write to. If one of these ever SUCCEEDS, the
+/// foreign-critique index has become a list rather than an index.
+#[hdk_extern]
+pub fn attempt_false_foreign_critique_index(
+    payload: FalseForeignCritiqueIndexPayload,
+) -> ExternResult<ActionHash> {
+    let anchor = domain_anchor_hash(&payload.domain)?;
+    create_link(
+        anchor,
+        payload.target,
+        LinkTypes::DomainToForeignCritique,
+        LinkTag::new(Vec::<u8>::new()),
+    )
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FalseDomainIndexPayload {
     pub claim_action: ActionHash,
