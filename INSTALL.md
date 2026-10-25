@@ -289,11 +289,19 @@ is usable by two people at all. **This paragraph said "untested" for weeks
 after it stopped being true**, which is worth knowing about a document you
 are reading before you install something.
 
-What is still unverified is **two desktop installs** specifically: every
+~~What is still unverified is **two desktop installs** specifically: every
 crossing above used conductors run from the repository, not the packaged
-app. The transport is the same; the packaging is not. So if you and a friend
-both install this and never see each other's claims, that is still worth
-reporting — but it is no longer the likeliest explanation.
+app.~~ **THAT IS NO LONGER TRUE, AS OF 2026-10-26: two packaged `v0.3.0`
+installs on two machines exchanged claims in BOTH directions** — the last
+thing about this that had never been tested, because every earlier crossing
+used conductors run from the repository, which declare no network seed and
+therefore cannot see a desktop peer at all. A claim published on one appeared
+on the other on its first refresh, and a second claim sent the other way
+appeared in a domain the receiving machine had loaded and seen empty first.
+
+So if you and a friend both install this and never see each other's claims,
+that is now **unexpected** and worth reporting — check first that you are
+both on exactly the same release, which is by far the likeliest cause.
 
 **Peer discovery runs on `dev-test-bootstrap2.holochain.org`.** That is
 Holochain's own development and testing infrastructure. It is not run by
@@ -479,10 +487,11 @@ Two things you will notice are missing, and both are deliberate:
   release — different versions mean different networks and will not see each
   other at all — and since `0.1.x`, `0.2.x` and `0.3.x` are three separate
   networks, "different versions" includes anyone who has not upgraded. If you
-  are on the same release, cross-network discovery itself is **measured
-  working** (see the top of this page), so a failure is worth reporting rather
-  than expected — most likely in the packaged-app case, which is the half that
-  has not been verified.
+  are on the same release, cross-network discovery is **measured working**
+  (see the top of this page) **and so is the packaged app specifically, as of
+  2026-10-26** — two installs on two machines exchanged claims both ways. That
+  was the last unverified half, so a failure here is now unexpected rather
+  than likely, and worth reporting.
 - **It was working and now seems stale.** See the backoff note above.
 - **The same release looks different on two of your machines** — a white page
   with muted green on one, a dark page with brighter green on the other. Both
