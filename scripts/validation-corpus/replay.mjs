@@ -1954,7 +1954,13 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   'MewToBridgeRecord',
   'CritiqueToSpecies', 'SpeciesToParent', 'TargetToCritique', 'TargetToAntibody',
   'TaxonomyToSpecies', 'AgentToMembrane', 'Reinforcement', 'SynapticLink',
-  'AttestationGrant'];
+  'AttestationGrant',
+  // Item 4.5, protocol_version 12. The entry type going into COVERED is not
+  // enough and the first run proved it: the link cases ran and passed, and the
+  // orphan check still failed, because `inventoriedLinks` is built from
+  // COVERED_LINKS — so four cases naming four real rules looked like four
+  // cases naming rules the zome no longer produces. Both lists, or neither.
+  'DomainToForeignCritique'];
 
 const linkEntries = [
   {
