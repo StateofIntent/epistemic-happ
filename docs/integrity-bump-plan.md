@@ -35,10 +35,21 @@ types are **position-indexed**, so a new one must be *appended* to
 `EntryTypes`. Inserting above an existing variant renumbers everything after it
 and silently reinterprets stored entries. Every addition below goes at the end.
 
-Current state on `main`: `PROTOCOL_VERSION = 11`, sixteen entry types. The held
-4.5 branch (PR #350) stands at **12 and seventeen**, and that number is
+Current state on `main`, **measured 2026-10-25 from `dna/integrity/src/lib.rs`
+rather than carried forward**: `PROTOCOL_VERSION = 11`, **nineteen** entry
+types and **thirty-one** link types. The held 4.5 branch (PR #350) stands at
+**12, twenty and thirty-two**, and that number is
 provisional — if 4.1, 4.2 or 4.3 join the same cut, 12 is shared rather than
 sequential. One bump, one number.
+
+> **This paragraph said "sixteen entry types" and "12 and seventeen" until
+> 2026-10-25, and the sentence contradicted itself.** Sixteen was the count
+> before settlement; `protocol_version: 11` IS settlement, and it appended
+> three entry types (`Assessment`, `SettlementPolicy`, `SettlementStatus`) and
+> two link types. So the version and the count beside it could not both have
+> been true, and the figure for the held branch was wrong by the same three.
+> The numbers above are now read from the enums, which is the only way they
+> stay right: nothing gates a count written in prose.
 
 ---
 

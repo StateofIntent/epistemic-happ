@@ -49,13 +49,33 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 > *"0 failed, 0 skipped"* over them for four days.
 >
 > **AND *"every link type in the zome"* NEEDED THE PRECISION IT LACKED.** The
-> zome declares **31** link types. **26 have validation sites, and all 26 are
-> now covered.** The other five — `CritiqueToEvidence`, `ClaimToEvidence`,
-> `MembraneToClaim`, `ClaimToBridgeRecord`, `SpeciesToCritique` — have no
-> `validate_create_link` branch at all and are accepted unconditionally, which
-> is **SPEC §5.17**, stated there deliberately and with its three categories.
-> They are not an oversight and not this corpus's to cover: there is no rule to
-> assert.
+> zome declares **31** link types. **27 have a `validate_create_link` branch,
+> and those 27 are exactly the 27 the coordinator writes** — checked both ways
+> on 2026-10-25. The other four — `CritiqueToEvidence`, `ClaimToEvidence`,
+> `MembraneToClaim`, `SpeciesToCritique` — have no branch at all and are
+> accepted unconditionally, which is **SPEC §5.17**, stated there deliberately.
+> They are not an oversight and not this corpus's to cover: nothing creates
+> them, and there is no rule to assert.
+>
+> **THE INVENTORY NAMES 26, NOT 27, AND THAT IS NOT A COVERAGE HOLE.**
+> `ClaimToBridgeRecord` appears in no site because it shares one branch with
+> `MewToBridgeRecord` — `else if link_type == A || link_type == B` — and
+> `enumerate.mjs` attributes a branch to the FIRST `LinkTypes::` its regex
+> finds on the line. So all **seven** of that branch's rules are filed under
+> `MewToBridgeRecord`, which IS in `COVERED_LINKS`, so the per-type loop
+> demands all seven and `replay.mjs` asserts all seven — including the one
+> whose message names `ClaimToBridgeRecord`, reached by a case that switches
+> `kind` precisely because the rule under test IS the type discrimination.
+> `replay.mjs` records this at its bridge spec. **Nothing is untested; one
+> type is counted under its sibling's name.**
+>
+> **This notice said the opposite until 2026-10-25**, listing
+> `ClaimToBridgeRecord` among types with "no `validate_create_link` branch at
+> all". It has a branch, seven rules and a case. The error came from reading
+> the inventory's **26** as a statement about the zome when it is a statement
+> about attribution — and SPEC §5.17, which says **four**, was right the whole
+> time and was not consulted. **A denominator borrowed from a tool is a claim
+> about the tool.**
 >
 > **Finding 16's "15 entry types, 282 checks" below is left exactly as
 > written.** It is a dated record of what the corpus was when that finding was
