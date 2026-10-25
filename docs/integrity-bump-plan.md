@@ -35,7 +35,10 @@ types are **position-indexed**, so a new one must be *appended* to
 `EntryTypes`. Inserting above an existing variant renumbers everything after it
 and silently reinterprets stored entries. Every addition below goes at the end.
 
-Current state: `PROTOCOL_VERSION = 11`, sixteen entry types.
+Current state on `main`: `PROTOCOL_VERSION = 11`, sixteen entry types. The held
+4.5 branch (PR #350) stands at **12 and seventeen**, and that number is
+provisional — if 4.1, 4.2 or 4.3 join the same cut, 12 is shared rather than
+sequential. One bump, one number.
 
 ---
 
@@ -50,7 +53,7 @@ because they are the same kind of change.
 | 4.2 | **Observers as entries** — prompts, heuristics and thresholds as signed entries, so selection acts on the agents | 1 new entry type (appended) | **blocked**: 3.5's cost, priced |
 | 4.3 | **Species provenance + metabolic policy fields** | fields on `CritiqueSpecies`; policy fields TBD | **blocked**: 3.4 (a budget at all), and 2.4 is now done |
 | ~~4.4~~ | ~~**Declared atrophy threshold N**~~ — a `Constitution` field | — | **DROPPED 2026-10-24.** 3.1 decided: the reader is the promiser, per-reader is enough. No declared-N field is being built. |
-| **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | 1 new entry type (appended), 1 validation rule | **ready whenever the bump is cut** — no decision outstanding |
+| **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | ~~1 new entry type (appended), 1 validation rule~~ **CORRECTED by writing it: 1 entry type, 1 LINK type, and nine validation sites** — five on the entry, four on the link. The witness was discoverable for free because it WAS a `Claim` and rode the domain index; a `ForeignCritique` cannot, and an unconstrained link type is what §5.19 refuses. Inventory 233 → 242 | **WRITTEN AND HELD — PR #350**, draft, do not merge until the bump is cut |
 
 **4.4 and 4.5 were both added by this session's work, and 4.4 has already been
 dropped again.** 4.4 came out of Stage 3 (#324): the threshold works as the
@@ -86,7 +89,12 @@ Ordered by what blocks what, not by preference.
    without being Invariant 1's leaderboard. If not, 4.3 shrinks to species
    provenance alone.
 
-**4.5 needs nothing.** It can be written now and held.
+~~**4.5 needs nothing.** It can be written now and held.~~ **WRITTEN AND HELD
+2026-10-25 — PR #350, draft.** And it earned its keep before merging: writing
+it is what found that §2 had understated its surface by a link type and eight
+validation sites. **Re-price the other three on the same question — *what
+indexes it?*** — because the one candidate anybody actually built is the one
+whose cost was wrong.
 
 ---
 
@@ -107,6 +115,35 @@ decision rather than a detail:
 - **Invite, and never bump** — treat 11 as final and drop all five candidates.
   Worth stating as an option because it is the only one with no cost, and
   because four of five are blocked anyway.
+
+**DECIDED 2026-10-25: INVITE FIRST, BUMP SECOND.** The ten people are invited
+onto `protocol_version: 11`, and they are told before they write that what they
+publish does not survive the next integrity change.
+
+**What decided it was not a preference between the first two.** It was that
+`v0.3.0` removed the only cheap argument for *bump first*. While the published
+build was two forks behind, step 4 was blocked whatever anybody decided, so
+waiting cost nothing — the bump could ride a delay that already existed. The
+release closed that on 2026-10-24. *Bump first* now means the invitation waits
+on three answers nobody in this project controls: Andras's three questions for
+4.1, pricing 3.5 for 4.2, settling 3.4 for 4.3. **An invitation blocked on
+somebody else's mail is not a schedule.**
+
+**And *never bump* was not chosen, though it is the only option with no cost.**
+Three of the four candidates are blocked on questions that are worth answering
+rather than on indecision, and dropping them would be deciding those questions
+by default. 4.5 is the proof the cost is real: it was ready, so it was written
+(held in PR #350) and it immediately found that this plan had **understated its
+own integrity surface** — §2 is corrected above. That is not the kind of thing
+a dropped candidate teaches.
+
+**WHAT THE DECISION OBLIGES, and it is not optional.** Under Invariant 6 a
+tester's only protection is knowing in advance, because nothing can be deleted
+afterwards — not by them, not by an operator, not by anybody. 7.1's commitment
+is to vouch for honesty rather than for safety, so the disclosure IS the
+commitment here and not a courtesy attached to it. `INSTALL.md` now says a
+further break is **planned rather than hypothetical**; that sentence is part of
+the decision, not a consequence of it.
 
 ~~There is also a live inconsistency to resolve~~ **— AND IT IS RESOLVED.**
 This paragraph said `v0.2.0` carried `protocol_version: 9` against `main`'s 11,
@@ -136,7 +173,9 @@ like.
 And it does not recommend cutting the bump. With 3.1 decided, **every
 remaining blocker is outside this project's control**: 4.1 waits on Andras,
 4.2 on pricing 3.5, 4.3 on settling 3.4. Only 4.5 — `ForeignCritique` as a
-real entry type — is ready, and one item is not a batch.
+real entry type — is ready, and one item is not a batch. **That still holds
+after the 2026-10-25 decision, and the decision is why: inviting first means
+the bump waits for the batch rather than the batch waiting for the bump.**
 
 So the bump waits, and the next thing that could move it is an answer rather
 than a decision. The scheduling question in §4 above is now the live one: a

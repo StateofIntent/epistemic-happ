@@ -92,6 +92,22 @@ jobs:
       - name: ci-scope — the docs-only gate cannot clear a diff that touches code
         run: node scripts/check-ci-scope.mjs
 
+      # SEVENTH IN THE FAMILY, AND THE SECOND THAT GUARDS A GREEN RATHER THAN A
+      # RED. `replay.mjs` reports "0 failed, 0 skipped" and a line reading
+      # "N of N" for every type it is ASKED about — and its per-type loop
+      # iterates the coverage lists, so a type absent from them is never looked
+      # at and the green says nothing about its rules. Its orphan check fires
+      # for a case naming a missing rule, which by construction cannot fire for
+      # a rule naming no case.
+      #
+      # That is what happened at `protocol_version: 11`: settlement's three
+      # entry types went into COVERED, its two link types did not go into
+      # COVERED_LINKS, and ten assertable rules sat undemanded under a green
+      # corpus for four days. This is the thing that would have said so, in
+      # milliseconds, on the pull request that did it.
+      - name: corpus-coverage — no type with rules is demanded by nothing
+        run: node scripts/check-corpus-coverage.mjs
+
       # Newest in that family, and the only one that guards a harness's own
       # ASSERTION rather than a document, a count or a workflow. Added
       # 2026-10-22, after a measurement rather than a worry: `past-cone.mjs`
@@ -204,3 +220,79 @@ jobs:
 
       - name: theme-pinning — the palette, under both OS preferences
         run: node scripts/live-verify/theme-pinning.mjs
+
+      # >>> PACKAGE BUILD — byte-identical in conductor.yml and live-verify.yml;
+      # scripts/check-workflow-setup-drift.mjs fails if they diverge.
+      #
+      # WHY IT IS IN TWO FILES. `conductor.yml` builds these because its
+      # harnesses drive them. `live-verify.yml` builds them because
+      # `check-packages.mjs` asks whether `npm publish` would produce a working
+      # package, and that question needs the two packages installed and nothing
+      # else — no conductor, no DHT, no browser. Putting the check where the
+      # setup already existed would have made a 30-second answer wait twelve
+      # minutes behind a conductor it does not use.
+      #
+      # WHAT DRIFT WOULD COST. `check-packages.mjs` runs `npm run build` itself,
+      # so what these steps supply is the dependency tree and not the build. If
+      # one copy installs the SDK differently from the other — the registry
+      # copy on one side and this checkout on the other, which is exactly what
+      # the assertion below is about — then the publishability check verifies a
+      # package built against something other than what the harnesses ran, and
+      # its green stops being evidence about this tree.
+      - name: Build the agent SDK
+        working-directory: agent-sdk
+        run: |
+          npm ci
+          npm run build
+
+      # `--no-save ../agent-sdk`, not a plain install, and the header says why:
+      # the registry copy of this dependency now resolves, and is not this tree.
+      # `npm ci` IS available here now, and the reason it was not is corrected
+      # rather than quietly dropped. This said `npm ci` "would undo the line
+      # below even if a lockfile existed", because it deletes node_modules and
+      # installs exactly the lockfile. True — in the other order. Run BEFORE the
+      # local install rather than after, the two compose exactly as wanted:
+      # `npm ci` gives a reproducible tree from the committed lockfile, then
+      # `--no-save` replaces the SDK in it with this checkout's, and the lockfile
+      # is left byte-identical (tested, not assumed). So mcp-server gets the same
+      # reproducibility as the other seven packages without giving up the
+      # local-SDK guarantee the assertion below defends.
+      - name: Build the MCP server, against THIS tree's SDK
+        working-directory: mcp-server
+        run: |
+          npm ci
+          npm install --no-save ../agent-sdk
+          npm run build
+          # The assertion the paragraph above is worried about. A registry copy
+          # here is a real directory and a symlink is the local tree, so this
+          # distinguishes them — and it fails now, loudly, rather than three
+          # steps later as eight inscrutable reds inside the harness.
+          test -L node_modules/@stateofintent/agent-sdk \
+            || { echo "::error::@stateofintent/agent-sdk resolved to the registry, not this checkout — mcp-server.mjs would verify a package this PR cannot change"; exit 1; }
+      # <<< PACKAGE BUILD <<<
+
+      # ITEM 1.9, and it was filed because of what hid it rather than because
+      # the check was missing. `check-packages.mjs` existed, passed, and ran in
+      # NO workflow — the only thing between a broken `npm publish` and the
+      # registry was somebody remembering. `scripts/live-verify/README.md`
+      # introduced it as "not a live-verify harness, but run by the same
+      # reflex", which was accurate when nothing ran automatically, and
+      # introduced `check-harness-counts.mjs` the same way two paragraphs down
+      # — and THAT one has been a step in this file for weeks. The sentence
+      # went stale for one of its two examples while still reading correctly,
+      # which is why nobody noticed the other.
+      #
+      # WHAT IT CATCHES, none of which is visible until somebody installs the
+      # published package, by which time the version number is spent: `files`
+      # missing so `src/` ships; `dist` listed but never built, so the tarball
+      # is a package whose entry point does not exist; a `file:../thing`
+      # dependency that resolves on one machine and nowhere else, which
+      # `mcp-server` actually had; and a licence declared in the SPDX field and
+      # absent from the tarball.
+      #
+      # NOT the same question as `published-packages.mjs` in conductor.yml,
+      # which drives the tarball the REGISTRY is serving (item 1.8). This one
+      # asks whether the local tree would publish something installable, which
+      # is the question a release asks — and `v0.3.0` asked it four times.
+      - name: packages — `npm publish` from this tree would produce a working package
+        run: node scripts/check-packages.mjs

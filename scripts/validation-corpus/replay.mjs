@@ -542,6 +542,43 @@ async function otherAgentFixtures() {
     "the other agent's ForeignCritique",
   );
 
+  // Agent 2's settlement chain, for the two owner rules of item 1.10. Both
+  // read paths are link-based and both externs create their own link, so these
+  // become visible to agent 1 without anything else being written.
+  //
+  // THE STATUS HAS TO BE COMPUTABLE, not merely well-formed: `state` is checked
+  // against the policy and the inputs by every validating peer, so the policy
+  // is min_assessors 1 / max_dissent 0 and the single input is agent 2's own
+  // Supports assessment of the same target — one distinct assessor, no
+  // dissent, which yields Settled.
+  const otherAssessment = await callOther('publish_assessment', {
+    assessor: otherKey, target: claimEntry, stance: 'Supports',
+    confidence: 'Moderate', rationale: 'corpus assessment, by the OTHER agent',
+    past_cone: [], timestamp: nowMicros(),
+  });
+  const otherPolicy = await callOther('publish_settlement_policy', {
+    author: otherKey, name: 'corpus-other-policy', min_assessors: 1, max_dissent: 0,
+    statement: 'corpus policy, published by the OTHER agent', published_at: nowSecs(),
+  });
+  const otherStatus = await callOther('publish_settlement_status', {
+    aggregator: otherKey, target: claimEntry, policy: otherPolicy,
+    inputs: [otherAssessment], state: 'Settled', timestamp: nowMicros(),
+  });
+  await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_assessments_for', claimEntry);
+      return found.length ? true : null;
+    },
+    "the other agent's Assessment",
+  );
+  await awaitVisibleToMe(
+    async () => {
+      const found = await call('get_settlement_statuses_for', claimEntry);
+      return found.length ? true : null;
+    },
+    "the other agent's SettlementStatus",
+  );
+
   _others = {
     domain, constitution, claimAction, claimEntry, membraneAction, membraneEntry,
     mewAction, traceAction, preRegAction, revelationAction,
@@ -552,6 +589,8 @@ async function otherAgentFixtures() {
     childSpecies: otherChildSpecies, critiqueAction: otherCritique,
     antibodyAction: otherAntibody,
     foreignAction: otherForeignAction,
+    assessmentAction: otherAssessment, policyAction: otherPolicy,
+    statusAction: otherStatus,
     preRegPrediction: OTHER_PREDICTION, preRegSalt: OTHER_SALT,
   };
   return _others;
@@ -1960,7 +1999,13 @@ const COVERED_LINKS = ['AgentToClaim', 'AgentToConstitution', 'DomainToClaim', '
   // orphan check still failed, because `inventoriedLinks` is built from
   // COVERED_LINKS — so four cases naming four real rules looked like four
   // cases naming rules the zome no longer produces. Both lists, or neither.
-  'DomainToForeignCritique'];
+  'DomainToForeignCritique',
+  // Item 1.10. Settlement's two link types, shipped at protocol_version 11
+  // with five assertable rules each and absent from this list until
+  // 2026-10-25 — so the per-type loop never looked at them and the corpus
+  // reported "0 failed, 0 skipped" over ten undemanded rules for four days.
+  // `check-corpus-coverage.mjs` is what now refuses that state.
+  'TargetToAssessment', 'TargetToSettlementStatus'];
 
 const linkEntries = [
   {
@@ -3221,6 +3266,167 @@ const linkEntries = [
       {
         rule: "A DomainToForeignCritique link may only be created by the import's own witness. Indexing somebody else's import under a domain is how one agent would put another's name on a reading they never made.",
         mutate: (l, ctx) => { l.target = ctx.others.foreignAction; },
+      },
+    ],
+  },
+  // --- ITEM 1.10: settlement's two link types.
+  //
+  // Both were drivable the whole time — `AttachmentLinkKind` has carried both
+  // variants since protocol_version 11, so `needs_prober` was correctly 0 and
+  // nothing was blocked. They simply had no cases, and the corpus could not
+  // say so because its per-type loop iterates `COVERED_LINKS`.
+  //
+  // THE RULE ORDER MATTERS FOR EVERY MUTATION BELOW, because the five rules
+  // are a chain and an earlier one fires first: target-is-an-ActionHash, then
+  // target-resolves, then target-is-the-right-type, then base-matches-the-
+  // entry's-own-target, then author-is-the-owner. The owner case therefore has
+  // to move the BASE as well as the target — to agent 2's own target — or the
+  // base rule fires one line above the rule being probed and the case passes
+  // for the wrong reason.
+  {
+    linkType: 'TargetToAssessment',
+    label: 'TargetToAssessment',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "this agent's own Assessment, a policy of the wrong entry type, and a second target",
+    setup: async () => {
+      const domain = `CorpusLinkT2A${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, the node an Assessment hangs from', domain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const target = (await call('get_claims_by_domain', domain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      const assessment = await call('publish_assessment', {
+        assessor: myKey, target, stance: 'Supports', confidence: 'Moderate',
+        rationale: 'corpus assessment, the link target', past_cone: [],
+        timestamp: nowMicros(),
+      });
+      // Resolves, and is not an Assessment — the third rule's exact condition.
+      const notAnAssessment = await call('publish_settlement_policy', {
+        author: myKey, name: 'corpus-t2a-policy', min_assessors: 1, max_dissent: 0,
+        statement: 'corpus policy, used only as a wrong-type target', published_at: nowSecs(),
+      });
+      const otherDomain = `CorpusLinkT2AOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim, a node this Assessment does NOT name', domain: otherDomain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const otherTarget = (await call('get_claims_by_domain', otherDomain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      return { target, assessment, notAnAssessment, otherTarget, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'TargetToAssessment',
+      base: ctx.target,
+      target: ctx.assessment,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      {
+        rule: 'TargetToAssessment target must be an ActionHash.',
+        mutate: (l) => { l.target = danglingHash('entry', 151); },
+      },
+      {
+        rule: 'TargetToAssessment target does not resolve.',
+        expect: 'deferral',
+        mutate: (l) => { l.target = danglingHash('action', 152); },
+      },
+      {
+        rule: 'TargetToAssessment target is not an Assessment.',
+        mutate: (l, ctx) => { l.target = ctx.notAnAssessment; },
+      },
+      {
+        rule: 'A TargetToAssessment link must hang from the node the Assessment itself names in target.',
+        mutate: (l, ctx) => { l.base = ctx.otherTarget; },
+      },
+      // Base AND target move together: agent 2's assessment names agent 2's
+      // claim, so the base rule above is satisfied and only the author differs.
+      {
+        rule: "A TargetToAssessment link may only be created by the Assessment's own assessor.",
+        mutate: (l, ctx) => {
+          l.base = ctx.others.claimEntry;
+          l.target = ctx.others.assessmentAction;
+        },
+      },
+    ],
+  },
+  {
+    linkType: 'TargetToSettlementStatus',
+    label: 'TargetToSettlementStatus',
+    fn: 'attempt_false_attachment_link',
+    chainNote: "this agent's own SettlementStatus over one assessment, plus a second target",
+    setup: async () => {
+      const domain = `CorpusLinkT2S${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim whose settlement status hangs from it', domain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const target = (await call('get_claims_by_domain', domain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      const policy = await call('publish_settlement_policy', {
+        author: myKey, name: 'corpus-t2s-policy', min_assessors: 1, max_dissent: 0,
+        statement: 'corpus policy for the status link cases', published_at: nowSecs(),
+      });
+      const assessment = await call('publish_assessment', {
+        assessor: myKey, target, stance: 'Supports', confidence: 'Moderate',
+        rationale: null, past_cone: [], timestamp: nowMicros(),
+      });
+      // One distinct assessor, no dissent, min_assessors 1 -> Settled. The
+      // state is recomputed by every validating peer, so a status that does
+      // not follow from its own policy would be refused before any link rule
+      // could be reached.
+      const status = await call('publish_settlement_status', {
+        aggregator: myKey, target, policy, inputs: [assessment],
+        state: 'Settled', timestamp: nowMicros(),
+      });
+      const otherDomain = `CorpusLinkT2SOther${Date.now()}`;
+      await call('create_claim', {
+        content: 'corpus claim this status does NOT name', domain: otherDomain,
+        author: myKey, timestamp: nowMicros(), evidence_hashes: [],
+        confidence: 'Moderate', semantic_tags: [], source_mew: null,
+      });
+      const otherTarget = (await call('get_claims_by_domain', otherDomain))[0]
+        .signed_action.hashed.content.data.entry_hash;
+      return { target, status, policy, otherTarget, others: await otherAgentFixtures() };
+    },
+    baseline: (ctx) => ({
+      kind: 'TargetToSettlementStatus',
+      base: ctx.target,
+      target: ctx.status,
+      tag: null,
+      anchor_of: null,
+      question_anchor_of: null,
+    }),
+    cases: [
+      {
+        rule: 'TargetToSettlementStatus target must be an ActionHash.',
+        mutate: (l) => { l.target = danglingHash('entry', 153); },
+      },
+      {
+        rule: 'TargetToSettlementStatus target does not resolve.',
+        expect: 'deferral',
+        mutate: (l) => { l.target = danglingHash('action', 154); },
+      },
+      // The policy resolves and is a SettlementPolicy, not a SettlementStatus.
+      {
+        rule: 'TargetToSettlementStatus target is not a SettlementStatus.',
+        mutate: (l, ctx) => { l.target = ctx.policy; },
+      },
+      {
+        rule: 'A TargetToSettlementStatus link must hang from the node the SettlementStatus itself names in target.',
+        mutate: (l, ctx) => { l.base = ctx.otherTarget; },
+      },
+      {
+        rule: "A TargetToSettlementStatus link may only be created by the status's own aggregator.",
+        mutate: (l, ctx) => {
+          l.base = ctx.others.claimEntry;
+          l.target = ctx.others.statusAction;
+        },
       },
     ],
   },

@@ -24,42 +24,61 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-> **MEASURED 2026-10-25, and the figures below it had rotted by a lot.** This
+> **MEASURED 2026-10-25, because the figures below it had rotted badly.** This
 > paragraph said *"Ten entry types and TWENTY-FOUR link types — every link type
-> in the zome"* and *"244 checks"*. Measured from the runs themselves rather
-> than recounted by hand: **nineteen entry types, twenty-five link types, 330
-> checks, 0 failed, 0 skipped** on `bump/foreign-critique-held`
-> (run `40162829372`), against **316 checks** on `main` (run `40160703198`) —
-> `main` is 18 entry types and 24 link types, and the branch adds
-> `foreign_critique` and `DomainToForeignCritique`.
+> in the zome"* and *"244 checks"*. Taken from the runs themselves rather than
+> recounted by hand, on `main`: **eighteen entry types, twenty-six link types,
+> 332 checks, 0 failed, 0 skipped** (run `40165642682`). It had been **316**
+> two hours earlier (run `40160703198`); the sixteen new checks are item 1.10's
+> ten settlement link rules with their baselines and coverage lines.
+>
+> **ON THIS BRANCH, WHICH IS HELD: nineteen entry types and twenty-seven link
+> types**, adding `foreign_critique` and `DomainToForeignCritique` (item 4.5,
+> `protocol_version: 12`). Its own check total is whatever this merge's
+> `conductor` job prints and is recorded here from that run — not predicted
+> from `main`'s, which is how the figure above came to be 72 behind.
 >
 > **NOTHING GATES THE CHECK TOTAL, which is why it drifted 72 behind.**
 > `replay.mjs` needs a conductor to produce the number, so no static checker
-> can hold this sentence to it — and `check-harness-counts.mjs`, which does
-> gate figures of exactly this kind, reads the ROOT README and this directory's
-> suite index, never this file. So the totals here are now written as a dated
-> measurement with the run that produced each, rather than as a standing claim.
+> can hold this sentence to it — and `check-harness-counts.mjs`, which gates
+> figures of exactly this kind, reads the ROOT README and this directory's
+> suite index, never this file. The totals here are therefore written as dated
+> measurements naming the run behind each, rather than as standing claims.
 >
-> **AND *"every link type in the zome"* IS NOT TRUE AND HAS NOT BEEN SINCE
-> `protocol_version: 11`.** The zome declares **32** link types and
-> `COVERED_LINKS` lists 25. Two of the seven absent ones carry real rules:
-> `TargetToAssessment` and `TargetToSettlementStatus`, **five assertable rules
-> each**. The settlement work added its three entry types to `COVERED` and did
-> not add its two link types to `COVERED_LINKS`, and nothing noticed, because
-> the coverage loop iterates `COVERED_LINKS` — so a link type absent from that
-> list has its rules demanded by nothing and reports nothing. Ten rules are
-> inventoried as assertable with no case and no declared gap.
+> **WHAT *IS* GATED NOW is the thing the old wording was really claiming.**
+> `check-corpus-coverage.mjs` fails on any entry or link type with assertable
+> rules that is neither in `COVERED`/`COVERED_LINKS` nor declared with a
+> reason — so *"every rule either asserted or declared"* can no longer quietly
+> stop being true. It was not true when that gate was written: settlement's
+> two link types carried ten assertable rules outside `COVERED_LINKS` from
+> `protocol_version: 11` until 2026-10-25, and the corpus reported
+> *"0 failed, 0 skipped"* over them for four days.
+>
+> **AND *"every link type in the zome"* NEEDED THE PRECISION IT LACKED.** The
+> zome declares **31** link types on `main` and **32** on this branch, which
+> adds `DomainToForeignCritique`. **26 have validation sites on `main` and 27
+> here, and all of them are covered.** (An earlier draft of this notice, on
+> this branch, said 32 for `main` — counted with a regex loose enough to catch
+> a line that is not a variant. The number was wrong for a day, which is the
+> whole subject of this notice.) The other five — `CritiqueToEvidence`, `ClaimToEvidence`,
+> `MembraneToClaim`, `ClaimToBridgeRecord`, `SpeciesToCritique` — have no
+> `validate_create_link` branch at all and are accepted unconditionally, which
+> is **SPEC §5.17**, stated there deliberately and with its three categories.
+> They are not an oversight and not this corpus's to cover: there is no rule to
+> assert.
 >
 > **Finding 16's "15 entry types, 282 checks" below is left exactly as
 > written.** It is a dated record of what the corpus was when that finding was
 > made, not a claim about now, and editing it would destroy the only evidence
-> of when these numbers were last true.
+> of when those numbers were last true.
 
 ~~**Ten entry types and TWENTY-FOUR link types — every link type in the zome,
 with every rule either asserted or declared unreachable with its reason.**~~
-**Nineteen entry types and twenty-five link types** (measured; see the notice
-above), with every rule in them either asserted or declared unreachable with
-its reason. ~~244~~ **330**
+**Nineteen entry types and twenty-seven link types on this held branch**
+(eighteen and twenty-six on `main`) — every link type that has a rule — with
+every rule either asserted or declared with its reason, and that is gated
+rather than asserted (see the notice above). ~~244~~ **332 on `main`; this
+branch's own total is recorded in the notice above**
 checks, **twenty-three of which need a second agent** — see *A second agent*
 below — and **three of which are driven with no baseline at all**, because a
 valid `AttestationGrant` needs thirty days of prior membership: see *Refusals

@@ -369,6 +369,24 @@ jobs:
       # Three harnesses need a package of this repository's own built first, and
       # that is all they ever needed. `tsc` only — no wasm, no browser — so this
       # is the cheapest coverage in the job by a wide margin.
+      # >>> PACKAGE BUILD — byte-identical in conductor.yml and live-verify.yml;
+      # scripts/check-workflow-setup-drift.mjs fails if they diverge.
+      #
+      # WHY IT IS IN TWO FILES. `conductor.yml` builds these because its
+      # harnesses drive them. `live-verify.yml` builds them because
+      # `check-packages.mjs` asks whether `npm publish` would produce a working
+      # package, and that question needs the two packages installed and nothing
+      # else — no conductor, no DHT, no browser. Putting the check where the
+      # setup already existed would have made a 30-second answer wait twelve
+      # minutes behind a conductor it does not use.
+      #
+      # WHAT DRIFT WOULD COST. `check-packages.mjs` runs `npm run build` itself,
+      # so what these steps supply is the dependency tree and not the build. If
+      # one copy installs the SDK differently from the other — the registry
+      # copy on one side and this checkout on the other, which is exactly what
+      # the assertion below is about — then the publishability check verifies a
+      # package built against something other than what the harnesses ran, and
+      # its green stops being evidence about this tree.
       - name: Build the agent SDK
         working-directory: agent-sdk
         run: |
@@ -399,6 +417,7 @@ jobs:
           # steps later as eight inscrutable reds inside the harness.
           test -L node_modules/@stateofintent/agent-sdk \
             || { echo "::error::@stateofintent/agent-sdk resolved to the registry, not this checkout — mcp-server.mjs would verify a package this PR cannot change"; exit 1; }
+      # <<< PACKAGE BUILD <<<
 
       - name: Build the linked-data gateway
         working-directory: gateway

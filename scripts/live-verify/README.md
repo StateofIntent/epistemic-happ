@@ -199,7 +199,8 @@ A **2-agent** harness installs its second agent on the same conductor itself (`g
 
 **Two agents on one conductor is not a network, and that distinction is worth holding on to.** Those agents share a single local DHT store: an entry written by one is visible to the other the instant it is written, because it never travelled. That is exactly the right arrangement for the questions those harnesses ask — read scope, per-agent friction budgets, what one agent can and cannot find of another's work — and it is silent on whether anything propagates between machines. `hc sandbox` produces no networking by default (`transport_pool: []`, `bootstrap_service: null` in the conductor config), so until `real-gossip.mjs` nothing here had ever run two conductors that could reach each other. Reach for `sandbox.sh` and a second agent when the question is about visibility; reach for `network.sh` and `real-gossip.mjs` when it is about propagation.
 
-**Not a live-verify harness, but run by the same reflex:** `scripts/check-packages.mjs`
+**Not a live-verify harness, and GATED IN CI since 2026-10-25 (item 1.9):**
+`scripts/check-packages.mjs`
 asks whether `npm publish` would produce a *working* package, by inspecting what
 `npm pack --dry-run` actually puts in the tarball rather than what `package.json`
 intends. It catches the quiet ones — `files` missing so `src/` ships, `dist`
@@ -208,7 +209,18 @@ nowhere else, a licence declared in metadata and absent from the tarball. None
 of those is visible until someone installs the published package, by which point
 the version number is spent.
 
-**Also run by that reflex, and it exists because of this directory:**
+**This paragraph said *"but run by the same reflex"* until 2026-10-25, and that
+is how the gap survived.** The sentence was accurate when written — nothing ran
+automatically then — and it stayed readable after CI existed, so nothing about
+it looked stale. Meanwhile the one below introduced `check-harness-counts.mjs`
+in exactly the same words, and *that* one had been a step in `live-verify.yml`
+for weeks. **One sentence covering two checkers went stale for one of them and
+kept reading correctly, which is why nobody noticed the other was never wired
+up at all.** The lesson is not about these two files: a sentence describing what
+CI does needs re-reading when CI changes, and a sentence describing *two* things
+rots at whichever end moves first.
+
+**Also gated in CI, and it exists because of this directory:**
 `scripts/check-harness-counts.mjs` checks that every "`<harness>.mjs`, N checks"
 figure the root README states is the number of checks that harness has. All
 seven such figures were wrong when first measured against real runs — five
