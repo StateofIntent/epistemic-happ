@@ -853,6 +853,11 @@ not do.
 See `SECURITY.md` for the full list and the reasoning. In brief: **nothing in
 the protocol resists sybil creation** — identity is free and containment is
 topological, holding for what you traverse to and nothing for what you look up.
+**An opt-in read-layer lens now reaches the index reads too** (`get_membrane_claims`,
+2026-10-25), and what it provides is narrower than resistance: **a reader who
+names a root set is unaffected by a flood, a reader who does not is
+unprotected** — nothing automatic, since a filter on by default would be the
+canonical signal Invariant #1 rules out.
 **Nothing is ever deleted and entries cannot be mutated**, which makes data
 erasure structurally impossible and has real legal consequences for anyone
 running this. **A modified coordinator stays on the network**, so the integrity
