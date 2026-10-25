@@ -4233,14 +4233,40 @@ const MAX_ATTESTATION_SEARCH_NODES: usize = 100;
 pub struct AttestationPolicy {
     /// The trusted root set an attester must belong to (directly, or
     /// transitively within max_attestation_depth) to count.
-    /// `None` means no restriction at all — any agent's SynapticLink
-    /// counts as an attestation, and min_attestations is the only real
-    /// constraint. This is NOT the same as omitting the whole policy
-    /// (Option<AttestationPolicy> = None at the call site): that skips
-    /// attestation filtering entirely, whereas this still requires
-    /// min_attestations distinct attesters, just from anyone.
+    ///
+    /// **`None` MAKES THE WHOLE LENS INERT: `is_agent_attested` returns
+    /// `true` for everyone and `min_attestations` is never read.** This
+    /// comment used to claim the opposite — that `None` "still requires
+    /// min_attestations distinct attesters, just from anyone" — and that
+    /// was false for as long as it stood (corrected 2026-10-25, open-work
+    /// 1.12). `describe_method` said the same thing and now reports the
+    /// lens as INERT instead.
+    ///
+    /// **It is inert by DESIGN, not by omission**, and the reason is that
+    /// the quantity it would count is free. A `SynapticLink` attests its
+    /// target's author, `create_critique` makes one, and critique creation
+    /// gates on a per-agent rate limit and nothing else — so "N distinct
+    /// attesters from anyone" is satisfied by N minted keys at the cost of
+    /// N keypairs. Enforcing it would be a filter that bounds nothing
+    /// while reading as a verdict. See `docs/sybil-cost-and-the-root-set.md`.
+    ///
+    /// **The root set is the only input a minted key cannot obtain for
+    /// itself**, there being no transaction that adds you to somebody
+    /// else's. That is why it, and not the count, is the lens.
+    ///
+    /// `mobile-ui` therefore REFUSES an empty root set rather than sending
+    /// `None` (see its lens builder, and `trust-lenses.mjs` §2 which
+    /// asserts the refusal): a lens that looks applied and filters nothing
+    /// is worse than no lens at all. Callers that genuinely want no
+    /// filtering should omit the whole policy
+    /// (`Option<AttestationPolicy> = None` at the call site), which is
+    /// honest about doing nothing.
     pub require_attestation_from: Option<Vec<AgentPubKey>>,
-    /// How many distinct (direct-or-transitive) attesters are required.
+    /// How many distinct (direct-or-transitive) attesters are required —
+    /// counted only among attesters in (or transitively reachable from)
+    /// `require_attestation_from`. **Read only when that is `Some`**; see
+    /// its doc above for why `None` makes this field dead rather than
+    /// permissive.
     pub min_attestations: usize,
     /// How many hops of transitive attestation to allow. `None` or
     /// `Some(0)`/`Some(1)` behave the same — only direct attestation
@@ -4352,6 +4378,16 @@ pub struct IsAgentAttestedPayload {
 /// for the full semantics.
 #[hdk_extern]
 pub fn is_agent_attested(payload: IsAgentAttestedPayload) -> ExternResult<bool> {
+    // NO ROOT SET MEANS NO LENS, DELIBERATELY. `min_attestations` is not
+    // consulted here and that is correct rather than missing: the quantity
+    // it counts is free (a SynapticLink attests its target's author,
+    // create_critique makes one, and critique creation gates on a per-agent
+    // rate limit alone), so N minted keys buy N attesters. A count over an
+    // unrestricted set would bound nothing while reading as a verdict.
+    // See AttestationPolicy::require_attestation_from's doc and
+    // docs/sybil-cost-and-the-root-set.md. Callers wanting no filtering
+    // should omit the policy entirely; `mobile-ui` refuses an empty root
+    // set rather than sending this shape.
     let Some(ref roots) = payload.policy.require_attestation_from else {
         return Ok(true);
     };
@@ -5346,6 +5382,18 @@ fn describe_method(
     let mut parts: Vec<String> = Vec::new();
     match attestation {
         None => parts.push("no attestation lens (every critique counted)".to_string()),
+        // A POLICY WITH NO ROOTS FILTERS NOTHING, so it must not describe
+        // itself as a filter. This arm used to fall through to the format
+        // below and render "N distinct attester(s) required, …, roots
+        // unrestricted" for a lens `is_agent_attested` ignores entirely —
+        // a method string claiming a constraint the read did not apply,
+        // which is the §7b.1 count-the-drops discipline inverted. Corrected
+        // 2026-10-25, open-work 1.12; see AttestationPolicy's own field doc
+        // for why inert is the correct behaviour rather than a bug to fix.
+        Some(p) if p.require_attestation_from.is_none() => parts.push(
+            "attestation lens: INERT — no roots named, nothing was filtered \
+             (min_attestations is not read without a root set)".to_string(),
+        ),
         Some(p) => parts.push(format!(
             "attestation lens: {} distinct attester(s) required, {}, roots {}",
             p.min_attestations,
@@ -6252,20 +6300,53 @@ mod tests {
     fn describe_method_collapses_the_three_equivalent_depths_into_one_statement() {
         // None, Some(0) and Some(1) all mean direct-only. Echoing the number
         // would make a critic infer that equivalence themselves.
+        //
+        // THE ROOT SET HERE IS LOAD-BEARING FOR THE TEST, not decoration:
+        // this case passed `require_attestation_from: None` until 2026-10-25,
+        // which now renders INERT and never reaches the depth wording at all
+        // (open-work 1.12). A depth assertion under a policy whose depth is
+        // never read was testing the formatter against a state the reader
+        // can't be in.
         for depth in [None, Some(0u8), Some(1u8)] {
             let m = describe_method(&Some(AttestationPolicy {
-                require_attestation_from: None,
+                require_attestation_from: Some(vec![fixture_agent(1)]),
                 min_attestations: 2,
                 max_attestation_depth: depth,
             }), &None);
             assert!(m.contains("direct attestation only"), "depth {:?} gave {}", depth, m);
         }
         let m = describe_method(&Some(AttestationPolicy {
-            require_attestation_from: None,
+            require_attestation_from: Some(vec![fixture_agent(1)]),
             min_attestations: 2,
             max_attestation_depth: Some(3),
         }), &None);
         assert!(m.contains("up to 3 hops"), "got {}", m);
+    }
+
+    #[test]
+    fn a_lens_with_no_roots_describes_itself_as_inert_rather_than_as_a_filter() {
+        // THE DEFECT THIS PINS (open-work 1.12). `is_agent_attested` returns
+        // true for everyone when require_attestation_from is None, so such a
+        // policy filters NOTHING — and describe_method used to render it as
+        // "2 distinct attester(s) required, direct attestation only, roots
+        // unrestricted", publishing a constraint the read never applied.
+        //
+        // Inert is the correct BEHAVIOUR (the count is over a free quantity —
+        // see the field doc), so the description is what had to change. The
+        // assertion is two-sided on purpose: it must say it was inert AND
+        // must not echo a requirement.
+        for depth in [None, Some(0u8), Some(3u8)] {
+            let m = describe_method(&Some(AttestationPolicy {
+                require_attestation_from: None,
+                min_attestations: 2,
+                max_attestation_depth: depth,
+            }), &None);
+            assert!(m.contains("INERT"), "depth {:?} gave {}", depth, m);
+            assert!(!m.contains("distinct attester(s) required"),
+                "an inert lens must not claim a requirement; depth {:?} gave {}", depth, m);
+            assert!(!m.contains("up to 3 hops"),
+                "an inert lens must not claim transitivity it never walked; got {}", m);
+        }
     }
 
     #[test]

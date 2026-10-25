@@ -223,15 +223,35 @@ async function main() {
   log(`    lensed:     ${lensed.read_through}`);
   check('an unfiltered import SAYS it was unfiltered rather than staying silent',
     /no attestation lens/i.test(first.read_through) && /no conductance lens/i.test(first.read_through));
-  check('a lensed import names the attestation policy it was read through',
-    /2 distinct attester\(s\) required/.test(lensed.read_through));
+  // THESE TWO ASSERTIONS PINNED A FALSE STRING UNTIL 2026-10-25 (open-work
+  // 1.12). The policy above passes `require_attestation_from: null`, under
+  // which `is_agent_attested` returns true for everyone and
+  // `min_attestations` is never read — so the attestation half of this lens
+  // filtered NOTHING, while `describe_method` rendered "2 distinct
+  // attester(s) required" and this harness asserted that it did. The second
+  // assertion is the one that mattered: it proved the claim reaches a
+  // PERMANENT ENTRY, so a method string overstating the read was being
+  // written somewhere Invariant 6 forbids correcting.
+  //
+  // Inert is the right behaviour, not a bug (the count is over a free
+  // quantity — see AttestationPolicy's field doc), so the DESCRIPTION was
+  // fixed and these now assert the honest one. The import is still
+  // genuinely lensed: the CONDUCTANCE half is real and does filter, which
+  // is what keeps §5's point intact.
+  //
+  // Driving a real attestation lens here — actual roots, actually filtering —
+  // is worth doing and is NOT this change: it alters which claims import and
+  // needs its own conductor run to establish the new expectations.
+  check('an inert attestation lens SAYS it was inert rather than claiming a requirement',
+    /attestation lens: INERT/.test(lensed.read_through)
+    && !/distinct attester\(s\) required/.test(lensed.read_through));
   check('and names the conductance half-life as PROMISED BY THIS READER',
     /86400s as promised by this reader/.test(lensed.read_through));
   check('the two differ, so the lens is actually consulted rather than described',
     first.read_through !== lensed.read_through);
   const lensedClaim = await a1.call('get_claim', lensed.entry_hash);
   check('and the lens is carried into the PERMANENT ENTRY, not only the return value',
-    /Read through: attestation lens: 2 distinct attester\(s\) required/.test(lensedClaim?.content ?? ''));
+    /Read through: attestation lens: INERT/.test(lensedClaim?.content ?? ''));
 
   log('');
   if (failures === 0) {
