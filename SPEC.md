@@ -703,7 +703,7 @@ This is Invariant #2 (no imposition) expressed as rate limits: an agent may fill
 
 ## 7. Invariants
 
-The following ten invariants are the protocol's own normative constraints on any future extension, restated here verbatim from `README.md` Appendix A as the specification's binding requirements, not merely design guidance:
+The following list is **nine invariants and one declared aspiration** — relabelled 2026-10-26, because item 9 has no mechanism and is unsatisfied by decision, and presenting it as a binding requirement overstated what this protocol holds. The nine are the protocol's own normative constraints on any future extension, restated verbatim from `README.md` Appendix A as the specification's binding requirements rather than design guidance. **Item 9 keeps its number** so that references elsewhere to invariants by position stay valid, and carries its own status inline:
 
 1. **Never compute or expose a canonical, comparative reputation score.** Raw promise-keeping history stays open and queryable — nothing is hidden or deleted. But no karma, no stars, no trust index, and no sorted "top agents" or "top species" leaderboard. Interpretation of that history stays local to the observer.
 2. **The topology is the truth function**, not an algorithm.
@@ -713,7 +713,7 @@ The following ten invariants are the protocol's own normative constraints on any
 6. **Nothing is deleted — only witnessed or atrophied.**
 7. **The bridge must preserve dimensionality**, not extract it.
 8. **Agents are cells with membranes**, not users with accounts.
-9. **Death is required** — unused entry types and membranes must atrophy.
+9. **Death is required** — unused entry types and membranes must atrophy. **— A DECLARED ASPIRATION, NOT AN INVARIANT, AND RELABELLED 2026-10-26 FOR SAYING SO.** It keeps its number because other documents reference invariants by position, but it is not a constraint this protocol holds: it is **the one thing on this list with no mechanism behind it**, and since item 22 it is unsatisfied **by decision** rather than by omission — anything a scheduled process wrote in order to retire something would itself be permanent under Invariant 6, so the consequence was declined. What IS built is the read-layer half: conductance and standing atrophy at read time, computed when asked and writing nothing. Entry types and membranes do not atrophy at all. **It is kept rather than deleted because it is the only thing in these documents that flags the accretion problem** — a system that cannot delete cannot heal, only accrete and lose standing, which is why `docs/open-work.md` settles on *coral reef rather than cell*. **An invariant that knowingly does not hold is a goal, and calling it invariant was a category error in a document whose credibility rests on precision.**
 10. **The system doesn't compute truth. It creates conditions for truth to resonate.**
 
 Three notes, since they materially affect conformance. The first two are carried forward from Appendix A as clarifications of what their invariants mean; the third is not a clarification but a consequence — what Invariant 6 costs, which is a deployment decision rather than a reading of the rule:
