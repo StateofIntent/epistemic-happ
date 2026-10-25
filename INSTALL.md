@@ -123,6 +123,28 @@ installs are up.
 work — that is scriptable through the conductor, as above. Only two things: the
 Setup click on first run of each profile, and the second machine.
 
+> **AND IT HAS NOW BEEN DONE: TWO PACKAGED `v0.3.0` INSTALLS EXCHANGED A CLAIM,
+> 2026-10-26.** Machine 1's running cell was read live through the admin
+> interface and hashes to
+> `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`, the documented
+> `0.3.x` hash. A `Claim` published on machine 1 into domain `xnet-1026-a`
+> appeared on machine 2 **on its first `Load claims`**. Both reached
+> `Conductor ready.` with dynamically chosen admin ports (42253 and 33239), and
+> the two origins above are confirmed — `kangaroo` on admin,
+> `webhapp://webhappwindow` on the app interface, whose port
+> `listAppInterfaces` reports.
+>
+> **Two things this run established that are worth not re-deriving.**
+> **Founding a domain is NOT a prerequisite for publishing into one** —
+> `validate_claim` requires only that `domain` be non-empty, and
+> `create_claim` writes the by-domain index link unconditionally, so a claim
+> into a never-founded domain is indexed and readable. Founding writes a
+> permanent `Constitution` under your key and is a different act with a
+> different purpose. And **a zome call from outside the app window cannot be
+> made read-only**: it needs signing credentials, and authorising them writes
+> a cap grant to your source chain, so a harness that "just looks" is not
+> free. The admin API's state dump is the read-only route.
+
 ~~**ONE THING TO SETTLE BEFORE DOING IT.**~~ **SETTLED BY THE RELEASE, NOT BY A
 DECISION.** This paragraph asked whether a two-install test against `v0.2.0`
 — `protocol_version: 9` against `main`'s 11 — validated the packaging of the
@@ -143,10 +165,28 @@ change with the version and must not be copied from above:
   notes quote the artifact's `uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`;
 - the profile path is under `<version>`, so `0.3.x` profiles are a fresh tree
   and a machine that has run both carries both;
-- **the launch milestone string changed.** `v0.2.0` logged `Conductor ready.`;
+- ~~**the launch milestone string changed.** `v0.2.0` logged `Conductor ready.`;
   `v0.3.0` logs `Connected to admin websocket.` and `Attached app interface
   port` instead (`READINESS.md` §1). Do not grep for the old string and
-  conclude the conductor never came up.
+  conclude the conductor never came up.~~ **THIS WAS WRONG, AND BACKWARDS —
+  corrected 2026-10-26 by measuring instead of repeating.** `Conductor ready.`
+  appears in the log of every installed profile, **`0.3.x` included**;
+  `Connected to admin websocket.` and `Attached app interface port` appear in
+  **none** of them. The old string is the right one to look for, and this note
+  would have had you conclude a working conductor had failed. The milestone to
+  check, on the machine in question:
+
+  ```
+  grep -ao 'Conductor ready\.\|###ADMIN_PORT:[0-9]*###' \
+    ~/.config/org.stateofintent.epistemic-resonance/0.3.x/default/logs/Epistemic_Resonance.log
+  ```
+
+  Two lines back means the conductor launched and the admin interface is
+  listening; the port is dynamic and changes every launch. Nothing back means
+  **Setup was not completed** — check for `data/.pw` in that same profile
+  directory, which is absent until somebody clicks, and the log stays at zero
+  bytes until then. (On macOS the profile lives under
+  `~/Library/Application Support/`, on Windows under `%APPDATA%`.)
 
 ## Installing
 

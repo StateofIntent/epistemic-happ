@@ -108,10 +108,21 @@ and logged `Installing happ...` / `Happ installed.` rather than reusing the
 0.2.x cell, which is the minor-bump trap confirmed empirically rather than
 trusted.
 
-**One wording correction for the next person.** `v0.2.0`'s record says the
+~~**One wording correction for the next person.** `v0.2.0`'s record says the
 AppImage was run to `Conductor ready.`; this build logs `Connected to admin
 websocket.` and `Attached app interface port` instead. The milestone is the
-same and the string is not — do not grep for it.
+same and the string is not — do not grep for it.~~ **THAT CORRECTION WAS
+ITSELF WRONG, AND IT WAS WRONG IN THE DIRECTION THAT COSTS SOMEBODY AN HOUR.**
+Measured 2026-10-26 across all three installed profiles on one machine:
+`Conductor ready.` appears in every one of them, **`0.3.x` included**, while
+`Connected to admin websocket.` and `Attached app interface port` appear
+**zero times in any of them**. So the string to look for in the app's LOG FILE
+is the old one, and the instruction *"do not grep for it"* would have told a
+reader the conductor never came up when it had. Those two strings may well be
+what the binary prints to **stdout** when launched from a terminal — that was
+not re-checked and is the likely origin of the error — but the log file is the
+only artefact available after the fact, and it says `Conductor ready.`
+**Grep for `Conductor ready\.` and `###ADMIN_PORT:[0-9]*###`.**
 
 **`v0.2.0` shipped**, carrying `protocol_version: 9`: run
 [`38240998611`](https://github.com/StateofIntent/epistemic-resonance-desktop/actions/runs/38240998611),
@@ -881,16 +892,41 @@ them.
    was additionally verified by sha512 against the published AppImage, which
    is the check `v0.1.1` fails. **Anybody can now test the current protocol
    without building from source.**
-3. ~~**Measure two consumer networks**~~ — **done 2026-10-22, with one clause
-   of it still open.** Four crossings between two households on two ISPs, all
+3. ~~**Measure two consumer networks**~~ — **DONE, AND THE LAST CLAUSE CLOSED
+   2026-10-26.** Four crossings between two households on two ISPs, all
    under 7s and transit itself sub-second, plus a mobile-CGNAT pair both
    directions and a different-seed negative control; the returning-node case
-   measured the same evening (§3, §3b). **What is NOT done is the words
+   measured the same evening (§3, §3b). ~~**What is NOT done is the words
    "against that build":** both ends were `hc sandbox` conductors, so the relay
-   path is measured and the PACKAGING is not. The protocol question this step
-   existed to answer — if it fails, mass adoption fails — is answered, and it
-   passed. Two desktop installs talking to each other would close the rest,
-   and that is also the cheapest first act of step 4.
+   path is measured and the PACKAGING is not.~~ **"AGAINST THAT BUILD" IS NOW
+   SATISFIED: a claim written in one packaged `v0.3.0` desktop install appeared
+   in a second one on another machine** — the first time two installed copies of
+   this app have exchanged anything. Every prior crossing used `hc sandbox`
+   conductors, which declare no network seed and therefore cannot see desktop
+   peers at all, so the packaging was the one layer no measurement had touched.
+
+   **What was verified, from the cells rather than from release notes.**
+   Machine 1's running cell hashes to
+   `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o` — exactly the
+   `0.3.x` seeded desktop hash this repository documents, read live through the
+   admin interface. Both installs reached `Conductor ready.` with an
+   `###ADMIN_PORT###` line (41685 then 42253 on machine 1, 33239 on machine 2).
+   A `Claim` published on machine 1 into domain `xnet-1026-a` was visible on
+   machine 2 **on its first `Load claims`**, with no founding step and no
+   network-seed override on either side. The two admin/app origins
+   `INSTALL.md` records are confirmed: `kangaroo` for admin, and
+   `webhapp://webhappwindow` for the app interface, which `listAppInterfaces`
+   reports on a dynamically chosen port.
+
+   **The reverse direction is a separate measurement and is NOT claimed here**
+   unless its own line appears below. Machine 1 had been offline about a day
+   before this run, and §3b's returning-node figures are about records written
+   DURING an absence rather than after it — so a reverse test with both
+   machines up and the receiver already attached is the favourable case, not
+   the slow one, and should be recorded as its own result either way.
+
+   The protocol question this step existed to answer — if it fails, mass
+   adoption fails — is answered, and it passed.
 4. **Then invite people — on desktop.** Ten, not ten thousand: enough to find
    what three conductors on one machine cannot, few enough that the propagation
    latency can be explained to each of them by hand. **And as of 2026-10-22
