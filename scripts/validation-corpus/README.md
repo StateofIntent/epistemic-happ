@@ -24,8 +24,42 @@ build, and `replay.mjs` in `conductor.yml` against a real conductor.
 
 ## What is covered, and what the denominator is
 
-**Ten entry types and TWENTY-FOUR link types — every link type in the zome,
-with every rule either asserted or declared unreachable with its reason.** 244
+> **MEASURED 2026-10-25, and the figures below it had rotted by a lot.** This
+> paragraph said *"Ten entry types and TWENTY-FOUR link types — every link type
+> in the zome"* and *"244 checks"*. Measured from the runs themselves rather
+> than recounted by hand: **nineteen entry types, twenty-five link types, 330
+> checks, 0 failed, 0 skipped** on `bump/foreign-critique-held`
+> (run `40162829372`), against **316 checks** on `main` (run `40160703198`) —
+> `main` is 18 entry types and 24 link types, and the branch adds
+> `foreign_critique` and `DomainToForeignCritique`.
+>
+> **NOTHING GATES THE CHECK TOTAL, which is why it drifted 72 behind.**
+> `replay.mjs` needs a conductor to produce the number, so no static checker
+> can hold this sentence to it — and `check-harness-counts.mjs`, which does
+> gate figures of exactly this kind, reads the ROOT README and this directory's
+> suite index, never this file. So the totals here are now written as a dated
+> measurement with the run that produced each, rather than as a standing claim.
+>
+> **AND *"every link type in the zome"* IS NOT TRUE AND HAS NOT BEEN SINCE
+> `protocol_version: 11`.** The zome declares **32** link types and
+> `COVERED_LINKS` lists 25. Two of the seven absent ones carry real rules:
+> `TargetToAssessment` and `TargetToSettlementStatus`, **five assertable rules
+> each**. The settlement work added its three entry types to `COVERED` and did
+> not add its two link types to `COVERED_LINKS`, and nothing noticed, because
+> the coverage loop iterates `COVERED_LINKS` — so a link type absent from that
+> list has its rules demanded by nothing and reports nothing. Ten rules are
+> inventoried as assertable with no case and no declared gap.
+>
+> **Finding 16's "15 entry types, 282 checks" below is left exactly as
+> written.** It is a dated record of what the corpus was when that finding was
+> made, not a claim about now, and editing it would destroy the only evidence
+> of when these numbers were last true.
+
+~~**Ten entry types and TWENTY-FOUR link types — every link type in the zome,
+with every rule either asserted or declared unreachable with its reason.**~~
+**Nineteen entry types and twenty-five link types** (measured; see the notice
+above), with every rule in them either asserted or declared unreachable with
+its reason. ~~244~~ **330**
 checks, **twenty-three of which need a second agent** — see *A second agent*
 below — and **three of which are driven with no baseline at all**, because a
 valid `AttestationGrant` needs thirty days of prior membership: see *Refusals
