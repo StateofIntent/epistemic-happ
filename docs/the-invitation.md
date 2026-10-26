@@ -17,16 +17,25 @@
 > — who, and what you ask of them — and they are marked rather than
 > guessed.
 >
-> **ONE DISCLOSURE GAP IS KNOWN AND NOT YET FILLED — see open-work 7.16.**
+> **ONE DISCLOSURE GAP WAS KNOWN AND IS NOW BOUNDED — 7.16's advice arrived
+> 2026-10-26 night, recorded at `docs/erasure-and-the-content-split.md`.**
 > §1 tells an invitee their data is permanent, which is the obligation 7.1
 > names. It says nothing about the possibility that, because every peer
 > stores other peers' data, an invitee in the EU or UK **may be acquiring
-> obligations of their own** rather than only accepting a risk to theirs.
-> That is arguably the larger omission: permanence affects their data,
-> controllership affects their duties. Whether it belongs in §1 depends on
-> where the cohort is and on advice this repository cannot supply, which is
-> why 7.16 is a `[D]` with outside counsel attached rather than a sentence
-> added here.
+> obligations of their own** rather than only accepting a risk to theirs —
+> permanence affects their data, controllership affects their duties.
+>
+> **WHAT THE ADVICE SETTLED: this does not hold the message.** For a pilot
+> of a handful of invitees outside the EU, *"telling invitees plainly that
+> posts can't be deleted is enough"* — which §1's first paragraph already
+> does. **WHAT IT DID NOT SETTLE: the sentence is still owed to any invitee
+> in the EU or UK**, because the practical-enforcement argument that makes
+> this near-nil is an argument about **having no EU users**, and it is spent
+> the moment one is invited. So the gap is now conditional on §2's cohort
+> rather than open: **mixed or European cohort → add the sentence; otherwise
+> §1 stands as written.** It is advice from an informed non-lawyer rather
+> than counsel, and 7.2's absent audit and counsel-before-a-public-post are
+> both untouched by it.
 
 ---
 
@@ -141,6 +150,24 @@ all:
 *"gets testers rather than users and teaches less, since people behave
 differently when told nothing counts."* That argues against the first
 option, and is the reason this section exists rather than defaulting.
+
+**AND AS OF 2026-10-26 NIGHT THERE IS A CONCRETE THING TO ASK FOR, WHICH IS
+OPEN-WORK 7.17.** 7.16's advice asks for one artifact before people arrive,
+and it is a promise rather than an architecture: invitees affirm that **they
+are responsible for their own content, that posts are permanent, and that
+they will not post personal information about anyone else.** As a required
+promise it is signed and ordered, so the agreement is itself on the record.
+That is the second option above with its content supplied — and the first
+option, asking for nothing, is the one the advice argues against for a
+second independent reason: the only people this cohort can be asked to
+protect are the ones who never joined it.
+
+**Its companion is a complaints channel, and the mechanisms already exist**
+— a `Retraction` by the author, an `AntibodyPattern` by anyone, and removal
+from a reader's own trust list. Nothing can be deleted; something can still
+be *done*, and saying so in the invitation is what keeps *"nothing can be
+removed"* from reading as *"nothing will be done."* **Not decided here:**
+whether the promise is asked for at all, which is this section's question.
 
 ## 4. What this file is not
 
