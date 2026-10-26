@@ -6,11 +6,12 @@ artifact before people arrive and it is a promise rather than an architecture:
 permanent, and they won't post personal information about others*, plus *a
 simple complaints channel*. This file supplies the text for both.
 
-**WHAT THIS FILE DOES NOT DO: decide.** `docs/the-invitation.md` §3 — *what you
-ask of them* — is still open, and 7.17 is a `[D]`. What was missing was the
-thing to decide **about**, since "ask for a `Constitution`" is not an ask until
-somebody writes the promises down. These are written to be published as-is,
-edited, or declined.
+**ADOPTED 2026-10-27 (7.17), WITH THE FOURTH PROMISE IN.**
+`docs/the-invitation.md` §3 carries the decision and §1 carries it in the
+invitee's own language; this file stays the mechanical reference — the payloads,
+the matching `required_promises`, the enforcement truth and the limits. **What
+it still does not do is name the pilot domain**, which every promise is scoped
+to and which nothing here should guess.
 
 ---
 
@@ -19,7 +20,7 @@ edited, or declined.
 A promise here is not a checkbox in a form. It is a `Constitution` — a signed
 entry, ordered like everything else, and **permanent under Invariant 6 like
 everything else**, which is what makes asking for it a real ask rather than a
-formality. Three phrases, in the idiom the existing harnesses already use
+formality. Four phrases, in the idiom the existing harnesses already use
 (`'distinguish observation from inference'`, `'state the method'`, `'state my
 sources'` — verb-first, lower case, readable by a person):
 
@@ -30,19 +31,20 @@ sources'` — verb-first, lower case, readable by a person):
   "promises": [
     { "action": "answer for what I publish",                        "domain": "<the pilot domain>", "modality": null },
     { "action": "treat everything I publish as permanent",          "domain": "<the pilot domain>", "modality": null },
-    { "action": "publish no personal information about another person", "domain": "<the pilot domain>", "modality": null }
+    { "action": "publish no personal information about another person", "domain": "<the pilot domain>", "modality": null },
+    { "action": "answer a complaint about something I published",   "domain": "<the pilot domain>", "modality": null }
   ],
   "conditions": [],
-  "published_at": <now, micros>,
+  "published_at": <now, SECONDS — SPEC §5.23; a micros expiry can never fire>,
   "expires_at": null
 }
 ```
 
-**A fourth is worth considering and is not in the three**, because it is the one
-the complaints channel in §4 actually needs: `"answer a complaint about
-something I published"`. It is a promise to **respond**, not to remove — nothing
-can be removed — and an invitee who will not make it is telling you something
-useful before they write rather than after.
+**THE FOURTH IS NOW IN, AND IT IS THE ONE §4's CHANNEL NEEDS**: `"answer a
+complaint about something I published"`. It is a promise to **respond**, not to
+remove — nothing can be removed — and an invitee who will not make it is
+telling you something useful before they write rather than after. Adopted with
+the other three on 2026-10-27, which is why it appears in both payloads above.
 
 **The membrane side must match, word for word.** `Membrane.required_promises`
 is a `Vec<String>` of the same phrases, and two of its rules are **DHT-enforced
@@ -59,11 +61,12 @@ So the founder promises first, in public, before asking anyone else to.
   "required_promises": [
     "answer for what I publish",
     "treat everything I publish as permanent",
-    "publish no personal information about another person"
+    "publish no personal information about another person",
+    "answer a complaint about something I published"
   ],
   "validation_rules_hash": null,
   "creator": "<the founder's AgentPubKey>",
-  "created_at": <now, micros>,
+  "created_at": <now, SECONDS — SPEC §5.23>,
   "constitution": "<the founder's own Constitution ActionHash>"
 }
 ```
@@ -101,14 +104,14 @@ given to time (§5.22), exclusion (§8), sybil cost (3.7) and decay (3.8).
 
 ## 3. The plain-English version, for the invitation
 
-**Not inserted into `docs/the-invitation.md` §1** — §1 carries obligations the
-sender owes, and this is a request made of the invitee, which is §3's open
-decision. If §3 is decided this way, this is the paragraph:
+**NOW IN `docs/the-invitation.md` §1 in very nearly this form**, since §3 was
+decided this way on 2026-10-27. Kept here as the reference wording:
 
 > **One thing I'd ask of you before you write.** When you join, publish a short
-> statement — the app calls it a constitution — saying three things: that you
+> statement — the app calls it a constitution — saying four things: that you
 > answer for what you publish, that you accept everything you publish is
-> permanent, and that you won't publish personal information about anyone else.
+> permanent, that you won't publish personal information about anyone else, and
+> that you'll answer a complaint about something you published.
 > I've published mine first. It is not a terms-of-service and nothing enforces
 > it: it is a promise on the record, in a system where the record is the point,
 > and the third one matters most because it is the only protection available to

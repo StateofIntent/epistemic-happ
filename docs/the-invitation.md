@@ -1,6 +1,6 @@
 # The invitation — release step 4
 
-> ## STATUS: THE OBLIGATIONS ARE DISCHARGED HERE. THE CHOICES ARE NOT MADE.
+> ## STATUS: THE OBLIGATIONS ARE DISCHARGED AND THE CHOICES ARE NOW MADE — 2026-10-27.
 >
 > Release step 4 is *"invite ten people on desktop"*, and as of 2026-10-26
 > it has no structural blocker left: `v0.3.0` ships `protocol_version: 11`,
@@ -13,9 +13,17 @@
 > protection they get," and there was nothing written to send. This file is
 > that, plus the two other things step 4 names.
 >
-> **§1 is ready to paste. §2 and §3 are the parts a person has to decide**
-> — who, and what you ask of them — and they are marked rather than
-> guessed.
+> **§2 AND §3 WERE THE OPEN DECISIONS AND BOTH WERE TAKEN ON 2026-10-27**
+> (items 7.13 and 7.17). §2: **four to six humans, declared, each free to
+> run an agent alongside, no EU or UK invitees for now.** §3: **invitees are
+> asked for a published `Constitution` carrying four promises.** §1 is ready
+> to paste and now carries the ask and the complaints channel.
+>
+> **ONE PARAMETER IS STILL UNNAMED, and it is one word: the pilot domain.**
+> Every promise in §3 is scoped to a domain, and `create_membrane` requires
+> the founder's own `Constitution` to exist first — so the order is: publish
+> your own four promises in domain D, found membrane D requiring them, then
+> send. D is not guessed here.
 >
 > **ONE DISCLOSURE GAP WAS KNOWN AND IS NOW BOUNDED — 7.16's advice arrived
 > 2026-10-26 night, recorded at `docs/erasure-and-the-content-split.md`.**
@@ -121,12 +129,31 @@ written to be sent as-is, or edited for tone but not for content.
 > Install the **same version** I am on — different versions are different
 > networks and see nothing of each other. I am on `v0.3.0`.
 >
+> **One thing I'd ask of you before you write.** When you join, publish a
+> short statement — the app calls it a constitution — saying four things:
+> that you answer for what you publish, that you accept everything you
+> publish is permanent, that you won't publish personal information about
+> anyone else, and that you'll answer a complaint about something you
+> published. I've published mine first, and the space itself asks for those
+> four. Nothing enforces them: it is a promise on the record, in a system
+> where the record is the point. **The third one matters most, because it is
+> the only protection available to people who never joined and never agreed
+> to anything.**
+>
+> **And if something does go wrong, here is what I can and cannot do.** Tell
+> me, or publish an objection in the network itself — anyone can attach one
+> to any claim, permanently. I will read it, answer it, and publish what was
+> decided, attached to the claim complained about. What I cannot do is remove
+> anything, including my own. So *nothing can be deleted* and *nothing will
+> be done* are different sentences, and I'd rather you heard which is which
+> from me.
+>
 > If you hit something that looks wrong, tell me. Most of what I know about
 > how this behaves came from someone hitting it.
 
 ---
 
-## 2. Who — and this is a decision, not a step
+## 2. Who — DECIDED 2026-10-27: four to six humans, declared, agents allowed
 
 Step 4 says ten. **Ten is a proxy, not a threshold:** its stated purpose is
 *"enough to find what three conductors on one machine cannot, few enough
@@ -146,9 +173,29 @@ recommendation on record is **fewer than ten, declared** — because 7.5 and
 the scalability work gate on step 4 having produced **real reports**, not
 on a headcount.
 
-**Not decided here:** who, how many, and whether the cohort is mixed.
+**DECIDED 2026-10-27 (item 7.13): four to six humans, each declared as a
+person, each free to run an agent alongside, and no EU or UK invitees for now.**
 
-## 3. What you ask of them — also a decision
+Three reasons, each tied to something already on the record rather than to
+preference:
+
+- **Step 4's purpose is served at four**, because the number was always a proxy
+  for *independent operators, machines, networks and usage patterns*. Four real
+  people on four connections produce more of that than ten identities on one.
+- **7.1's honesty commitment survives**, which it would not if agents were
+  counted as people. Agents alongside declared humans costs nothing here — the
+  `agent-sdk` and `mcp-server` doors already exist, and an agent's writes are
+  attributable to its own key like anyone else's.
+- **Exposure scales with people, and 7.16's practical-enforcement argument is
+  an argument about having no EU users.** Keeping the first cohort outside the
+  EU and UK keeps that true, and means §1 does not need the controllership
+  sentence yet. **Inviting one European invitee is the thing that changes
+  that**, and the sentence above is where it goes when it does.
+
+**Still the human's: which four to six people.** That is the only part of §2
+nothing in this repository can supply.
+
+## 3. What you ask of them — DECIDED 2026-10-27: a published Constitution, four promises
 
 The protocol has an opinion about this that the invitation above
 deliberately does not act on. Founding a domain *"costs nothing. Instead
@@ -198,8 +245,42 @@ protect are the ones who never joined it.
 — a `Retraction` by the author, an `AntibodyPattern` by anyone, and removal
 from a reader's own trust list. Nothing can be deleted; something can still
 be *done*, and saying so in the invitation is what keeps *"nothing can be
-removed"* from reading as *"nothing will be done."* **Not decided here:**
-whether the promise is asked for at all, which is this section's question.
+removed"* from reading as *"nothing will be done."* **DECIDED 2026-10-27 (item 7.17): option two — invitees are asked for a
+published `Constitution`, carrying four promises.** *Answer for what I publish;
+treat everything I publish as permanent; publish no personal information about
+another person; answer a complaint about something I published.*
+
+**The fourth is in deliberately**, because the complaints channel in §1 needs
+somebody who has promised to respond — a promise to answer, never a promise to
+remove, since removal does not exist.
+
+**The exact payloads are in `docs/the-joining-promise.md` §1** — the
+`publish_constitution` call for an invitee and the matching `create_membrane`
+call with `required_promises` set to the same four phrases, word for word,
+because the comparison in `promiseCompliance()` is string equality scoped to
+the domain.
+
+**THE ORDER MATTERS AND IS NOT OPTIONAL**, because the protocol enforces half
+of it:
+
+1. **You publish your own four promises first**, in the pilot domain.
+   `create_membrane` refuses a membrane whose `constitution` is not the
+   founder's own, and refuses an empty `required_promises` — both DHT-side, so
+   the founder promising first is enforced rather than merely polite.
+2. **Found the membrane** requiring those four phrases.
+3. **Send §1** to each invitee, before they write anything.
+4. **Each invitee publishes their own four promises and joins.** Joining is
+   unrestricted by design — a protocol that refused the join would make the
+   membrane an authority over who may speak — so the promise is *checkable*
+   rather than *required*: `EpistemicAgent.promiseCompliance(membraneHash)`
+   reports who actually promised what, and `scripts/live-verify/promise-compliance.mjs`
+   is the proof it works (19 checks, four agents, one of whom promised nothing
+   and joined anyway).
+
+**What this does NOT do, stated here so §1 is not oversold**: it does not bind
+anyone who never joined, it cannot be enforced against a pseudonymous key, and
+some protections cannot be signed away at all. The third parties are 4.6's and
+3.9's problem, both filed and neither built.
 
 ## 4. What this file is not
 
