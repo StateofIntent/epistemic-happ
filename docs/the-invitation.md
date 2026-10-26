@@ -36,6 +36,17 @@
 > §1 stands as written.** It is advice from an informed non-lawyer rather
 > than counsel, and 7.2's absent audit and counsel-before-a-public-post are
 > both untouched by it.
+>
+> **AND A SECOND GAP WAS FOUND THE SAME NIGHT, BY WRITING THE IMPACT
+> ASSESSMENT — open-work 7.19.** §1 discloses what is permanent and says
+> nothing about what is ordinary: **running this reveals your IP address to
+> the peers you gossip with and to two third-party services** — the
+> bootstrap server (7.14) and, behind NAT, the relay — the way any
+> peer-to-peer application does. It is not permanent and not in the DHT,
+> which is exactly why it was missed while the permanent risk got
+> paragraphs. **Two sentences fix it, one here and one in `INSTALL.md`**,
+> and they are not drafted into §1 below because what an invitee is told is
+> this file's own open decision.
 
 ---
 
