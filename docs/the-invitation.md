@@ -44,9 +44,10 @@
 > bootstrap server (7.14) and, behind NAT, the relay — the way any
 > peer-to-peer application does. It is not permanent and not in the DHT,
 > which is exactly why it was missed while the permanent risk got
-> paragraphs. **Two sentences fix it, one here and one in `INSTALL.md`**,
-> and they are not drafted into §1 below because what an invitee is told is
-> this file's own open decision.
+> paragraphs. **BOTH SENTENCES ARE NOW WRITTEN AND IN PLACE** — §1's fourth
+> obliged item below, and a paragraph at the head of `INSTALL.md`'s *Finding
+> other people*. §1's count moved from three obliged things to **four**,
+> which is the only thing about the message that changed.
 
 ---
 
@@ -58,7 +59,7 @@ written to be sent as-is, or edited for tone but not for content.
 ---
 
 > I've built something and I'd like you to try it. Before you do, there are
-> three things I'm obliged to tell you, and one of them is permanent.
+> four things I'm obliged to tell you, and one of them is permanent.
 >
 > **Nothing you write in it can ever be deleted.** Not by you, not by me,
 > not by anyone. There is no delete button, no edit, and no admin who can
@@ -85,6 +86,16 @@ written to be sent as-is, or edited for tone but not for content.
 > can generate any number of identities, and a determined person can run a
 > modified client. For a handful of people who know each other that is
 > theoretical; I would not want you to learn it later from someone else.
+>
+> **Running it reveals your IP address** — to the people you are connected
+> to, and to two services I don't run. That is ordinary for peer-to-peer
+> software: your computer talks directly to other people's computers, so
+> each end can see the other's address, and a public directory server plus
+> a relay (both Holochain's infrastructure, not mine) are what let you find
+> each other and get through a home router. Unlike what you write, none of
+> that is stored on the network or permanent — I mention it because you are
+> about to run something that connects your machine to the others, and
+> because you should hear it from me rather than work it out later.
 >
 > **What it is.** A place to publish claims and critique each other's,
 > where disagreement is the point rather than a failure mode. There are no
