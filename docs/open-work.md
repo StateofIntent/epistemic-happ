@@ -22,39 +22,67 @@ third-party.
 
 ## 0. In flight right now
 
-**UPDATED 2026-10-26: 1.4 IS CLOSED AND 7.4 IS UNBLOCKED — THE FIRST TIME
-TWO PACKAGED INSTALLS HAVE EXCHANGED ANYTHING.** A claim published on one
-`v0.3.0` desktop install appeared in a second one on another machine, closing
-release step 3's *"against that build"*. **7.4 — invite ten people — now has
-no structural blocker left**; what it needs is the invitation, with the
-permanence disclosure to each invitee before they write (7.1). The run found
-two documentation defects, one of them a prior *correction* that was itself
-backwards — see 1.4.
+**CHECKPOINT, 2026-10-26 NIGHT. NOTHING IN FLIGHT. `gh pr list` SHOULD SHOW
+EXACTLY ONE THING: #350, HELD.** If anything else is open, a required check
+went red — look there before assuming the queue stalled. Tree clean, eight
+checkers passing, `enumerate.mjs` regenerating clean. **Fifteen PRs merged on
+2026-10-26 (#355–#369).**
 
-**CHECKPOINT, 2026-10-25 EVENING. ONE THING HELD; ONE PR IN FLIGHT.**
-**In flight: item 1.11** — the link-type counts, corrected in five documents
-and gated as a set equality in `check-spec-drift.mjs`. It was found by doing
-what paragraph 2 below says to do, which is the third time that paragraph has
-paid for itself.
-PR #350 is 4.5, written, verified and deliberately not merged — it changes the
-DNA hash, so it lands when the bump is cut and not before. **Sixteen pull
-requests merged on 2026-10-25**, eight of them this session: #347 swept the
-documents the release left stale, #348 moved the CI cost off `strict: true`,
-#349 measured the skip path, #351 took the bump-ordering decision, #352 wired
-the publish check, #353 gated corpus coverage, #354 wrote the ten settlement
-link rules.
+**THE ONE THING THAT ACTUALLY MOVED: 1.4 CLOSED BY DOING IT.** Two packaged
+`v0.3.0` installs on two machines exchanged claims in **both directions** —
+machine 1 → machine 2 in domain `xnet-1026-a`, then machine 2 → machine 1 in a
+fresh `xnet-1026-b` the receiver had loaded and seen empty first. First time
+two installed copies of this app have exchanged anything; every prior crossing
+used `hc sandbox` conductors, which declare no network seed and cannot see a
+desktop peer at all. **Release step 3's *"against that build"* is closed and
+7.4 has no structural blocker left.** Everything else merged today was
+bookkeeping about honesty — finding places the documents claimed more than the
+code delivers. Valuable, and not the same thing as progress.
+
+**WHAT 7.4 NEEDS NOW IS PEOPLE, AND THE MESSAGE IS WRITTEN.**
+`docs/the-invitation.md` §1 is ready to send and discharges 7.1's obligation —
+permanence first, the planned third break, what is vouched for and what is not,
+plus step 4's own two (latency by hand; an empty first screen is correct).
+**§2 and §3 are decisions, not steps**: who/how many (7.13), and whether
+invitees are asked for a `Constitution` at all — 7.1 declined *"invite as a
+pure experiment"* because it *"gets testers rather than users"*, which argues
+against §1's current ask-for-nothing. **Read §3 and 7.16's flag before
+sending.**
+
+**ALL FOUR GOING-WIDE GATES ARE NOW TRACKED, AND TWO WERE ON NO LIST THIS
+MORNING.** These — not the code — separate *works* from *launchable*:
+
+| gate | state |
+|---|---|
+| the integrity bump | decided: **after** the invitation (#351) |
+| **7.14** a bootstrap this project owns | opened today; `dev-test-bootstrap2.holochain.org` is somebody's dev/test box and is also hard-coded into `conductor.yml` |
+| **7.16** the deployment decision | opened today; the one SPEC explicitly said to decide and nothing tracked |
+| **7.2** an outside audit | procurement, not started |
+
+**NOTHING BOUNDED IS WAITING.** The only unblocked `[M]` rows are **3.2 and
+3.8**, both research that blocks nothing. Everything else actionable is `[D]`
+or `[H]` — and 7.16 needs an hour of real legal advice for the half no model
+can assess.
+
+**TWO THINGS NOT TO RE-DERIVE.** **Invariant 9 is now a declared aspiration,
+not an invariant** (#367) — it keeps its number because documents reference
+invariants by position. **Invariant 6 is the opposite case and must not be
+touched**: SPEC §5.22 argues its operative reading — *no agent may erase
+another's record of what was promised* — is close to **Promise-Theory-required
+by autonomy**, which §738's "import" classification obscures, and `Retraction`
+already supplies the remedy that removing it would buy.
 
 **START HERE, AND THE ORDER MATTERS.** Read the four paragraphs below before
 looking for work, because three of them are about how this list lies to a
 reader who trusts it.
 
 **1. `[M]` IS EMPTY AGAIN — AND READ PARAGRAPH 2 BEFORE BELIEVING IT, WHICH
-IS NOW ADVICE WITH A THIRD DATA POINT BEHIND IT.** Every unstruck row is
-`[D]`, `[H]` or `[X]`. The only `[M]` rows with no blocker are **3.2 and 3.7**,
-both explicitly research rather than tasks, and 3.7's first candidate is
-already shipped. `[M]` rows that exist but are blocked: 4.3 (on 3.4), 5.2 (on a
-decision), 5.3/5.4/7.5 (on the bump), 4.5 (held). **Do not go hunting for
-bounded work — but do read paragraph 2 before concluding there is none.**
+IS NOW ADVICE WITH EIGHT DATA POINTS BEHIND IT.** Every unstruck row is `[D]`,
+`[H]` or `[X]`. The only `[M]` rows with no blocker are **3.2 and 3.8**, both
+explicitly research rather than tasks. `[M]` rows that exist but are blocked:
+4.3 (on 3.4), 5.2 (on a decision), 5.3/5.4/7.5 (on the bump), 4.5 (held).
+**Do not go hunting for bounded work — but do read paragraph 2 before
+concluding there is none.**
 
 **2. "`[M]` IS EMPTY" WAS SAID THIS MORNING AND WAS WRONG, THREE TIMES OVER —
 and the third was found by acting on this very paragraph.** Item **1.11**
