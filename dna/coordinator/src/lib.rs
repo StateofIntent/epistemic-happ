@@ -5254,22 +5254,33 @@ pub fn get_agent_constitution(agent: AgentPubKey) -> ExternResult<Option<Constit
     let agent_anchor = agent_anchor_hash(&agent)?;
     let links = get_links(LinkQuery::try_new(agent_anchor, LinkTypes::AgentToConstitution)?, GetStrategy::Network)?;
 
-    let mut candidates: Vec<Constitution> = Vec::new();
+    // TIES ARE BROKEN BY THE ACTION TIMESTAMP, AND THAT IS NOT TIDINESS.
+    // `published_at` is SECONDS (SPEC §5.23), so two constitutions published
+    // within the same second compare EQUAL and "the most recent" became
+    // whatever order the links happened to arrive in — measured 2026-10-27 by
+    // `promises-ui.mjs`, which publishes twice in a row and got the older one
+    // back. The host-stamped ACTION timestamp is in micros and is the only
+    // clock §5.22 allows anything to consult, so it orders what the
+    // author-supplied field cannot. Author-supplied `published_at` still leads,
+    // because it is what the author claims and a reader can see it; the action
+    // timestamp only separates claims that are identical.
+    let mut candidates: Vec<(u64, i64, Constitution)> = Vec::new();
     for link in links {
         if let Ok(hash) = ActionHash::try_from(link.target) {
             if let Some(record) = get(hash, GetOptions::default())? {
+                let action_micros = record.action().timestamp().as_micros();
                 if let Ok(Some(constitution)) = record.entry().to_app_option::<Constitution>() {
                     let now = sys_time()?.as_seconds_and_nanos().0 as u64;
                     if constitution.expires_at.map_or(true, |exp| exp > now) {
-                        candidates.push(constitution);
+                        candidates.push((constitution.published_at, action_micros, constitution));
                     }
                 }
             }
         }
     }
 
-    candidates.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-    Ok(candidates.into_iter().next())
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+    Ok(candidates.into_iter().next().map(|(_, _, c)| c))
 }
 
 // ============================================================================

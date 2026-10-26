@@ -1,5 +1,5 @@
 # =============================================================================
-# Eighteen browser harnesses, against a real conductor and a real DHT. This is
+# Nineteen browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -275,6 +275,17 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/founding-ui.mjs
+
+      # Added 2026-10-27 for open-work 6.7, and it belongs beside founding
+      # because the gap it covers was created by founding being the ONLY place
+      # a `Constitution` could be published: a membrane may demand promises and
+      # a joiner had nowhere to make them. It also guards the four phrases
+      # `docs/the-joining-promise.md` asks for, byte for byte, since the
+      # comparison they exist for is string equality.
+      - name: promises-ui — promising without founding, and all of what you promise
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/promises-ui.mjs
 
       - name: graph-ui — the critique tree navigated spatially, with no node drawn bigger
         run: |

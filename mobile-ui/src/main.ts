@@ -3428,6 +3428,7 @@ function renderMembranesTab(): HTMLElement {
   section.appendChild(row);
 
   if (foundingOpen) section.appendChild(renderFoundingForm());
+  section.appendChild(renderMyPromisesForm());
 
   const list = document.createElement('div');
   list.className = 'claim-list';
@@ -3442,6 +3443,144 @@ function renderMembranesTab(): HTMLElement {
   }
   for (const membrane of membranes) list.appendChild(renderMembraneCard(membrane));
   section.appendChild(list);
+
+  return section;
+}
+
+/** "Your promises" — publishing a `Constitution` WITHOUT founding a domain.
+ *
+ * WHY THIS EXISTS, AND IT IS A GAP RATHER THAN A FEATURE REQUEST. Until
+ * 2026-10-27 the only call to `publish_constitution` in this client was
+ * inside the founding form, so the only way to promise anything was to
+ * found a domain — while `join_membrane` and the "what this author
+ * promises" read were both already wired. A membrane may declare
+ * `required_promises`, and a joiner had no surface on which to make them.
+ * That made the protocol's own entry condition unusable by exactly the
+ * people it is for. See open-work 6.7 and `docs/the-joining-promise.md`.
+ *
+ * THREE THINGS IT SAYS BECAUSE THEY ARE TRUE AND EASY TO GET WRONG:
+ *
+ *   - Promises are PER DOMAIN. `Promise.domain` is part of the clause, and
+ *     a membrane's comparison is scoped to its own domain, so a promise
+ *     made for one domain satisfies no other. The field is shown rather
+ *     than inferred from whatever is loaded.
+ *   - Publishing again does not erase anything. `get_agent_constitution`
+ *     returns the most recently published non-expired one, so a later
+ *     publish is what readers see — and the earlier one stays on the
+ *     record permanently under Invariant 6. Said plainly, before the
+ *     button, in the same shape the founding form states permanence.
+ *   - Nothing here is enforced at join time. `join_membrane` is
+ *     unrestricted by design: a reader compares what you promised against
+ *     what a membrane asks, and that is the whole mechanism. This screen
+ *     does not claim to admit anyone anywhere.
+ */
+function renderMyPromisesForm(): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'founding-form';
+  section.dataset.testid = 'my-promises-form';
+
+  const legend = document.createElement('h3');
+  legend.textContent = 'Your promises';
+  section.appendChild(legend);
+
+  const intro = document.createElement('p');
+  intro.className = 'hint';
+  intro.textContent =
+    'A domain may ask things of anyone who writes in it. This is where you '
+    + 'state what you promise, under your own key, without founding anything. '
+    + 'Promises are per domain, and a reader compares them against what the '
+    + 'domain asks.';
+  section.appendChild(intro);
+
+  const domainInput = document.createElement('input');
+  domainInput.type = 'text';
+  domainInput.placeholder = 'Which domain, e.g. fieldnotes';
+  domainInput.dataset.testid = 'my-promises-domain';
+  section.appendChild(domainInput);
+
+  const promisesInput = document.createElement('textarea');
+  promisesInput.placeholder = 'What you promise, one per line';
+  promisesInput.dataset.testid = 'my-promises-text';
+  section.appendChild(promisesInput);
+
+  const permanence = document.createElement('p');
+  permanence.className = 'hint';
+  permanence.dataset.testid = 'my-promises-permanence';
+  permanence.textContent =
+    'This is permanent. Publishing again later does not replace or delete '
+    + 'this one — readers see your most recent, and the earlier stays on the '
+    + 'record. Nothing here admits you to anything: joining is separate, and '
+    + 'unrestricted.';
+  section.appendChild(permanence);
+
+  const error = document.createElement('p');
+  error.className = 'error';
+  error.dataset.testid = 'my-promises-error';
+  error.hidden = true;
+  section.appendChild(error);
+
+  const current = document.createElement('p');
+  current.className = 'hint';
+  current.dataset.testid = 'my-promises-current';
+  current.hidden = true;
+  section.appendChild(current);
+
+  const submit = document.createElement('button');
+  submit.textContent = 'Publish these promises';
+  submit.dataset.testid = 'my-promises-submit';
+  submit.onclick = async () => {
+    if (!connection) return;
+    error.hidden = true;
+    current.hidden = true;
+    submit.disabled = true;
+
+    const domain = domainInput.value.trim();
+    const promises = promisesInput.value.split('\n').map((p) => p.trim()).filter(Boolean);
+
+    // Said better here than by the zome, which refuses both cases anyway:
+    // validate_constitution rejects an empty promise list and any clause with
+    // an empty action or domain.
+    if (!domain || promises.length === 0) {
+      error.hidden = false;
+      error.textContent =
+        'A promise needs a domain it applies to, and at least one thing you promise.';
+      submit.disabled = false;
+      return;
+    }
+
+    try {
+      await connection.callZome('publish_constitution', {
+        agent: connection.myAgentPubKey,
+        promises: promises.map((action) => ({ action, domain, modality: null })),
+        conditions: [],
+        // SECONDS, not micros — SPEC §5.23. get_agent_constitution compares
+        // `expires_at` against sys_time() in seconds, so the two fields share
+        // that unit and a micros value here would be meaningless.
+        published_at: nowSecs(),
+        expires_at: null,
+      });
+      // Read it back rather than reporting success from the fact that no
+      // exception was thrown: the point of this screen is that somebody can
+      // see what they actually promised.
+      const published = await connection.callZome<Constitution | null>(
+        'get_agent_constitution', connection.myAgentPubKey,
+      );
+      const actions = (published?.promises ?? [])
+        .filter((pr) => pr.domain === domain)
+        .map((pr) => pr.action);
+      current.hidden = false;
+      current.textContent = actions.length > 0
+        ? `Published. In ${domain} you now promise: ${actions.join('; ')}.`
+        : `Published, but nothing reads back for ${domain} — load the domain and check before relying on it.`;
+      promisesInput.value = '';
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      submit.disabled = false;
+    }
+  };
+  section.appendChild(submit);
 
   return section;
 }
@@ -3482,9 +3621,15 @@ function renderFoundingForm(): HTMLElement {
   mineHint.textContent =
     'Published as your own Constitution, under your key. You are held to this.';
   mine.appendChild(mineHint);
-  const promiseInput = document.createElement('input');
-  promiseInput.type = 'text';
-  promiseInput.placeholder = 'e.g. distinguish observation from inference';
+  // A TEXTAREA, ONE PER LINE, AND THE SINGLE-LINE INPUT THIS REPLACED WAS A
+  // REAL LIMIT RATHER THAN A STYLE CHOICE. `Constitution.promises` is a Vec and
+  // a membrane's `required_promises` is a Vec, and this form let a founder
+  // declare SEVERAL demands of others while publishing exactly ONE promise of
+  // their own — so a founder requiring four phrases was missing three of them
+  // in their own membrane, visible in the first `promiseCompliance` read. Found
+  // 2026-10-27 while preparing the pilot founding (open-work 6.7).
+  const promiseInput = document.createElement('textarea');
+  promiseInput.placeholder = 'What you promise, one per line';
   promiseInput.dataset.testid = 'founder-promise';
   mine.appendChild(promiseInput);
   section.appendChild(mine);
@@ -3543,13 +3688,13 @@ function renderFoundingForm(): HTMLElement {
     error.hidden = true;
     submit.disabled = true;
 
-    const promise = promiseInput.value.trim();
+    const mine = promiseInput.value.split('\n').map((p) => p.trim()).filter(Boolean);
     const domain = domainInput.value.trim();
     const required = requiredInput.value.split('\n').map((p) => p.trim()).filter(Boolean);
 
     // Checked here only to give a better message than the zome's; the
     // integrity zome rejects both cases regardless of this form.
-    if (!promise || !domain || required.length === 0) {
+    if (mine.length === 0 || !domain || required.length === 0) {
       error.hidden = false;
       error.textContent =
         'A domain needs a name, at least one promise from you, and at least one '
@@ -3561,7 +3706,7 @@ function renderFoundingForm(): HTMLElement {
     try {
       const constitution: Constitution = {
         agent: connection.myAgentPubKey,
-        promises: [{ action: promise, domain, modality: null }],
+        promises: mine.map((action) => ({ action, domain, modality: null })),
         conditions: [],
         published_at: Math.floor(Date.now() / 1000),
         expires_at: null,
