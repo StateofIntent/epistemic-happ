@@ -1,5 +1,18 @@
 # =============================================================================
-# Twelve protocol harnesses, against a real conductor and a real DHT.
+# Twenty harness steps, against a real conductor and a real DHT — the number
+# `grep -cE '^ +node .*live-verify/.*[.]mjs$' .github/workflows/conductor.yml`
+# returns, which is the only form of this sentence that can be re-checked in
+# one command. TWO THINGS ABOUT THAT COMMAND ARE DELIBERATE, both learned by
+# getting them wrong: the `^ +` anchor, because an unanchored `grep -c` also
+# matches this very comment and came out one too many; and the `.*live-verify`
+# instead of the literal path, because `check-ci-scope.mjs` scans this file for
+# `node scripts/...` to find the scripts the workflow runs — and a comment
+# quoting that shape made the gate try to read the DIRECTORY as a file.
+#
+# IT SAID "Twelve" UNTIL 2026-10-26 AND HAD DRIFTED BY EIGHT. The previous
+# correction (just below) predicted exactly that — "the next person to add a
+# step here should know the line needs moving" — and the prediction came true,
+# so the sentence is now written as a command rather than as a number.
 #
 # ON EVERY PULL REQUEST THAT COULD CHANGE THE ANSWER, which since 2026-10-25 is
 # not every pull request. The `scope` job below skips this one when the diff is
@@ -465,6 +478,19 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/read-scope.mjs
+
+      # Here rather than with the SDK harnesses below, because what it tests is
+      # a PROTOCOL fact that no rule enforces: a membrane declares
+      # `required_promises`, founding enforces them against the founder, and
+      # joining enforces nothing at all. Nothing in either zome compared a
+      # member's `Constitution` to what their membrane asks (open-work 6.6), so
+      # this is the first thing in the repository that does — through the
+      # shipped SDK, with four agents, one of whom promised nothing and joined
+      # anyway, which §5 asserts on purpose rather than treats as a bug.
+      - name: promise-compliance — who actually promised what their membrane requires
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/promise-compliance.mjs
 
       # With the protocol-layer harnesses above rather than the SDK ones below,
       # because what it drives is the integrity zome itself: a valid baseline
