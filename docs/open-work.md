@@ -22,21 +22,79 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-10-26 NIGHT. NOTHING IN FLIGHT. `gh pr list` SHOULD SHOW
-EXACTLY ONE THING: #350, HELD.** If anything else is open, a required check
-went red — look there before assuming the queue stalled. Tree clean, **nine**
-checkers passing — `check-time-units.mjs` joined them on 2026-10-26 night
-(1.17) — and `enumerate.mjs` regenerating clean. **Fifteen PRs merged on
-2026-10-26 (#355–#369).**
+**CHECKPOINT, 2026-10-27 LATE. READ THE NEXT TWO PARAGRAPHS BEFORE ANYTHING
+ELSE: THE FIRST ACTION IS A RELEASE, NOT A ROW.** `main` at the #377 merge,
+with **#378 open and awaiting its `ui` job only** — everything else on it is
+green, and it is the UI surface 7.4 now depends on (6.7). `gh pr list` should
+otherwise show exactly one thing: **#350, HELD**. Tree clean, **nine** checkers
+passing — `check-time-units.mjs` joined on 2026-10-26 (1.17) and learned to
+read documentation fences on 2026-10-27 — and `enumerate.mjs` regenerating
+clean. **Twenty-four PRs merged across 2026-10-26/27 (#355–#377).**
+
+**TOMORROW'S FIRST ACTION, IN ORDER, AND STEP 1 IS NOT IN THIS REPOSITORY.**
+7.4 has no decisions left and is blocked only on a build:
+
+1. **Merge #378**, then cut **`v0.3.1`** in `epistemic-resonance-desktop` —
+   **PATCH, NOT MINOR.** The network seed derives from `0.3.x`, so a patch
+   stays on the same network with the same cell while a minor forks it and
+   loses both machines' data. The bundle is already built here
+   (`epistemic-resonance-happ.webhapp`, 2026-10-27 02:17) and contains both
+   6.7's UI and 1.18's coordinator fix.
+2. **Upgrade your own two installs** onto the same data directory — new UI in
+   front of the same cell, which is exactly what a patch release does.
+3. **Found `fieldnotes` in the app's UI**, not via a script: *Your promises*
+   → domain `fieldnotes` → the four phrases, one per line → publish; then
+   *Found a domain* with the same four in both fields. **Copy the phrases from
+   `docs/the-joining-promise.md` §1 — do not retype them**, because the
+   comparison is string equality and the rehearsal only proves those bytes.
+4. **Send `docs/the-invitation.md` §1** to four to six people, each before they
+   write anything. That is 7.1's obligation and under Invariant 6 it is the
+   only protection they get.
+
+**WHY THE RELEASE IS IN FRONT: the UI reaches an invitee only through a
+build.** 6.7 was found while preparing step 3 — `publish_constitution` was
+reachable only by founding a domain, and only with ONE own-promise, so §3's
+ask was unexecutable in `v0.3.0` and a founder requiring four phrases would
+have been missing three of them in their own membrane.
 
 **THE OUTWARD-FACING QUEUE IS EMPTY AS OF 2026-10-27: 7.20's fourth egg-case
 reply is SENT**, within the hour it was drafted, and `docs/cases/luck-light-egg.md`
 §13 records what it carries. Four replies sent across §9-§13, each of which
 produced at least one item here — so the expectation on his answer is **a new
 row rather than a thank-you**, and §14 is where the next one goes. **Nothing
-outward-facing is now waiting on the human**: 7.4 waits on 7.13's cohort
-decision, 7.17 on whether invitees are asked for the promise at all, and 7.2's
-audit on procurement.
+outward-facing is waiting on a draft any more.**
+
+**ALL THREE REMAINING DECISIONS WERE TAKEN ON 2026-10-27, AND THEY ARE NOT TO
+BE RE-LITIGATED.** **7.13**: four to six humans, each declared as a person,
+each free to run an agent, **no EU or UK invitees in the first cohort** — one
+European invitee is what puts the controllership sentence into §1, and the
+place it goes is marked. **7.17**: a published `Constitution` carrying **four**
+promises, the fourth being *answer a complaint about something I published*,
+because the complaints channel needs somebody who promised to RESPOND rather
+than to remove. **7.2**: the two **zomes only**, after the pilot and before any
+public post or funding conversation — with **7.3 taken first** and stated
+plainly in `SECURITY.md` (none of the four services is a service this project
+runs or recommends running), which is what makes that scope honest. The pilot
+domain is **`fieldnotes`**.
+
+**WHAT IS LEFT AFTER THE INVITATION GOES OUT, so it is not re-derived:** three
+research rows that block nothing (**3.2** with the worked example it was
+missing, **3.8**, and **3.9**, the remedy layer the egg case and 7.16's
+third-party risk both point at); the **bump batch** (4.1 on Andras, 4.2 on
+3.5's price, 4.3 on 2.4/3.4, 4.5 written and held, 4.6 to adopt) with 7.5 and
+5.3/5.4 behind it; **7.14**, whose `[M]` half — making the app REMEMBER a
+bootstrap override — is the only unblocked bounded work left and lives in the
+desktop repository; **7.2**'s procurement; and §6's four screens, which remain
+one decision rather than four.
+
+**THE PATTERN HELD SEVEN TIMES IN TWO DAYS AND IS NOW THE EXPECTATION RATHER
+THAN A CURIOSITY: every bounded thing came from FINISHING something, never
+from scanning this column.** 7.18 opened 7.19; 7.17's text opened 6.6; 6.6's
+build fixed 1.16 and opened 1.17; 1.17's fix added the ninth checker, which
+then caught a DOCUMENT violating the convention the day after it was declared;
+and preparing the pilot founding opened 6.7, whose harness found 1.18 on its
+first run. **If `[M]` looks empty tomorrow, finish something instead of
+looking.**
 
 **THE ONE THING THAT ACTUALLY MOVED: 1.4 CLOSED BY DOING IT.** Two packaged
 `v0.3.0` installs on two machines exchanged claims in **both directions** —
