@@ -711,7 +711,19 @@ disagreed.** `assert_expertise` and `promote_mew_to_claim` wrote
 Thirty call sites in the harnesses, `mobile-ui` and `agent-sdk` were corrected
 the same way — `timestamp` to micros, `created_at`/`published_at` to seconds —
 and `scripts/check-time-units.mjs` now gates both sides so this cannot drift
-back silently. **No integrity rule changed and no fork is involved**: the only
+back silently.
+
+**AND THE GATE READS DOCUMENTATION TOO, AS OF 2026-10-27, BECAUSE THE FIRST
+THING TO VIOLATE THIS SECTION WAS A DOCUMENT.** The day after the declaration
+landed, `docs/the-joining-promise.md` — the file whose payloads an invitee is
+meant to copy verbatim — specified `published_at` and `created_at` in micros.
+The code was right and the example was wrong, so a code-only scan could not
+see it. The checker now also reads **fenced code blocks** in every root and
+`docs/` Markdown file (prose is deliberately excluded: the text around these
+fields legitimately describes the error, including this paragraph). It found a
+second instance immediately — `docs/metabolic-biosignalling-currency-brief.md`
+documented `MutualCreditTransfer.timestamp` as *"Unix seconds"*, which matters
+because 3.4 leaves open whether that layer is rebuilt from the brief. **No integrity rule changed and no fork is involved**: the only
 DHT-enforced comparison, `reveal_deadline`, was already micros and is
 untouched.
 
