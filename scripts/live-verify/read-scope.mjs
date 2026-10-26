@@ -125,6 +125,7 @@ async function connectApp(admin, appId) {
 }
 
 const nowMicros = () => Date.now() * 1000;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 async function main() {
   const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
@@ -175,7 +176,7 @@ async function main() {
     // rather than a typed one, which is worth knowing when writing these.
     promises: [{ action: 'distinguish_observation_from_inference', domain: DOMAIN, modality: 'Methodological' }],
     conditions: [],
-    published_at: nowMicros(),
+    published_at: nowSecs(),
     expires_at: null,
   });
   await agent1.call('create_membrane', {
@@ -184,7 +185,7 @@ async function main() {
     required_promises: ['distinguish_observation_from_inference'],
     validation_rules_hash: null,
     creator: agent1.me,
-    created_at: nowMicros(),
+    created_at: nowSecs(),
     constitution: constitutionHash,
   });
 
@@ -193,7 +194,7 @@ async function main() {
     parent_species: null,
     required_evidence: [],
     proposer: agent1.me,
-    created_at: nowMicros(),
+    created_at: nowSecs(),
   });
 
   await agent1.call('create_critique', {

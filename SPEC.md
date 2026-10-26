@@ -677,6 +677,44 @@ No clock, no network call, no view of anybody's screen. Every rule is a determin
 
 **Two smaller findings in the same path, both drift of the kind §11 describes.** `PreRegistration.timestamp` and `Revelation.timestamp` (`dna/integrity/src/lib.rs:794`, `:806`) are **never read** — not by validation, and not by the coordinator, where every `.timestamp` reference resolves to an action's or a link's. They are unvalidated fields an author may set to anything, and a conforming implementation MUST NOT treat either as authoritative; the action timestamp is the only one any rule consults. Separately, **neither `PreRegistration` nor `Revelation` has a §2 subsection**, though both are listed in §10 and gated there by `check-spec-drift.mjs`. The entry types a rule is written about are absent from the data model that is supposed to enumerate them, which is the §4 gap §5.19's note already names, in a second place.
 
+### 5.23 The unit of every app-level time field, declared
+
+**THIS SECTION EXISTS BECAUSE THE UNIT WAS NEVER WRITTEN DOWN AND THE CODE
+INTERPRETED IT TWO WAYS.** Found 2026-10-26 (open-work 1.17): two coordinator
+reads consult a caller-supplied time field and disagreed about its unit, and
+one field — `Claim.timestamp` — was being WRITTEN in both units by four
+functions of the same zome. Every `u64` time field here is an app field the
+caller or the coordinator fills, so no HDK type carries the unit for it; the
+only thing that can is this table.
+
+| field | unit | why it is this and not the other |
+|---|---|---|
+| `Claim.timestamp`, `Critique.timestamp`, `Evidence.timestamp`, `Mew.timestamp`, `Retraction.timestamp`, `AntibodyPattern.timestamp`, `Assessment.timestamp`, `SettlementStatus.timestamp`, `PreRegistration.timestamp`, `Revelation.timestamp` | **microseconds** | What callers actually send: 104 of the ~118 `timestamp:` sites across the harnesses, `mobile-ui` and `agent-sdk` were already micros when this was declared. It also matches Holochain's own `Timestamp`, which is µs since the epoch, so a client that reuses an action timestamp is not converting |
+| `PreRegistration.reveal_deadline` | **microseconds**, and this one is ENFORCED | `validate_pre_registration` compares it against the commit's own **action** timestamp in micros (`dna/integrity/src/lib.rs:1392`). This is the only time unit in the protocol with a DHT-side consequence; the rest are conventions |
+| `Constitution.published_at`, `Constitution.expires_at`, `Membrane.created_at`, `CritiqueSpecies.created_at`, `FederationRecord.created_at`, `SettlementPolicy.published_at`, `WorldlineTrace.created_at`, `WorldlineTrace.expires_at`, `PeriodBoundary.start_time`, `PeriodBoundary.end_time` | **seconds** | Three reads already assume it — `get_agent_constitution` drops an expired `Constitution`, and the two worldline checkpoint reads drop an expired trace, each comparing against `sys_time().as_seconds_and_nanos().0`. `mobile-ui` renders `constitution.published_at * 1000` as a date, and `period_granularity_secs` says its own unit in its name |
+
+**THE TRAP THIS CLOSES, because it is not symmetric.** A `timestamp` in the
+wrong unit is a display defect: nothing in the protocol reads those fields at
+all — §5.22's refusal is explicit, and the note above records
+`PreRegistration.timestamp` and `Revelation.timestamp` as read by nothing. An
+**expiry** in the wrong unit is a silent behaviour change: a micros
+`expires_at` is ~10^5 times larger than the seconds `now` it is compared
+against, so the entry **never expires**, and `validate_constitution` cannot
+catch it because its only rule is `expires_at > published_at`, which holds in
+either unit. The failure is invisible to the one layer that refuses things,
+which is why the unit has to be declared rather than inferred.
+
+**WHAT WAS CHANGED TO MAKE THIS TRUE, rather than asserted over code that
+disagreed.** `assert_expertise` and `promote_mew_to_claim` wrote
+`Claim.timestamp` in seconds and now write micros, joining
+`publish_discourse_reading` and `import_foreign_critique`, which already did.
+Thirty call sites in the harnesses, `mobile-ui` and `agent-sdk` were corrected
+the same way — `timestamp` to micros, `created_at`/`published_at` to seconds —
+and `scripts/check-time-units.mjs` now gates both sides so this cannot drift
+back silently. **No integrity rule changed and no fork is involved**: the only
+DHT-enforced comparison, `reveal_deadline`, was already micros and is
+untouched.
+
 ## 6. Rate Limits (SWO Temporal Friction) — Consolidated
 
 All windows are rolling (not fixed calendar buckets) and per-agent (global across domains, not per-domain — a deliberate, documented tradeoff, not an oversight). Coordinator-side and DHT-side limits are kept numerically identical by convention (each constant's own comment cross-references its sibling); nothing enforces that equality automatically.

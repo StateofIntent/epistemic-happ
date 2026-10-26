@@ -449,7 +449,7 @@ async function main() {
     reason: 'Superseded by a larger cohort.',
     replacement_claim: null,
     author: agent1.me,
-    timestamp: nowSecs(),
+    timestamp: nowMicros(),
   }));
 
   // Agent 1 critiques agent 2's claim — the ordinary case, one agent
@@ -464,18 +464,18 @@ async function main() {
   const patternOnA = await seed('publish_antibody_pattern (TargetToAntibody)', agent1.call('publish_antibody_pattern', {
     target: claimAHash, target_type: 'Claim', kind: 'SpamFlood',
     rationale: 'Seeded flag, re-pointed by the probe below.',
-    author: agent1.me, timestamp: nowSecs(),
+    author: agent1.me, timestamp: nowMicros(),
   }));
 
   const constitutionA = await seed('publish_constitution (AgentToConstitution)', agent1.call('publish_constitution', {
     agent: agent1.me,
     promises: [{ action: 'distinguish_observation_from_inference', domain: DOMAIN, modality: 'Methodological' }],
-    conditions: [], published_at: nowMicros(), expires_at: null,
+    conditions: [], published_at: nowSecs(), expires_at: null,
   }));
 
   const mewA = await seed('create_mew (AgentToMew)', agent1.call('create_mew', {
     content: 'Raw stimulus, pre-transduction.',
-    author: agent1.me, timestamp: nowSecs(),
+    author: agent1.me, timestamp: nowMicros(),
     reply_to: null, semantic_tags: [], linked_claim: null,
   }));
 
@@ -488,11 +488,11 @@ async function main() {
   // applies when it probes with a Constitution instead of a random hash.
   await agent1.call('create_critique_species', {
     name: `Species${Date.now()}A`, parent_species: null, required_evidence: [],
-    proposer: agent1.me, created_at: nowMicros(),
+    proposer: agent1.me, created_at: nowSecs(),
   });
   await agent1.call('create_critique_species', {
     name: `Species${Date.now()}B`, parent_species: null, required_evidence: [],
-    proposer: agent1.me, created_at: nowMicros(),
+    proposer: agent1.me, created_at: nowSecs(),
   });
   await new Promise((r) => setTimeout(r, 5000));
 
@@ -511,7 +511,7 @@ async function main() {
   // available for a link nothing reads.
   const childSpecies = await seed('create_critique_species with a parent (SpeciesToParent)', agent1.call('create_critique_species', {
     name: `Species${Date.now()}Child`, parent_species: speciesOne,
-    required_evidence: [], proposer: agent1.me, created_at: nowMicros(),
+    required_evidence: [], proposer: agent1.me, created_at: nowSecs(),
   }));
 
   // A third claim by agent 1, retracted WITH a replacement — the honest
@@ -537,7 +537,7 @@ async function main() {
     reason: 'Replaced by a better-controlled statement.',
     replacement_claim: claimAHash,
     author: agent1.me,
-    timestamp: nowSecs(),
+    timestamp: nowMicros(),
   });
 
   // A critique that declares speciesOne. Its CritiqueToSpecies link is
@@ -591,7 +591,7 @@ async function main() {
 
   const mewForPromotion = await agent1.call('create_mew', {
     content: 'A raw observation, about to be transduced.',
-    author: agent1.me, timestamp: nowSecs(),
+    author: agent1.me, timestamp: nowMicros(),
     reply_to: null, semantic_tags: [], linked_claim: null,
   });
   await new Promise((r) => setTimeout(r, 2000));

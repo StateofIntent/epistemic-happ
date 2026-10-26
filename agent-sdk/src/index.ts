@@ -164,8 +164,16 @@ function describeClosure(c: ClosureState | null): string {
   return `${c.resolvedLocally} of ${c.cited} citation${c.cited === 1 ? '' : 's'} resolve locally`;
 }
 
+// MICROSECONDS, and the unit is not a free choice: SPEC.md §5.23 declares it
+// per field — `timestamp` in micros (matching Holochain's own `Timestamp`),
+// and `created_at`/`published_at`/`expires_at` in SECONDS, because
+// `get_agent_constitution` and the worldline checkpoint reads compare expiry
+// against `sys_time()` in seconds. Everything this library writes is a
+// `timestamp` field, so a seconds helper would currently be dead code; add
+// `Math.floor(Date.now() / 1000)` at the call site if a write to one of the
+// seconds-family fields is ever added here, and see `Constitution` in
+// types.ts for what goes wrong if the two are mixed.
 function nowMicros(): number { return Date.now() * 1000; }
-function nowSecs(): number { return Math.floor(Date.now() / 1000); }
 
 function decodeRecords<T>(records: any[]): Decoded<T>[] {
   const out: Decoded<T>[] = [];
@@ -670,7 +678,7 @@ export class EpistemicAgent {
       reason: input.reason,
       replacement_claim: input.replacementClaim ?? null,
       author: this.agentPubKey,
-      timestamp: nowSecs(),
+      timestamp: nowMicros(),
     }, [input.claimEntryHash, ...(input.replacementClaim ? [input.replacementClaim] : [])]);
   }
 

@@ -301,7 +301,7 @@ async function main() {
   });
   await call('create_critique_species', {
     name: SPECIES_NAME, parent_species: null,
-    required_evidence: [SPECIES_EVIDENCE], proposer: me, created_at: nowMicros(),
+    required_evidence: [SPECIES_EVIDENCE], proposer: me, created_at: nowSecs(),
   });
   await call('generate_worldline_trace', {
     period_granularity_secs: 3600, expertise_tags: [], expires_at: null,

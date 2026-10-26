@@ -118,11 +118,11 @@ async function seed() {
   // Epistemic state a newcomer must see despite being a newcomer.
   await call('publish_antibody_pattern', {
     target, target_type: 'Claim', kind: 'SpamFlood',
-    rationale: 'Seeded flag a newcomer must still see.', author: me, timestamp: nowSecs(),
+    rationale: 'Seeded flag a newcomer must still see.', author: me, timestamp: nowMicros(),
   });
   await call('create_retraction', {
     target_claim: target, reason: 'Seeded retraction a newcomer must still see.',
-    replacement_claim: null, author: me, timestamp: nowSecs(),
+    replacement_claim: null, author: me, timestamp: nowMicros(),
   });
 
   log('  seeded.\n');
