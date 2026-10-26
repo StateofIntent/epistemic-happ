@@ -19,11 +19,18 @@
 > asked for a published `Constitution` carrying four promises.** §1 is ready
 > to paste and now carries the ask and the complaints channel.
 >
-> **ONE PARAMETER IS STILL UNNAMED, and it is one word: the pilot domain.**
-> Every promise in §3 is scoped to a domain, and `create_membrane` requires
-> the founder's own `Constitution` to exist first — so the order is: publish
-> your own four promises in domain D, found membrane D requiring them, then
-> send. D is not guessed here.
+> **THE PILOT DOMAIN IS `fieldnotes`, CHOSEN 2026-10-27.** Lowercase and one
+> word because the UI trims the domain input but does not lowercase it, so
+> `FieldNotes` would be a different domain forever; no `/`, because
+> `assert_expertise` already uses that as a namespace separator. The name was
+> chosen so that the claims the cohort will naturally produce — what the
+> software actually did on their machine — are also the claims step 4 exists
+> to collect, and are about the world rather than about people (7.16's
+> largest risk reducer).
+>
+> **So nothing is unnamed and the order is fixed**: publish your own four
+> promises in `fieldnotes`, found the `fieldnotes` membrane requiring those
+> four phrases, then send §1.
 >
 > **ONE DISCLOSURE GAP WAS KNOWN AND IS NOW BOUNDED — 7.16's advice arrived
 > 2026-10-26 night, recorded at `docs/erasure-and-the-content-split.md`.**
@@ -119,7 +126,9 @@ written to be sent as-is, or edited for tone but not for content.
 >   minutes** to catch up — and longer the longer you were away. The app
 >   looks stale during that time. It is not; it is syncing.
 > - You will see **nothing at all** until you type a domain name and load
->   it. An empty screen on first open is correct.
+>   it. An empty screen on first open is correct. **Ours is `fieldnotes`** —
+>   all lowercase, one word; it is case-sensitive, so `Fieldnotes` is a
+>   different and empty place.
 >
 > **Installing** is at `INSTALL.md`. Two things worth knowing in advance:
 > it is not code-signed, so macOS and Windows will both object and the file
@@ -276,6 +285,14 @@ of it:
    reports who actually promised what, and `scripts/live-verify/promise-compliance.mjs`
    is the proof it works (19 checks, four agents, one of whom promised nothing
    and joined anyway).
+
+**AND THE MEMBRANE CARRIES THE PROMISES WHILE THE DOMAIN DOES NOT, which is
+worth knowing before the ask is described as a gate.** `validate_claim` requires
+only a non-empty `domain`, and founding is not a prerequisite for publishing —
+so anyone can write into `fieldnotes` without joining the `fieldnotes` membrane
+and therefore without promising anything. That is Invariant 2 working rather
+than a hole to plug: membership is voluntary, and `promiseCompliance` reports on
+members. **The ask therefore depends on people joining, and §1 asks them to.**
 
 **What this does NOT do, stated here so §1 is not oversold**: it does not bind
 anyone who never joined, it cannot be enforced against a pseudonymous key, and

@@ -99,6 +99,27 @@ push, and that harness has been watched failing on its own rule.
 own — only the zomes and the reads have. Dependency supply chain is unaudited
 beyond lockfiles.
 
+**AND THE POSITION ON THOSE FOUR IS NOW STATED RATHER THAN LEFT TO BE
+INFERRED — decided 2026-10-27 (open-work 7.3).** None of `bridge/`,
+`gateway/`, `federation/` or `mcp-server/` has had a security review, **and
+none of them is a service this project runs or recommends running.**
+`gateway/` is the only one that binds a port (`gateway/src/main.ts`,
+`server.listen`) and so the only one that would face a network if deployed;
+`bridge/` and `federation/` listen for nothing — they are clients that reach
+out to a conductor and to an external platform; `mcp-server/` is published to
+npm, and is an **agent-side tool speaking stdio to its operator's own
+conductor**, not a server a stranger can reach. **Deploy any of them and you
+are the first person to have reviewed them.** That is also why the outside
+audit's scope is deliberately the two zomes (7.2): they are what an installing
+user actually runs, and a review of four unrun services would spend scarce
+audit budget on the surface nobody is exposed to.
+
+**What this does NOT say** is that they are abandoned or unused in
+development: `bridge/`, `gateway/` and `federation/` are driven by harnesses
+against a real conductor on every push, and `mcp-server`'s published tarball
+is installed and exercised by `published-packages.mjs`. Exercised is not
+reviewed, and running in CI is not running in production.
+
 **How far the evidence actually goes, stated as arithmetic rather than as a
 fraction.** Five deliberate injections have now established that **every rule
 the harness claims to cover has been watched failing on its own probe** — both
@@ -134,7 +155,12 @@ epistemic position — a forged author, a false retraction, an attribution that
 names somebody who did not act. Invariant violations are in scope by default.
 
 Out of scope: denial of service and resource exhaustion (the friction budgets
-are cost mechanisms, not DoS defences, and are documented as such); anything
+are cost mechanisms, not DoS defences, and are documented as such); the four
+services named under *What has been reviewed, and what has not* — they are
+declared not-for-deployment rather than claimed safe, so a finding that one of
+them is insecure when exposed to a network is a finding about a deployment this
+project advises against (a finding that the **app** or a **zome** depends on
+one of them is in scope, and welcome); anything
 requiring control of a user's own machine or keys; Holochain and `kitsune2`
 defects, which belong upstream — though a report that this project *depends* on
 one in a way it has not recorded is welcome.
