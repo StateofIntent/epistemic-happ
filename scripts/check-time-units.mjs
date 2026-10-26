@@ -47,6 +47,11 @@
 //   expiry read consults. Result: 1 FAIL, with the consequence spelled out in
 //   the message rather than left to the reader.
 //
+//   Probe 3, the documentation half (2026-10-27): both payloads in
+//   `docs/the-joining-promise.md` reverted to `<now, micros>`. Result: 2 FAILs
+//   naming file, line and field — which is the error that actually happened
+//   the day before and that a code-only scan could not see.
+//
 // Both restored and re-run green. A gate that has only ever passed has not
 // been shown to test anything, which is this repository's rule for harnesses
 // and applies no less to its checkers.
@@ -122,6 +127,64 @@ function scan(relPath) {
   return checked;
 }
 
+// --- 4. The payload examples in documentation, which are what people COPY.
+//
+// WHY THIS HALF EXISTS, AND IT IS NOT HYPOTHETICAL. The scan above reads code.
+// On 2026-10-27, the day after §5.23 was declared and gated,
+// `docs/the-joining-promise.md` — the file whose payloads an invitee is meant
+// to copy verbatim — specified `published_at` and `created_at` in MICROS, the
+// exact error the declaration exists to forbid. Nothing caught it, because the
+// code was right and the example was wrong.
+//
+// ONLY INSIDE FENCED CODE BLOCKS, and that restriction is load-bearing: the
+// prose around these fields legitimately says things like *"a micros
+// `expires_at` is ~1e5 times too large to ever fire"*, which describes the bug
+// rather than committing it. A scan that read prose would flag §5.23 itself,
+// this file's own header, and every row that explains the trap.
+function scanDocFences(relPath) {
+  const abs = resolve(REPO, relPath);
+  if (!existsSync(abs)) return 0;
+  const src = readFileSync(abs, 'utf8');
+  let inFence = false;
+  let checked = 0;
+  src.split('\n').forEach((line, i) => {
+    if (/^\s*```/.test(line)) { inFence = !inFence; return; }
+    if (!inFence) return;
+    for (const field of FIELDS) {
+      // TO END OF LINE, unlike the code scan above, and that difference cost a
+      // debugging round: a placeholder reads `<now, in SECONDS — see §5.23>`,
+      // so stopping at the first comma captures `<now` and the unit is lost.
+      // One field per line is the shape every payload example here has.
+      const m = line.match(new RegExp(`"?${field}"?\\s*:\\s*([^\\n]+)`));
+      if (!m) continue;
+      const value = m[1].replace(/,\s*$/, '');
+      const got = unitOf(value) ?? wordUnit(value);
+      if (got === null) continue;
+      checked++;
+      if (got !== want(field)) {
+        fail(`${relPath}:${i + 1} documents \`${field}\` in ${got}, and SPEC.md §5.23 declares ${want(field)}`,
+          line.trim().slice(0, 100),
+          'An example is copied verbatim more often than it is reasoned about.');
+      }
+    }
+  });
+  return checked;
+}
+
+/** A placeholder's unit stated in words — `<now, SECONDS>`, `<now, micros>`.
+ *
+ * An example cannot always carry a real expression, so the unit has to be
+ * sayable. Deliberately narrow: only these words, and only when one appears
+ * without the other, so `<the caller's own clock>` is left unrecognised rather
+ * than guessed at. */
+function wordUnit(expr) {
+  const micros = /\bmicros(?:econds)?\b/i.test(expr);
+  const seconds = /\bsec(?:ond)?s?\b/i.test(expr);
+  if (micros && !seconds) return 'micros';
+  if (seconds && !micros) return 'seconds';
+  return null;
+}
+
 const TARGETS = [
   'dna/coordinator/src/lib.rs',
   'mobile-ui/src/main.ts',
@@ -137,6 +200,20 @@ const TARGETS = [
 let total = 0;
 for (const t of TARGETS) total += scan(t);
 
+// Every Markdown file at the root and under docs/, plus the package READMEs a
+// stranger installs against. A fence in any of them is something somebody will
+// paste.
+const DOCS = [
+  ...readdirSync(REPO).filter((f) => f.endsWith('.md')),
+  ...readdirSync(resolve(REPO, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`),
+  ...readdirSync(resolve(REPO, 'docs/cases')).filter((f) => f.endsWith('.md')).map((f) => `docs/cases/${f}`),
+  'agent-sdk/README.md',
+  'mcp-server/README.md',
+  'scripts/live-verify/README.md',
+];
+let docTotal = 0;
+for (const d of DOCS) docTotal += scanDocFences(d);
+
 // The declaration itself. Without this, deleting §5.23 would leave a gate
 // enforcing a rule the specification no longer makes — which is the shape of
 // drift this file exists to catch, one level up.
@@ -151,10 +228,15 @@ for (const field of FIELDS) {
 // A scan that found nothing passes vacuously, and this suite has been bitten
 // by exactly that before.
 if (total < 50) fail(`only ${total} minted time values found across ${TARGETS.length} files — the scan is probably broken`);
+// Same reasoning for the documentation half: the two payloads in
+// `docs/the-joining-promise.md` are the ones an invitee copies, so a doc scan
+// finding nothing means the fences moved, the placeholders stopped naming a
+// unit, or the regex broke — never that the examples became safe.
+if (docTotal < 2) fail(`only ${docTotal} documented time values found in ${DOCS.length} documents — the fence scan is probably broken`);
 
 if (failed > 0) {
   console.error(`\n${failed} time-unit problem(s).`);
   process.exit(1);
 }
-console.log(`time-units: ${total} minted time values across ${TARGETS.length} files, each in the unit SPEC.md §5.23 declares.`);
+console.log(`time-units: ${total} minted time values across ${TARGETS.length} code files, plus ${docTotal} in documentation fences across ${DOCS.length} documents — each in the unit SPEC.md §5.23 declares.`);
 console.log('(Magnitude convention only — no gate can check that a self-reported time is TRUE. That is §5.22.)');
