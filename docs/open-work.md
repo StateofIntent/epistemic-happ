@@ -496,12 +496,17 @@ and do not depend on it.
 
 ---
 
-## 6. Interaction design — five unsurfaced reads
+## 6. Interaction design — five unsurfaced reads, and one surface that was MISSING
 
 Each is deliberately unsurfaced **with its reason recorded**, and each needs a
 design decision rather than wiring. Verified 2026-10-22 against `mobile-ui/src`:
 all four return zero hits, while `get_discourse_health` returns three — the
-read is wired, the publish is not. **A FIFTH JOINED ON 2026-10-26 NIGHT AND IT
+read is wired, the publish is not. **AND A SIXTH ROW IS NOT A READ AT ALL:
+6.7, opened and BUILT 2026-10-27**, was a missing WRITE —
+`publish_constitution` was reachable only by founding a domain, so a membrane
+could demand promises a joiner had no way to make. That one was a gap rather
+than a decision, which is why it was built the same day it was found. **A
+FIFTH JOINED ON 2026-10-26 NIGHT AND IT
 WAS A DIFFERENT ANIMAL: 6.6 was unsurfaced by oversight rather than by
 decision**, needed no design question answered first, and **is now the only one
 of the five that is BUILT** — `EpistemicAgent.promiseCompliance()` and
