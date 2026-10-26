@@ -265,7 +265,7 @@ leftover.
   amplifier, not a defence. Recommend depth default stays at 1.
 - **(4) Hardware attestation / biometrics / state ID.** 3.7's verdict
   stands and §4 strengthens it: these are oracles in costume, a default
-  breaks Invariant 1 (SPEC §712), and a personhood record is permanent
+  breaks Invariant 1 (SPEC §7's first Invariant 1 note), and a personhood record is permanent
   under Invariant 6. The root set obtains the useful half — a reader
   deciding who counts — while writing nothing.
 
