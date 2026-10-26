@@ -173,13 +173,23 @@ all:
 differently when told nothing counts."* That argues against the first
 option, and is the reason this section exists rather than defaulting.
 
-**AND AS OF 2026-10-26 NIGHT THERE IS A CONCRETE THING TO ASK FOR, WHICH IS
-OPEN-WORK 7.17.** 7.16's advice asks for one artifact before people arrive,
+**AND AS OF 2026-10-26 NIGHT THE TEXT EXISTS — `docs/the-joining-promise.md`,
+open-work 7.17.** 7.16's advice asks for one artifact before people arrive,
 and it is a promise rather than an architecture: invitees affirm that **they
 are responsible for their own content, that posts are permanent, and that
-they will not post personal information about anyone else.** As a required
-promise it is signed and ordered, so the agreement is itself on the record.
-That is the second option above with its content supplied — and the first
+they will not post personal information about anyone else.** The three
+phrases are written as a publishable `Constitution` — *answer for what I
+publish*, *treat everything I publish as permanent*, *publish no personal
+information about another person* — with the matching
+`Membrane.required_promises`, the exact zome payloads, a fourth optional
+promise the complaints channel needs, and the paragraph to paste here if
+this section is decided that way. **Two things that file establishes and
+this one should not re-derive**: the founder's own promise is DHT-enforced
+(`create_membrane` refuses an empty list or someone else's Constitution),
+and **the invitee's is not enforced at all** — joining is unrestricted by
+design, because membership is a voluntary promise, so what makes the ask
+worth making is that it is *readable*, which is open-work 6.6. That is the
+second option above with its content supplied — and the first
 option, asking for nothing, is the one the advice argues against for a
 second independent reason: the only people this cohort can be asked to
 protect are the ones who never joined it.
