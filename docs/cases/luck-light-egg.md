@@ -530,7 +530,9 @@ anything in this repository.
 
 ## 13. His fourth reply, and the layer the whole exchange has been circling
 
-**Recorded 2026-10-27, after §12's reply was sent and answered the same day.**
+**Recorded 2026-10-27, after §12's reply was sent and answered the same day —
+and the reply below was SENT the same day it was drafted (7.20), so this
+section is a record of a closed round rather than a draft.**
 This round produced less correction and more convergence, and it ends somewhere
 neither side started: **the remedy layer**, which this protocol does not have
 and deliberately does not build — and which the Mattereum influence recorded in
