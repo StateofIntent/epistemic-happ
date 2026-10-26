@@ -9,9 +9,11 @@ simple complaints channel*. This file supplies the text for both.
 **ADOPTED 2026-10-27 (7.17), WITH THE FOURTH PROMISE IN.**
 `docs/the-invitation.md` §3 carries the decision and §1 carries it in the
 invitee's own language; this file stays the mechanical reference — the payloads,
-the matching `required_promises`, the enforcement truth and the limits. **What
-it still does not do is name the pilot domain**, which every promise is scoped
-to and which nothing here should guess.
+the matching `required_promises`, the enforcement truth and the limits. **The pilot domain is `fieldnotes`,
+chosen 2026-10-27** — lowercase and one word because the UI trims the input but
+does not lowercase it, so `FieldNotes` would be a different domain forever, and
+no `/` because `assert_expertise` already uses that as a namespace separator
+(`expertise/<domain>`).
 
 ---
 
@@ -29,10 +31,10 @@ sources'` — verb-first, lower case, readable by a person):
 {
   "agent": "<the invitee's own AgentPubKey>",
   "promises": [
-    { "action": "answer for what I publish",                        "domain": "<the pilot domain>", "modality": null },
-    { "action": "treat everything I publish as permanent",          "domain": "<the pilot domain>", "modality": null },
-    { "action": "publish no personal information about another person", "domain": "<the pilot domain>", "modality": null },
-    { "action": "answer a complaint about something I published",   "domain": "<the pilot domain>", "modality": null }
+    { "action": "answer for what I publish",                        "domain": "fieldnotes", "modality": null },
+    { "action": "treat everything I publish as permanent",          "domain": "fieldnotes", "modality": null },
+    { "action": "publish no personal information about another person", "domain": "fieldnotes", "modality": null },
+    { "action": "answer a complaint about something I published",   "domain": "fieldnotes", "modality": null }
   ],
   "conditions": [],
   "published_at": <now, in SECONDS — see SPEC §5.23>,
@@ -55,6 +57,16 @@ remove — nothing can be removed — and an invitee who will not make it is
 telling you something useful before they write rather than after. Adopted with
 the other three on 2026-10-27, which is why it appears in both payloads above.
 
+**REHEARSED AGAINST A REAL CONDUCTOR ON 2026-10-27, BEFORE ANY OF IT IS DONE
+FOR REAL.** Both calls below were run in a clean local sandbox with exactly the
+strings on this page, the founder joined, and `promiseCompliance()` was read
+back: **the membrane required exactly the four phrases and the founder was
+missing none of them**, with nothing extra and nothing promised in another
+domain. That is the one failure this design has — a one-character difference
+between what you promise and what the membrane requires, since the comparison
+is string equality — and it is now ruled out for these strings rather than
+hoped about. **Copy them from here; do not retype them.**
+
 **The membrane side must match, word for word.** `Membrane.required_promises`
 is a `Vec<String>` of the same phrases, and two of its rules are **DHT-enforced
 rather than coordinator courtesy** (the comment in `create_membrane` says so,
@@ -65,7 +77,7 @@ So the founder promises first, in public, before asking anyone else to.
 ```jsonc
 // create_membrane — the pilot membrane, founded by the human
 {
-  "domain": "<the pilot domain>",
+  "domain": "fieldnotes",
   "description": "<what this space is for>",
   "required_promises": [
     "answer for what I publish",
