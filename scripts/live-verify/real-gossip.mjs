@@ -590,6 +590,7 @@ const b64 = (u8) => Buffer.from(u8).toString('base64');
 const log = (...a) => console.log(...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nowMicros = () => Date.now() * 1000;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 let failures = 0;
 const check = (label, cond) => {
@@ -1463,7 +1464,7 @@ async function main() {
     agent: node.me,
     promises: [{ action: 'distinguish_observation_from_inference', domain, modality: 'Methodological' }],
     conditions: [],
-    published_at: nowMicros(),
+    published_at: nowSecs(),
     expires_at: null,
   });
   await publishConstitution(A, CONST_DOMAIN);

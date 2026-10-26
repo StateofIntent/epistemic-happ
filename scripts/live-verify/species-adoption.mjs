@@ -99,6 +99,7 @@ const check = (label, cond) => {
 };
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const nowMicros = () => Date.now() * 1000;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 async function connectApp(admin, appId) {
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
@@ -141,7 +142,7 @@ async function main() {
   await a1.call('create_critique_species', {
     name: SPECIES, parent_species: null,
     required_evidence: ['The distinction this draws, and what it separates'],
-    proposer: a1.me, created_at: nowMicros(),
+    proposer: a1.me, created_at: nowSecs(),
   });
   // create_critique_species returns an ActionHash and CritiqueToSpecies is
   // keyed by the ENTRY hash, so the species is read back rather than taken

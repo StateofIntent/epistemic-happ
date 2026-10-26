@@ -3372,7 +3372,13 @@ pub fn assert_expertise(payload: ExpertiseAssertionPayload) -> ExternResult<Acti
         ),
         domain: format!("expertise/{}", payload.domain),
         author: author.clone(),
-        timestamp: sys_time()?.as_seconds_and_nanos().0 as u64,
+        // MICROS, because `Claim.timestamp` is a `timestamp` field — SPEC
+        // §5.23. This wrote SECONDS until 2026-10-26, while
+        // `publish_discourse_reading` and `import_foreign_critique` wrote
+        // micros into the same field of the same entry type. Nothing reads
+        // it (§5.22's refusal), so the cost was display and export rather
+        // than behaviour, which is exactly why it went unnoticed.
+        timestamp: sys_time()?.as_micros() as u64,
         evidence_hashes: vec![],
         confidence: ConfidenceLevel::Moderate, // self-asserted; not yet contested
         semantic_tags: vec!["expertise-assertion".into(), payload.domain.clone()],
@@ -5103,7 +5109,8 @@ pub fn promote_mew_to_claim(payload: PromoteMewPayload) -> ExternResult<ActionHa
         content: mew.content,
         domain: payload.domain,
         author: mew.author,
-        timestamp: sys_time()?.as_seconds_and_nanos().0 as u64,
+        // MICROS — SPEC §5.23, and see `assert_expertise` for what this was.
+        timestamp: sys_time()?.as_micros() as u64,
         evidence_hashes: payload.evidence_hashes,
         confidence: payload.confidence,
         semantic_tags: mew.semantic_tags,

@@ -48,6 +48,24 @@ What to do instead:
 
 If you find yourself wanting a scalar per agent, the thing you actually want is usually an attestation policy naming people you already trust.
 
+## `promiseCompliance()` — the one read that compares two declarations
+
+A `Membrane` declares `required_promises`; an agent declares promises in a `Constitution`. Founding enforces the first against the founder — the list may not be empty and the founder must reference their own constitution — and **joining enforces nothing**: `join_membrane` is unrestricted, and the `AgentToMembrane` validation rule checks only that the membership link's tag is a well-formed agent key, that it is the real author's, and that the base is a real membrane.
+
+**That is deliberate, not missing.** Membership is a voluntary promise; a protocol that refused the join would make a membrane an authority over who may speak. So the comparison lives in the reading: `promiseCompliance(membraneHash)` sets what the membrane asks beside what each member published, writes nothing, and gates nothing.
+
+```js
+const { requiredPromises, members } = await agent.promiseCompliance(membraneHash);
+for (const m of members) {
+  if (!m.hasConstitution) continue;            // published nothing — a fact, not a verdict
+  if (m.missing.length) console.log(short(m.agent), 'has not promised:', m.missing);
+}
+```
+
+**It is not a score and must not be rendered as one.** Every field is a set of strings traceable to a published entry, the member list is never sorted by compliance, and `promisesAll` says the required phrases appear in that agent's constitution for that domain — nothing more. Three honest limits: matching is string equality over free text, so it catches *promised nothing* and cannot catch *promised and did not mean it*; a promise made for another domain is reported in `promisedElsewhere` rather than accepted; and `hasConstitution: false` means exactly that, since nothing obliges an agent to publish one.
+
+Verified against a real conductor with four agents — one of whom promised nothing and joined anyway — by `scripts/live-verify/promise-compliance.mjs` in the main repository.
+
 ## Usage
 
 ```js

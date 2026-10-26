@@ -114,6 +114,7 @@ async function connectApp(admin, appId) {
 }
 
 const nowMicros = () => Date.now() * 1000;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 
 /** Runs `fn`, expecting it to be REFUSED. Returns the error text.
  * A refusal that came from validation rather than a coordinator guard
@@ -223,7 +224,7 @@ async function main() {
   const constitutionAction = await agent1.call('publish_constitution', {
     agent: agent1.me,
     promises: [{ action: 'distinguish_observation_from_inference', domain: DOMAIN, modality: 'Methodological' }],
-    conditions: [], published_at: nowMicros(), expires_at: null,
+    conditions: [], published_at: nowSecs(), expires_at: null,
   });
   await expectRefusal(
     'a non-Claim entry cannot be indexed as a claim',
@@ -238,7 +239,7 @@ async function main() {
   const speciesName = `Species${Date.now()}`;
   await agent1.call('create_critique_species', {
     name: speciesName, parent_species: null, required_evidence: [],
-    proposer: agent1.me, created_at: nowMicros(),
+    proposer: agent1.me, created_at: nowSecs(),
   });
   await new Promise((r) => setTimeout(r, 5000));
 
@@ -286,7 +287,7 @@ async function main() {
     required_promises: ['distinguish_observation_from_inference'],
     validation_rules_hash: null,
     creator: agent1.me,
-    created_at: nowMicros(),
+    created_at: nowSecs(),
     constitution: constitutionAction,
   });
 

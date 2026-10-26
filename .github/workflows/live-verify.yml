@@ -124,6 +124,25 @@ jobs:
       - name: version-assertions — no harness pins the protocol version a bump will change
         run: node scripts/check-version-assertions.mjs
 
+      # Newest of all (2026-10-26), and the only one that gates a CONVENTION
+      # rather than a count, a document or a rule. Every time field in this
+      # protocol is an app `u64` the caller fills, so no HDK type carries its
+      # unit and nothing could enforce one — and measured, the code had drifted
+      # into two: `get_agent_constitution` compares `expires_at` against
+      # seconds while `get_foresight_record` compares `reveal_deadline` against
+      # micros, and `Claim.timestamp` was being written in BOTH by four
+      # functions of one zome. SPEC.md §5.23 now declares the unit per field
+      # and this is what holds the code to it.
+      #
+      # The asymmetry is why it is worth a gate. A `timestamp` in the wrong
+      # unit is a display defect, because nothing reads those fields (§5.22).
+      # An EXPIRY in the wrong unit never fires, and `validate_constitution`
+      # cannot catch it — its only rule is `expires_at > published_at`, true in
+      # either unit. Invisible to validation and invisible to the reader is
+      # exactly the combination this family of checkers exists for.
+      - name: time-units — every time field in the unit SPEC §5.23 declares
+        run: node scripts/check-time-units.mjs
+
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in

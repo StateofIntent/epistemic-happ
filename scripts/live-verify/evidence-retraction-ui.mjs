@@ -332,7 +332,7 @@ async function main() {
     // whose target is not a Claim at all.
     const evidenceHash = await call('create_evidence', {
       content: 'Standalone evidence, not a claim.', evidence_type: 'Text',
-      source_url: null, author: me, timestamp: Math.floor(Date.now() / 1000),
+      source_url: null, author: me, timestamp: Date.now() * 1000,
     });
     check('create_evidence returns a usable EntryHash', evidenceHash instanceof Uint8Array);
 
@@ -340,7 +340,7 @@ async function main() {
     try {
       await call('create_retraction', {
         target_claim: evidenceHash, reason: 'retracting something that is not a claim',
-        replacement_claim: null, author: me, timestamp: Math.floor(Date.now() / 1000),
+        replacement_claim: null, author: me, timestamp: Date.now() * 1000,
       });
     } catch (e) { refused = String(e?.data?.data ?? e?.message ?? e); }
     check('retracting a non-Claim is refused', refused !== null);

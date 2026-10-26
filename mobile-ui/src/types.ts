@@ -73,6 +73,17 @@ export function nowMicros(): number {
   return Date.now() * 1000;
 }
 
+/** Seconds since the epoch, for `created_at`, `published_at` and
+ * `expires_at`. NOT interchangeable with `nowMicros()`: SPEC.md §5.23
+ * declares the unit per field, and `get_agent_constitution` drops an
+ * expired `Constitution` by comparing `expires_at` against `sys_time()`
+ * in SECONDS — so a micros expiry is ~1e5 times too large to ever fire,
+ * and validation cannot catch it because it only compares the two
+ * caller-supplied fields to each other. */
+export function nowSecs(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 // --- Epistemic state the protocol computes about discourse -------------
 //
 // These are read-only views the coordinator zome already exposes. They

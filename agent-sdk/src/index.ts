@@ -55,6 +55,7 @@ import type {
   FrictionStatus, DiscourseHealth, CrossDomainCritique,
   AttestationPolicy, ConductancePolicy,
   ConfidenceLevel, CritiqueMode, CritiqueTargetType, Decoded,
+  Constitution, MembranePromiseCompliance, MemberPromiseStanding,
 } from './types.js';
 
 export * from './types.js';
@@ -163,8 +164,16 @@ function describeClosure(c: ClosureState | null): string {
   return `${c.resolvedLocally} of ${c.cited} citation${c.cited === 1 ? '' : 's'} resolve locally`;
 }
 
+// MICROSECONDS, and the unit is not a free choice: SPEC.md §5.23 declares it
+// per field — `timestamp` in micros (matching Holochain's own `Timestamp`),
+// and `created_at`/`published_at`/`expires_at` in SECONDS, because
+// `get_agent_constitution` and the worldline checkpoint reads compare expiry
+// against `sys_time()` in seconds. Everything this library writes is a
+// `timestamp` field, so a seconds helper would currently be dead code; add
+// `Math.floor(Date.now() / 1000)` at the call site if a write to one of the
+// seconds-family fields is ever added here, and see `Constitution` in
+// types.ts for what goes wrong if the two are mixed.
 function nowMicros(): number { return Date.now() * 1000; }
-function nowSecs(): number { return Math.floor(Date.now() / 1000); }
 
 function decodeRecords<T>(records: any[]): Decoded<T>[] {
   const out: Decoded<T>[] = [];
@@ -439,6 +448,95 @@ export class EpistemicAgent {
     return this.call<Uint8Array[]>('get_membrane_members', membraneHash);
   }
 
+  /** What an agent has published about what it promises, or `null`.
+   *
+   * `null` MEANS "nothing published", NOT "unverified". Nothing in this
+   * protocol obliges an agent to publish a constitution, so rendering
+   * its absence as a deficiency would be scoring agents on a field the
+   * protocol never asked them to fill — Invariant #1 through the back
+   * door, and the exact failure `mode-and-constitution.mjs` exists to
+   * catch in the UI. The zome returns the most recently published one
+   * and drops any that has expired. */
+  async agentConstitution(agent: Uint8Array): Promise<Constitution | null> {
+    return (await this.call<Constitution | null>('get_agent_constitution', agent)) ?? null;
+  }
+
+  /** Does any member actually promise what their membrane requires?
+   *
+   * WHY THIS IS A CLIENT FUNCTION AND NOT A ZOME ONE. A membrane
+   * declares `required_promises` and founding enforces that the list is
+   * non-empty and that the founder references their own constitution.
+   * JOINING ENFORCES NOTHING: `join_membrane` is unrestricted, and the
+   * `AgentToMembrane` validation rule checks only that the tag is a
+   * well-formed agent key, that it is the real author's, and that the
+   * base is a real membrane. Nothing anywhere looks at the joiner's
+   * promises.
+   *
+   * THAT IS CORRECT RATHER THAN MISSING. Membership is a voluntary
+   * promise; a protocol that refused the join would make a membrane an
+   * authority over who may speak. So the comparison belongs where every
+   * other threshold in this protocol ended up — in the reading, not the
+   * record. This function is that reading, it writes nothing, and it
+   * gates nothing.
+   *
+   * MATCHING IS BY ACTION AND DOMAIN, both as written. The required
+   * phrases are free text the membrane chose and the promised phrases
+   * are free text the agent chose, so this is string equality, scoped to
+   * the membrane's own domain; a promise made for a different domain is
+   * reported in `promisedElsewhere` rather than accepted. Two honest
+   * limits follow directly: it catches "promised nothing" and cannot
+   * catch "promised and did not mean it", and a membrane whose required
+   * phrases drift from the ones members actually wrote will report
+   * everybody missing everything — which is information about the
+   * membrane, not about the members. */
+  async promiseCompliance(membraneHash: Uint8Array): Promise<MembranePromiseCompliance> {
+    const membranes = await this.membranes();
+    const key = (u8: Uint8Array) => Buffer.from(u8).toString('base64');
+    const wanted = key(membraneHash);
+    const found = membranes.find((m) => key(m.entryHash) === wanted);
+    if (!found) {
+      throw new Error(
+        'promiseCompliance: no Membrane with that EntryHash. Pass the ' +
+        'membrane\'s ENTRY hash (get_membranes returns records; the entry ' +
+        'hash is what get_membrane_members and join_membrane take too).',
+      );
+    }
+    const { domain, required_promises: requiredPromises } = found.entry;
+
+    // join_membrane is idempotent in name only — joining twice writes two
+    // AgentToMembrane links — so the member list can repeat an agent.
+    // Deduplicated here, in first-seen order, because a member listed
+    // twice would otherwise appear twice in the reading.
+    const seen = new Set<string>();
+    const members: Uint8Array[] = [];
+    for (const agent of await this.membraneMembers(membraneHash)) {
+      const k = key(agent);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      members.push(agent);
+    }
+
+    const standings: MemberPromiseStanding[] = [];
+    for (const agent of members) {
+      const constitution = await this.agentConstitution(agent);
+      const clauses = constitution?.promises ?? [];
+      const promised = clauses.filter((p) => p.domain === domain).map((p) => p.action);
+      const promisedElsewhere = clauses.filter((p) => p.domain !== domain).map((p) => p.action);
+      const missing = requiredPromises.filter((r) => !promised.includes(r));
+      const extra = promised.filter((a) => !requiredPromises.includes(a));
+      standings.push({
+        agent,
+        hasConstitution: constitution !== null,
+        promised,
+        promisedElsewhere,
+        missing,
+        extra,
+        promisesAll: missing.length === 0,
+      });
+    }
+    return { domain, requiredPromises, members: standings };
+  }
+
   /** An aggregate over a membrane's domain.
    *
    * Both policies are optional and are passed through EXACTLY as given.
@@ -580,7 +678,7 @@ export class EpistemicAgent {
       reason: input.reason,
       replacement_claim: input.replacementClaim ?? null,
       author: this.agentPubKey,
-      timestamp: nowSecs(),
+      timestamp: nowMicros(),
     }, [input.claimEntryHash, ...(input.replacementClaim ? [input.replacementClaim] : [])]);
   }
 

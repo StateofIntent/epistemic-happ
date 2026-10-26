@@ -7,6 +7,13 @@
 > assessment screen — each `[D]`, each blocked on "a design decision",
 > and notes that **6.2 structurally gates item 22's reopen.**
 >
+> **§6 LISTS FIVE AS OF 2026-10-26 NIGHT, AND THIS BRIEF STILL COVERS
+> FOUR.** 6.6 — *does any member actually promise what their membrane
+> requires?* — is outside the decision below on purpose: it is unsurfaced
+> by oversight rather than by design, it is `[M]` with no blocker, and it
+> needs no screen settled first. See open-work 6.6 and
+> `docs/the-joining-promise.md` §2.
+>
 > This brief exists to make that decision answerable in one sitting
 > instead of re-derived four times. It does two things:
 >

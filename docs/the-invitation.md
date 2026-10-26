@@ -17,16 +17,37 @@
 > — who, and what you ask of them — and they are marked rather than
 > guessed.
 >
-> **ONE DISCLOSURE GAP IS KNOWN AND NOT YET FILLED — see open-work 7.16.**
+> **ONE DISCLOSURE GAP WAS KNOWN AND IS NOW BOUNDED — 7.16's advice arrived
+> 2026-10-26 night, recorded at `docs/erasure-and-the-content-split.md`.**
 > §1 tells an invitee their data is permanent, which is the obligation 7.1
 > names. It says nothing about the possibility that, because every peer
 > stores other peers' data, an invitee in the EU or UK **may be acquiring
-> obligations of their own** rather than only accepting a risk to theirs.
-> That is arguably the larger omission: permanence affects their data,
-> controllership affects their duties. Whether it belongs in §1 depends on
-> where the cohort is and on advice this repository cannot supply, which is
-> why 7.16 is a `[D]` with outside counsel attached rather than a sentence
-> added here.
+> obligations of their own** rather than only accepting a risk to theirs —
+> permanence affects their data, controllership affects their duties.
+>
+> **WHAT THE ADVICE SETTLED: this does not hold the message.** For a pilot
+> of a handful of invitees outside the EU, *"telling invitees plainly that
+> posts can't be deleted is enough"* — which §1's first paragraph already
+> does. **WHAT IT DID NOT SETTLE: the sentence is still owed to any invitee
+> in the EU or UK**, because the practical-enforcement argument that makes
+> this near-nil is an argument about **having no EU users**, and it is spent
+> the moment one is invited. So the gap is now conditional on §2's cohort
+> rather than open: **mixed or European cohort → add the sentence; otherwise
+> §1 stands as written.** It is advice from an informed non-lawyer rather
+> than counsel, and 7.2's absent audit and counsel-before-a-public-post are
+> both untouched by it.
+>
+> **AND A SECOND GAP WAS FOUND THE SAME NIGHT, BY WRITING THE IMPACT
+> ASSESSMENT — open-work 7.19.** §1 discloses what is permanent and says
+> nothing about what is ordinary: **running this reveals your IP address to
+> the peers you gossip with and to two third-party services** — the
+> bootstrap server (7.14) and, behind NAT, the relay — the way any
+> peer-to-peer application does. It is not permanent and not in the DHT,
+> which is exactly why it was missed while the permanent risk got
+> paragraphs. **BOTH SENTENCES ARE NOW WRITTEN AND IN PLACE** — §1's fourth
+> obliged item below, and a paragraph at the head of `INSTALL.md`'s *Finding
+> other people*. §1's count moved from three obliged things to **four**,
+> which is the only thing about the message that changed.
 
 ---
 
@@ -38,7 +59,7 @@ written to be sent as-is, or edited for tone but not for content.
 ---
 
 > I've built something and I'd like you to try it. Before you do, there are
-> three things I'm obliged to tell you, and one of them is permanent.
+> four things I'm obliged to tell you, and one of them is permanent.
 >
 > **Nothing you write in it can ever be deleted.** Not by you, not by me,
 > not by anyone. There is no delete button, no edit, and no admin who can
@@ -65,6 +86,16 @@ written to be sent as-is, or edited for tone but not for content.
 > can generate any number of identities, and a determined person can run a
 > modified client. For a handful of people who know each other that is
 > theoretical; I would not want you to learn it later from someone else.
+>
+> **Running it reveals your IP address** — to the people you are connected
+> to, and to two services I don't run. That is ordinary for peer-to-peer
+> software: your computer talks directly to other people's computers, so
+> each end can see the other's address, and a public directory server plus
+> a relay (both Holochain's infrastructure, not mine) are what let you find
+> each other and get through a home router. Unlike what you write, none of
+> that is stored on the network or permanent — I mention it because you are
+> about to run something that connects your machine to the others, and
+> because you should hear it from me rather than work it out later.
 >
 > **What it is.** A place to publish claims and critique each other's,
 > where disagreement is the point rather than a failure mode. There are no
@@ -141,6 +172,34 @@ all:
 *"gets testers rather than users and teaches less, since people behave
 differently when told nothing counts."* That argues against the first
 option, and is the reason this section exists rather than defaulting.
+
+**AND AS OF 2026-10-26 NIGHT THE TEXT EXISTS — `docs/the-joining-promise.md`,
+open-work 7.17.** 7.16's advice asks for one artifact before people arrive,
+and it is a promise rather than an architecture: invitees affirm that **they
+are responsible for their own content, that posts are permanent, and that
+they will not post personal information about anyone else.** The three
+phrases are written as a publishable `Constitution` — *answer for what I
+publish*, *treat everything I publish as permanent*, *publish no personal
+information about another person* — with the matching
+`Membrane.required_promises`, the exact zome payloads, a fourth optional
+promise the complaints channel needs, and the paragraph to paste here if
+this section is decided that way. **Two things that file establishes and
+this one should not re-derive**: the founder's own promise is DHT-enforced
+(`create_membrane` refuses an empty list or someone else's Constitution),
+and **the invitee's is not enforced at all** — joining is unrestricted by
+design, because membership is a voluntary promise, so what makes the ask
+worth making is that it is *readable*, which is open-work 6.6. That is the
+second option above with its content supplied — and the first
+option, asking for nothing, is the one the advice argues against for a
+second independent reason: the only people this cohort can be asked to
+protect are the ones who never joined it.
+
+**Its companion is a complaints channel, and the mechanisms already exist**
+— a `Retraction` by the author, an `AntibodyPattern` by anyone, and removal
+from a reader's own trust list. Nothing can be deleted; something can still
+be *done*, and saying so in the invitation is what keeps *"nothing can be
+removed"* from reading as *"nothing will be done."* **Not decided here:**
+whether the promise is asked for at all, which is this section's question.
 
 ## 4. What this file is not
 

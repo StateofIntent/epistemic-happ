@@ -114,8 +114,16 @@ for (const wf of GATED) {
   if (!existsSync(path)) { fail(`${wf} does not exist; GATED in this script is stale`); continue; }
   const yml = readFileSync(path, 'utf8');
 
+  // COMMENT LINES ARE NOT INVOCATIONS, and this cost a red build to learn.
+  // `conductor.yml`'s header documents the command that counts its own harness
+  // steps, which quotes the `node scripts/live-verify` shape; the scan read
+  // that as a script it runs, resolved it to the DIRECTORY, and died with
+  // EISDIR rather than failing with a reason. A commented-out invocation does
+  // not run either, so dropping these lines costs no coverage — the same rule
+  // the per-script scan below already applies to its own input.
+  const runLines = yml.split('\n').filter((line) => !line.trim().startsWith('#'));
   const invoked = new Set(
-    [...yml.matchAll(/\b(?:node|bash|sh)\s+(scripts\/[\w./-]+)/g)].map((m) => m[1]),
+    [...runLines.join('\n').matchAll(/\b(?:node|bash|sh)\s+(scripts\/[\w./-]+)/g)].map((m) => m[1]),
   );
   // `zomes.yml` runs cargo and nothing else, so an empty set is correct there
   // and only there. Anywhere else it means the scan found nothing to scan and

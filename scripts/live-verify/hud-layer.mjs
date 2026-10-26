@@ -197,14 +197,14 @@ async function seed() {
     kind: 'SpamFlood',
     rationale: 'Seeded flag for HUD-layer verification.',
     author: me,
-    timestamp: nowSecs(),
+    timestamp: nowMicros(),
   });
   await call('create_retraction', {
     target_claim: claimEntryHash,
     reason: 'Seeded retraction for HUD-layer verification.',
     replacement_claim: null,
     author: me,
-    timestamp: nowSecs(),
+    timestamp: nowMicros(),
   });
 
   log('  seeded claim + critique + antibody pattern + retraction.\n');

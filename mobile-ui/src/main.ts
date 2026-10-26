@@ -4,7 +4,7 @@ import {
   type ConductorConfig, type DecodedRecord,
 } from './holochain';
 import {
-  type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros,
+  type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros, nowSecs,
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
   type Membrane, type DiscourseHealth, type CrossDomainCritique,
   type Constitution, type GroundingPath, EVIDENCE_TYPES, type EvidenceType,
@@ -1792,7 +1792,7 @@ function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
         reason: reason.value.trim(),
         replacement_claim: null,
         author: connection.myAgentPubKey,
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp: nowMicros(),
       });
       retractingClaims.delete(key);
       await loadClaims(currentDomain);
@@ -3395,7 +3395,7 @@ function renderProposeSpeciesForm(): HTMLElement {
         required_evidence: evidenceInput.value
           .split('\n').map((l) => l.trim()).filter((l) => l.length > 0),
         proposer: connection.myAgentPubKey,
-        created_at: nowMicros(),
+        created_at: nowSecs(),
       });
       proposingSpecies = false;
       await loadTaxonomy();
@@ -4196,7 +4196,7 @@ function renderNewClaimTab(): HTMLElement {
           evidence_type: evidenceTypeSelect.value as EvidenceType,
           source_url: evidenceUrl.value.trim() || null,
           author: connection.myAgentPubKey,
-          timestamp: Math.floor(Date.now() / 1000),
+          timestamp: nowMicros(),
         });
         evidenceHashes.push(evidenceHash);
       } catch (err) {

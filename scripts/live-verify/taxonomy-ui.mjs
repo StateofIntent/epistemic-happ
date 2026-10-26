@@ -97,6 +97,7 @@ const firstOrFail = (records, fn, expected) => {
 };
 
 const nowMicros = () => Date.now() * 1000;
+const nowSecs = () => Math.floor(Date.now() / 1000);
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 
 /** A zome client for `appId`. Parameterised (it was fixed to APP_ID) so the
@@ -149,7 +150,7 @@ async function main() {
   await call('create_critique_species', {
     name: ROOT, parent_species: null,
     required_evidence: ['The alternative method, and why it is more appropriate'],
-    proposer: me, created_at: nowMicros(),
+    proposer: me, created_at: nowSecs(),
   });
   // create_critique_species returns an ActionHash, but parent_species
   // needs the ENTRY hash — the same getter/creator distinction this
@@ -164,7 +165,7 @@ async function main() {
 
   await call('create_critique_species', {
     name: CHILD, parent_species: rootEntryHash,
-    required_evidence: [], proposer: me, created_at: nowMicros(),
+    required_evidence: [], proposer: me, created_at: nowSecs(),
   });
 
   // A claim to hang a critique on, so the species picker has somewhere

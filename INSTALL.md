@@ -359,6 +359,21 @@ Everyone running the same release lands on the **same network**. The app
 declares no network seed, so the bundle inside determines which network you
 join: same version, same peers.
 
+**And discovery is not anonymous — this is the one privacy fact here that has
+nothing to do with permanence.** Running this reveals **your IP address** to the
+peers you exchange data with, because direct machine-to-machine connections are
+what a peer-to-peer app is, and to **two services neither you nor this project
+operates**: the public bootstrap you find peers through
+(`dev-test-bootstrap2.holochain.org`, Holochain's own dev/test infrastructure)
+and, when your router gives no inbound path, the relay that carries the traffic
+instead (an iroh canary relay). **None of it is written to the DHT**, so unlike
+what you publish it is not permanent and not there for anyone to look up later
+— it is the ordinary exposure of any peer-to-peer application, and the thing to
+weigh if you would rather not expose your home connection to the other
+participants. You can point the app at infrastructure you trust with
+`-b/--bootstrap-url`, `-s/--signal-url` and `--relay-url`, with the caveat the
+table above already states: those are not persisted across restarts.
+
 One caveat repeated from above, because it is the one that will actually
 bite, and three more — two of which are permanent and worth reading before
 you write anything you would mind standing behind forever:

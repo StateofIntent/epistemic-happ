@@ -106,6 +106,91 @@ export interface Membrane {
   constitution: Uint8Array;
 }
 
+/** One clause of a Constitution: what an agent promises, in which
+ * domain, optionally through which receptor type. `action` is free text
+ * by design — the protocol never supplies a vocabulary of promises, and
+ * a membrane's `required_promises` are matched against this field as
+ * written. */
+export interface ConstitutionPromise {
+  action: string;
+  domain: string;
+  modality: CritiqueMode | null;
+}
+
+/** A conditional clause. Carried for completeness: nothing in this
+ * library interprets one, and `promiseCompliance()` deliberately ignores
+ * them — a condition is a statement about WHEN a promise applies, and
+ * deciding that is a reader's judgement rather than a string match. */
+export interface Condition {
+  condition_type: string;
+  parameters: string[];
+}
+
+/** What an agent has published about what it promises. Nothing requires
+ * an agent to have one, and its absence is not a deficiency — see
+ * `promiseCompliance()` on why that distinction is load-bearing.
+ *
+ * ON THE TIMESTAMPS: `Membrane.created_at` above is documented as
+ * seconds, `get_agent_constitution` filters expiry against `sys_time()`
+ * in SECONDS, and this repository's own harnesses have published
+ * `published_at` in both seconds and microseconds. Publish both fields
+ * in SECONDS. A microsecond `expires_at` is a hundred thousand times too
+ * large to ever fire, so the constitution it belongs to never expires
+ * from that read's point of view. */
+export interface Constitution {
+  agent: Uint8Array;
+  promises: ConstitutionPromise[];
+  conditions: Condition[];
+  /** Seconds — see the note above. */
+  published_at: number;
+  /** Seconds, and MUST be > published_at. */
+  expires_at: number | null;
+}
+
+/** One member's promises set beside what their membrane asks for.
+ *
+ * NOT A SCORE, AND THE SHAPE IS WHAT KEEPS IT HONEST. Every field is a
+ * set of strings traceable to a published entry: what the membrane
+ * declared it requires, and what this agent declared it promises. There
+ * is no number, no ranking, and no ordering by compliance — Invariant #1
+ * forbids a canonical comparative signal over agents, and a client that
+ * reduced this to a percentage would have rebuilt one.
+ *
+ * `promisesAll` is a fact about declared text and nothing else: it says
+ * the required phrases appear in this agent's constitution for this
+ * domain. It does not say the agent kept the promise, and nothing in the
+ * protocol can. */
+export interface MemberPromiseStanding {
+  agent: Uint8Array;
+  /** False means exactly that — no constitution found. It is NOT a
+   * verdict: nothing obliges an agent to publish one. */
+  hasConstitution: boolean;
+  /** Promised actions whose domain matches the membrane's. */
+  promised: string[];
+  /** Promised actions in some OTHER domain. Kept separate rather than
+   * counted, because a promise about another domain is not a promise
+   * about this one — and silently accepting it would make the whole
+   * comparison meaningless. */
+  promisedElsewhere: string[];
+  /** Required here, not promised here. */
+  missing: string[];
+  /** Promised here beyond what is required. Not a violation. */
+  extra: string[];
+  /** `missing.length === 0`. */
+  promisesAll: boolean;
+}
+
+/** A membrane's declared requirements beside every member's declared
+ * promises. Read-only, caller-scoped, and it gates nothing: see
+ * `promiseCompliance()`. */
+export interface MembranePromiseCompliance {
+  domain: string;
+  requiredPromises: string[];
+  /** In the order the DHT returned the members, deduplicated. Never
+   * sorted by compliance. */
+  members: MemberPromiseStanding[];
+}
+
 /** This agent's own SWO budget for the current rolling window. Reads
  * only the caller's own source chain, so it says nothing about anyone
  * else and is never a comparative signal. */
