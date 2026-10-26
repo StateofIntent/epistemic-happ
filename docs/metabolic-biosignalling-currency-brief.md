@@ -325,14 +325,19 @@ pub struct MutualCreditTransfer {
     pub to: AgentPubKey,
     pub amount: f32,
     pub reason: String,   // open, non-authoritative, like expertise_tags
-    pub timestamp: u64,   // Unix seconds
+    pub timestamp: u64,   // MICROSECONDS — SPEC §5.23. The removed
+                          // implementation said "Unix seconds"; corrected
+                          // 2026-10-27 because this brief is a design
+                          // somebody may rebuild from, and 3.4 leaves that
+                          // open. The record of what the deleted code did is
+                          // this comment, not a wrong example.
 }
 
 pub struct CreditBurn {
     pub agent: AgentPubKey,
     pub amount: f32,
     pub reason: String,
-    pub timestamp: u64,
+    pub timestamp: u64,   // micros, as above
 }
 ```
 

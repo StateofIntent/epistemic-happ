@@ -37,10 +37,19 @@ sources'` — verb-first, lower case, readable by a person):
     { "action": "answer a complaint about something I published",   "domain": "fieldnotes", "modality": null }
   ],
   "conditions": [],
-  "published_at": <now, SECONDS — SPEC §5.23; a micros expiry can never fire>,
+  "published_at": <now, in SECONDS — see SPEC §5.23>,
   "expires_at": null
 }
 ```
+
+**ON THE UNIT IN BOTH PAYLOADS, because getting it wrong is silent.**
+`published_at`, `created_at` and `expires_at` are **seconds** (SPEC §5.23).
+A value in microseconds is about a hundred thousand times too large, so an
+`expires_at` set that way can never fire — `get_agent_constitution` compares it
+against `sys_time()` in seconds — and validation cannot catch it, because its
+only rule is `expires_at > published_at`, which holds in either unit. This file
+said micros until 2026-10-27, which is why `check-time-units.mjs` now reads
+documentation fences and not only code.
 
 **THE FOURTH IS NOW IN, AND IT IS THE ONE §4's CHANNEL NEEDS**: `"answer a
 complaint about something I published"`. It is a promise to **respond**, not to
@@ -78,7 +87,7 @@ So the founder promises first, in public, before asking anyone else to.
   ],
   "validation_rules_hash": null,
   "creator": "<the founder's AgentPubKey>",
-  "created_at": <now, SECONDS — SPEC §5.23>,
+  "created_at": <now, in SECONDS — see SPEC §5.23>,
   "constitution": "<the founder's own Constitution ActionHash>"
 }
 ```
