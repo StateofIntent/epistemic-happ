@@ -136,7 +136,9 @@ written to be sent as-is, or edited for tone but not for content.
 > screen once, because nothing starts until you do.
 >
 > Install the **same version** I am on — different versions are different
-> networks and see nothing of each other. I am on `v0.3.0`.
+> networks and see nothing of each other. I am on `v0.3.1`, and it is the
+> version you want: the one before it has no way to publish the promise I ask
+> for below without founding a domain of your own.
 >
 > **One thing I'd ask of you before you write.** When you join, publish a
 > short statement — the app calls it a constitution — saying four things:

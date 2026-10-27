@@ -9,29 +9,52 @@ on the code, read [README.md](README.md) §6 instead.
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **`v0.3.0`, published 2026-10-24, carries `protocol_version: 11`** — the
-> version this repository actually describes, including SPEC.md §5.19's
-> eighteen link validation rules, the refusal of entry updates, and all five
-> autopoiesis stages. Building from source is not the only way to run the
-> current protocol.
+> **`v0.3.1`, published 2026-10-27, is the one to install.** It carries
+> `protocol_version: 11` — the version this repository actually describes,
+> including SPEC.md §5.19's eighteen link validation rules, the refusal of
+> entry updates, and all five autopoiesis stages. Building from source is not
+> the only way to run the current protocol.
+>
+> **`v0.3.1` IS A PATCH, AND IT IS THE FIRST ONE — so it behaves unlike every
+> bump before it.** It is the SAME network as `v0.3.0`: same `0.3.x` seed,
+> same cell, same data directory, and the bundle's DNA hash is unchanged
+> (verified identical across both releases by unpacking each and hashing it).
+> So a `v0.3.0` install is not stranded and loses nothing by upgrading.
+>
+> **Upgrade anyway, and invitees should install `v0.3.1` rather than
+> `v0.3.0`.** `v0.3.0` has no surface for publishing a promise: until item 6.7
+> the only call to `publish_constitution` was inside the founding form, so the
+> only way to promise anything was to found your own domain. The invitation
+> asks every joiner for a published constitution, and on `v0.3.0` that ask is
+> **unexecutable**. `v0.3.1` adds a standalone *Your promises* section on the
+> Domains tab.
 >
 > **Download the latest release and not `v0.2.0`.** `v0.2.0` (2026-10-12)
 > carries `protocol_version: 9`; the integrity zome has forked twice since,
 > so it is now two forks behind this repository rather than level with it.
 > It remains available and it is not broken — it is an older network.
 >
-> **Every minor version is a different network, and always will be.** The DNA
+> **Every MINOR version is a different network, and always will be.** The DNA
 > hash is computed over the integrity zome (README §11.1), so `0.1.x`, `0.2.x`
 > and `0.3.x` are three separate DHTs and only peers sharing a hash gossip at
-> all. **Auto-update will not move anyone across** — each step is a minor bump
-> and electron-updater only offers semver-compatible releases, so anyone
-> already running `0.1.x` or `0.2.x` must download `v0.3.0` by hand. They keep
-> their old data directory; the versions install side by side.
+> all. **Auto-update will not move anyone across a minor** — electron-updater
+> only offers semver-compatible releases, so anyone already running `0.1.x` or
+> `0.2.x` must download `v0.3.1` by hand. They keep their old data directory;
+> the versions install side by side.
+>
+> **A PATCH is the opposite case, and `v0.3.1` is the first one.** Within
+> `0.3.x` the network, the seed and the data directory are identical, so
+> auto-update *does* offer `v0.3.1` to a `v0.3.0` install and the upgrade
+> happens in place, keeping the conductor, the keystore and the agent key.
+> One thing it does not carry: the app installs the hApp only when the app id
+> is absent, so an upgraded install runs the new UI against the
+> already-installed coordinator. The new *Your promises* surface works
+> regardless, because `publish_constitution` already existed in `v0.3.0`.
 >
 > **The hash in the release notes is the artifact's, not your cell's.** The
 > desktop app installs the bundle with a network seed derived from its version
 > (`Epistemic Resonance-0.3.x`), and the DNA hash covers that seed as well as
-> the zome. So the cell a `v0.3.0` install runs hashes to
+> the zome. So the cell any `0.3.x` install runs hashes to
 > `uhC0kozxlYwR0REOn2iS4NswBOPzJ7I6kKsRV6o3WOEuoQOuEi-4o`, not to the
 > `uhC0kb-i4…` the notes quote. Every desktop install derives the same seed, so
 > they are all on one network — but a conductor you run yourself from this
@@ -46,6 +69,14 @@ on the code, read [README.md](README.md) §6 instead.
 > and the file that tells strangers what to download was not re-read. The
 > failure mode is permanent even though each particular wording is not, and §9
 > treats a stale instruction as a defect rather than a detail.
+>
+> **AND IT HAPPENED A THIRD TIME, ON 2026-10-27.** `v0.3.1` was cut, published
+> and installed on both machines while every line above still said `v0.3.0` —
+> caught only because §1 was being read through before sending, and it told
+> invitees to install the version on which its own central ask cannot be
+> carried out. The prediction in the paragraph above is therefore no longer a
+> prediction. **Cutting a release is not finished until this file and
+> `docs/the-invitation.md` §1 name the new version.**
 
 ## Running two installs side by side (for release step 3's "against that build")
 
