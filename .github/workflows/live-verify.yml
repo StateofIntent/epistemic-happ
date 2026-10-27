@@ -143,6 +143,20 @@ jobs:
       - name: time-units — every time field in the unit SPEC §5.23 declares
         run: node scripts/check-time-units.mjs
 
+      # SAME FAMILY, DIFFERENT SUBJECT: this one watches the LIST rather than
+      # the code. `docs/open-work.md` opens by saying every line carries what
+      # it is blocked on, and that this is "the only property that makes rot
+      # detectable: a line whose blocker has gone is a line to act on". That
+      # property lives entirely in the last column being true. On 2026-10-27
+      # seven rows in §1 carried a struck-through body saying CLOSED while
+      # their final column still read `nothing` — the spelling for open and
+      # unblocked — so scanning the column the file tells you to scan returned
+      # finished work, and did so twice before anyone noticed. A mechanical
+      # disagreement between a row's two halves is exactly the shape a script
+      # can catch and a reader cannot.
+      - name: row-status — no row says CLOSED in its body and open in its column
+        run: node scripts/check-row-status.mjs
+
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in
