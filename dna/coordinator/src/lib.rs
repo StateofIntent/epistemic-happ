@@ -2125,9 +2125,24 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
         .ok_or(wasm_error!(WasmErrorInner::Guest(
             "Constitution not found — publish one first via publish_constitution.".into()
         )))?;
-    let constitution: Constitution = record.entry()
-        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Referenced entry is not a Constitution.".into())))?;
+    // A DESERIALIZE FAILURE IS "NOT A CONSTITUTION", NOT AN INTERNAL FAULT.
+    // Found 2026-10-28 by `agent-sdk.mjs`, and it is the SECOND place this
+    // exact shape turned up the same day — `get_my_sealed_prediction` had it
+    // too, found the same way. The `ok_or` arm fires only when the entry is
+    // absent or non-app, so for the MOST LIKELY wrong input — a Claim's
+    // ActionHash, which resolves perfectly well and simply is not this type —
+    // `to_app_option` failed first and the founder got
+    // `Guest("Deserialize(\"missing field `agent`\")")`. The friendly message
+    // was unreachable for exactly the case it was written for, which is why
+    // both arms now return it.
+    let constitution: Constitution = match record.entry().to_app_option::<Constitution>() {
+        Ok(Some(constitution)) => constitution,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Referenced entry is not a Constitution.".into()
+            )))
+        }
+    };
     if constitution.agent != membrane.creator {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Membrane constitution must be the creator's own published Constitution.".into()

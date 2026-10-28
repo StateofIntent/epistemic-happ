@@ -74,6 +74,20 @@ export interface Critique {
   replication_attempted: boolean;
   evidence_hashes: Uint8Array[];
   species: Uint8Array | null;
+  /** What the author recorded having SEEN of this target's critiques.
+   *
+   * EMPTY MEANS "RECORDED NOTHING", NOT "HAD SEEN NOTHING" — a
+   * distinction the protocol preserves deliberately, and a client that
+   * renders an empty cone as ignorance is asserting something the data
+   * does not say.
+   *
+   * Validation cannot check that the author really saw these; no rule
+   * can, since no validator sees anybody's screen. What it enforces is
+   * that claimed IGNORANCE is sticky: every entry must resolve, must
+   * critique the SAME target, and each member's own cone must be a
+   * SUBSET of this one. So OVER-claiming is possible and harmless,
+   * while UNDER-claiming is what the rules bite on. */
+  past_cone: Uint8Array[];
 }
 
 export interface AntibodyPattern {
@@ -243,4 +257,179 @@ export interface Decoded<T> {
   entryHash: Uint8Array;
   actionHash: Uint8Array;
   entry: T;
+}
+
+// --- Assessment -------------------------------------------------------
+//
+// Assessment is a FIRST-CLASS ENTRY TYPE, which is why this SDK exposes
+// it rather than treating a model's opinion as a special case. An AI
+// agent publishing an assessment is doing the same thing a human does:
+// stating an attributed position under its own key, which anyone who
+// disputes it can critique. That is the only shape in which a machine
+// judgement belongs on this protocol — see README.md:982 on why an
+// ATTRIBUTED reading does not breach Invariant #1 while a canonical
+// score would.
+
+/** Where an assessor stands on a target.
+ *
+ * `Abstains` is not a null stance and MUST NOT be treated as one: an
+ * assessor who has looked and declined to take a side is saying
+ * something, and it is different from an assessor who never looked. */
+export type Stance = 'Supports' | 'Disputes' | 'Abstains';
+
+/** Exported so a tool surface can ENUMERATE the choice rather than
+ * taking free text — the same reason `CONFIDENCE_LEVELS` is exported.
+ * A stance an agent has to guess the spelling of is a stance it will
+ * get wrong, and the failure would be a silent deserialization error. */
+export const STANCES: readonly Stance[] = ['Supports', 'Disputes', 'Abstains'] as const;
+
+export interface Assessment {
+  assessor: Uint8Array;
+  target: Uint8Array;
+  stance: Stance;
+  /** The ASSESSOR's confidence in their OWN assessment — theirs to
+   * state, never the protocol's to compute. */
+  confidence: ConfidenceLevel;
+  /** Optional, because a stance with no rationale is still a signed
+   * position somebody can be held to. A required-reasons rule would be
+   * a quality bar this protocol cannot enforce. */
+  rationale: string | null;
+  /** What this assessor had SEEN of the target's critiques when they
+   * assessed it. Same field and same argument as `Critique.past_cone`:
+   * an assessment made without seeing the objections is a different act
+   * from one made in spite of them, and only retention tells them
+   * apart later. */
+  past_cone: Uint8Array[];
+  timestamp: number;
+}
+
+// --- Settlement -------------------------------------------------------
+
+/** `Open` is the resting state and carries no deficiency. A target that
+ * has not settled is not a target that failed to settle. */
+export type SettlementState = 'Open' | 'Contested' | 'Settled';
+
+export const SETTLEMENT_STATES: readonly SettlementState[] =
+  ['Open', 'Contested', 'Settled'] as const;
+
+/** An AGGREGATOR's declared rule for when assessments amount to a
+ * settlement. The protocol stores and recomputes it; it does not bless
+ * it. Two aggregators with different policies legitimately reach
+ * different states over the same assessments, and that disagreement is
+ * the point rather than a defect. */
+export interface SettlementPolicy {
+  author: Uint8Array;
+  name: string;
+  min_assessors: number;
+  max_dissent: number;
+  statement: string;
+  published_at: number;
+}
+
+export interface SettlementStatus {
+  aggregator: Uint8Array;
+  target: Uint8Array;
+  policy: Uint8Array;
+  /** The assessments this status was computed over, named explicitly.
+   * A status whose inputs are not stated cannot be checked. */
+  inputs: Uint8Array[];
+  state: SettlementState;
+  timestamp: number;
+}
+
+/** What `recomputeSettlement` returns: the state a policy yields over
+ * stated inputs, with the counts it got there by. Read it before
+ * publishing a status — validation recomputes the same thing and
+ * refuses a status that does not follow. */
+export interface RecomputedSettlement {
+  target: Uint8Array;
+  policy: Uint8Array;
+  policy_name: string;
+  min_assessors: number;
+  max_dissent: number;
+  distinct_assessors: number;
+  dissent: number;
+  /** Inputs that could not be used — not an error, and worth surfacing:
+   * a state computed over fewer inputs than were offered is a different
+   * fact from one computed over all of them. */
+  unusable_inputs: number;
+  state: SettlementState;
+  note: string;
+}
+
+// --- Pre-registration (commit–reveal) ---------------------------------
+//
+// THE PROTOCOL'S CENTRAL MECHANISM, and until now the one thing an SDK
+// agent could not do. See SPEC.md §10.16 and README.md's Foresight
+// entry: the expired list is the DENOMINATOR, and an agent that can
+// publish claims but cannot commit to a prediction in advance is
+// participating in the half of this protocol that costs it nothing.
+
+export interface PreRegistration {
+  question: Uint8Array;
+  sealed: Uint8Array;
+  reveal_deadline: number;
+  author: Uint8Array;
+  timestamp: number;
+}
+
+/** The caller's own sealed content, read back from their own chain.
+ *
+ * Reached as `SealedPrediction | null`, where `null` means *your own
+ * commitment, not on this chain* and nothing else — see
+ * `mySealedPrediction`. */
+export interface SealedPrediction {
+  prediction: string;
+  salt: string;
+}
+
+export interface ForesightEntry {
+  pre_registration: Uint8Array;
+  question: Uint8Array;
+  reveal_deadline: number;
+  /** `null` while sealed. Present only once revealed. */
+  revealed_prediction: string | null;
+}
+
+/** Three raw lists, and NO score — the zome refuses to divide them and
+ * so does this type. Invariant #1 bars a canonical comparative score
+ * while requiring raw history stay queryable; `expired` exists to
+ * DEFLATE a claim of foresight rather than to rank anyone.
+ *
+ * A client deriving a hit rate from these is making its own judgement
+ * about what counts, and owns defending it. SPEC.md §10.16 states the
+ * no-score rule as a MUST NOT, and additionally forbids presenting
+ * `revealed` as evidence of foresight at all — see §10.16's note on the
+ * deadline's authority under a modified conductor. */
+export interface ForesightRecord {
+  revealed: ForesightEntry[];
+  expired: ForesightEntry[];
+  pending: ForesightEntry[];
+}
+
+/** An attributed reading of a membrane's discourse health, published as
+ * a critiquable claim.
+ *
+ * `entry_hash` is NOT redundant with `action_hash`: critique targets
+ * must be EntryHash-shaped, so disputing this reading needs the entry
+ * hash. Returning only the action hash would make the reading
+ * critiquable in principle and not in practice, which is the entire
+ * justification for publishing it. */
+export interface PublishedReading {
+  action_hash: Uint8Array;
+  entry_hash: Uint8Array;
+  health: DiscourseHealth;
+  /** The method the figure was computed through, embedded in the claim
+   * itself. A figure without its method is a lensed number presented as
+   * a neutral one. */
+  method: string;
+  /** Always `true`, and DO NOT TREAT IT AS EVIDENCE. It is a flag the
+   * implementation sets about itself: `discourse-readings.mjs` watched
+   * the method dropped from the published content while this field went
+   * on reporting `true`, which is precisely why the harness asserts the
+   * method is in the CLAIM rather than trusting the flag. It is carried
+   * so that an implementation which later omits the method has to
+   * change this field rather than quietly mean something weaker by the
+   * same payload. */
+  method_stated: boolean;
 }
