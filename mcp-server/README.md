@@ -96,7 +96,7 @@ a stranger installs resolves its own dependency tree, and that difference is
 precisely what neither existing check could see. It runs in `conductor.yml`.
 
 **Only a republish could fix that, and it happened on 2026-09-12.** Both
-packages are `0.2.0` on the registry and `latest` as of 2026-10-28 — `0.1.2`
+packages are `0.2.x` on the registry and `latest` — `0.1.2`
 then, through `0.1.3`, `0.1.4` and `0.1.5`; this release is the first with
 twenty-one tools rather than nine, carrying pre-registration, assessment,
 settlement, discourse readings and domain founding. This package's dependency
