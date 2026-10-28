@@ -371,8 +371,28 @@ async function main() {
     await page.locator('[data-testid="foresight-prediction-input"]').fill(UI_TEXT);
     await page.locator('[data-testid="foresight-salt-input"]').fill(UI_SALT);
     await page.locator('[data-testid="foresight-commit-submit"]').click();
-    await page.waitForSelector('[data-testid="foresight-pending-item"]', { timeout: 20000 });
+    // GUARDED, AND THE GUARD WAS ADDED BECAUSE CI NEEDED IT. This wait was a
+    // bare `await`, and when it timed out in CI on 2026-10-28 it threw and
+    // killed the run — so the harness reported a 20-second timeout on a
+    // SELECTOR and never reached the check below, which asks the CONDUCTOR
+    // whether the commitment was written at all. Those are different
+    // findings with different causes (a screen that did not re-render, versus
+    // a commit that never happened) and the crash could not tell them apart.
+    //
+    // This file's own header already records that lesson from §5, and
+    // `agent-sdk.mjs` records it from an injection: a harness fragile at
+    // exactly the point of the defect it exists to detect reports less than
+    // it knows. The timeout is no longer fatal; it is a fact printed beside
+    // the chain read that interprets it.
+    let pendingRendered = true;
+    try {
+      await page.waitForSelector('[data-testid="foresight-pending-item"]', { timeout: 20000 });
+    } catch {
+      pendingRendered = false;
+      log('  (the pending list did not render within 20s — the chain read below says whether anything was written)');
+    }
     const uiTruth = await node.call('get_foresight_record', node.me);
+    check('the commitment appears in the pending list on screen', pendingRendered);
     // ASSERTED AGAINST THE CONDUCTOR, NOT THE SCREEN. A UI that rendered a
     // pending row without having written anything is exactly the fake this
     // file exists to catch, so the proof is that the CHAIN holds it.
