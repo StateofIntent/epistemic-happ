@@ -892,7 +892,7 @@ The reads below divide into two kinds, and their signatures do not distinguish t
 - **DHT-wide reads** resolve a hash with `get`, or follow `get_links` from a hash or anchor. They see entries authored by *any* agent. `get_claims_by_agent`, `get_critiques_for`, `get_antibody_patterns_for`, `get_retractions_for_claim`, `get_membrane_members`, `get_agent_constitution`, `get_critique_species_adoption_count` and `get_effective_conductance` are of this kind.
 - **Chain-local reads** are built on `query(ChainQueryFilter)`, which by Holochain's definition scans **the calling agent's own source chain and never the DHT**. They return only what *that agent* authored.
 
-Chain-local is the *correct* scope for some of these, and saying so matters as much as naming the gap: `generate_worldline_trace` and `sample_period` index the caller's own history by definition, `export_to_n4l` exports the caller's own records, and `get_unbridged_claims`/`get_unbridged_mews` exist so a bridge can publish *its own* agent's backlog. Nothing is wrong there.
+Chain-local is the *correct* scope for some of these, and saying so matters as much as naming the gap: `generate_worldline_trace` and `sample_period` index the caller's own history by definition, `export_to_n4l` exports the caller's own records, `get_unbridged_claims`/`get_unbridged_mews` exist so a bridge can publish *its own* agent's backlog, and `get_my_sealed_prediction` reads a **private entry**, whose content no DHT read can reach at all (§10.16). Nothing is wrong there.
 
 The problem is the remainder, where chain-local scope contradicts the function's evident purpose. **Two of those five are now fixed; three remain.**
 
@@ -1406,12 +1406,45 @@ than to rank agents, and a revelation read without it is the laundering above.
 Deriving a hit rate is a client's decision to defend, not this protocol's to
 bless.
 
+**A committer MUST be able to read back their own sealed content, and until
+2026-10-28 nothing could.** `salt` is unguessable by construction and
+`prediction` is sealed, so an author who lost their note held a commitment that
+could never be revealed — permanently, publicly, on a chain with no delete, and
+the client said so in as many words while the content sat on the author's own
+source chain the whole time. `get_my_sealed_prediction` is that read. **Its
+scope is chain-local and that is the entire point, not a limitation:** it is
+`query(ChainQueryFilter)` with `include_entries(true)` over the caller's own
+chain, so it cannot reach another agent's `SealedPrediction` even in principle
+— there is no DHT path to a private entry's content, and an implementation MUST
+NOT add one. A reveal remains subject to all three rules above; recovering the
+values does not excuse a late reveal.
+
+**The `None` case is load-bearing and MUST NOT be collapsed into an error.**
+*Not on this chain* is the honest answer for a commitment made on another
+device, and a client that reports it as a failure teaches its user that their
+commitment is lost when the truth is that this device cannot help.
+
+**`None` MUST mean only that, which is why the two neighbouring cases are
+errors rather than empty answers.** Another agent's commitment is refused —
+*"Only the author of a PreRegistration may read its sealed content."* — and a
+hash that resolves to something which is not a `PreRegistration` is refused
+with *"Target is not a PreRegistration."* Returning `None` for either would
+make the one answer a client must act on ambiguous, and the action differs:
+*yours, elsewhere* means go and find your note, while *not a commitment* means
+the caller passed the wrong hash. An implementation MUST keep these three
+distinguishable. **The second message was unreachable until 2026-10-28** — a
+Claim's action hash resolves and simply is not this type, so deserialization
+failed before the arm carrying that message and the caller saw
+`Deserialize("missing field `question`")`. Found by `agent-sdk.mjs` asserting
+the wrong thing about it, which is the only reason it surfaced.
+
 | Function | Payload | Returns |
 |---|---|---|
 | `pre_register` | `PreRegisterInput` | `ActionHash` — writes the sealed content as a private entry and a public `PreRegistration` carrying its hash, the question and the deadline. The caller supplies `salt`, because a salt generated here would have to be stored in the entry it protects |
 | `reveal_pre_registration` | `RevealInput` | `ActionHash` — MUST be refused unless the content hashes to the commitment, the caller is the committer, and the deadline has not passed |
 | `get_pre_registrations_for_question` | `ActionHash` | `Vec<Record>` — every commitment made about one question, revealed or not |
 | `get_foresight_record` | `AgentPubKey` | `ForesightRecord` — `revealed` / `expired` / `pending`, as lists. Expiry is computed against the reader's clock, since nothing is written when a deadline passes |
+| `get_my_sealed_prediction` | `pre_registration: ActionHash` | `Option<SealedPrediction>` — the caller's own sealed `prediction` and `salt`, read back from their own source chain. `None` has exactly ONE meaning: *your own commitment, whose `SealedPrediction` is not on this chain* — made on another device. A hash that is not a `PreRegistration` and another agent's commitment are both **errors**, not `None` |
 
 ## 11. Versioning & Change Process
 

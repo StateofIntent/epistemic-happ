@@ -1,5 +1,5 @@
 # =============================================================================
-# Nineteen browser harnesses, against a real conductor and a real DHT. This is
+# Twenty browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -315,6 +315,11 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/write-symmetry.mjs
+
+      - name: positions-ui — attributed positions on screen, and no tally beside them
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/positions-ui.mjs
 
       - name: taxonomy-ui — the critique vocabulary as a tree, writable, and never ranked
         run: |

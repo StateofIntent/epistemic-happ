@@ -242,6 +242,51 @@ async function main() {
   check('ForesightRecord has exactly revealed/expired/pending', JSON.stringify(keys) === JSON.stringify(['expired', 'pending', 'revealed']));
   check('and carries no ratio, score or ordering field', !('score' in rec) && !('ratio' in rec) && !('rank' in rec));
 
+  log('\n--- 8. THE AUTHOR CAN RECOVER THEIR OWN SEALED CONTENT ---');
+  // WHY THIS SECTION EXISTS, and it is a repair rather than a new feature.
+  // The integrity zome chose a PRIVATE entry over a bare hash precisely so
+  // the content would NOT be lost — "a bare hash would commit equally well
+  // but leaves the content nowhere, so a lost prediction becomes an
+  // unprovable claim about what was meant" — and then nothing in the
+  // coordinator read it back. So the reveal form asked the author to retype
+  // the prediction AND the salt and told them neither could be recovered,
+  // which is true of the DHT and false of their own chain. The salt is
+  // unguessable by construction, so an author who loses it holds a
+  // commitment that can never be revealed: permanently, publicly, on a chain
+  // with no delete. That is the worst failure mode this primitive has, and
+  // it was a missing read.
+  const salt8 = 'salt-eight-c4d1';
+  const prediction8 = 'A recovered salt means a lost note is not a lost commitment.';
+  const pr8 = await node.call('pre_register', {
+    question, prediction: prediction8, salt: salt8, reveal_deadline: nowMicros() + 3_600_000_000,
+  });
+
+  const sealed8 = await node.call('get_my_sealed_prediction', pr8);
+  check('the author reads back their own sealed prediction', sealed8?.prediction === prediction8);
+  check('and the SALT, which is the half nothing else can supply', sealed8?.salt === salt8);
+
+  // THE CHECK THAT ACTUALLY MATTERS, and the reason the two above are not
+  // sufficient on their own: matching strings only prove the read returns
+  // something that LOOKS right. Revealing from the recovered values ALONE
+  // proves the recovery is ENOUGH — that an author who kept no notes
+  // whatsoever can still satisfy validation, which recomputes the commitment
+  // hash from exactly these two fields. Nothing from the original commit is
+  // referenced below; if the read were subtly lossy this is the check that
+  // would go red.
+  await node.call('reveal_pre_registration', {
+    pre_registration: pr8, prediction: sealed8.prediction, salt: sealed8.salt,
+  });
+  rec = await node.call('get_foresight_record', node.me);
+  check('and a reveal driven ONLY by the recovered values is accepted', has(rec.revealed, pr8));
+  check('with the content the commitment was made about', find(rec.revealed, pr8)?.revealed_prediction === prediction8);
+
+  // A commitment already revealed stays readable, because the private entry
+  // is still on the chain. Checked because the opposite would be a
+  // reasonable implementation and would make the read useless for the one
+  // case an author most wants it: confirming what they committed to.
+  const stillThere = await node.call('get_my_sealed_prediction', pr8);
+  check('and the sealed content survives its own reveal', stillThere?.salt === salt8);
+
   log('');
   if (failures === 0) {
     log('ALL CHECKS PASSED — a prediction can be committed without disclosure');
@@ -253,6 +298,17 @@ async function main() {
     log('for: an unrevealed commitment appears in `expired` once its deadline');
     log('passes, without its author doing anything to surface it, and the read');
     log('returns revealed/expired/pending with no score, ratio or ordering.');
+    log('');
+    log('AND AN AUTHOR CANNOT BE LOCKED OUT OF THEIR OWN COMMITMENT: the');
+    log('sealed prediction and its salt read back from the author\'s own chain,');
+    log('and a reveal driven only by those recovered values is accepted. The');
+    log('salt is unguessable by design, so before this read a lost note meant');
+    log('a permanently unrevealable commitment on a chain with no delete.');
+    log('');
+    log('NOT CLAIMED HERE: that another agent is refused. `query` reaches only');
+    log('the calling agent\'s own chain, so the refusal is structural rather');
+    log('than tested — this harness runs ONE agent and cannot probe it. The');
+    log('explicit author check exists for the error message, not the boundary.');
     log('');
     log('NOT CLAIMED: that a question cannot be chosen after the fact. The');
     log('ordering check in validation guards a state no in-protocol path can');

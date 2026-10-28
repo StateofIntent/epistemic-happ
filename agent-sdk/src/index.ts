@@ -55,7 +55,11 @@ import type {
   FrictionStatus, DiscourseHealth, CrossDomainCritique,
   AttestationPolicy, ConductancePolicy,
   ConfidenceLevel, CritiqueMode, CritiqueTargetType, Decoded,
-  Constitution, MembranePromiseCompliance, MemberPromiseStanding,
+  Constitution, ConstitutionPromise, Condition,
+  MembranePromiseCompliance, MemberPromiseStanding,
+  Assessment, Stance, SettlementPolicy, SettlementStatus,
+  SettlementState, RecomputedSettlement,
+  SealedPrediction, ForesightRecord, PublishedReading,
 } from './types.js';
 
 export * from './types.js';
@@ -168,12 +172,132 @@ function describeClosure(c: ClosureState | null): string {
 // per field — `timestamp` in micros (matching Holochain's own `Timestamp`),
 // and `created_at`/`published_at`/`expires_at` in SECONDS, because
 // `get_agent_constitution` and the worldline checkpoint reads compare expiry
-// against `sys_time()` in seconds. Everything this library writes is a
-// `timestamp` field, so a seconds helper would currently be dead code; add
-// `Math.floor(Date.now() / 1000)` at the call site if a write to one of the
-// seconds-family fields is ever added here, and see `Constitution` in
-// types.ts for what goes wrong if the two are mixed.
+// against `sys_time()` in seconds. See `Constitution` in types.ts for what
+// goes wrong if the two are mixed.
+//
+// THE SECONDS HELPER IS NO LONGER DEAD CODE, and this comment used to say it
+// was: `publishSettlementPolicy` writes `SettlementPolicy.published_at`,
+// which §5.23 puts in the seconds family. It was written with `nowMicros()`
+// and `check-time-units.mjs` caught it — a gate that exists because the
+// mixup is invisible at every other layer: it type-checks, it validates, it
+// round-trips, and only an EXPIRY in the wrong unit misbehaves, ~1e5 too
+// large to ever fire. Use the helper that matches the field, not the one
+// that is nearest.
 function nowMicros(): number { return Date.now() * 1000; }
+function nowSecs(): number { return Math.floor(Date.now() / 1000); }
+/** Enough of a Constitution to tell two of this agent's apart. Not a
+ * hash of the entry — the point is to compare what a client decoded
+ * against what the coordinator returned, which travel by different
+ * paths and need not be byte-identical to be the same claim. */
+function constitutionFingerprint(c: Constitution): string {
+  return JSON.stringify([
+    c.published_at, c.expires_at ?? null,
+    c.promises?.map((p) => [p.action, p.domain, p.modality ?? null]) ?? [],
+    c.conditions?.map((x) => [x.condition_type, x.parameters]) ?? [],
+  ]);
+}
+
+/** Holochain's hash-type prefixes, MEASURED against a live conductor on
+ * 2026-10-28 rather than taken from memory: ActionHash `132,41,36`,
+ * EntryHash `132,33,36`, AgentPubKey `132,32,36`, all 39 bytes.
+ *
+ * WHY THIS IS WORTH A HELPER. The zome's structs are typed, so handing a
+ * coordinator function an EntryHash where it declares an ActionHash fails
+ * while DESERIALIZING THE WHOLE PAYLOAD — before the function body runs,
+ * before any friendly check inside it, and before the line number in the
+ * error means anything. What the caller sees is
+ * `Deserialize([135, 166, 100, 111, ...])`: the msgpack bytes of their own
+ * arguments, as a decimal array. Nothing in it says "wrong kind of hash".
+ *
+ * AND IT IS THE MISTAKE MOST AVAILABLE TO A MODEL, which is the reason it
+ * earns a check rather than a comment. `claims_in_domain` returns
+ * `entry_hash` and `action_hash` side by side, critique targets ARE entry
+ * hashes, and a constitution reference is an action hash — so an agent
+ * copying "the hash of the thing" has even odds of copying the wrong one. */
+const HASH_PREFIXES = {
+  ActionHash: [132, 41, 36],
+  EntryHash: [132, 33, 36],
+  AgentPubKey: [132, 32, 36],
+} as const;
+
+/** Name the kind of hash these bytes are, or null if they are not one. */
+function hashKindOf(bytes: Uint8Array): keyof typeof HASH_PREFIXES | null {
+  if (bytes?.length !== 39) return null;
+  for (const [kind, prefix] of Object.entries(HASH_PREFIXES)) {
+    if (prefix.every((byte, i) => bytes[i] === byte)) return kind as keyof typeof HASH_PREFIXES;
+  }
+  return null;
+}
+
+/** Refuse a hash of the wrong kind before the conductor refuses it
+ * unreadably. Names what was passed, because "expected an ActionHash" on
+ * its own does not tell a caller holding two hashes which one is wrong. */
+function requireHashKind(
+  bytes: Uint8Array,
+  expected: keyof typeof HASH_PREFIXES,
+  argument: string,
+  because: string,
+): void {
+  const actual = hashKindOf(bytes);
+  if (actual === expected) return;
+  throw new Error(
+    `${argument} must be an ${expected} and is ${actual === null
+      ? `not a Holochain hash at all (${bytes?.length ?? 0} bytes)`
+      : `an ${actual}`}. ${because} This is refused here because the zome's structs are ` +
+    `typed, so the conductor rejects it while deserializing the whole payload — the caller ` +
+    `gets \`Deserialize([135, 166, ...])\`, the msgpack bytes of their own arguments as a ` +
+    `decimal array, with nothing in it naming the real problem.`,
+  );
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** The protocol's ceiling on a recorded past cone (`MAX_PAST_CONE` in the
+ * integrity zome).
+ *
+ * A bound is required rather than tidy: validation resolves every member
+ * and then every member's own members, so an unbounded cone is an
+ * unbounded validation cost every peer on the network pays. The zome
+ * REFUSES a cone over this rather than trimming one, because a trimmed
+ * cone is a false statement about what was seen — so this library
+ * refuses too. */
+export const MAX_PAST_CONE = 256;
+
+/** A cryptographically random salt, URL-safe base64.
+ *
+ * WHY THIS IS HERE AND NOT IN THE ZOME. A salt the zome generated would
+ * have to be stored in the private entry it protects to be recoverable,
+ * which is why `pre_register` takes one instead. A salt generated
+ * client-side can be handed straight back to the caller without being
+ * stored anywhere, so this is the right layer for it.
+ *
+ * 32 bytes from the platform CSPRNG. A salt's whole job is to stop a
+ * short or guessable prediction being recovered from its commitment
+ * hash by brute force, so `Math.random()` would defeat the mechanism
+ * while appearing to work. Throws rather than falling back if no CSPRNG
+ * is available — a silent downgrade here is the worst available
+ * outcome. */
+export function randomSalt(): string {
+  const g: any = globalThis as any;
+  const bytes = new Uint8Array(32);
+  if (g.crypto?.getRandomValues) {
+    g.crypto.getRandomValues(bytes);
+  } else {
+    throw new Error(
+      'No CSPRNG available (globalThis.crypto.getRandomValues). A salt from a ' +
+      'non-cryptographic source would leave predictions brute-forceable from ' +
+      'their commitment hashes while appearing to work, so this refuses rather ' +
+      'than falling back. Supply your own salt to preRegister() instead.',
+    );
+  }
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 function decodeRecords<T>(records: any[]): Decoded<T>[] {
   const out: Decoded<T>[] = [];
@@ -461,6 +585,78 @@ export class EpistemicAgent {
     return (await this.call<Constitution | null>('get_agent_constitution', agent)) ?? null;
   }
 
+  /** THIS agent's current constitution together with the ActionHash that
+   * references it, or `null` if it has published none.
+   *
+   * WHY IT IS NOT JUST `agentConstitution(me)`. `get_agent_constitution`
+   * returns the ENTRY and not its hash, and `create_membrane` needs the
+   * hash — so founding a domain was unreachable from this SDK for any
+   * agent that had published a constitution and not kept the hash the
+   * publish returned. That is the whole reason this exists. It resolves
+   * the hash from `get_all_constitutions`, whose Records carry their own.
+   *
+   * IT DUPLICATES THE COORDINATOR'S SELECTION RULE, WHICH IS A DEFECT
+   * GENERATOR, SO IT CHECKS ITSELF INSTEAD OF ASSUMING. The ordering
+   * below is `get_agent_constitution`'s: expired entries dropped, then
+   * most recent author-supplied `published_at` first — SECONDS, so two
+   * publishes inside one second tie — and the tie broken by the
+   * host-stamped action timestamp in micros. Having chosen, it compares
+   * its pick against what the coordinator actually returns and THROWS if
+   * they disagree. A client and a zome silently differing on which
+   * constitution is current would mean founding a membrane against one
+   * while every reader of the DHT sees the other, and failing loudly is
+   * strictly better than that.
+   *
+   * THE EARLIER CONSTITUTIONS ARE STILL THERE. "Current" is a reading
+   * over an append-only set, not a mutation; republishing supersedes
+   * which one answers this call and erases nothing. */
+  async ownConstitution(): Promise<{ actionHash: Uint8Array; constitution: Constitution } | null> {
+    const records = await this.call<any[]>('get_all_constitutions');
+    const nowSeconds = nowSecs();
+    const mine: { actionHash: Uint8Array; actionMicros: number; constitution: Constitution }[] = [];
+    for (const record of records ?? []) {
+      const present = record?.entry?.Present;
+      if (!present) continue;
+      const constitution = decode(present.entry) as Constitution;
+      if (!constitution?.agent || !sameBytes(constitution.agent, this.agentPubKey)) continue;
+      // KEEP when there is no expiry or it is still in the future — the
+      // coordinator's `map_or(true, |exp| exp > now)`, in seconds.
+      if (constitution.expires_at !== null && constitution.expires_at !== undefined
+          && constitution.expires_at <= nowSeconds) continue;
+      mine.push({
+        actionHash: record.signed_action.hashed.hash,
+        actionMicros: Number(record.signed_action.hashed.content.timestamp ?? 0),
+        constitution,
+      });
+    }
+    if (mine.length === 0) return null;
+    mine.sort((a, b) =>
+      (b.constitution.published_at - a.constitution.published_at) || (b.actionMicros - a.actionMicros));
+    const picked = mine[0];
+
+    const authoritative = await this.agentConstitution(this.agentPubKey);
+    if (authoritative === null) {
+      throw new Error(
+        'This client found a live constitution for this agent and get_agent_constitution ' +
+        'returned none. Nothing was written. The two read the same DHT, so the likely cause ' +
+        'is propagation rather than disagreement — but founding a membrane against a ' +
+        'constitution no reader can resolve would produce a membrane nobody can validate, ' +
+        'so this refuses instead of guessing.',
+      );
+    }
+    if (constitutionFingerprint(authoritative) !== constitutionFingerprint(picked.constitution)) {
+      throw new Error(
+        'This client and the coordinator disagree about which of this agent\'s constitutions ' +
+        `is current (client published_at=${picked.constitution.published_at}, coordinator ` +
+        `published_at=${authoritative.published_at}). Nothing was written. Both apply the same ` +
+        'documented rule, so a disagreement means the rule has drifted on one side — most ' +
+        'likely the same-second tie-break, since published_at is SECONDS. Pass the ' +
+        'constitution hash explicitly to createMembrane rather than letting it be resolved.',
+      );
+    }
+    return { actionHash: picked.actionHash, constitution: picked.constitution };
+  }
+
   /** Does any member actually promise what their membrane requires?
    *
    * WHY THIS IS A CLIENT FUNCTION AND NOT A ZOME ONE. A membrane
@@ -636,7 +832,26 @@ export class EpistemicAgent {
     content: string;
     replicationAttempted?: boolean;
     evidenceHashes?: Uint8Array[];
+    /** What this agent had SEEN of the target's critiques. Omit it and
+     * nothing is recorded, which the protocol reads as "recorded
+     * nothing" rather than "saw nothing" — see `witnessedCritiquesOf`,
+     * which builds a cone that is true by construction. */
+    pastCone?: Uint8Array[];
   }): Promise<Uint8Array> {
+    const pastCone = input.pastCone ?? [];
+    if (pastCone.length > MAX_PAST_CONE) {
+      // REFUSED HERE RATHER THAN TRIMMED, because the zome refuses
+      // rather than trimming and for its reason: a trimmed cone is a
+      // FALSE STATEMENT about what was seen, and silently making one on
+      // the caller's behalf is worse than the error.
+      throw new Error(
+        `past_cone has ${pastCone.length} entries; the protocol's ceiling is ` +
+        `${MAX_PAST_CONE} (MAX_PAST_CONE) and create_critique refuses rather ` +
+        `than trimming. A target with more critiques than that cannot record a ` +
+        `complete cone — state that limit rather than sending a partial cone, ` +
+        `which would be a false statement about what you saw.`,
+      );
+    }
     try {
       return await this.commitWaitingForDeps<Uint8Array>('create_critique', {
         target: input.target,
@@ -648,7 +863,8 @@ export class EpistemicAgent {
         replication_attempted: input.replicationAttempted ?? false,
         evidence_hashes: input.evidenceHashes ?? [],
         species: null,
-      }, [input.target, ...(input.evidenceHashes ?? [])]);
+        past_cone: pastCone,
+      }, [input.target, ...(input.evidenceHashes ?? []), ...pastCone]);
     } catch (cause) {
       const message = String((cause as any)?.data?.data ?? (cause as any)?.message ?? cause);
       if (/temporal friction/i.test(message)) {
@@ -668,6 +884,202 @@ export class EpistemicAgent {
     return this.commitWaitingForDeps<Uint8Array>('join_membrane', membraneHash, [membraneHash]);
   }
 
+  // --- Founding ------------------------------------------------------
+  //
+  // TWO CALLS AND NOT ONE, DELIBERATELY. `createMembrane` takes the
+  // ActionHash of a constitution this agent has ALREADY published; it
+  // will not publish one for you. That is README §2.6's mechanism, not
+  // an ergonomic oversight: founding a domain here was made
+  // *accountable* rather than *costly* — no fee, but the founder must
+  // have stated their own promises in public first, and must say what
+  // the domain demands of anyone else. A convenience that minted the
+  // constitution inside the founding call would leave that requirement
+  // technically satisfied and substantively empty, since nobody would
+  // ever have chosen what they were promising. Both halves are enforced
+  // DHT-side by `validate_membrane`, so the cost of collapsing them
+  // would be borne entirely by the meaning.
+
+  /** Publish what this agent promises to do, under what conditions.
+   *
+   * `agent` is NOT a parameter and cannot be one. `validate_constitution`
+   * requires the constitution's agent to equal the action author, so a
+   * caller-supplied key could only ever be this agent's own or rejected
+   * by the DHT. You cannot publish someone else's promises; Promise
+   * Theory's first result is that no agent can promise on another's
+   * behalf, and this is that result as a type signature.
+   *
+   * NOTHING OBLIGES AN AGENT TO PUBLISH ONE. An agent with no
+   * constitution is not deficient — see `agentConstitution`, where the
+   * same asymmetry is spelled out for the read side. The one thing it
+   * gates is founding a membrane.
+   *
+   * `publishedAt` is stamped in SECONDS (SPEC §5.23). Two constitutions
+   * published inside the same second carry EQUAL `published_at`, and
+   * `get_agent_constitution` then falls back to the host-stamped action
+   * timestamp to order them — so a republish-twice-quickly caller gets a
+   * well-defined answer, but not one its own field determined. */
+  async publishConstitution(input: {
+    promises: ConstitutionPromise[];
+    conditions?: Condition[];
+    /** Seconds, and MUST be > now. Omit for a constitution that does not
+     * expire. */
+    expiresAt?: number | null;
+  }): Promise<Uint8Array> {
+    // Pre-checks mirroring validate_constitution, which is the real
+    // enforcement layer. These exist only so the caller meets the rule in
+    // its own vocabulary rather than as a `Guest(...)` string surfacing
+    // from validation — the same reason `critique` pre-reads its budget.
+    if (input.promises.length === 0) {
+      throw new Error(
+        'A constitution must contain at least one promise. An empty constitution is ' +
+        'refused by validation rather than treated as "promises nothing", because ' +
+        'publishing silence and publishing an empty list are different acts and only ' +
+        'one of them is representable.',
+      );
+    }
+    for (const [i, promise] of input.promises.entries()) {
+      if (!promise.action || !promise.domain) {
+        throw new Error(
+          `promises[${i}] needs both an action and a domain, and has ` +
+          `${!promise.action ? 'no action' : 'no domain'}. A promise scoped to no domain ` +
+          `is unmatchable — see promiseCompliance, which compares required phrases to ` +
+          `promised phrases WITHIN a domain.`,
+        );
+      }
+    }
+    const publishedAt = nowSecs();
+    const expiresAt = input.expiresAt ?? null;
+    if (expiresAt !== null && expiresAt <= publishedAt) {
+      throw new Error(
+        `expires_at (${expiresAt}) must be > published_at (${publishedAt}), and both are ` +
+        `SECONDS (SPEC §5.23). An expiry handed over in MICROSECONDS passes this rule and ` +
+        `every validation rule — it is ~1e5 times larger than the seconds clock ` +
+        `get_agent_constitution compares it against, so the constitution simply never ` +
+        `expires. That is the silent direction, which is why this check names the unit.`,
+      );
+    }
+    // THE CENTURY CEILING — THE ONE CHECK NO LAYER BELOW THIS ONE CAN MAKE,
+    // and the reason it exists is that the rule above is TRUE IN EITHER UNIT.
+    // An expiry handed over in microseconds is ~1e5 times the seconds clock
+    // `get_agent_constitution` compares it against, so it is comfortably
+    // greater than `published_at`, the coordinator accepts it, validation
+    // accepts it, it round-trips intact — and the constitution then never
+    // expires while its author believes it does. Nothing DHT-side can object,
+    // because read as seconds that number is a legitimate far-future date.
+    //
+    // A STATED HEURISTIC AND NOT A PROTOCOL RULE, held as one: this refuses
+    // on the grounds that no caller means a century, and a caller who means
+    // "does not expire" has `expiresAt: null` to say it with. Without this,
+    // the message above only DESCRIBED the silent case while accepting it.
+    const CENTURY_SECS = 100 * 365 * 24 * 3600;
+    if (expiresAt !== null && expiresAt - publishedAt > CENTURY_SECS) {
+      throw new Error(
+        `expires_at (${expiresAt}) is more than a century after published_at ` +
+        `(${publishedAt}), and both are SECONDS (SPEC §5.23). The overwhelmingly likely ` +
+        `cause is a value in MICROSECONDS, which passes the expires_at > published_at ` +
+        `rule and every validation rule in the DNA — it is ~1e5 times larger than the ` +
+        `seconds clock get_agent_constitution compares it against, so the constitution ` +
+        `never expires and nothing anywhere says so. This is a stated heuristic rather ` +
+        `than a protocol rule; a constitution that genuinely does not expire is spelled ` +
+        `expiresAt: null.`,
+      );
+    }
+    return this.commitWaitingForDeps<Uint8Array>('publish_constitution', {
+      agent: this.agentPubKey,
+      promises: input.promises,
+      conditions: input.conditions ?? [],
+      published_at: publishedAt,
+      expires_at: expiresAt,
+    });
+  }
+
+  /** Found a domain: a membrane, the promises it requires of anyone who
+   * participates, and the founder's own already-published constitution.
+   *
+   * `constitution` is the ActionHash returned by `publishConstitution`,
+   * and must be THIS agent's own — `create_membrane` fetches it and
+   * refuses a constitution whose agent is not the creator, as does
+   * `validate_membrane` with `must_get_valid_record`. See the block
+   * comment above for why this is two calls.
+   *
+   * CITED, SO A FRESHLY PUBLISHED CONSTITUTION DOES NOT LOSE THE RACE.
+   * Founding immediately after publishing is the ordinary path and the
+   * one that stalls: both the coordinator's `get` and validation's
+   * deterministic fetch can run before the constitution has propagated.
+   * Routing through the dependency wait turns that into a wait and a
+   * legible `PendingDependencyError`, instead of a rejection the caller
+   * would reasonably read as "my constitution is wrong".
+   *
+   * `requiredPromises` IS NOT A GATE ON JOINING, and nothing makes it
+   * one. `join_membrane` is unrestricted by design — a protocol that
+   * refused the join would make a membrane an authority over who may
+   * speak. The list is what a reader compares members against; see
+   * `promiseCompliance`, which performs that comparison and gates
+   * nothing. */
+  async createMembrane(input: {
+    domain: string;
+    description: string;
+    requiredPromises: string[];
+    /** The hash from `publishConstitution`. Must be this agent's own.
+     * Omit to have it resolved by `ownConstitution()`, which refuses
+     * rather than guesses if it cannot. */
+    constitution?: Uint8Array;
+    validationRulesHash?: Uint8Array | null;
+  }): Promise<Uint8Array> {
+    if (!input.domain) {
+      throw new Error(
+        'A membrane needs a non-empty domain. Enforced by validate_membrane and NOT by ' +
+        'create_membrane, so a client skipping this check meets it as a validation ' +
+        'rejection rather than a coordinator error.',
+      );
+    }
+    if (input.requiredPromises.length === 0) {
+      throw new Error(
+        'A membrane must declare at least one required_promise. This is the whole of ' +
+        'founding\'s cost (README §2.6): no fee is charged, so what is asked instead is ' +
+        'that the domain say what it demands. A membrane requiring nothing is refused ' +
+        'by validation, not accepted as an open one.',
+      );
+    }
+    // RESOLVING THE HASH IS NOT THE CONVENIENCE THE BLOCK COMMENT ABOVE
+    // REFUSES. Looking up a constitution this agent has ALREADY published
+    // leaves README §2.6's requirement fully intact and fully enforced —
+    // an agent that has published none gets the error below and founds
+    // nothing. What would hollow the requirement out is MINTING one here,
+    // which this does not do.
+    let constitution = input.constitution;
+    if (constitution) {
+      requireHashKind(
+        constitution, 'ActionHash', 'createMembrane\'s `constitution`',
+        'It is the hash publishConstitution RETURNED, which is an action hash — not a ' +
+        'claim\'s entry_hash and not your agent key.',
+      );
+    }
+    if (!constitution) {
+      const own = await this.ownConstitution();
+      if (own === null) {
+        throw new Error(
+          'Founding a domain requires your own published constitution, and this agent has ' +
+          'none. Call publishConstitution first. This is not a formality to be worked ' +
+          'around: founding here is accountable rather than costly (README §2.6) — no fee ' +
+          'is charged, and what is asked instead is that you state what you promise before ' +
+          'you ask anything of anyone else. validate_membrane enforces it DHT-side, so a ' +
+          'client skipping this check meets the same refusal one layer down.',
+        );
+      }
+      constitution = own.actionHash;
+    }
+    return this.commitWaitingForDeps<Uint8Array>('create_membrane', {
+      domain: input.domain,
+      description: input.description,
+      required_promises: input.requiredPromises,
+      validation_rules_hash: input.validationRulesHash ?? null,
+      creator: this.agentPubKey,
+      created_at: nowSecs(),
+      constitution,
+    }, [constitution]);
+  }
+
   async retract(input: {
     claimEntryHash: Uint8Array;
     reason: string;
@@ -680,6 +1092,329 @@ export class EpistemicAgent {
       author: this.agentPubKey,
       timestamp: nowMicros(),
     }, [input.claimEntryHash, ...(input.replacementClaim ? [input.replacementClaim] : [])]);
+  }
+
+  // --- Assessment ----------------------------------------------------
+  //
+  // AN AI AGENT ASSESSING IS NOT A SPECIAL CASE. Assessment is a real
+  // entry type with its own validation, and a model publishing one is
+  // doing exactly what a human does: stating an attributed position
+  // under its own key, which anybody who disputes it can critique. That
+  // is the only shape in which a machine judgement belongs here. A
+  // canonical score would claim a view from nowhere; an attributed
+  // reading is a promise like any other.
+
+  /** Publish an assessment of a target under this agent's own key.
+   *
+   * `stance` is REQUIRED and has no default, for the same reason
+   * `critique`'s `mode` has none: it is the whole content of the act,
+   * and an agent that wants to "just assess something" is exactly the
+   * caller that should be made to choose. `Abstains` is a real stance,
+   * not a null one — an assessor who looked and declined to take a side
+   * is saying something different from one who never looked.
+   *
+   * `confidence` is the assessor's confidence in their OWN assessment.
+   * The protocol does not compute it and will not second-guess it. */
+  async publishAssessment(input: {
+    target: Uint8Array;
+    stance: Stance;
+    confidence: ConfidenceLevel;
+    rationale?: string | null;
+    /** What this agent had SEEN of the target's critiques when it
+     * assessed. See `witnessedCritiquesOf`. */
+    pastCone?: Uint8Array[];
+  }): Promise<Uint8Array> {
+    const pastCone = input.pastCone ?? [];
+    if (pastCone.length > MAX_PAST_CONE) {
+      throw new Error(
+        `past_cone has ${pastCone.length} entries; the protocol's ceiling is ` +
+        `${MAX_PAST_CONE} (MAX_PAST_CONE). Refused rather than trimmed — a ` +
+        `trimmed cone is a false statement about what you saw.`,
+      );
+    }
+    const assessment: Assessment = {
+      assessor: this.agentPubKey,
+      target: input.target,
+      stance: input.stance,
+      confidence: input.confidence,
+      rationale: input.rationale ?? null,
+      past_cone: pastCone,
+      timestamp: nowMicros(),
+    };
+    return this.commitWaitingForDeps<Uint8Array>(
+      'publish_assessment', assessment, [input.target, ...pastCone],
+    );
+  }
+
+  /** Every assessment of a target, in the order the protocol returns
+   * them. Not tallied, not ranked. Counting stances into a verdict is a
+   * caller's judgement to own — `recomputeSettlement` is where that is
+   * done ATTRIBUTABLY, against a named policy somebody signed. */
+  async assessmentsFor(target: Uint8Array): Promise<Decoded<Assessment>[]> {
+    return decodeRecords<Assessment>(
+      await this.call<any[]>('get_assessments_for', target),
+    );
+  }
+
+  /** The critiques of a target, together with a past cone that is TRUE
+   * BY CONSTRUCTION — the cone is the action hashes of the critiques
+   * this call actually fetched, not a list the caller asserts.
+   *
+   * WHY THIS EXISTS. An agent populating `past_cone` by hand is
+   * asserting what it read, and the honest version of that assertion is
+   * tedious to assemble and easy to get subtly wrong in the direction
+   * that flatters the author. Validation makes claimed IGNORANCE sticky
+   * — each cone member's own cone must be a subset of yours — so
+   * UNDER-claiming is the direction the rules bite on, and it is also
+   * the direction a careless client drifts in. Reading and recording in
+   * one step removes the gap.
+   *
+   * It does NOT make the claim unfalsifiable: an agent can still pass a
+   * cone of its own devising to `critique` or `publishAssessment`. This
+   * is the convenient path, deliberately, so that the convenient path
+   * is the accurate one. */
+  async witnessedCritiquesOf(target: Uint8Array): Promise<{
+    critiques: Decoded<Critique>[];
+    pastCone: Uint8Array[];
+  }> {
+    const critiques = await this.critiquesFor(target);
+    return { critiques, pastCone: critiques.map((c) => c.actionHash) };
+  }
+
+  // --- Settlement ----------------------------------------------------
+
+  /** Publish an aggregator's declared rule for when assessments amount
+   * to a settlement.
+   *
+   * THE POLICY IS SIGNED AND ATTRIBUTED, which is what keeps this from
+   * being a canonical verdict. Two aggregators with different policies
+   * legitimately reach different states over the same assessments, and
+   * that disagreement is the design rather than a defect to resolve. */
+  async publishSettlementPolicy(input: {
+    name: string;
+    minAssessors: number;
+    maxDissent: number;
+    /** The rule in words, so a critic can dispute the METHOD and not
+     * merely the number it produced. */
+    statement: string;
+  }): Promise<Uint8Array> {
+    const policy: SettlementPolicy = {
+      author: this.agentPubKey,
+      name: input.name,
+      min_assessors: input.minAssessors,
+      max_dissent: input.maxDissent,
+      statement: input.statement,
+      // SECONDS, per SPEC.md §5.23 — `published_at` is in the seconds
+      // family alongside `created_at`/`expires_at`, NOT with `timestamp`.
+      published_at: nowSecs(),
+    };
+    return this.call<Uint8Array>('publish_settlement_policy', policy);
+  }
+
+  /** What state a policy yields over stated inputs, WITHOUT publishing.
+   *
+   * Call this before `publishSettlementStatus`. Validation recomputes
+   * the same thing and refuses a status that does not follow from its
+   * cited policy and inputs, so this is the cheap way to find out what
+   * you are allowed to say. `unusable_inputs` is worth reading rather
+   * than ignoring: a state computed over fewer inputs than were offered
+   * is a different fact from one computed over all of them. */
+  async recomputeSettlement(input: {
+    target: Uint8Array;
+    policy: Uint8Array;
+    inputs: Uint8Array[];
+  }): Promise<RecomputedSettlement> {
+    return this.call<RecomputedSettlement>('recompute_settlement', {
+      target: input.target,
+      policy: input.policy,
+      inputs: input.inputs,
+    });
+  }
+
+  /** Publish a settlement status.
+   *
+   * `inputs` must NAME the assessments the state was computed over. A
+   * status whose inputs are not stated cannot be checked by anyone, and
+   * validation recomputes the state from exactly these — a state that
+   * does not follow is refused, so there is no way to publish a verdict
+   * the cited evidence does not support. */
+  async publishSettlementStatus(input: {
+    target: Uint8Array;
+    policy: Uint8Array;
+    inputs: Uint8Array[];
+    state: SettlementState;
+  }): Promise<Uint8Array> {
+    const status: SettlementStatus = {
+      aggregator: this.agentPubKey,
+      target: input.target,
+      policy: input.policy,
+      inputs: input.inputs,
+      state: input.state,
+      timestamp: nowMicros(),
+    };
+    return this.commitWaitingForDeps<Uint8Array>(
+      'publish_settlement_status', status,
+      [input.target, input.policy, ...input.inputs],
+    );
+  }
+
+  // --- Discourse readings --------------------------------------------
+
+  /** Publish an attributed reading of a membrane's discourse health as
+   * this agent's own signed, critiquable Claim.
+   *
+   * WHY THIS DOES NOT BREACH INVARIANT #1, since publishing a number
+   * about discourse looks like exactly what the invariant forbids. The
+   * objection to a canonical score is that it claims a view from
+   * nowhere. An attributed reading claims nothing of the kind: it is one
+   * agent's promise, taken through a stated lens, and critiquable by
+   * anyone who disputes the method. Two agents reading the SAME membrane
+   * through different lenses publish different figures and both stand,
+   * with nothing computing which is right.
+   *
+   * The lens is the caller's and there is NO DEFAULT, deliberately.
+   * Passing neither policy is itself a methodological choice — and the
+   * most consequential one, since an unfiltered reading counts every
+   * critique regardless of attestation or decay — so the method string
+   * spells that out rather than staying silent about it.
+   *
+   * Use `entry_hash` from the result to critique the reading;
+   * `action_hash` cannot be a critique target. */
+  async publishDiscourseReading(input: {
+    membrane: Uint8Array;
+    attestationPolicy?: AttestationPolicy | null;
+    conductancePolicy?: ConductancePolicy | null;
+    /** The READER's confidence in their own reading. A reading taken
+     * through a narrow lens over a thin corpus is one its author might
+     * honestly call `Tentative`, and the protocol has no business
+     * overriding that. */
+    confidence: ConfidenceLevel;
+  }): Promise<PublishedReading> {
+    return this.call<PublishedReading>('publish_discourse_reading', {
+      membrane: input.membrane,
+      attestation_policy: input.attestationPolicy ?? null,
+      conductance_policy: input.conductancePolicy ?? null,
+      confidence: input.confidence,
+    });
+  }
+
+  // --- Pre-registration (commit–reveal) ------------------------------
+  //
+  // THE PROTOCOL'S CENTRAL MECHANISM, and until 2026-10-28 the one
+  // thing an SDK agent could not do: it could publish claims, critique,
+  // retract and join a membrane, but it could not commit to a
+  // prediction in advance — the half of this protocol that costs
+  // something. See SPEC.md §10.16.
+
+  /** Commit to a prediction without disclosing it.
+   *
+   * THE SALT IS RETURNED, ALWAYS, generated here when you do not supply
+   * one. The zome deliberately does not generate salts — a salt it
+   * invented would have to be stored in the private entry it protects —
+   * but an SDK can generate one and HAND IT BACK without storing it
+   * anywhere, which is a different and safe thing. It is returned even
+   * when you passed it in, so no code path treats the salt as something
+   * it can forget to keep.
+   *
+   * KEEP IT. Without the salt and the exact prediction text, a reveal
+   * cannot be constructed: the salt is unguessable by construction, and
+   * a prediction without one is brute-forceable from its hash, which is
+   * why it exists. A commitment you cannot reveal before its deadline
+   * expires publicly on a chain with no delete. `mySealedPrediction`
+   * can read both back from this agent's own chain, which is a recovery
+   * path and not a reason to discard them — it works only on the
+   * conductor that made the commitment. */
+  async preRegister(input: {
+    /** The action hash of a claim posed in advance. Validation requires
+     * it to PREDATE the commitment: a prediction that can be re-pointed
+     * at reveal time is not a prediction. */
+    question: Uint8Array;
+    prediction: string;
+    /** Omit to have a cryptographically random one generated and
+     * returned. Supply one only if you have somewhere better to keep
+     * it than the caller of this function does. */
+    salt?: string;
+    /** Microseconds since the epoch. A reveal after this is REFUSED by
+     * validation — a late reveal would let an author decide, having
+     * seen the outcome, whether a commitment counts. */
+    revealDeadline: number;
+  }): Promise<{ actionHash: Uint8Array; salt: string }> {
+    const salt = input.salt ?? randomSalt();
+    const actionHash = await this.commitWaitingForDeps<Uint8Array>('pre_register', {
+      question: input.question,
+      prediction: input.prediction,
+      salt,
+      reveal_deadline: input.revealDeadline,
+    }, [input.question]);
+    return { actionHash, salt };
+  }
+
+  /** Disclose a prediction. Validation checks the content against the
+   * commitment, that the caller is the committer, and that the deadline
+   * has not passed — none of which this client can route around.
+   *
+   * The prediction must be the EXACT text committed to; a reveal that
+   * does not hash to the commitment is refused. If you no longer hold
+   * it, try `mySealedPrediction` first. */
+  async revealPreRegistration(input: {
+    preRegistration: Uint8Array;
+    prediction: string;
+    salt: string;
+  }): Promise<Uint8Array> {
+    return this.commitWaitingForDeps<Uint8Array>('reveal_pre_registration', {
+      pre_registration: input.preRegistration,
+      prediction: input.prediction,
+      salt: input.salt,
+    }, [input.preRegistration]);
+  }
+
+  /** This agent's own sealed prediction and salt, read back from its own
+   * source chain.
+   *
+   * `null` MEANS "NOT ON THIS CHAIN", NOT "LOST" — your own commitment,
+   * made on another conductor. This device cannot help, which is
+   * different from the commitment being unrecoverable, so do not report
+   * it as a failure.
+   *
+   * IT MEANS ONLY THAT, and the two neighbouring cases THROW rather
+   * than returning null: another agent's commitment is refused ("Only
+   * the author … may read its sealed content"), and a hash that is not
+   * a PreRegistration is refused ("Target is not a PreRegistration").
+   * Keeping them distinguishable matters because the action differs —
+   * *yours, elsewhere* means go find your note, while *not a
+   * commitment* means you passed the wrong hash.
+   *
+   * Chain-local by nature, not by restriction — a private entry's
+   * content has no DHT representation at all, so another agent's sealed
+   * prediction is structurally unreachable rather than merely refused.
+   * Recovering the values does not excuse a late reveal. */
+  async mySealedPrediction(
+    preRegistration: Uint8Array,
+  ): Promise<SealedPrediction | null> {
+    return (await this.call<SealedPrediction | null>(
+      'get_my_sealed_prediction', preRegistration,
+    )) ?? null;
+  }
+
+  /** An agent's commitments as three raw lists: `revealed`, `expired`,
+   * `pending`.
+   *
+   * THIS SDK WILL NOT DIVIDE THEM AND NEITHER SHOULD YOU. The zome
+   * refuses to return a score; `expired` exists to DEFLATE a claim of
+   * foresight rather than to rank anyone, and a `revealed` list shown
+   * without `expired` beside it is the selective revelation this
+   * protocol refused to implement at the backend. SPEC.md §10.16 states
+   * the no-score rule as a MUST NOT and goes further: a conforming
+   * implementation MUST NOT present `revealed` as evidence of foresight
+   * at all, because a stock conductor stamps its own timestamps and the
+   * deadline's authority does not survive a modified one.
+   *
+   * Expiry is computed against the READER's clock, since nothing is
+   * written when a deadline passes. */
+  async foresightRecord(agent?: Uint8Array): Promise<ForesightRecord> {
+    return this.call<ForesightRecord>(
+      'get_foresight_record', agent ?? this.agentPubKey,
+    );
   }
 
   // --- Agent-loop helper ---------------------------------------------

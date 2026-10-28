@@ -2125,9 +2125,24 @@ pub fn create_membrane(membrane: Membrane) -> ExternResult<ActionHash> {
         .ok_or(wasm_error!(WasmErrorInner::Guest(
             "Constitution not found — publish one first via publish_constitution.".into()
         )))?;
-    let constitution: Constitution = record.entry()
-        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Referenced entry is not a Constitution.".into())))?;
+    // A DESERIALIZE FAILURE IS "NOT A CONSTITUTION", NOT AN INTERNAL FAULT.
+    // Found 2026-10-28 by `agent-sdk.mjs`, and it is the SECOND place this
+    // exact shape turned up the same day — `get_my_sealed_prediction` had it
+    // too, found the same way. The `ok_or` arm fires only when the entry is
+    // absent or non-app, so for the MOST LIKELY wrong input — a Claim's
+    // ActionHash, which resolves perfectly well and simply is not this type —
+    // `to_app_option` failed first and the founder got
+    // `Guest("Deserialize(\"missing field `agent`\")")`. The friendly message
+    // was unreachable for exactly the case it was written for, which is why
+    // both arms now return it.
+    let constitution: Constitution = match record.entry().to_app_option::<Constitution>() {
+        Ok(Some(constitution)) => constitution,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Referenced entry is not a Constitution.".into()
+            )))
+        }
+    };
     if constitution.agent != membrane.creator {
         return Err(wasm_error!(WasmErrorInner::Guest(
             "Membrane constitution must be the creator's own published Constitution.".into()
@@ -7319,6 +7334,82 @@ pub fn reveal_pre_registration(input: RevealInput) -> ExternResult<ActionHash> {
     let hash = create_entry(EntryTypes::Revelation(rev))?;
     create_link(input.pre_registration, hash.clone(), LinkTypes::PreRegistrationToRevelation, ())?;
     Ok(hash)
+}
+
+/// THE AUTHOR'S OWN SEALED CONTENT, READ BACK FROM THEIR OWN SOURCE CHAIN.
+///
+/// WHY THIS EXISTS, and why its absence was a defect rather than a decision.
+/// `SealedPrediction` is a PRIVATE entry, and the integrity zome's own
+/// rationale for choosing one over a bare hash is that the content is then
+/// NOT lost: *"the author cannot quietly change what they committed to, or
+/// lose it. A bare hash would commit equally well but leaves the content
+/// nowhere, so a lost prediction becomes an unprovable claim about what was
+/// meant."* The content and the salt were therefore always on the author's
+/// own chain — and nothing in this zome read them back, so the reveal form
+/// asked the author to retype both and told them neither could be recovered.
+/// That is true of the DHT, where a private entry never goes, and false of
+/// the machine the author is sitting at.
+///
+/// WHY IT CANNOT LEAK ANOTHER AGENT'S COMMITMENT. `query` runs against the
+/// CALLING agent's source chain and reaches no other, so the search below is
+/// incapable of finding somebody else's sealed entry — that is the property
+/// which makes returning a sealed prediction safe at all. The explicit
+/// author check above it is not the security boundary; it exists so that
+/// asking for someone else's commitment gets a clear refusal rather than a
+/// bare `None` that reads as "lost".
+///
+/// `None` means THIS CHAIN does not hold it, which is a real answer rather
+/// than an error: a commitment made on another device is exactly this case,
+/// and the salt is then still the author's own problem to have kept.
+#[hdk_extern]
+pub fn get_my_sealed_prediction(
+    pre_registration: ActionHash,
+) -> ExternResult<Option<SealedPrediction>> {
+    let record = get(pre_registration, GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("PreRegistration not found.".into())))?;
+    // A DESERIALIZE FAILURE IS "NOT A PreRegistration", NOT AN INTERNAL FAULT,
+    // and collapsing both arms into one message is the fix for a defect found
+    // 2026-10-28 by `agent-sdk.mjs`: the `ok_or` arm below fires only when the
+    // entry is absent or non-app, so for the MOST LIKELY wrong input — a
+    // Claim's action hash, which resolves fine and simply is not this type —
+    // `to_app_option` failed first and the caller got
+    // `Deserialize("missing field `question`")`. The friendly message was
+    // unreachable for exactly the case it was written for.
+    let pr: PreRegistration = match record.entry().to_app_option::<PreRegistration>() {
+        Ok(Some(pr)) => pr,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Target is not a PreRegistration.".into()
+            )))
+        }
+    };
+
+    let me = agent_info()?.agent_initial_pubkey;
+    if pr.author != me {
+        return Err(wasm_error!(WasmErrorInner::Guest(
+            "Only the author of a PreRegistration may read its sealed content.".into()
+        )));
+    }
+
+    // include_entries(true) because the CONTENT is the entire point here —
+    // every other filter in this file passes false and counts actions.
+    let filter = ChainQueryFilter::new()
+        .include_entries(true)
+        .entry_type(EntryType::App(UnitEntryTypes::SealedPrediction.try_into()?));
+    for candidate in query(filter)? {
+        let Ok(Some(sealed)) = candidate.entry().to_app_option::<SealedPrediction>() else {
+            continue;
+        };
+        // MATCHED BY HASH, NOT BY POSITION. The chain holds one
+        // SealedPrediction per commitment with nothing linking it to its
+        // public half, so the commitment hash is the only correct join —
+        // and recomputing it here is the same check validation performs at
+        // reveal time, which is why a match is proof rather than a guess.
+        if hash_entry(sealed.clone())? == pr.sealed {
+            return Ok(Some(sealed));
+        }
+    }
+    Ok(None)
 }
 
 /// Every commitment made about one question, revealed or not.

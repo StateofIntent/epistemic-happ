@@ -214,7 +214,7 @@ function checkSites(source) {
 /** Spelled-out numbers, reused for the index claims below. */
 const WORD_RE = '(' + Object.keys(WORDS).join('|') + '|\\d+)';
 
-/** THE THREE INDEX CLAIMS, each of which was WRONG earlier on the day this was
+/** THE FOUR INDEX CLAIMS, each of which was WRONG earlier on the day this was
  *  written and each fixed by hand — which is the whole argument for gating them.
  *
  *  They describe the harness suite as a whole rather than one harness, and they
@@ -257,6 +257,24 @@ function indexClaims() {
     what: 'live-verify/README.md CHROMIUM importers',
     found: cm ? parseCount(cm[1]) : null,
     actual: chromium,
+    detail: () => [],
+  });
+
+  // 3. README.md's own count of the suite, which is the FOURTH index claim and
+  //    was added after the other three because it had rotted worse than any of
+  //    them: §6.6 said "nineteen of them" while 64 harnesses existed, stale by
+  //    a factor of three. It was not gated, and the three claims below it were
+  //    — which is the whole argument for pulling it in rather than fixing the
+  //    number and moving on. Found 2026-10-28 while updating two harness counts
+  //    this file DID gate: the gated figures were caught by this script in
+  //    seconds and the ungated sentence two files away had been wrong for
+  //    months.
+  const rm = readFileSync(README, 'utf8').match(
+    new RegExp(`drive it — ${WORD_RE} of them, each proving one property`, 'i'));
+  out.push({
+    what: 'README.md §6.6 suite count',
+    found: rm ? parseCount(rm[1]) : null,
+    actual: names.length,
     detail: () => [],
   });
 
@@ -372,7 +390,7 @@ if (idxBad.length > 0) {
 if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBad.length === 0) {
   log('NO DRIFT: every harness check count README.md states is the number of');
   log('checks that harness has, every harness has a row in the suite table, and');
-  log('both suite-wide counts match what is actually there.');
+  log('every suite-wide count matches what is actually there.');
   log('(Call sites, not executions — verified equal by real runs for every');
   log('harness it gates. The ones it cannot count are listed above, untested');
   log('here, with the reason they cannot be.)');
