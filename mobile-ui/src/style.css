@@ -173,6 +173,16 @@ label {
   margin-bottom: 0.9rem;
 }
 
+/* `hidden` IS NOT A SUGGESTION, and the rule below is why this one exists.
+   The UA default for [hidden] is `display: none` at element specificity, so
+   the `input, textarea, select { display: block }` rule underneath it WINS —
+   an input marked `.hidden = true` stays on screen. Found 2026-10-27 by
+   `foresight-ui.mjs` §7, which asserted the raw action-hash field was not
+   shown on the prefilled path and went red while every other check passed.
+   Declared before that rule and with !important so the attribute cannot be
+   silently overridden by any later `display` on a form control. */
+[hidden] { display: none !important; }
+
 input, textarea, select {
   display: block;
   width: 100%;
@@ -346,6 +356,69 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .critique-form { margin-top: 0.8rem; }
 .critique-form select { margin-bottom: 0.5rem; }
+
+/* --- Past-cone state (open-work 6.1) ---------------------------------
+   Deliberately the SAME weight whether a cone was recorded or not. The
+   row's rule is that `cone_recorded` must be rendered as prominently as
+   the cone itself, or silence reads as ignorance — and styling the
+   absent case as fainter would do exactly that typographically, after
+   the wording had been careful to avoid it. */
+
+.cone-state {
+  margin-top: 0.3rem !important;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* --- Positions taken (assessments) -----------------------------------
+   NO STANCE IS STYLED AS THE GOOD ONE. Supports is not green, Disputes
+   is not red, and Abstains is not grey: a palette that ranked them
+   would re-introduce at the stylesheet layer the verdict the markup
+   refuses to compute, and a reader skims colour before text. All three
+   take the same neutral treatment and are distinguished by their own
+   word, with weight rather than hue separating them from body copy.
+
+   `Abstains` in particular must not be faded. It is a position — the
+   assessor looked and declined to take a side — and fading it would
+   render it as absence, which is the one reading it is not. */
+
+.assessment-panel {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
+.panel-heading {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.assessment-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.assessment-item:last-of-type { border-bottom: none; }
+.assessment-item p { margin: 0.25rem 0 0; }
+
+.assessment-stance {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.assessment-confidence,
+.assessment-assessor {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-left: 0.5rem;
+}
 
 /* --- New claim tab --- */
 

@@ -63,6 +63,52 @@ export interface Critique {
   replication_attempted: boolean;
   evidence_hashes: Uint8Array[];
   species: Uint8Array | null;
+  /** What the author recorded having SEEN of this target's critiques.
+   *
+   * EMPTY MEANS "RECORDED NOTHING", NOT "HAD SEEN NOTHING", and the
+   * distinction is the whole of open-work 6.1: a screen that renders an
+   * empty cone as ignorance asserts something the data does not say.
+   * `#[serde(default)]` in the integrity zome, so it is absent from
+   * every critique written before `protocol_version: 10` — which is
+   * most of them, and another reason absence cannot mean ignorance.
+   *
+   * Validation cannot check that the author really saw these. What it
+   * enforces is that claimed ignorance is STICKY: each member's own
+   * cone must be a subset of this one, so over-claiming is possible and
+   * harmless while under-claiming is what the rules bite on. */
+  past_cone?: Uint8Array[];
+}
+
+/** Where an assessor stands on a target.
+ *
+ * `Abstains` IS A POSITION, not a null one: an assessor who looked and
+ * declined to take a side is saying something, and it differs from an
+ * assessor who never looked. A screen that renders it as absence —
+ * greyed, omitted, or folded into a count of "no opinion" — loses the
+ * only thing it says. */
+export type Stance = 'Supports' | 'Disputes' | 'Abstains';
+
+/** An attributed position on a target.
+ *
+ * NOT A VOTE. Nothing in the protocol tallies these, and SPEC's
+ * settlement machinery turns them into a state only against a NAMED,
+ * published policy somebody signed. A client that counted supports
+ * against disputes would be publishing an unattributed verdict —
+ * Invariant #1 through the back door — so this UI renders them as a
+ * list and never as a score. */
+export interface Assessment {
+  assessor: Uint8Array;
+  target: Uint8Array;
+  stance: Stance;
+  /** The ASSESSOR's confidence in their OWN assessment. Theirs to
+   * state; the protocol neither computes nor overrides it. */
+  confidence: ConfidenceLevel;
+  rationale: string | null;
+  /** Same field, same rules and same argument as `Critique.past_cone`.
+   * An assessment made without seeing the objections is a different act
+   * from one made in spite of them. */
+  past_cone?: Uint8Array[];
+  timestamp: number;
 }
 
 /** now_micros, matching every other place in this codebase that builds

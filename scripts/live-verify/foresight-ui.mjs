@@ -73,6 +73,43 @@
 //   is not reproduced is a claim, not evidence.
 //
 //   Restored and re-run: all sixteen green.
+//
+//   SECTIONS 7 AND 8 WERE ADDED 2026-10-28 and injected the same day, because
+//   the two checks they turn on were written against defects that had just
+//   been fixed, which is the condition under which a harness is most likely
+//   to be asserting nothing.
+//
+//   Injection A, against 6.8: the raw action-hash input appended to the form
+//   on the prefilled path as well — `hidden = true`, so NOT VISIBLE on screen
+//   under the `[hidden] { display: none !important }` rule this file's own
+//   failure put in style.css.
+//   Result: ONE red, "the raw action-hash field is not in the DOM on this
+//   path", and the run completes. The commit still succeeded and section 8
+//   stayed green, which is correct — the hash was still carried.
+//   WHAT THIS DEMONSTRATES, stated precisely, because it is narrower than it
+//   looks: injection A is not a user-visible defect. The field is genuinely
+//   hidden. What it is, is the precondition for the 2026-10-27 defect — a
+//   field one `display` declaration away from being on screen — and the
+//   earlier `isHidden()` form of this check PASSED it. Tightening to
+//   `count() === 0` is what makes the assertion survive a CSS change, and
+//   this injection is the only evidence that the tightening does anything.
+//
+//   Injection B, against 6.9: `Recover from my chain` fills the prediction
+//   and sets the salt to the empty string — a partial read, which is the
+//   plausible shape of this failure, since the prediction is the half a
+//   lossy read would still return.
+//   Result: TWO red — "and the SALT, which is the half nothing else can
+//   supply" and the decisive "a reveal driven only by the recovered values is
+//   accepted" — with "Recover fills the prediction" still green, correctly,
+//   and the run completing.
+//   THE DECISIVE CHECK IS NOT VACUOUS, and this is what proves it. It goes
+//   red on its own, from validation refusing a commitment hash recomputed
+//   over a salt the read failed to return. A reveal handler that used
+//   remembered values from the commit instead of the fields would have made
+//   it pass vacuously; it reads `rp.value` and `rs.value` at click time, so
+//   it does not.
+//
+//   Restored and re-run: all twenty-four green.
 // ---------------------------------------------------------------------------
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
@@ -285,6 +322,88 @@ async function main() {
     const fieldY = (await page.locator('[data-testid="foresight-prediction-input"]').boundingBox())?.y ?? -1;
     check('and the warning sits ABOVE the prediction field', warnY < fieldY);
 
+    log('\n=== 7. THE QUESTION IS CHOSEN BY POINTING AT A CLAIM (6.8) ===');
+    // WHAT THIS DEFEATS, and it is not a missing button. Until 2026-10-27 the
+    // commit form's first field was `Question: the action hash of a claim
+    // posed in advance`, validation resolved it with `must_get_action`, and
+    // this UI renders every hash through `short()` — 12 base64 characters and
+    // an ellipsis — with no copy control anywhere and no route from a claim
+    // into the form. The field was unsatisfiable from inside the app, so the
+    // central ask in `docs/the-invitation.md` could not be performed by an
+    // invitee at all. The check that matters is therefore not that a button
+    // exists: it is that a commitment can be made END TO END without the
+    // user ever seeing or typing a hash.
+    await page.locator('nav.tab-bar button', { hasText: 'Browse' }).first().click();
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN);
+    await page.getByRole('button', { name: /load claims/i }).first().click();
+    await page.waitForSelector('[data-testid="predict-about-claim"]', { timeout: 20000 });
+    check('a claim offers a route to predict about it', 
+      await page.locator('[data-testid="predict-about-claim"]').count() >= 1);
+
+    await page.locator('[data-testid="predict-about-claim"]').first().click();
+    await page.waitForSelector('[data-testid="foresight-form"]', { timeout: 10000 });
+    const chosen = page.locator('[data-testid="foresight-question-chosen"]');
+    check('the form names the claim being predicted about', await chosen.count() === 1);
+    check('and shows its WORDS rather than its hash',
+      /posed in advance/i.test(await chosen.innerText()));
+    // THE LOAD-BEARING CHECK. A visible hash field would mean the old route
+    // is still the one on offer and the user is merely being helped to fill
+    // it; absent means the hash is carried, not displayed.
+    //
+    // ASSERTED AS count() === 0, NOT isHidden(). Playwright reports a missing
+    // element as hidden, so `isHidden()` was true both when the field was
+    // correctly withheld and when a `display` rule on form controls beat the
+    // `hidden` attribute and left it on screen — the first draft of this
+    // check went red only because the UA default lost that specificity
+    // fight, and a weaker DOM would have hidden the bug instead of showing
+    // it. Absence is the thing main.ts now guarantees, so absence is what
+    // gets asserted; no later CSS can satisfy this check falsely.
+    check('the raw action-hash field is not in the DOM on this path',
+      await page.locator('[data-testid="foresight-question-input"]').count() === 0);
+    // THE HASH IS STILL CARRIED, and the proof is not up here: a detached
+    // input keeps its value, so if that broke, the commit below would go out
+    // with an empty question and `and the commitment reached the conductor,
+    // question bound` would go red against the chain. That check is the one
+    // that covers it.
+
+    const UI_TEXT = 'Committed through the claim, with no hash typed anywhere.';
+    const UI_SALT = 'salt-from-the-ui-7a2c';
+    await page.locator('[data-testid="foresight-prediction-input"]').fill(UI_TEXT);
+    await page.locator('[data-testid="foresight-salt-input"]').fill(UI_SALT);
+    await page.locator('[data-testid="foresight-commit-submit"]').click();
+    await page.waitForSelector('[data-testid="foresight-pending-item"]', { timeout: 20000 });
+    const uiTruth = await node.call('get_foresight_record', node.me);
+    // ASSERTED AGAINST THE CONDUCTOR, NOT THE SCREEN. A UI that rendered a
+    // pending row without having written anything is exactly the fake this
+    // file exists to catch, so the proof is that the CHAIN holds it.
+    check('and the commitment reached the conductor, question bound',
+      uiTruth.pending.some((e) => JSON.stringify(e.question) === JSON.stringify(question)));
+
+    log('\n=== 8. AN AUTHOR CAN RECOVER THEIR OWN SEALED CONTENT (6.9) ===');
+    // The reveal form used to say both values were unrecoverable and make the
+    // author retype them. The salt is unguessable by design, so a lost note
+    // meant a commitment that could never be revealed — permanently, publicly,
+    // on a chain with no delete. The content was on the author's own source
+    // chain the whole time; nothing read it back.
+    const pendingBox = page.locator('[data-testid="foresight-pending"]');
+    await pendingBox.locator('[data-testid="foresight-reveal-recover"]').first().click();
+    await sleep(2000);
+    const recP = await pendingBox.locator('[data-testid="foresight-reveal-prediction"]').first().inputValue();
+    const recS = await pendingBox.locator('[data-testid="foresight-reveal-salt"]').first().inputValue();
+    check('Recover fills the prediction from the author\'s own chain', recP === UI_TEXT);
+    check('and the SALT, which is the half nothing else can supply', recS === UI_SALT);
+
+    // THE DECISIVE ONE, for the same reason as `pre-registration.mjs` §8:
+    // matching strings only prove the read returns something that looks
+    // right. Revealing from what Recover put in the fields proves the
+    // recovery is SUFFICIENT — validation recomputes the commitment hash from
+    // exactly these two values, so a lossy read goes red here and nowhere else.
+    await pendingBox.locator('[data-testid="foresight-reveal-submit"]').first().click();
+    await sleep(3000);
+    const afterReveal = await node.call('get_foresight_record', node.me);
+    check('and a reveal driven only by the recovered values is accepted',
+      afterReveal.revealed.some((e) => e.revealed_prediction === UI_TEXT));
+
     check('no page errors', pageErrors.length === 0);
     if (pageErrors.length) log(`    ${pageErrors[0].slice(0, 200)}`);
   } finally {
@@ -298,6 +417,14 @@ async function main() {
     log('revealed one, naming itself as the denominator; a lapsed commitment');
     log('does not disclose what it sealed; no reveal control is offered where a');
     log('reveal would be refused; and nothing on the page divides the lists.');
+    log('');
+    log('AND THE TWO DEFECTS OF 2026-10-27 ARE CLOSED, END TO END: a commitment');
+    log('can be made by pointing at a claim, with no action hash ever shown or');
+    log('typed (6.8) — and its sealed prediction and salt read back from the');
+    log('author\'s own chain, with a reveal driven ONLY by those recovered');
+    log('values accepted by validation (6.9). Before the first, an invitee');
+    log('could not commit at all; before the second, a lost note meant a');
+    log('permanently unrevealable commitment.');
   } else {
     log(`${failures} CHECK(S) FAILED.`);
   }

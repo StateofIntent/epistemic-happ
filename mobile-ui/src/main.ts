@@ -11,7 +11,7 @@ import {
   type Evidence,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
   type CritiqueMode, type WorldlineTrace, type PeriodResonance,
-  NeighborRecall,
+  NeighborRecall, type Assessment,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -317,6 +317,27 @@ let proposingSpecies = false;
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
+
+/** claim's own base64 entry-hash key -> the assessments filed against
+ * it, loaded alongside its critiques.
+ *
+ * WHY THIS SURFACE EXISTS NOW. `publish_assessment` and
+ * `get_assessments_for` have been in the coordinator all along with no
+ * client reaching either, and on 2026-10-28 `agent-sdk` and
+ * `mcp-server` gained both — so an agent can now file an attributed
+ * position on somebody's claim and the person whose claim it is had no
+ * way to see it. That asymmetry is worse than the original absence:
+ * the write surfaced and the read did not, which is the half-surfaced
+ * defect this codebase keeps recording, pointed the other way.
+ *
+ * WHAT IS STILL A DECISION, stated so this is not mistaken for closing
+ * open-work 6.4: this is the READ half only. Whether and how a HUMAN
+ * files an assessment from this client is the design question that row
+ * is about, and no form is added here. Rendering somebody else's
+ * attributed entry needs no new decision — it is the critique panel's
+ * settled pattern, which this follows deliberately rather than
+ * inventing a second one. */
+const assessmentsByClaim = new Map<string, DecodedRecord<Assessment>[]>();
 
 // --- Neighborhood resonance (HRR, the approximate half) -----------------
 // §2.5 permits this layer to be "a receiver, not a truth engine", and
@@ -1462,6 +1483,10 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'link-button';
   const isExpanded = expandedClaims.has(key);
+  // The LABEL IS UNCHANGED and the testid is additive: three harnesses
+  // click this button by its exact text, so renaming it would break
+  // them for no gain. The testid exists so the fourth does not have to.
+  toggleBtn.dataset.testid = 'toggle-critiques';
   toggleBtn.textContent = isExpanded ? 'Hide critiques' : 'View / add critiques';
   toggleBtn.onclick = async () => {
     if (isExpanded) {
@@ -1512,6 +1537,23 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     if (retractingClaims.has(key)) card.appendChild(renderRetractForm(claim));
   }
 
+  // OFFERED ON ANY CLAIM, NOT ONLY YOUR OWN, because predicting an answer to
+  // somebody else's question is the ordinary case — and validation requires
+  // only that the question PREDATE the commitment, which any existing claim
+  // does. This control is the whole of 6.8's fix: it carries `actionHash`
+  // into the commit form so the question is chosen by pointing at it.
+  const predictBtn = document.createElement('button');
+  predictBtn.className = 'link-button';
+  predictBtn.dataset.testid = 'predict-about-claim';
+  predictBtn.textContent = 'Commit a prediction about this';
+  predictBtn.onclick = () => {
+    foresightPrefill = { question: claim.actionHash, content: claim.entry.content };
+    foresightFormOpen = true;
+    activeTab = 'foresight';
+    render();
+  };
+  card.appendChild(predictBtn);
+
   const graphOpen = graphOpenClaims.has(key);
   const graphBtn = document.createElement('button');
   graphBtn.className = 'link-button';
@@ -1531,6 +1573,14 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
 
   if (isExpanded) {
     card.appendChild(renderCritiquePanel(claim));
+    // AFTER the critiques, deliberately. A critique says what is wrong
+    // with the claim and carries its own reasoning; an assessment says
+    // where somebody stands. Putting positions first would invite a
+    // reader to take a side before reading the objections, which is the
+    // ordering §2.5 already refuses for the approximate-versus-exact
+    // reads — the specific argument comes before the summary stance.
+    const positions = renderAssessmentPanel(claim);
+    if (positions) card.appendChild(positions);
   }
 
   // --- Neighborhood resonance, the approximate half of HRR ------------
@@ -1808,6 +1858,177 @@ function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
   return form;
 }
 
+/** The past-cone state of one entry, as a line a reader can act on.
+ *
+ * THIS IS open-work 6.1's RULE, AND IT IS THE WHOLE REASON THE FUNCTION
+ * EXISTS: `cone_recorded` must be rendered as prominently as the cone
+ * itself, or silence reads as ignorance. An absent cone means the
+ * author RECORDED NOTHING about what they had seen. It does NOT mean
+ * they had seen nothing, and on a screen the difference is everything —
+ * "saw no objections" is a claim about the author's knowledge that
+ * nobody made and no rule can check.
+ *
+ * 6.1 WAS BLOCKED AND IS NOT ANY MORE, which is why this is now worth
+ * drawing. The row was reclassified as blocked on 6.5 because
+ * `cone_recorded` was false for every entry in existence — nothing
+ * populated the field, so this line could render one state and only
+ * one, and a one-state indicator teaches nothing. As of 2026-10-28 an
+ * SDK agent records a cone that is true by construction, so both states
+ * occur and the distinction is finally observable.
+ *
+ * THERE ARE EXACTLY TWO STATES AND AN EMPTY CONE IS THE SECOND ONE.
+ * This is the protocol's own definition, not a rendering choice:
+ * `critiques_unseen_by` computes `cone_recorded = !past_cone.is_empty()`,
+ * so an empty cone IS "not recorded" and there is no third state for a
+ * client to draw. The first version of this function invented one — it
+ * treated `[]` as a positive claim of having seen none of the siblings
+ * and said so on screen — which is exactly the over-claim this row
+ * exists to prevent, committed by the very code meant to prevent it.
+ * Caught by `positions-ui.mjs` §4 failing against correct UI behaviour.
+ *
+ * It is also unrepresentable even in principle: `past_cone` is a
+ * `Vec<ActionHash>` with `#[serde(default)]`, so a field the client
+ * omits and a field it sends as `[]` are THE SAME STORED VALUE. A
+ * client cannot tell them apart and must not imply it can. The
+ * coordinator's own note says the honest reading in as many words — "an
+ * author whose client does not populate cones is silent, not
+ * uninformed."
+ *
+ * `always` makes the not-recorded case state itself even when it would
+ * otherwise be left bare: in a list where one entry says what it saw,
+ * an unmarked neighbour reads as the weaker claim by implication. */
+function renderConeState(
+  cone: Uint8Array[] | undefined,
+  always: boolean,
+): HTMLElement | null {
+  const n = Array.isArray(cone) ? cone.length : 0;
+  const recorded = n > 0;
+  if (!recorded && !always) return null;
+  const line = document.createElement('p');
+  line.className = 'hint cone-state';
+  line.dataset.testid = recorded ? 'cone-recorded' : 'cone-absent';
+  line.textContent = recorded
+    ? `Recorded having seen ${n} other objection${n === 1 ? '' : 's'} to this claim.`
+    : 'Recorded nothing about what had already been said — which is not the '
+      + 'same as having seen nothing.';
+  return line;
+}
+
+/** The attributed positions filed on one claim.
+ *
+ * READ-ONLY, AND THAT IS NOT AN OVERSIGHT. `publish_assessment` has
+ * been callable all along and open-work 6.4 holds the question of
+ * whether and how a HUMAN files one from this client; no form is added
+ * here and that row stays open. What this closes is narrower and was
+ * created by this project's own work on 2026-10-28: `agent-sdk` and
+ * `mcp-server` both gained assessment publishing that day, so an agent
+ * could file a position on somebody's claim and the person whose claim
+ * it was had no surface that showed it. A write without its read is the
+ * half-surfaced defect this codebase keeps recording; this is that
+ * defect pointed the other way, and the read is the half that owes
+ * nobody a design decision.
+ *
+ * NOTHING HERE IS COUNTED, and the omission is the design. Two
+ * Supports beside one Disputes is the most natural thing in the world
+ * to render as "2–1", and doing so would publish an unattributed
+ * verdict off the back of attributed positions — Invariant #1 through
+ * the back door, which is exactly what §6's rows are cautious about.
+ * The protocol's own settlement machinery turns assessments into a
+ * state only against a NAMED policy somebody signed and can be argued
+ * with. So: a list, in the order the protocol returned it, never
+ * reordered and never summarised.
+ *
+ * `Abstains` renders as a position like the others, for the reason the
+ * type carries: an assessor who looked and declined to take a side is
+ * saying something, and greying it out or folding it into "no opinion"
+ * would lose the only thing it says. */
+function renderAssessmentPanel(claim: DecodedRecord<Claim>): HTMLElement | null {
+  const key = b64(claim.entryHash);
+  const list = assessmentsByClaim.get(key);
+  // NOT RENDERED AT ALL while unknown, and empty when there is nothing.
+  // A "no assessments yet" line on every claim would teach a reader
+  // that an unassessed claim is deficient, which is a standard nobody
+  // set — assessing is not owed, and most claims will never carry one.
+  if (list === undefined || list.length === 0) return null;
+
+  const panel = document.createElement('div');
+  panel.className = 'assessment-panel';
+  panel.dataset.testid = 'assessment-panel';
+
+  const heading = document.createElement('p');
+  heading.className = 'panel-heading';
+  heading.dataset.testid = 'assessment-heading';
+  heading.textContent = 'Positions taken on this claim';
+  panel.appendChild(heading);
+
+  const note = document.createElement('p');
+  note.className = 'hint';
+  note.dataset.testid = 'assessment-no-tally';
+  note.textContent =
+    'Each is one agent’s own position, signed and critiquable. These are not '
+    + 'votes and nothing here counts them: a tally would be a verdict nobody '
+    + 'published. Turning positions into a settled state needs a policy some '
+    + 'agent has stated and can be argued with.';
+  panel.appendChild(note);
+
+  const anyConeRecorded = list.some((a) => (a.entry.past_cone?.length ?? 0) > 0);
+  for (const assessment of list) {
+    const item = document.createElement('div');
+    item.className = 'assessment-item';
+    item.dataset.testid = 'assessment-item';
+
+    const stance = document.createElement('span');
+    // Carried as a data attribute rather than baked into the class name
+    // so a stylesheet can distinguish the three without this code
+    // deciding that one of them is the good one.
+    stance.className = 'assessment-stance';
+    stance.dataset.stance = assessment.entry.stance;
+    stance.dataset.testid = 'assessment-stance';
+    stance.textContent = assessment.entry.stance;
+    item.appendChild(stance);
+
+    // THE ASSESSOR'S OWN CONFIDENCE, labelled as theirs. Unlabelled it
+    // would read as this client's confidence in them, which is a
+    // reputation signal the protocol does not compute and this UI must
+    // not imply.
+    const conf = document.createElement('span');
+    conf.className = 'assessment-confidence';
+    conf.dataset.testid = 'assessment-confidence';
+    conf.textContent = `their confidence: ${assessment.entry.confidence}`;
+    item.appendChild(conf);
+
+    const by = document.createElement('button');
+    by.className = 'link-button assessment-assessor';
+    by.dataset.testid = 'assessment-assessor';
+    by.textContent = short(assessment.entry.assessor);
+    by.title = 'Read this agent’s other claims';
+    by.onclick = () => { void loadClaimsByAuthor(b64(assessment.entry.assessor)); };
+    item.appendChild(by);
+
+    if (assessment.entry.rationale) {
+      const why = document.createElement('p');
+      why.dataset.testid = 'assessment-rationale';
+      why.textContent = assessment.entry.rationale;
+      item.appendChild(why);
+    } else {
+      // STATED RATHER THAN LEFT BLANK. A position with no reason is
+      // still a signed position somebody can be held to — the entry
+      // type says so — but a silent gap invites a reader to supply a
+      // reason on the assessor's behalf.
+      const noWhy = document.createElement('p');
+      noWhy.className = 'hint';
+      noWhy.dataset.testid = 'assessment-no-rationale';
+      noWhy.textContent = 'No reason given. The position still stands as theirs.';
+      item.appendChild(noWhy);
+    }
+
+    const cone = renderConeState(assessment.entry.past_cone, anyConeRecorded);
+    if (cone) item.appendChild(cone);
+    panel.appendChild(item);
+  }
+  return panel;
+}
+
 function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   const key = b64(claim.entryHash);
   const panel = document.createElement('div');
@@ -1825,6 +2046,10 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     empty.textContent = 'No critiques yet.';
     panel.appendChild(empty);
   } else {
+    // Computed over the WHOLE list before rendering any of it, because
+    // whether an absence needs stating depends on its neighbours.
+    // SAME DEFINITION AS THE PROTOCOL'S: recorded means NON-EMPTY.
+    const anyConeRecorded = list.some((c) => (c.entry.past_cone?.length ?? 0) > 0);
     for (const critique of list) {
       const item = document.createElement('div');
       item.className = 'critique-item';
@@ -1916,6 +2141,15 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       const text = document.createElement('p');
       text.textContent = critique.entry.content;
       item.appendChild(text);
+      // AFTER the critique's own words, never before them. The cone is
+      // context about the author's state when they wrote; putting it
+      // above the content would frame the objection before it is read.
+      //
+      // `anyConeRecorded` is passed as `always`: once ONE critique in
+      // the list states what it had seen, an unmarked neighbour reads as
+      // the weaker claim by implication, so every row says which it is.
+      const cone = renderConeState(critique.entry.past_cone, anyConeRecorded);
+      if (cone) item.appendChild(cone);
       panel.appendChild(item);
     }
   }
@@ -2081,6 +2315,7 @@ async function loadClaims(domain: string, fromTheBox = false) {
   const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
   claims = decodeRecords<Claim>(records);
   critiquesByClaim.clear();
+  assessmentsByClaim.clear();
   expandedClaims.clear();
   antibodiesByClaim.clear();
   retractionsByClaim.clear();
@@ -2279,6 +2514,29 @@ async function loadCritiques(claim: DecodedRecord<Claim>) {
   critiquesByClaim.set(key, decoded);
   render();
   void loadConductances(claim, decoded);
+  void loadAssessments(claim);
+}
+
+/** The assessments filed against one claim.
+ *
+ * FAILS SOFT, and that is a deliberate difference from the critique
+ * read. A conductor whose installed DNA predates the `Assessment` entry
+ * type refuses this call, and the critique panel is the primary view —
+ * so an older conductor must still show critiques rather than losing
+ * the card to an error. The empty state says which it is, because
+ * "nobody has assessed this" and "this conductor cannot answer" are
+ * different facts and conflating them would be the UI asserting the
+ * first while observing the second. */
+async function loadAssessments(claim: DecodedRecord<Claim>) {
+  if (!connection) return;
+  const key = b64(claim.entryHash);
+  try {
+    const records = await connection.callZome<any[]>('get_assessments_for', claim.entryHash);
+    assessmentsByClaim.set(key, decodeRecords<Assessment>(records));
+  } catch {
+    assessmentsByClaim.set(key, []);
+  }
+  render();
 }
 
 /** Effective conductance for each critique's own SynapticLink — the
@@ -4491,6 +4749,14 @@ if ('serviceWorker' in navigator) {
 let foresightLoaded = false;
 let myForesight: ForesightRecord | null = null;
 let foresightFormOpen = false;
+// THE QUESTION A COMMITMENT IS ABOUT, CARRIED FROM THE CLAIM ITSELF.
+// `PreRegistration.question` is an ActionHash and validation resolves it, so
+// the form's first field could only ever be satisfied by a real hash — which
+// this UI renders exclusively through `short()` and offers no way to copy.
+// The field was therefore unsatisfiable from inside the app: see
+// `docs/open-work.md` 6.8. The fix is not a copy button; it is that the claim
+// knows its own hash, so the route starts there and the user never sees one.
+let foresightPrefill: { question: Uint8Array; content: string } | null = null;
 
 interface ForesightEntry {
   pre_registration: Uint8Array;
@@ -4502,6 +4768,13 @@ interface ForesightRecord {
   revealed: ForesightEntry[];
   expired: ForesightEntry[];
   pending: ForesightEntry[];
+}
+/// The author's own sealed content, as `get_my_sealed_prediction` returns it.
+/// `null` is a real answer and not an error: it means this chain does not
+/// hold the commitment, which is the other-device case.
+interface SealedPrediction {
+  prediction: string;
+  salt: string;
 }
 
 async function loadForesight(): Promise<void> {
@@ -4600,7 +4873,37 @@ function renderForesightList(
             rerr.hidden = false; rerr.textContent = m;
           });
         };
-        for (const el of [rp, rs, rb, rerr]) li.appendChild(el);
+        // RECOVER, NOT AUTOFILL. It is deliberately a button the author
+        // presses rather than a silent prefill: the two fields are what they
+        // are being held to, and a form that quietly filled them would hide
+        // the one case that matters — a commitment made on another device,
+        // which this chain does not hold and cannot recover.
+        const rrec = document.createElement('button');
+        rrec.className = 'link-button';
+        rrec.dataset.testid = 'foresight-reveal-recover';
+        rrec.textContent = 'Recover from my chain';
+        rrec.onclick = async () => {
+          rerr.hidden = true;
+          const conn = connection;
+          if (!conn) return;
+          try {
+            const sealed = await conn.callZome<SealedPrediction | null>(
+              'get_my_sealed_prediction', e.pre_registration);
+            if (sealed && typeof sealed.salt === 'string') {
+              rp.value = sealed.prediction;
+              rs.value = sealed.salt;
+            } else {
+              rerr.hidden = false;
+              rerr.textContent =
+                'Not on this chain — this commitment was made on another device, '
+                + 'so the prediction and salt have to come from your own records.';
+            }
+          } catch (err) {
+            rerr.hidden = false;
+            rerr.textContent = String((err as Error)?.message ?? err);
+          }
+        };
+        for (const el of [rp, rs, rrec, rb, rerr]) li.appendChild(el);
       }
     }
     ul.appendChild(li);
@@ -4627,18 +4930,30 @@ async function commitPrediction(
     });
     foresightFormOpen = false;
     foresightLoaded = false;
+    foresightPrefill = null;
     render();
   } catch (e) {
     onError(String((e as Error)?.message ?? e));
   }
 }
 
-/// THE REVEAL FORM ASKS FOR THE CONTENT AND THE SALT, and cannot do otherwise.
-/// Neither is recoverable from the DHT — the content is sealed and the salt
-/// lives inside the seal — so the committer has to supply both from their own
-/// records. That is a real usability cost and it is inherent: a salt this app
-/// stored for convenience would have to live somewhere, and anywhere it lived
-/// would be a place the commitment could be read early.
+/// THE REVEAL FORM ASKS FOR THE CONTENT AND THE SALT, and until 2026-10-27
+/// this comment said it "cannot do otherwise" and that neither was
+/// recoverable. **The second half was false, and it mattered.** Neither is
+/// recoverable from the DHT — a private entry never goes there — but
+/// `SealedPrediction` is written to the AUTHOR'S OWN SOURCE CHAIN, and the
+/// integrity zome's rationale for choosing a private entry over a bare hash
+/// is precisely that the content is then not lost: *"a bare hash would
+/// commit equally well but leaves the content nowhere."* It was on the
+/// author's disk the whole time and nothing read it back, so this form made
+/// them retype both — and the salt is unguessable by design, so an author
+/// who lost their note held a commitment that could never be revealed,
+/// permanently and publicly, on a chain with no delete.
+///
+/// `get_my_sealed_prediction` now reads it back (`open-work.md` 6.9), and
+/// Recover below calls it. The fields stay editable: a commitment made on
+/// ANOTHER device is not on this chain, so recovery can legitimately come up
+/// empty and typing it in must remain possible.
 async function revealPrediction(
   preRegistration: Uint8Array,
   prediction: string,
@@ -4724,9 +5039,42 @@ function renderForesightTab(): HTMLElement {
       + 'cannot reveal before its deadline becomes an expired one, publicly.';
     form.appendChild(warn);
 
+    // WHEN THE QUESTION CAME FROM A CLAIM, SHOW THE CLAIM. A hash the user
+    // cannot check is not consent to predict about a thing — so the prefilled
+    // path renders the claim's own words and keeps the hash out of sight.
     const qIn = document.createElement('input');
-    qIn.placeholder = 'Question: the action hash of a claim posed in advance';
     qIn.dataset.testid = 'foresight-question-input';
+    if (foresightPrefill) {
+      qIn.value = b64(foresightPrefill.question);
+      qIn.hidden = true;
+      const chosen = document.createElement('p');
+      chosen.className = 'hint';
+      chosen.dataset.testid = 'foresight-question-chosen';
+      chosen.textContent = `Predicting an answer to: "${foresightPrefill.content}"`;
+      form.appendChild(chosen);
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'link-button';
+      clear.dataset.testid = 'foresight-question-clear';
+      clear.textContent = 'Choose a different question';
+      clear.onclick = () => { foresightPrefill = null; render(); };
+      form.appendChild(clear);
+    } else {
+      // THE ESCAPE HATCH, AND IT IS NOT THE ROUTE. Kept because an agent
+      // using the SDK or a second device legitimately holds a hash, and
+      // removing capability to fix an affordance would be the wrong trade.
+      // The sentence says where the usable route is, because for a long time
+      // this input WAS the only one and that was 6.8.
+      qIn.placeholder = 'Question: the action hash of a claim posed in advance';
+      const where = document.createElement('p');
+      where.className = 'hint';
+      where.dataset.testid = 'foresight-question-hint';
+      where.textContent =
+        'Easier: open the claim you want to predict about on Browse and use '
+        + '"Commit a prediction about this", which fills this in for you. '
+        + 'This field is for a hash you already hold.';
+      form.appendChild(where);
+    }
     const pIn = document.createElement('textarea');
     pIn.placeholder = 'Your prediction — sealed until you reveal it';
     pIn.dataset.testid = 'foresight-prediction-input';
@@ -4753,7 +5101,13 @@ function renderForesightTab(): HTMLElement {
       void commitPrediction(qIn.value.trim(), pIn.value.trim(), sIn.value.trim(), Number(hIn.value) || 24, fail);
     };
 
-    for (const el of [qIn, pIn, sIn, hLabel, go]) form.appendChild(el);
+    // qIn IS LEFT OUT OF THE DOM ENTIRELY on the prefilled path rather than
+    // merely hidden — a field that is not there cannot be revealed by a
+    // later CSS change, which is exactly how this went wrong once. Its
+    // `.value` is still read by the submit handler above; an input element
+    // holds its value whether or not it is attached to a document.
+    const fields = foresightPrefill ? [pIn, sIn, hLabel, go] : [qIn, pIn, sIn, hLabel, go];
+    for (const el of fields) form.appendChild(el);
     wrap.appendChild(form);
   }
 
