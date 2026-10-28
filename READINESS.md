@@ -48,7 +48,7 @@ by twelve harnesses on every push.
 
 **And the agent-facing path is not orphaned the way the desktop app is.**
 `scripts/live-verify/published-packages.mjs` packs `@stateofintent/agent-sdk`
-and `@stateofintent/mcp-server` — both at **`0.1.5`, the published version, CORRECTED 2026-10-24** (this line said `0.1.2` for weeks after `0.1.3`, `0.1.4` and `0.1.5` had each shipped; `dist-tags.latest` is `0.1.5` for both, read off the registry rather than inferred) —
+and `@stateofintent/mcp-server` — both at **`0.2.0`, the published version, UPDATED 2026-10-28** (`0.1.5` before that; this line said `0.1.2` for weeks after `0.1.3`, `0.1.4` and `0.1.5` had each shipped, which is why it is now updated in the same commit as the publish rather than afterwards; `dist-tags.latest` is `0.2.0` for both, read off the registry rather than inferred) —
 installs them into an empty project **with a fresh dependency resolve**, and
 drives them against a real conductor on every push. It has stayed green through
 all six protocol forks. So a stranger who installs the SDK or points an
