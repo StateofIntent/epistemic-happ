@@ -96,8 +96,11 @@ a stranger installs resolves its own dependency tree, and that difference is
 precisely what neither existing check could see. It runs in `conductor.yml`.
 
 **Only a republish could fix that, and it happened on 2026-09-12.** Both
-packages are `0.1.2` on the registry and `latest`; this package's dependency
-range was tightened to `^0.1.2` so an installer cannot resolve the SDK version
+packages are `0.2.0` on the registry and `latest` as of 2026-10-28 — `0.1.2`
+then, through `0.1.3`, `0.1.4` and `0.1.5`; this release is the first with
+twenty-one tools rather than nine, carrying pre-registration, assessment,
+settlement, discourse readings and domain founding. This package's dependency
+range is tightened to `^0.2.0` so an installer cannot resolve the SDK version
 being replaced. It was published by `scripts/publish-packages.sh --publish`,
 which runs the packaging checks and the live check, refuses on a dirty tree, and
 publishes `agent-sdk` first and this package only once the registry can actually
