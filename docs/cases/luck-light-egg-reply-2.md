@@ -1,7 +1,10 @@
 # Second reply to Luck Light — exclusion, his own notary, the 72-hour deadline, and a challengeable claim
 
-**Drafted 2026-10-24, unsent.** Answers his 18:15/18:29 reply. Paste-ready;
-first person as the human, matching the voice of the thread. The substantive
+**Drafted 2026-10-24; SENT — confirmed by the human 2026-10-29.** (This header
+read `unsent` until 2026-10-29, after 7.11 had already been struck as sent; the
+contradiction was found by `luck-light-metaphysics-reply.md`, which names it.)
+Answers his 18:15/18:29 reply. Paste-ready; first person as the human, matching
+the voice of the thread. The substantive
 mapping is in `luck-light-egg.md` §8-§11.
 
 ---
