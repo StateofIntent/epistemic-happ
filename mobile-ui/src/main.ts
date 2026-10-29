@@ -3581,7 +3581,13 @@ function renderSpeciesCard(species: DecodedRecord<CritiqueSpecies>, depth: numbe
     req.className = 'species-evidence';
     const label = document.createElement('li');
     label.className = 'species-evidence-label';
-    label.textContent = 'A critique of this type must cite:';
+    // NOT "must cite". `required_evidence` is declared on CritiqueSpecies
+    // (integrity/src/lib.rs:384) and that declaration is its ONLY occurrence in
+    // the DNA — no validation rule and no coordinator function reads it, so
+    // nothing refuses a critique for citing none of it. "must" asserted a gate
+    // this protocol does not have, on every species card in the shipped app.
+    // See open-work 7.25, and 1.12 for the same defect one field over.
+    label.textContent = 'This type asks a critique to cite:';
     req.appendChild(label);
     for (const item of species.entry.required_evidence) {
       const li = document.createElement('li');
@@ -3589,6 +3595,10 @@ function renderSpeciesCard(species: DecodedRecord<CritiqueSpecies>, depth: numbe
       req.appendChild(li);
     }
     card.appendChild(req);
+    // The limit travels with the list rather than living in a doc nobody
+    // reads, which is 6.1's rule applied to a different unenforced field.
+    const note = renderConceptNote('required-evidence');
+    if (note) card.appendChild(note);
   }
 
   const proposer = document.createElement('p');
@@ -3625,7 +3635,10 @@ function renderProposeSpeciesForm(): HTMLElement {
   }
 
   const evidenceInput = document.createElement('input');
-  evidenceInput.placeholder = 'Evidence a critique of this type must cite (one per line, optional)';
+  // Was: "Evidence a critique of this type must cite (one per line, optional)"
+  // — which contradicted itself in one sentence, promising a requirement and
+  // then calling it optional. Nothing enforces the list; see above.
+  evidenceInput.placeholder = 'Evidence this type asks a critique to cite (one per line, optional)';
   evidenceInput.dataset.testid = 'species-evidence-input';
 
   const submit = document.createElement('button');
