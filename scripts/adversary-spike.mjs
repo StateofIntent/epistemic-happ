@@ -53,6 +53,40 @@ import { readFileSync } from 'node:fs';
 const MODES = ['Experiential', 'Methodological', 'Logical', 'Evidential', 'Phenomenological'];
 const CONFIDENCE = ['Hypothetical', 'Tentative', 'Moderate', 'High', 'Certain'];
 
+// The SHAPE is constrained at the server, not parsed out of prose. MEASURED
+// 2026-10-29: a 3B model asked for one JSON object replied with an array AND
+// THEN a separate object, which no lenient parser should be asked to guess at.
+// `notes/src/assistant.ts` already reached this conclusion for the hosted API
+// by using tool-use structured output; this is the same move for a local one.
+//
+// `mode` IS DELIBERATELY A FREE STRING RATHER THAN AN ENUM, and that is the
+// interesting choice. An enum would make the label well-formed at the sampler
+// and thereby HIDE the model picking the wrong one — the author would see five
+// valid-looking modes and no sign the vocabulary was misunderstood. Shape
+// errors are noise worth removing; mode errors are the finding.
+const SCHEMA = {
+  name: 'adversary_verdict',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['objections', 'evidence_gap', 'confidence'],
+    properties: {
+      objections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['mode', 'text'],
+          properties: { mode: { type: 'string' }, text: { type: 'string' } },
+        },
+      },
+      evidence_gap: { type: ['string', 'null'] },
+      confidence: { type: ['string', 'null'] },
+    },
+  },
+};
+
 const LOCAL_BASE = process.env.YOAI_BASE || 'http://localhost:11435/v1';
 
 const SYSTEM = `You are reading a DRAFT claim that has not been published yet.
@@ -131,17 +165,37 @@ async function askLocal(draft) {
     console.error(`[spike] no --model given; using "${model}" of ${ids.length} offered (${ids.join(', ')})`);
   }
 
-  const res = await fetch(`${LOCAL_BASE}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
+  const ask = async (withSchema) => {
+    const payload = {
       model,
       messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: draft }],
-    }),
-  });
-  if (!res.ok) throw new Error(`${LOCAL_BASE} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    };
+    if (withSchema) payload.response_format = { type: 'json_schema', json_schema: SCHEMA };
+    const res = await fetch(`${LOCAL_BASE}/chat/completions`, {
+      method: 'POST', headers, body: JSON.stringify(payload),
+    });
+    return res;
+  };
+
+  // Not every OpenAI-compatible server implements json_schema. Ask for it,
+  // and fall back ONCE to an unconstrained request rather than failing — the
+  // lenient parser is the safety net for that case, and the line says which
+  // path produced the answer so a ragged reply is not mistaken for the model.
+  let res = await ask(true);
+  let constrained = true;
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 200);
+    console.error(`[spike] server refused json_schema (${res.status}); retrying unconstrained.`);
+    console.error(`[spike] ${detail}`);
+    res = await ask(false);
+    constrained = false;
+    if (!res.ok) throw new Error(`${LOCAL_BASE} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
   const body = await res.json();
-  return { text: body.choices?.[0]?.message?.content ?? '', via: `${model} (local, ${LOCAL_BASE})` };
+  return {
+    text: body.choices?.[0]?.message?.content ?? '',
+    via: `${model} (local, ${LOCAL_BASE}${constrained ? '' : ', UNCONSTRAINED'})`,
+  };
 }
 
 /** The remote fallback. Reached ONLY via --allow-remote, and it says what
@@ -185,10 +239,56 @@ async function askRemote(draft) {
 function parseVerdict(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = (fenced ? fenced[1] : text).trim();
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end <= start) return null;
-  try { return JSON.parse(candidate.slice(start, end + 1)); } catch { return null; }
+
+  // Whole-string first: the constrained path lands here and needs nothing else.
+  try { return normalise(JSON.parse(candidate)); } catch { /* fall through */ }
+
+  // MEASURED FAILURE THIS EXISTS FOR: an unconstrained 3B model replied with a
+  // bare ARRAY of objections and THEN a SEPARATE object carrying evidence_gap
+  // and confidence. Spanning first `{` to last `}` swallows both and parses as
+  // neither, which is how a readable answer became a stack trace. So scan for
+  // every top-level JSON value and merge what is recognisable.
+  const found = [];
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (ch !== '{' && ch !== '[') continue;
+    const close = ch === '{' ? '}' : ']';
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < candidate.length; j++) {
+      const c = candidate[j];
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (c === ch) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          try { found.push(JSON.parse(candidate.slice(i, j + 1))); } catch { /* not a value */ }
+          i = j;
+          break;
+        }
+      }
+    }
+  }
+  if (!found.length) return null;
+
+  const merged = { objections: [], evidence_gap: null, confidence: null };
+  for (const v of found) {
+    if (Array.isArray(v)) merged.objections.push(...v.filter((o) => o && o.mode));
+    else if (v && typeof v === 'object') {
+      if (Array.isArray(v.objections)) merged.objections.push(...v.objections);
+      if (v.evidence_gap) merged.evidence_gap = v.evidence_gap;
+      if (v.confidence) merged.confidence = v.confidence;
+    }
+  }
+  return merged;
+}
+
+/** A bare array is a valid-enough answer: objections and nothing else. */
+function normalise(v) {
+  if (Array.isArray(v)) return { objections: v, evidence_gap: null, confidence: null };
+  return v;
 }
 
 function render(verdict, raw, via) {
@@ -208,7 +308,13 @@ function render(verdict, raw, via) {
       console.log(`  [${o.mode}${known ? '' : ' ← NOT A MODE THIS PROTOCOL HAS'}]`);
       console.log(`  ${String(o.text ?? '').trim()}\n`);
     }
-    if (verdict.evidence_gap) console.log(`  evidence that would answer the strongest: ${verdict.evidence_gap}\n`);
+    // OBSERVED ONCE, 2026-10-29: a constrained reply satisfied `required` by
+    // filling evidence_gap with the literal string "...". The schema cannot
+    // forbid that — it is a well-formed string — so a field whose content is
+    // only punctuation is dropped rather than shown. Printing it would present
+    // a placeholder to the author as though a model had judged something.
+    const gap = String(verdict.evidence_gap ?? '').trim();
+    if (gap && /[a-z0-9]/i.test(gap)) console.log(`  evidence that would answer the strongest: ${gap}\n`);
     if (verdict.confidence) {
       const known = CONFIDENCE.includes(verdict.confidence);
       console.log(`  confidence the draft supports as written: ${verdict.confidence}${known ? '' : ' ← not a level this protocol has'}\n`);
@@ -230,10 +336,21 @@ try {
   const refused = /ECONNREFUSED|fetch failed/i.test(String(error?.message ?? error));
   if (refused && !allowRemote) {
     console.error(`\nNothing is answering at ${LOCAL_BASE}.\n`);
-    console.error('  1. Install and run Your Own AI  — https://yourownai.net/');
-    console.error('  2. Create an AI in it (that mints its Holochain agent and downloads a model)');
-    console.error('  3. Settings → External app access, and check the base URL it shows');
-    console.error('\nOr, to send this draft OFF this machine instead:  --allow-remote\n');
+    console.error('Any OpenAI-compatible server on that port will do. Two that work:');
+    console.error('');
+    console.error('  llama-server --host 127.0.0.1 --port 11435 -m <model.gguf>');
+    console.error('    The leanest route, and it is the SAME engine Your Own AI wraps —');
+    console.error('    so the objections are the same ones that app would have produced.');
+    console.error('');
+    console.error('  Your Own AI — https://yourownai.net/  (Flowsta, AGPL)');
+    console.error('    Create an AI in it, which mints its own Holochain agent and signs');
+    console.error('    each exchange onto that agent\'s chain; then Settings → External');
+    console.error('    app access shows the base URL and the per-AI model id.');
+    console.error('    VERIFIED 2026-10-29: builds and its backend runs, but its webview');
+    console.error('    segfaults on webkit2gtk 2.52.6 (Arch) — the system MiniBrowser');
+    console.error('    crashes the same way, so it is the library, not the app.');
+    console.error('');
+    console.error('Or, to send this draft OFF this machine instead:  --allow-remote\n');
   } else {
     console.error(`\n${error?.message ?? error}\n`);
   }
