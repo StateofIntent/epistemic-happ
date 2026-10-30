@@ -1,6 +1,6 @@
 # Third reply to Luck Light — Cusa, perennialism, and what removing time actually cost
 
-**Drafted 2026-10-29, unsent.** Answers his 2026-10-29 03:15 / 03:44 / 06:07
+**Drafted 2026-10-29; SENT 2026-10-29 13:35 — confirmed by the human 2026-10-30.** Answers his 2026-10-29 03:15 / 03:44 / 06:07
 messages: the holographic universe reading, *"all religions, same source, other
 than all the translations of translations loss"*, *"remove gravity get a 2d
 perspective, remove time get a 3d perspective"*, *"order is provenance unbound"*,
@@ -9,8 +9,8 @@ first person as the human, matching the voice of the other two drafts in this
 directory.
 
 **`luck-light-egg-reply-2.md` WAS SENT — confirmed by the human 2026-10-29.**
-That file's own header still says `unsent` and is now wrong; it is left alone
-here rather than edited in passing, but it should be corrected. This matters to
+That file's own header said `unsent` and was wrong; **it has since been
+corrected.** This matters to
 *this* draft because reply-2 already told him *"my validators cannot read a
 clock; that is structural, not a missing feature"* — so the third paragraph
 below **deliberately returns to that line instead of making it fresh**, and
@@ -39,7 +39,20 @@ case:
   rather than elapsed time, and the threshold is the caller's own promise
   (`max_causal_distance`, absent = nothing promised).
 
-## ONE THING TO DECIDE BEFORE SENDING
+## SENT WITH ONE ERROR — CORRECTED IN `luck-light-metaphysics-reply-2.md`
+
+The standing paragraph below says standing is *"something a reader computes
+**about you**."* That is wrong: `get_standing`
+(`dna/coordinator/src/lib.rs:9034`) is explicit in its own `limits` field that
+*"Standing is a property of a CLAIM's causal neighbourhood and never a score or
+ranking of an AGENT (Invariant 1)."* The paragraph is left as sent rather than
+edited, because it is what he received; the fourth reply corrects it to him
+directly. **Do not quote this file's standing line anywhere else.**
+
+## RESOLVED: THE PILOT LINE WAS KEPT
+
+It was sent with the closing pilot line, and he took a seat — so the question
+below is answered, and answered in favour of asking. Kept for the record.
 
 **The closing pilot line is severable.** He did not respond to the 10/28 pilot
 mention. He has been in substantive dialogue for over a week and the invitations
