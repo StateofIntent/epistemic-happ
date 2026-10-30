@@ -47,6 +47,7 @@ export type Concept =
   | 'typed-critiques'
   | 'friction-budget'
   | 'required-promises'
+  | 'required-evidence'
   | 'conductance'
   | 'discourse-health';
 
@@ -157,6 +158,11 @@ export const CONCEPT_NOTES: Record<Concept, string> = {
     'A domain states what it demands of anyone working in it rather than charging ' +
     'to enter. These promises are the entry condition — accountability instead of ' +
     'a fee.',
+  'required-evidence':
+    'A critique type can state what it expects a critique to cite. NOTHING ' +
+    'ENFORCES IT: the protocol accepts a critique of this type that cites none ' +
+    'of it, and no rule reads this list. It is here for a reader to judge a ' +
+    'critique against, never as a gate on making one.',
   'conductance':
     'This is how strongly a critique still connects to what it critiques — it ' +
     'decays over time and strengthens when others reinforce it. It scores the ' +
