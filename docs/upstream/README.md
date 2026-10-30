@@ -14,12 +14,24 @@ request here changes nothing on the other repository.
 |---|---|---|
 | `7.7-hdk-recv-remote-signal.md` | `holochain/holochain`, `crates/hdk` | 7.7 |
 | `7.8-returning-node-asymmetry.md` | **`holochain/kitsune2`** | 7.8 |
+| `your-own-ai-build-from-source.md` | **`WeAreFlowsta/Your-Own-AI`** | 7.26 |
+| `your-own-ai-webkit-2.52-linux.md` | `WeAreFlowsta/Your-Own-AI`, or **`bugs.webkit.org`** | 7.27 |
 
-**They go to different trackers**, which is worth noticing rather than
+**They go to four different trackers**, which is worth noticing rather than
 assuming: `hdk` declares `repository = ".../holochain/holochain/tree/develop/crates/hdk"`,
 while every `kitsune2_*` crate declares `repository = ".../holochain/kitsune2"`.
 Filing the kitsune2 report in the monorepo is the natural guess and the wrong
 one.
+
+The two Your Own AI drafts are **not the same kind of thing**, and the second
+one says so in its own first line. The build report is four defects in that
+repository, three of them one-line fixes. The webkit note is **not their bug**
+— a system WebKitGTK 2.52.6 crash reproducible with WebKitGTK's own
+MiniBrowser and no Tauri involved — and is addressed to them only because
+their Linux users will hit it and will report it as theirs. Its last section is
+the version to file at `bugs.webkit.org` instead, with the app's involvement
+removed. Sending the webkit note to them as a *defect* would be the error the
+draft is written to avoid.
 
 ## What these drafts are expected to carry
 
