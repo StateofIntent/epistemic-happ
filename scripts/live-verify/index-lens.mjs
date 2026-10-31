@@ -46,6 +46,35 @@
 // two.
 //
 // Prereqs: a CLEAN sandbox (scripts/sandbox.sh clean && start) and a .happ
+//
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+//   1.21-A: `min_attestations: 1` raised to `2` in the fixture policy
+//   (the `const policy` line in section 1, 186 at the time of writing), while
+//   the fixture still creates exactly one attesting
+//   SynapticLink. Proposed by Qwen2.5-Coder-7B through
+//   `scripts/generate-injections.mjs`, and the FIRST generated injection in
+//   this repository to be applied and run. 2026-11-01.
+//
+//   Result: 1 red — section 1's "the engaged author IS attested under a1's
+//   policy" — and the run stops there on this harness's own vacuity guard,
+//   with "and the unengaged author is NOT" still green because a3 is
+//   unattested under any threshold. Baseline on the same conductor, same
+//   commit: 15 PASS, 0 FAIL.
+//
+//   WHAT IT PROVES, AND IT IS LESS THAN A GREEN SUITE SUGGESTS. It proves
+//   section 1's fixture assertion is NOT VACUOUS: it reads the real value and
+//   can go red, which is exactly the failure `notes-assistant.mjs` records
+//   ("ALL CHECKS PASSED. The assertion could not fail."). It proves nothing
+//   whatever about the other fourteen checks, which the early stop meant did
+//   not run. The injection changes an INPUT rather than the zome, so it
+//   demonstrates sensitivity to the policy and not that the lens is correct.
+//
+//   The model's own prediction was right about the mechanism and the red, and
+//   incoherent about the rest: its `expect_green` named the same check it had
+//   just said would go red. Recorded because 1.21's first objection is that a
+//   model writes both the defect and the expectation and can agree with
+//   itself — here it disagreed with itself, and only reading it caught that.
 // built from a tree containing get_membrane_claims.
 // ============================================================================
 
