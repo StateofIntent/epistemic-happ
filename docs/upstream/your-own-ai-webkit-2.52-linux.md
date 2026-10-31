@@ -3,7 +3,8 @@
 **Repo:** `WeAreFlowsta/Your-Own-AI` (as a **compatibility note**, not a defect report)
 **Also relevant to:** WebKitGTK itself — `bugs.webkit.org`, component *WebKit Gtk*
 **Version:** app `v0.9.0` (`5a8f33d`), built from source, `x86_64-unknown-linux-gnu`
-**Verified:** 2026-10-29 (app) and re-verified 2026-10-30 (isolating test)
+**Verified:** 2026-10-29 (app), re-verified 2026-10-30 (isolating test)
+**RESOLVED 2026-10-31** — upstream found the cause and the workaround; see *Resolution* at the end.
 
 ## The environment, because that is the finding
 
@@ -116,3 +117,61 @@ Wayland, 2.52.6, NVIDIA 580.178.04, Hyprland 0.56.2 — plus the X11 GBM
 failures as the second data point. None of the app's involvement belongs in it,
 and a resolvable backtrace would need a distro that ships WebKitGTK debug
 symbols; this one does not.
+
+---
+
+## Resolution — 2026-10-31
+
+Eric Doriean (Flowsta) replied with the cause, found independently: a
+**WebKitGTK 2.52 bug that fires when NVIDIA's EGL does the drawing**. They
+reproduced it in-house on a machine drawing through NVIDIA, a second Linux
+user reported it the same week, and WebKit's own MiniBrowser crashes in the
+same frames on a plain page mutating the DOM every 400 ms. Machines drawing
+through Mesa did not crash in any of their tests. Their "none of these helped"
+list — DMABUF off, forced SHM, compositing off, Skia CPU, `LIBGL_ALWAYS_SOFTWARE`,
+GBM off — matches *What did not help* above. The fix is to point WebKit at
+Mesa's EGL instead of NVIDIA's:
+
+```
+__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+```
+
+Flowsta will set it at startup when the NVIDIA driver is loaded, across all
+three of their Tauri apps, and report the bug to WebKit with the reproduction.
+
+### Confirmed on this machine
+
+Same packages as the 10-29 crash run — `pacman.log` records no upgrades in
+between — so the variable is the only thing that changed.
+
+| run | backend | EGL | outcome |
+|---|---|---|---|
+| app | Wayland | NVIDIA (default) | Gdk **Error 71** at ~1.5s |
+| app | Wayland | **Mesa** | **runs** — window mapped 927×1056, onboarding renders, still up minutes later |
+| app | XWayland | NVIDIA | survived 40s, logging `Failed to create GBM buffer … Invalid argument` |
+| app | XWayland | Mesa | survived 40s |
+| MiniBrowser, static page, no JS | Wayland | NVIDIA | Error 71 |
+| MiniBrowser, static page, no JS | Wayland | **Mesa** | survived |
+| MiniBrowser, DOM mutate 400ms | Wayland | **Mesa** | survived |
+
+This is the first time the GUI has run on this machine.
+
+### Two things worth sending back
+
+1. **On this card the variable means software rendering for the webview.**
+   Mesa has no driver for the GM204: `pci id for fd 19: 10de:13c2, driver (null)`,
+   `DRI2: failed to create screen`. The webview is correct and stable, but it is
+   on llvmpipe. Auto-setting the variable whenever the NVIDIA driver is loaded
+   will quietly do that to every NVIDIA user, which is still the right trade
+   against a crash — worth them knowing it is the trade.
+2. **GPU compute is unaffected.** The variable redirects WebKit's EGL only;
+   `llama.cpp` still sees the card — `GPU detected: NVIDIA GeForce GTX 970 -
+   4.2 GB`, and the app sized Ministral 3 3B to fit it. So the cost is rendering,
+   never inference.
+
+### Correction to the record above
+
+The *ask* section asked for a known-issue line naming **Wayland**. Wayland was
+incidental: the trigger is NVIDIA's EGL, and the native-Wayland Error 71 and the
+XWayland GBM failures are both downstream of it. The guess that app SIGSEGV and
+MiniBrowser Error 71 were "two exits from the same root" held up.
