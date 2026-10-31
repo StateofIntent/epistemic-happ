@@ -527,6 +527,37 @@ decides whether it becomes so. **Recorded here rather than left in a run log,
 which is the whole reason this count exists** — it was observed on 2026-10-22
 while merging an unrelated pull request and nearly left in the CI output.
 
+**TENTH AND ELEVENTH OBSERVATIONS, 2026-10-28 and 2026-10-30, AND A FAST ONE
+BESIDE THEM.** `partition-rejoin` failed the `<= 60s` precondition twice more:
+**425.8s** on `main` (run `40704216520`, the #390 release merge) and **205.5s**
+on PR [#391](../../pull/391) (run `41042209076`), a branch whose only non-docs
+change was to `mobile-ui` and which therefore could not have caused it — so
+205.5s joins 210.5s (#278), 175.4s and the 421.1s as an occurrence on a change
+that provably could not be responsible. **Then the very next run of the same
+branch crossed in 10.0s and the whole harness passed** (run `41044792444`), one
+documentation commit later. Every substantive assertion passed on all three
+runs: the partition held, nodeB converged in 5.0s on return, the isolated nodeC
+saw nothing, both nodes answered at the end.
+
+**205.5s IS NOT A NEW FIGURE, and the poll lattice is why.** It sits one
+5-second poll from the 210.5s already on this list, and the correction below
+establishes that this instrument cannot separate crossings inside one sampling
+interval. Reading it as novel — which `docs/open-work.md` 7.28 did on 2026-10-30
+by consulting the README's six-figure summary instead of the nine-figure list
+above — is the error that section's own struck paragraph warns against.
+
+**So the count is eleven observations, and whether it is six or seven slow
+enough to fail is a CLASSIFICATION QUESTION the retirement condition now turns
+on.** 425.8s exceeds both harnesses' windows and is unambiguously slow. 205.5s
+is **under** `real-gossip`'s 330s window and **over** `partition-rejoin`'s 60s
+precondition — the same split the ninth observation recorded as *"simultaneously
+a pass-with-a-warning in one harness and a failure in the other"*. Six of eleven
+is already "most"; seven of eleven is more so. Either way the word
+`real-gossip.mjs`'s `CROSSING_ATTEMPTS` comment hangs its retirement on has
+arrived, and **that is a decision rather than a measurement** — recorded here,
+unruled, with the 10.0s standing as the live evidence that the intermittency
+premise has not simply become false.
+
 **One thing this occurrence settles that no stubbed scenario could: three
 attempts rather than two was load-bearing, and not as a statistical hedge.**
 The comment's reason is the burst limiter — 15 initiations per peer per 10
@@ -702,8 +733,11 @@ and on a phone there is not one.
 ## What will generate false bug reports
 
 **Propagation is intermittently slow by minutes.** Measured crossings at 175.4s,
-210.5s, 415s, **421.1s**, 424.9s, **884.8s** (×2, 2026-10-21, local three-node),
-929.1s and 943.0s, alongside non-crossings inside 330s. **Every one of these is
+**205.5s**, 210.5s, 415s, **421.1s**, 424.9s, **425.8s**, **884.8s** (×2,
+2026-10-21, local three-node), 929.1s and 943.0s, alongside non-crossings inside
+330s — and a **10.0s** crossing on 2026-10-30 minutes after the 205.5s, on the
+same branch, which is the fast end of the same instrument and belongs on the list
+for that reason. **Every one of these is
 a poll-lattice sample, not a latency** — see the correction below, which is why
 the figures cluster the way they appear to. §9 froze that investigation deliberately: every remaining question
 sits in `kitsune2` or Holochain's op store rather than in this repository.
