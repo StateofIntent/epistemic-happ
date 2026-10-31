@@ -39,7 +39,10 @@
 //   node scripts/adversary-spike.mjs --allow-remote "text"    # leaves the machine
 //
 // ENV
-//   YOAI_BASE   default http://localhost:11435/v1  (Your Own AI's endpoint)
+//   YOAI_BASE   default http://localhost:11435/v1  (Your Own AI's endpoint —
+//               the APP's server, NOT the llama-server port it wraps: that one
+//               restarts on model switch, may change port, and skips the
+//               person's AIs altogether)
 //   YOAI_KEY    bearer token — only needed for Your Own AI's LAN toggle;
 //               localhost on this machine is keyless
 //   ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN   for --allow-remote only
@@ -152,7 +155,16 @@ async function readDraft() {
 /** Your Own AI, or any OpenAI-compatible server. Keyless on localhost; the
  *  bearer is only for its LAN toggle, which serves other devices. */
 async function askLocal(draft) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = {
+    'Content-Type': 'application/json',
+    // Corrected 2026-10-31 by Your Own AI's maintainer, and load-bearing for
+    // open-work 6.10: this script reads drafts the author may decide NEVER to
+    // publish, so the exchange must not be written into their records and
+    // their own memories must not be mixed into the call. Documented at
+    // docs.yourownai.net/external-apps/connect.
+    'X-Your-Own-AI-Record': 'off',
+    'X-Your-Own-AI-Memory': 'off',
+  };
   if (process.env.YOAI_KEY) headers.Authorization = `Bearer ${process.env.YOAI_KEY}`;
 
   // The model id is the AI's name slugified, so it is not guessable — ask the
@@ -184,7 +196,21 @@ async function askLocal(draft) {
   let res = await ask(true);
   let constrained = true;
   if (!res.ok) {
-    const detail = (await res.text()).slice(0, 200);
+    const detail = (await res.text()).slice(0, 300);
+    // A routing failure is NOT a schema failure, and retrying unconstrained
+    // would print "server refused json_schema" over the top of the real
+    // reason. Your Own AI answers 503 when the chosen AI has no model it can
+    // reach — which is what an offline-only AI says before anything is
+    // downloaded, and the one error this script should explain rather than
+    // retry past.
+    if (res.status === 503 || /routing_failed/.test(detail)) {
+      throw new Error(
+        `${LOCAL_BASE} could not route to "${model}": ${detail}\n` +
+        `[spike] This is the endpoint working, not failing. Each call is routed by the\n` +
+        `[spike] chosen AI's own mode and a caller cannot force an on-device answer, so\n` +
+        `[spike] pick an AI set to offline-only and download a model for it in the app.`,
+      );
+    }
     console.error(`[spike] server refused json_schema (${res.status}); retrying unconstrained.`);
     console.error(`[spike] ${detail}`);
     res = await ask(false);
