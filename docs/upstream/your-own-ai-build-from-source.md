@@ -212,11 +212,19 @@ only ever been run by people who already had the assets.
 
 ## ADDENDUM, 2026-10-31 — finding 2's recommended fix was worse than his own build
 
-**DRAFTED 2026-10-31 to post as a comment on issue #3; NOT YET POSTED** — the
-human's account and call, as with the issue itself. The paste-ready wording is
-at the end of this section; it is a shorter form of what follows, and it opens
-by correcting ME rather than him, which is the only version of a second comment
-that does not read as pressure.
+**POSTED 2026-10-31 02:44Z (13:14 ACDT) as
+[issue #3 comment 6537956104](https://github.com/WeAreFlowsta/Your-Own-AI/issues/3#issuecomment-6537956104)**
+— 2,096 characters, by the human on the human's account. The wording is at the
+end of this section; it opens by correcting ME rather than him, which is the
+only version of a second comment that does not read as pressure.
+
+**WHY IT WAS POSTED BEFORE HE REPLIED, rather than held with the webkit note.**
+The uncorrected report tells a reader to compile `holochain 0.6.1` and
+`lair_keystore 0.6.3` from crates.io, so every hour it stood alone was an hour
+he might spend on a slower road to binaries his own CI downloads. That cost is
+real and grows; the cost of being wrong the other way is one extra GitHub
+notification. The webkit note stays held because it ASKS him something — pick a
+tracker — whereas this one only removes a demand.
 
 `2089e61`, *"Build: verify every downloaded Holochain binary against pinned
 SHA-256s"*, landed **2026-10-30 10:28 ACDT — about eleven hours before this
@@ -259,7 +267,7 @@ the fixed path at all — anyone following the original text would take a longer
 road for no reason. And finding 3 (the `ls` glob) is unaffected: it is in the
 same script and applies whichever way the downloads are sourced.
 
-### The comment, paste-ready — UNPOSTED
+### The comment, as posted
 
 Correcting myself on finding 2: the fix I suggested is worse than what this repo already does.
 
