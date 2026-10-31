@@ -207,3 +207,79 @@ Safari-15 regex floor check in `scripts/check-webview-floor.mjs` and the
 `windows-2022` pin comment in `build-release.yml` are all the work of someone
 who writes down *why*. These four findings are what a build does when it has
 only ever been run by people who already had the assets.
+
+---
+
+## ADDENDUM, 2026-10-31 — finding 2's recommended fix was worse than his own build
+
+**DRAFTED 2026-10-31 to post as a comment on issue #3; NOT YET POSTED** — the
+human's account and call, as with the issue itself. The paste-ready wording is
+at the end of this section; it is a shorter form of what follows, and it opens
+by correcting ME rather than him, which is the only version of a second comment
+that does not read as pressure.
+
+`2089e61`, *"Build: verify every downloaded Holochain binary against pinned
+SHA-256s"*, landed **2026-10-30 10:28 ACDT — about eleven hours before this
+report was filed.** It touches `.github/holochain-sidecars.sha256` and
+`.github/workflows/build-release.yml` only, so **every finding above still
+holds against current `origin/HEAD`**. What it exposes is that finding 2's
+recommendation was the wrong fix.
+
+`build-release.yml`'s step *"Download Holochain binaries (official release)"*
+does this:
+
+```bash
+BASE="https://github.com/holochain/holochain/releases/download/${HC_RELEASE}"   # holochain-0.6.1
+for BIN in holochain lair-keystore; do
+  DEST="src-tauri/binaries/yourowai-${BIN}-${T}${EXT}"
+  curl -fsSL --retry 5 --retry-delay 20 --retry-all-errors "${BASE}/${BIN}-${T}${EXT}" -o "$DEST"
+  check "$DEST" "${HC_RELEASE}/${BIN}-${T}${EXT}"      # pinned SHA-256
+done
+```
+
+Its own comment says *"the same pattern as Flowsta Vault (nothing compiled from
+source)"* — which is a direct argument against the four `cargo install` commands
+this report recommended.
+
+**SO FINDING 2 IS REAL AND MIS-DIAGNOSED.** The release build never calls
+`download-holochain-binaries.sh` at all. The script is not missing a release:
+it is **stale relative to the workflow**, and README:118 sends a contributor to
+a script the build itself abandoned. That also explains the original bug — the
+`holochain-*` tag it greps for is a tag in **`holochain/holochain`**, never in
+this repo, so `REPO` was the wrong variable to look in from the start.
+
+Verified 2026-10-31: both Linux assets return `HTTP 200` at
+`holochain/holochain` tag `holochain-0.6.1` —
+`holochain-x86_64-unknown-linux-gnu` and
+`lair-keystore-x86_64-unknown-linux-gnu`.
+
+**Two consequences for the report above.** The `--root` warning becomes
+irrelevant once the script is repointed, because there is no `cargo install` in
+the fixed path at all — anyone following the original text would take a longer
+road for no reason. And finding 3 (the `ls` glob) is unaffected: it is in the
+same script and applies whichever way the downloads are sourced.
+
+### The comment, paste-ready — UNPOSTED
+
+Correcting myself on finding 2: the fix I suggested is worse than what this repo already does.
+
+I hadn't looked at `build-release.yml` closely when I wrote that. Its "Download Holochain binaries (official release)" step does:
+
+```bash
+BASE="https://github.com/holochain/holochain/releases/download/${HC_RELEASE}"   # holochain-0.6.1
+for BIN in holochain lair-keystore; do
+  DEST="src-tauri/binaries/yourowai-${BIN}-${T}${EXT}"
+  curl -fsSL --retry 5 --retry-delay 20 --retry-all-errors "${BASE}/${BIN}-${T}${EXT}" -o "$DEST"
+  check "$DEST" "${HC_RELEASE}/${BIN}-${T}${EXT}"      # pinned SHA-256, as of 2089e61
+done
+```
+
+— and its comment says "nothing compiled from source", which is a straight argument against the four `cargo install` commands I put in the report. Please ignore those; building the conductor from crates.io is a slower road to the same binaries.
+
+So finding 2 is real but I mis-diagnosed it. `download-holochain-binaries.sh` isn't missing a release — the release build never calls it, and it's stale relative to the workflow. The README's step 3 sends a contributor to a script the build itself abandoned. That also explains the original symptom: the `holochain-*` tag it greps for is a tag in `holochain/holochain`, never in this repo, so `REPO` was the wrong variable to be looking in. The eleven lines above are the fix, already written and already tested by every release.
+
+I checked both Linux assets resolve at that tag today: `holochain-x86_64-unknown-linux-gnu` and `lair-keystore-x86_64-unknown-linux-gnu`, both 200.
+
+Two notes on the rest. `2089e61` landed about eleven hours before I filed this, and it doesn't touch either download script, so the other three findings still stand against current HEAD. And finding 3 (the final `ls` globbing `holochain-*` while the script writes `yourowai-holochain-*`) is unaffected either way — same script, same `set -e`.
+
+Given the script is dead relative to CI, deleting it and putting those eleven lines in the README is also a reasonable answer, and a smaller diff than fixing it. Your call — happy to send either as a PR.
