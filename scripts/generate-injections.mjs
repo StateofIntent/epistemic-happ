@@ -190,7 +190,38 @@ function looksLikeHarnessEdit(p) {
   return HARNESS_SHAPED.test(text);
 }
 
-function banner(p) {
+// A SECOND FAILURE MODE, FOUND BY CHANGING THE MODEL AND NOT BY REASONING.
+// The 3B model's bad proposals edited the harness's CALL SITES, which
+// HARNESS_SHAPED catches. A 7B code model parses far better and fails
+// differently: it assigns straight to the identifier the assertion reads —
+// `a2Attested = false;`, `DOMAIN = null;`. That reds the check while proving
+// nothing at all, and the first heuristic was blind to every one of them,
+// because it had been calibrated on one model's mistakes.
+//
+// This one is not a vocabulary guess. It reads the identifiers out of the
+// assertion's OWN condition and flags an injection that assigns to any of
+// them. Narrow, mechanical, and it transfers: any model that tampers with the
+// thing under test trips it.
+const RESERVED = new Set(['true', 'false', 'null', 'undefined', 'const', 'let', 'var', 'if', 'return', 'await', 'typeof', 'length']);
+
+function assignsToAsserted(p, chk) {
+  if (!chk?.cond) return false;
+  const idents = [...new Set((chk.cond.match(/[A-Za-z_$][\w$]*/g) || []).filter((w) => !RESERVED.has(w)))];
+  const text = `${p.injection || ''}`;
+  return idents.some((id) => new RegExp(`\\b${id}\\s*(\\.[\\w$]+\\s*)?=[^=]`).test(text));
+}
+
+function banner(p, chk) {
+  if (assignsToAsserted(p, chk)) {
+    return [
+      '> ## THIS PROPOSAL ASSIGNS TO THE THING THE ASSERTION READS',
+      '>',
+      '> It writes directly to an identifier taken from the assertion\'s own condition.',
+      '> That reds the check while proving nothing: a defect must change the system,',
+      '> not overwrite the value under test. Flagged, not discarded: decide.',
+      '', '',
+    ].join('\n');
+  }
   if (!looksLikeHarnessEdit(p)) return '';
   return [
     '> ## THIS PROPOSAL APPEARS TO EDIT THE HARNESS, NOT THE SYSTEM',
@@ -215,7 +246,7 @@ function render(harness, chk, p) {
 check('${chk.label.replace(/`/g, "'")}'${chk.cond ? `, ${chk.cond}` : ''})
 \`\`\`
 
-${banner(p)}## Proposed injection
+${banner(p, chk)}## Proposed injection
 ${p.cannot_fail ? '**The model claims this assertion cannot be made to fail.**\n\n' : ''}${p.injection || '(no parseable proposal — raw reply below)'}
 
 ## Mechanism
@@ -282,7 +313,12 @@ async function main() {
       const p = await propose(model, chk, file);
       const path = join(outDir, file.replace('.mjs', ''), `L${chk.line}.md`);
       writeFileSync(path, render(file, chk, p));
-      console.log(p.cannot_fail ? 'CANNOT-FAIL claimed' : !p.injection ? 'unparseable' : looksLikeHarnessEdit(p) ? 'proposed — FLAGGED: looks like a harness edit' : 'proposed');
+      console.log(
+        p.cannot_fail ? 'CANNOT-FAIL claimed'
+        : !p.injection ? 'unparseable'
+        : assignsToAsserted(p, chk) ? 'proposed — FLAGGED: assigns to the asserted value'
+        : looksLikeHarnessEdit(p) ? 'proposed — FLAGGED: looks like a harness edit'
+        : 'proposed');
     } catch (e) {
       console.log(`FAILED — ${e.message.split('\n')[0]}`);
     }
