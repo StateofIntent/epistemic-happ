@@ -79,6 +79,14 @@ function analyse(file) {
 const files = readdirSync(DIR).filter((f) => f.endsWith('.mjs')).sort();
 const rows = files.map(analyse);
 
+// The generator in `generate-injections.mjs` imports this rather than carrying
+// its own list, so the target set cannot drift from the measurement that
+// justified it. A harness leaves this set by acquiring negative evidence.
+export function targets() {
+  return files.map(analyse).filter((r) => !r.hasNegative && r.checks > 0);
+}
+export { analyse };
+
 // A file with no `check()` at all is a helper, a probe or a library — not a
 // harness that could have been watched failing. Counting those in the target
 // set would overstate it, which is the one direction this script must not err.
@@ -89,34 +97,39 @@ const totalChecks = rows.reduce((a, r) => a + r.checks, 0);
 const checksInUntested = noEvidence.reduce((a, r) => a + r.checks, 0);
 const boundSeenRed = withEvidence.reduce((a, r) => a + r.redBound, 0);
 
-console.log(`live-verify: ${files.length} harnesses, ${totalChecks} check() call sites\n`);
+function report() {
+  console.log(`live-verify: ${files.length} harnesses, ${totalChecks} check() call sites\n`);
 
-console.log(`== 1. HARNESSES WITH NO NEGATIVE EVIDENCE — nothing in them has been watched failing ==`);
-console.log(`   ${noEvidence.length} harness(es), ${checksInUntested} check() call sites — ${Math.round((checksInUntested / totalChecks) * 100)}% of the suite.`);
-console.log(`   This is the set 1.21 should aim at first. It is exact and needs no inference.`);
-console.log(`   (${helpers.length} further files carry no check() at all — helpers, probes and`);
-console.log(`   libraries — and are excluded rather than counted as untested: ${helpers.map((h) => h.file.replace('.mjs', '')).join(', ')}.)\n`);
-for (const r of noEvidence) console.log(`   ${r.file.padEnd(34)} ${String(r.checks).padStart(3)} checks`);
+  console.log(`== 1. HARNESSES WITH NO NEGATIVE EVIDENCE — nothing in them has been watched failing ==`);
+  console.log(`   ${noEvidence.length} harness(es), ${checksInUntested} check() call sites — ${Math.round((checksInUntested / totalChecks) * 100)}% of the suite.`);
+  console.log(`   This is the set 1.21 should aim at first. It is exact and needs no inference.`);
+  console.log(`   (${helpers.length} further files carry no check() at all — helpers, probes and`);
+  console.log(`   libraries — and are excluded rather than counted as untested: ${helpers.map((h) => h.file.replace('.mjs', '')).join(', ')}.)\n`);
+  for (const r of noEvidence) console.log(`   ${r.file.padEnd(34)} ${String(r.checks).padStart(3)} checks`);
 
-console.log(`\n== 2. INJECTIONS THAT PASSED — the high-value case 1.21 names ==`);
-const passers = withEvidence.filter((r) => r.passed.length);
-console.log(`   ${passers.length} harness(es) document an injection that PASSED, which is an assertion`);
-console.log(`   found weak rather than code found broken.\n`);
-for (const r of passers) {
-  console.log(`   ${r.file}`);
-  for (const p of r.passed) console.log(`      Result: ${p.slice(0, 90)}`);
+  console.log(`\n== 2. INJECTIONS THAT PASSED — the high-value case 1.21 names ==`);
+  const passers = withEvidence.filter((r) => r.passed.length);
+  console.log(`   ${passers.length} harness(es) document an injection that PASSED, which is an assertion`);
+  console.log(`   found weak rather than code found broken.\n`);
+  for (const r of passers) {
+    console.log(`   ${r.file}`);
+    for (const p of r.passed) console.log(`      Result: ${p.slice(0, 90)}`);
+  }
+
+  console.log(`\n== 3. UPPER BOUND on distinct checks ever witnessed red ==`);
+  console.log(`   At most ${boundSeenRed} of ${totalChecks} call sites (${Math.round((boundSeenRed / totalChecks) * 100)}%), across ${withEvidence.length} harnesses`);
+  console.log(`   carrying ${withEvidence.reduce((a, r) => a + r.injections, 0)} documented injections.`);
+  console.log(`   UPPER, never exact: two injections may red the same check and the prose does`);
+  console.log(`   not say which. Treat it as a ceiling on coverage, never as coverage.`);
+
+  console.log(`\n== THE ANSWER TO 1.21's FIRST QUESTION ==`);
+  console.log(`   The set of never-watched-failing CHECKS is NOT known and cannot be recovered`);
+  console.log(`   from what is written: results are recorded per harness and in prose. What IS`);
+  console.log(`   known is the ${noEvidence.length} harnesses above, exactly, and a ${Math.round((boundSeenRed / totalChecks) * 100)}% ceiling for the rest.`);
+  console.log(`   Generating injections should start from section 1 and stop there until the`);
+  console.log(`   per-check question is answered by recording it going forward, not by guessing`);
+  console.log(`   backwards from prose.`);
+
 }
 
-console.log(`\n== 3. UPPER BOUND on distinct checks ever witnessed red ==`);
-console.log(`   At most ${boundSeenRed} of ${totalChecks} call sites (${Math.round((boundSeenRed / totalChecks) * 100)}%), across ${withEvidence.length} harnesses`);
-console.log(`   carrying ${withEvidence.reduce((a, r) => a + r.injections, 0)} documented injections.`);
-console.log(`   UPPER, never exact: two injections may red the same check and the prose does`);
-console.log(`   not say which. Treat it as a ceiling on coverage, never as coverage.`);
-
-console.log(`\n== THE ANSWER TO 1.21's FIRST QUESTION ==`);
-console.log(`   The set of never-watched-failing CHECKS is NOT known and cannot be recovered`);
-console.log(`   from what is written: results are recorded per harness and in prose. What IS`);
-console.log(`   known is the ${noEvidence.length} harnesses above, exactly, and a ${Math.round((boundSeenRed / totalChecks) * 100)}% ceiling for the rest.`);
-console.log(`   Generating injections should start from section 1 and stop there until the`);
-console.log(`   per-check question is answered by recording it going forward, not by guessing`);
-console.log(`   backwards from prose.`);
+if (import.meta.url === `file://${process.argv[1]}`) report();
