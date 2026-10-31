@@ -148,7 +148,7 @@ between — so the variable is the only thing that changed.
 |---|---|---|---|
 | app | Wayland | NVIDIA (default) | Gdk **Error 71** at ~1.5s |
 | app | Wayland | **Mesa** | **runs** — window mapped 927×1056, onboarding renders, still up minutes later |
-| app | XWayland | NVIDIA | survived 40s, logging `Failed to create GBM buffer … Invalid argument` |
+| app | XWayland | NVIDIA | process survives, **but the window is BLANK** — see the correction below |
 | app | XWayland | Mesa | survived 40s |
 | MiniBrowser, static page, no JS | Wayland | NVIDIA | Error 71 |
 | MiniBrowser, static page, no JS | Wayland | **Mesa** | survived |
@@ -168,6 +168,28 @@ This is the first time the GUI has run on this machine.
    `llama.cpp` still sees the card — `GPU detected: NVIDIA GeForce GTX 970 -
    4.2 GB`, and the app sized Ministral 3 3B to fit it. So the cost is rendering,
    never inference.
+
+### A SECOND CORRECTION, 2026-10-31 — "survived under XWayland" was measured wrong
+
+The row above originally read *survived 40s*, which was true of the PROCESS and
+false about the application, and the distinction is the whole point of this
+document. Re-measured properly: under `GDK_BACKEND=x11` with NVIDIA's EGL the
+app starts, **the window maps at 927x1056 and renders nothing but background**.
+After nearly two minutes there is **no `WebKitWebProcess` running at all**, and
+none ever started — no crash, no coredump, no web process. The backend is fully
+up behind it (conductor, three agent keys, the endpoint answering), which is
+exactly what makes the empty window so easy to misread as working.
+
+**The first measurement only checked that the process had not exited**, and a
+40-second timeout returning 124 was recorded as a pass. That is the same class
+of error as trusting a green tick from `download-llama-binaries.sh`: the exit
+code was never the thing worth measuring.
+
+So **XWayland is not an escape from this bug**, and it must not be offered as
+one. NVIDIA's EGL fails in three ways on this machine rather than two —
+`Error 71` on native Wayland, a blank window with no web process under
+XWayland, and the 10-29 SIGSEGV — and the Mesa EGL variable is the only
+configuration here in which the UI actually appears.
 
 ### Correction to the record above
 
