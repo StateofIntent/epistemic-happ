@@ -42,6 +42,54 @@
 //     exactly the half that lives on one side. `federation/federate.mjs`
 //     carries the two-conductor half.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+//   BY (2026-11-01): the `FEDERATION_IMPORT_TAG` arm deleted from
+//   `get_discourse_health`'s filter, so an import falls through to
+//   `_ => claims.push(record)` and is counted as discourse in this domain.
+//   That is precisely the failure this file's header says would have bitten
+//   silently, and it is `reading_claims`' own bug one tag over.
+//   Result: 4 RED, all of §4. `total_claims 3 -> 6   imported_claims 0 -> 0`
+//   against a baseline of `3 -> 3` and `0 -> 3`. Exit 1, 15 checks still
+//   passing.
+//
+//   THE ONE GREEN CHECK THAT MATTERS MORE THAN THE FOUR REDS: §3's
+//   *the limits also say it is excluded from the aggregate, so a reader need
+//   not discover that* PASSED — while the aggregate was NOT excluded. The
+//   `limits` string is the code describing itself, and it went on describing
+//   an exclusion that was no longer happening. So that check tests that the
+//   DOCUMENTATION is present, never that it is true, and on its own it would
+//   have certified the broken build as self-documenting. Same lesson as
+//   `metabolism`'s AP and BM — a flag the implementation sets about itself is
+//   not evidence — now reproduced in a second harness, which makes it a
+//   property of this shape rather than a quirk of that one.
+//
+//   EVERY PROVENANCE CHECK ALSO STAYED GREEN: signed by the importer, the
+//   foreign author carried as an opaque string, the witness wording, and
+//   `foreign_content_verified` false. The import is perfectly well-formed and
+//   correctly attributed under this injection; only the AGGREGATE lies. §§2-3
+//   therefore cannot see this failure at all, which is the argument for §4
+//   existing, made by observation rather than by assertion.
+//
+//   AND ONE LIMIT OF §4's OWN WIRING, worth knowing before trusting a red:
+//   *the local discourse is still counted — the filter excluded imports, not
+//   everything* was written to catch an OVER-broad filter, and it reds here
+//   for the opposite reason (6 rather than 3, not 0 rather than 3). It
+//   asserts `after.total_claims === 3`, so it fires on any wrong total and
+//   cannot by itself say which direction the filter failed in. The two
+//   directions are distinguished only by reading it beside
+//   `imported_claims`, which is why the pair is pinned both ways.
+//
+//   RUN COST: ~4 min. One `sandbox.sh` conductor, a coordinator rebuild,
+//   `hc dna pack` + `hc app pack`, and a restart so the conductor loads the
+//   new wasm. The DNA hash is UNCHANGED — `get_discourse_health` is
+//   coordinator-side, and the hash covers the integrity zome and modifiers
+//   only (measured: both bundles
+//   `uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`). Verified the
+//   restart took by bundle mtime against conductor start, since no check
+//   here would notice a stale wasm.
+// ---------------------------------------------------------------------------
 // Prereqs: a sandbox conductor (scripts/sandbox.sh clean && start), built .happ.
 // ============================================================================
 
