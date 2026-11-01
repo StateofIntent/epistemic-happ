@@ -2259,6 +2259,18 @@ function renderAssessmentPanel(claim: DecodedRecord<Claim>): HTMLElement | null 
       item.appendChild(noWhy);
     }
 
+    // AND AN ASSESSMENT GETS NO DENOMINATOR, which is a gap in the
+    // PROTOCOL rather than a decision taken here — worth saying so the
+    // critique treatment next door is not read as covering both.
+    // `Assessment.past_cone` carries the same field under the same
+    // rules, but there is no `assessments_unseen_by`: the coordinator
+    // has exactly one such query and it resolves siblings through
+    // `TargetToCritique`, so nothing anywhere can say how many
+    // positions an assessor's cone was recorded OUT OF. Inventing the
+    // count client-side is the one thing not to do — the denominator is
+    // a statement about what an observer could resolve at read time,
+    // and a client counting the assessments it happens to have fetched
+    // would publish its own fetch window as that figure.
     const cone = renderConeState(assessment.entry.past_cone, anyConeRecorded);
     if (cone) item.appendChild(cone);
     panel.appendChild(item);
