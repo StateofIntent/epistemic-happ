@@ -60,7 +60,13 @@ function analyse(file) {
   const src = readFileSync(join(DIR, file), 'utf8');
   const checks = (src.match(/\bcheck\(/g) || []).length;
 
-  const hasNegative = /NEGATIVE EVIDENCE/i.test(src);
+  // RETIRED BEFORE EVIDENCE, and the order matters. A retirement block starts
+  // with the same two words as a real one, so testing for NEGATIVE EVIDENCE
+  // first would file a harness carrying NO injection under "has evidence" and
+  // inflate section 3's ceiling. Retirement is its own answer: not watched
+  // failing, and not waiting to be.
+  const retired = /NEGATIVE EVIDENCE\s*[—-]+\s*NOT OBTAINABLE/i.test(src);
+  const hasNegative = !retired && /NEGATIVE EVIDENCE/i.test(src);
   // The section runs from the marker to the end of the comment block.
   const section = hasNegative ? src.slice(src.search(/NEGATIVE EVIDENCE/i)) : '';
 
@@ -73,7 +79,7 @@ function analyse(file) {
     const n = m ? num(m[1]) : null;
     redBound += n ?? (/\bred\b|\bFAIL\b/i.test(r) ? 1 : 0);
   }
-  return { file, checks, hasNegative, injections: results.length, redBound: Math.min(redBound, checks), passed };
+  return { file, checks, hasNegative, retired, injections: results.length, redBound: Math.min(redBound, checks), passed };
 }
 
 const files = readdirSync(DIR).filter((f) => f.endsWith('.mjs')).sort();
@@ -83,7 +89,7 @@ const rows = files.map(analyse);
 // its own list, so the target set cannot drift from the measurement that
 // justified it. A harness leaves this set by acquiring negative evidence.
 export function targets() {
-  return files.map(analyse).filter((r) => !r.hasNegative && r.checks > 0);
+  return files.map(analyse).filter((r) => !r.hasNegative && !r.retired && r.checks > 0);
 }
 export { analyse };
 
@@ -91,8 +97,10 @@ export { analyse };
 // harness that could have been watched failing. Counting those in the target
 // set would overstate it, which is the one direction this script must not err.
 const helpers = rows.filter((r) => r.checks === 0);
-const noEvidence = rows.filter((r) => !r.hasNegative && r.checks > 0);
+const noEvidence = rows.filter((r) => !r.hasNegative && !r.retired && r.checks > 0);
 const withEvidence = rows.filter((r) => r.hasNegative);
+const retiredRows = rows.filter((r) => r.retired && r.checks > 0);
+const checksRetired = retiredRows.reduce((a, r) => a + r.checks, 0);
 const totalChecks = rows.reduce((a, r) => a + r.checks, 0);
 const checksInUntested = noEvidence.reduce((a, r) => a + r.checks, 0);
 const boundSeenRed = withEvidence.reduce((a, r) => a + r.redBound, 0);
@@ -106,6 +114,20 @@ function report() {
   console.log(`   (${helpers.length} further files carry no check() at all — helpers, probes and`);
   console.log(`   libraries — and are excluded rather than counted as untested: ${helpers.map((h) => h.file.replace('.mjs', '')).join(', ')}.)\n`);
   for (const r of noEvidence) console.log(`   ${r.file.padEnd(34)} ${String(r.checks).padStart(3)} checks`);
+
+  // REPORTED, NEVER SILENTLY SUBTRACTED. A harness that left the count with no
+  // trace would be exactly the error this file says it must not make — making
+  // the untested set look smaller than it is. Retirement is a claim about
+  // METHOD, not about the code being sound, so it is printed with its reason
+  // and with the checks it takes out of reach.
+  if (retiredRows.length) {
+    console.log(`\n== 1b. RETIRED FROM THE TARGET SET — cannot be watched failing by this method ==`);
+    console.log(`   ${retiredRows.length} harness(es), ${checksRetired} check() call sites, carrying NO injection and claiming none.`);
+    console.log(`   Counted as neither tested nor outstanding. Each states its reason in its own header.`);
+    console.log(`   Section 1 would otherwise read ${noEvidence.length + retiredRows.length} harnesses and ${checksInUntested + checksRetired} sites, which would be`);
+    console.log(`   work nobody can do rather than work nobody has done.\n`);
+    for (const r of retiredRows) console.log(`   ${r.file.padEnd(34)} ${String(r.checks).padStart(3)} checks`);
+  }
 
   console.log(`\n== 2. INJECTIONS THAT PASSED — the high-value case 1.21 names ==`);
   const passers = withEvidence.filter((r) => r.passed.length);
@@ -125,7 +147,8 @@ function report() {
   console.log(`\n== THE ANSWER TO 1.21's FIRST QUESTION ==`);
   console.log(`   The set of never-watched-failing CHECKS is NOT known and cannot be recovered`);
   console.log(`   from what is written: results are recorded per harness and in prose. What IS`);
-  console.log(`   known is the ${noEvidence.length} harnesses above, exactly, and a ${Math.round((boundSeenRed / totalChecks) * 100)}% ceiling for the rest.`);
+  console.log(`   known is the ${noEvidence.length} harnesses in section 1, exactly, and a ${Math.round((boundSeenRed / totalChecks) * 100)}% ceiling for the rest`);
+  console.log(`   ${retiredRows.length ? `(plus ${retiredRows.length} retired in 1b, which are not pending work).` : '.'}`);
   console.log(`   Generating injections should start from section 1 and stop there until the`);
   console.log(`   per-check question is answered by recording it going forward, not by guessing`);
   console.log(`   backwards from prose.`);

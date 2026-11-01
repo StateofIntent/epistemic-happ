@@ -39,6 +39,55 @@
 // logs rather than evidence against the protocol. Same standing as
 // `peering-rate.mjs` and `dht-isolation-probe.mjs`.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — NOT OBTAINABLE BY INJECTION, and this is the reason.
+//
+// `injection-coverage.mjs` counted this file as an open target for 1.21. It is
+// not one, and leaving it in the set makes six harnesses of real work look like
+// seven. Three independent reasons, any one of which would be enough:
+//
+//   1. IT DOES NOT RUN ON ONE MACHINE. Publisher and reader are two halves on
+//      two hosts with no channel between them — the DHT is the channel. Every
+//      other harness here can be injected because one operator can run the
+//      whole thing; this one cannot be injected by anybody who has only one
+//      host, and the second host is somebody's spare machine rather than a
+//      command.
+//
+//   2. A RED HERE IS NOT DIAGNOSTIC, which this file already says in its own
+//      header: it depends on Holochain's dev-test bootstrap and iroh's canary
+//      relay, and either being down, rate-limiting or unreachable "produces
+//      the same observable as a protocol problem". An injection's entire value
+//      is that the red it causes means something. Here it would be one more
+//      indistinguishable red, and recording it as negative evidence would
+//      assert a sensitivity the run cannot establish.
+//
+//   3. THE NEGATIVE BRANCH IS ALREADY WRITTEN. The arrival assertion appears
+//      twice — once on the success path with a literal true, once on the
+//      timeout path with a literal false — so the failing call is in the
+//      source rather than something an injection would have to reveal. What an
+//      injection demonstrates elsewhere, that the assertion CAN report
+//      failure, is here a matter of reading two adjacent lines.
+//
+//      (Written without the call spelled out, deliberately: the counter in
+//      `injection-coverage.mjs` matches that token anywhere in the file,
+//      comments included. The first draft of this block spelled it twice and
+//      invented two checks — this harness read 5 instead of 3 and the suite
+//      total moved 1353 to 1355. A counted claim corrupted by prose ABOUT the
+//      count, which is open-work 1.20's bug class turning up inside the tool
+//      built for 1.21.)
+//
+// SO IT IS RETIRED FROM THE TARGET SET RATHER THAN MARKED DONE. It carries no
+// injection and claims none; `injection-coverage.mjs` reports it in its own
+// section, with this reason, because a harness that silently vanished from the
+// count would be the one error that script says it must not make — overstating
+// how much has been watched failing.
+//
+// WHAT WOULD CHANGE THIS: a second host under the same operator's control, and
+// private rendezvous infrastructure rather than the two public services, so a
+// red has exactly one possible cause. Then the honest injection is on the
+// PUBLISHER half — write to a different domain than the one both sides derive
+// — and the reader's timeout becomes evidence instead of a shrug.
+// ---------------------------------------------------------------------------
 // Env:
 //   EPI_XNET_ROLE      publisher | reader          (required)
 //   EPI_XNET_DOMAIN    the shared domain string    (required, same both sides)
