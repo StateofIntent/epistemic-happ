@@ -470,6 +470,45 @@ async function main() {
     check('and a reveal driven only by the recovered values is accepted',
       afterReveal.revealed.some((e) => e.revealed_prediction === UI_TEXT));
 
+    // === 9. TYPING SURVIVES A RE-RENDER, which is the user-facing half ===
+    //
+    // §7's settle stops THIS HARNESS losing the race. It does nothing for a
+    // person, and the same race is theirs: `render()` is `app.innerHTML = ''`
+    // plus a rebuild, so any of `main.ts`'s twenty-one fire-and-forget
+    // `void load*()` calls resolving mid-typing can empty the box being typed
+    // into. `captureFocus` returned the caret to it and the contents were
+    // already gone.
+    //
+    // ASSERTED THROUGH A DETERMINISTIC RENDER RATHER THAN BY WAITING FOR THE
+    // RACE. "Choose a different question" sets `foresightPrefill = null` and
+    // calls `render()`, while the prediction and salt boxes stay on screen —
+    // so it is a real user action that rebuilds the form without meaning to
+    // clear it. Before `captureFieldValues` existed, both boxes came back
+    // empty and the person retyped. A flake-dependent test would prove the
+    // same thing only on the runs where it broke.
+    log('\n=== 9. WHAT WAS TYPED SURVIVES A RE-RENDER (the user-facing half) ===');
+    await page.locator('[data-testid="foresight-commit-toggle"]').first().click();
+    await sleep(1500);
+    const KEEP_P = 'Typed, then interrupted by a background read.';
+    const KEEP_S = 'salt-survives-render-9c4f';
+    await page.locator('[data-testid="foresight-prediction-input"]').fill(KEEP_P);
+    await page.locator('[data-testid="foresight-salt-input"]').fill(KEEP_S);
+    const clearBtn = page.locator('[data-testid="foresight-question-clear"]');
+    const hadClear = await clearBtn.count() > 0;
+    if (hadClear) {
+      await clearBtn.first().click();
+      await sleep(1000);
+      check('a re-render does NOT discard what was typed into the prediction box',
+        (await page.locator('[data-testid="foresight-prediction-input"]').inputValue()) === KEEP_P);
+      check('nor the salt, which is the half nothing can recover if lost',
+        (await page.locator('[data-testid="foresight-salt-input"]').inputValue()) === KEEP_S);
+    } else {
+      // Reported rather than skipped silently: without the prefill path there
+      // is no in-place render to ride, so this section cannot run and says so.
+      log('  (no "choose a different question" control on this path — §9 did not run)');
+      check('§9 had a deterministic re-render to test against', false);
+    }
+
     check('no page errors', pageErrors.length === 0);
     if (pageErrors.length) log(`    ${pageErrors[0].slice(0, 200)}`);
   } finally {

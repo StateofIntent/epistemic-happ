@@ -585,8 +585,64 @@ function captureFocus(): () => void {
   };
 }
 
+/** Captures what has been TYPED but not yet submitted, and returns the
+ * function that puts it back.
+ *
+ * WHY THIS EXISTS, AND IT IS A USER-FACING BUG RATHER THAN A TEST ONE.
+ * `render()` is `app.innerHTML = ''` followed by a full rebuild, so every
+ * input is a NEW element with an empty value. `captureFocus` above already
+ * restores the caret across that — but the caret was being returned to a box
+ * whose contents had just been thrown away. Any of the twenty-one
+ * fire-and-forget `void load*()` calls can resolve mid-typing and trigger a
+ * render, and twelve of the fourteen loaders end in one. So a person filling
+ * the Commit-a-prediction form, or the New Claim form, can lose what they
+ * typed to a background read completing — with no error and nothing to
+ * suggest what happened.
+ *
+ * It was found from the other end: `foresight-ui.mjs` §7 failed on four-plus
+ * CI runs because a render landed between filling the form and pressing
+ * Commit, leaving the submit handler reading empty inputs and refusing with
+ * its own validation message. The harness got a settle (see that file). This
+ * is the half that was still wrong for people.
+ *
+ * THE SAFETY PROPERTY, and it is the whole design: a captured value is only
+ * restored into a field the rebuild left EMPTY. A render that deliberately
+ * fills a box — the prefilled question on the predict-about-a-claim path, a
+ * form reset after a successful submit, a value loaded from the chain by
+ * Recover — must win, because the app meant that and the stale keystrokes did
+ * not. Restoring over it would turn this repair into a worse bug: input the
+ * person had already committed reappearing after the app cleared it.
+ *
+ * Keyed by `focusKey`, so it inherits that function's audit and its fallback
+ * to the wrapping `<label>` — a field nobody remembered to name keeps its
+ * contents for the same reason it keeps its caret. */
+function captureFieldValues(): () => void {
+  const typed: { key: string; ordinal: number; value: string }[] = [];
+  for (const field of app.querySelectorAll<Field>('input, textarea')) {
+    // Checkboxes and radios carry state in `checked`, not `value`, and a
+    // half-set checkbox is not half-typed text — left alone deliberately.
+    if (field instanceof HTMLInputElement && (field.type === 'checkbox' || field.type === 'radio')) continue;
+    if (!field.value) continue;
+    const key = focusKey(field);
+    if (key === null) continue;
+    typed.push({ key, ordinal: fieldsWithKey(key).indexOf(field), value: field.value });
+  }
+  if (!typed.length) return () => { /* nothing was part-written */ };
+
+  return () => {
+    for (const { key, ordinal, value } of typed) {
+      const field = fieldsWithKey(key)[ordinal];
+      // ONLY into a box the rebuild left empty — see the safety property above.
+      if (field && !field.value) field.value = value;
+    }
+  };
+}
+
 function render() {
   const restoreFocus = captureFocus();
+  // AFTER the focus capture and restored BEFORE it, so the caret lands in a
+  // box that already has its text back rather than in an empty one.
+  const restoreValues = captureFieldValues();
   // `finally`, because the early returns below are real exits and a rebuilt
   // connect screen loses the caret exactly like a rebuilt tab.
   try {
@@ -603,6 +659,7 @@ function render() {
     }
     app.appendChild(renderTabs());
   } finally {
+    restoreValues();
     restoreFocus();
   }
 }
