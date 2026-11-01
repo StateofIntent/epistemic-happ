@@ -83,14 +83,29 @@
 //
 //   THE RUN COST, since this is not a sandbox harness: thirteen conductors
 //   via `network.sh` (twelve members plus the nodeC control), a coordinator
-//   wasm rebuild, `hc dna pack` + `hc app pack`, and a full `clean` and
-//   restart because the injection changes the DNA hash and the running
-//   conductors would otherwise keep answering from the old one. Verified the
-//   restart took by comparing the packed bundle's mtime (14:29:09) against
-//   the earliest conductor's start (14:29:43) rather than by trusting an exit
-//   code. A green injected run would more likely have meant a stale bundle
-//   than a weak assertion, which is the trap README §6 records for
-//   `hc dna pack` packaging the wasm on disk instead of compiling it.
+//   wasm rebuild, `hc dna pack` + `hc app pack`, and a restart so the
+//   conductors load the new coordinator wasm. Verified the restart took by
+//   comparing the packed bundle's mtime (14:29:09) against the earliest
+//   conductor's start (14:29:43) rather than by trusting an exit code. A
+//   green injected run would more likely have meant a stale bundle than a
+//   weak assertion, which is the trap README §6 records for `hc dna pack`
+//   packaging the wasm on disk instead of compiling it.
+//
+//   AND THE REASON FOR THE RESTART IS NOT THE ONE THIS NOTE FIRST GAVE.
+//   It said the injection changes the DNA hash. **It does not.** Measured
+//   with `hc dna hash` on both bundles: clean and injected are both
+//   `uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`. The DNA hash
+//   covers the INTEGRITY zome and the modifiers, not the coordinator — which
+//   is `dna.yaml`'s own point when it says every edit to the integrity zome
+//   forks the network, and is why coordinators can be updated without one.
+//   `get_claim` is a coordinator function, so BX forks nothing. The restart
+//   was still necessary, for the duller reason that a running conductor keeps
+//   serving the coordinator wasm it already loaded. So the cheap path for the
+//   next coordinator-only injection is a reinstall or restart, NOT the
+//   `network.sh clean` this run paid for — the DHT state never needed
+//   discarding. Section 1's same-DNA-hash check is therefore NOT evidence
+//   that a coordinator injection loaded; it passes either way, and the mtime
+//   comparison is what settled it.
 // ---------------------------------------------------------------------------
 // AN EXPERIMENT, NOT A GATE, AND NOT IN CI — the same classification as
 // `dht-isolation-probe` and `stall-bisect`. Twelve conductors on two CI vCPUs
