@@ -53,6 +53,60 @@
 // measure the instrument and the intermittency rather than the subject. The
 // figures are printed with their poll counts and are not gated.
 // ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+//   BX (2026-11-01): `get_claim` resolves only what the CALLER authored —
+//   `if record.action().author() != &agent_info()?.agent_initial_pubkey
+//   { return Ok(None) }` in the coordinator. This is the chain-local-read bug
+//   the comment at dna/coordinator/src/lib.rs:423-431 records for
+//   `get_claims_by_domain`, moved onto the by-hash getter: browsing shows you
+//   your own work and nobody else's.
+//   Result: EXACTLY 1 RED, and it is section 3's. All eleven peers reported
+//   `UNRESOLVED in 600s` where the baseline resolved every one of them in
+//   5.1s to 5.3s. Exit 1.
+//
+//   WHICH CHECKS STAYED GREEN IS THE POINT, because this file's header is
+//   built around a green tick that cannot go red. Section 3's own
+//   *the writer can read its own claim back* PASSED — the writer IS the
+//   author, so the injection cannot touch it, and a harness that only
+//   asserted that would have called a totally broken getter healthy. Both
+//   section 4 controls also passed: the isolated node still resolved nothing,
+//   which is correct and is exactly why the control cannot substitute for
+//   section 3. A control that says *the outsider sees nothing* stays true
+//   when the insiders see nothing either.
+//
+//   WHY NOT `GetOptions::local()`, which is the obvious injection: arcs here
+//   are FULL and never narrow (see section 2's finding), so every member
+//   stores everything and a local-only read still succeeds once gossip
+//   delivers it. That injection would have slowed section 3, not reddened it
+//   — and an injection that might not go red is not evidence.
+//
+//   THE RUN COST, since this is not a sandbox harness: thirteen conductors
+//   via `network.sh` (twelve members plus the nodeC control), a coordinator
+//   wasm rebuild, `hc dna pack` + `hc app pack`, and a restart so the
+//   conductors load the new coordinator wasm. Verified the restart took by
+//   comparing the packed bundle's mtime (14:29:09) against the earliest
+//   conductor's start (14:29:43) rather than by trusting an exit code. A
+//   green injected run would more likely have meant a stale bundle than a
+//   weak assertion, which is the trap README §6 records for `hc dna pack`
+//   packaging the wasm on disk instead of compiling it.
+//
+//   AND THE REASON FOR THE RESTART IS NOT THE ONE THIS NOTE FIRST GAVE.
+//   It said the injection changes the DNA hash. **It does not.** Measured
+//   with `hc dna hash` on both bundles: clean and injected are both
+//   `uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`. The DNA hash
+//   covers the INTEGRITY zome and the modifiers, not the coordinator — which
+//   is `dna.yaml`'s own point when it says every edit to the integrity zome
+//   forks the network, and is why coordinators can be updated without one.
+//   `get_claim` is a coordinator function, so BX forks nothing. The restart
+//   was still necessary, for the duller reason that a running conductor keeps
+//   serving the coordinator wasm it already loaded. So the cheap path for the
+//   next coordinator-only injection is a reinstall or restart, NOT the
+//   `network.sh clean` this run paid for — the DHT state never needed
+//   discarding. Section 1's same-DNA-hash check is therefore NOT evidence
+//   that a coordinator injection loaded; it passes either way, and the mtime
+//   comparison is what settled it.
+// ---------------------------------------------------------------------------
 // AN EXPERIMENT, NOT A GATE, AND NOT IN CI — the same classification as
 // `dht-isolation-probe` and `stall-bisect`. Twelve conductors on two CI vCPUs
 // would measure the runner. Run it by hand, on a machine with headroom:
