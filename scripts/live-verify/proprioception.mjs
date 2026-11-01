@@ -43,6 +43,47 @@
 //     coordinator zome cannot reach it. §6 asserts that the ABSENCE is
 //     declared, which is the only honest thing a harness can check here.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing, and §4's own
+// reasoning is what the result confirms.
+//
+//   CF (2026-11-01): the caller's promised half-life is ECHOED BUT NOT USED.
+//   `half_life_secs` is rebound to `CONDUCTANCE_HALF_LIFE_SECS` before the
+//   decay loop, while the report keeps returning the promised value. This is
+//   verbatim the failure §4 names above — the policy "ignored in favour of the
+//   compiled-in default".
+//   Result: EXACTLY 1 RED, 33 green, exit 1.
+//
+//     clean     30-day default 1.0000   1-second half-life 0.1250
+//     injected  30-day default 1.0000   1-second half-life 1.0000
+//
+//   §4's TWO-HALF-LIVES CHECK IS THE ONLY THING THAT CAUGHT IT, which is what
+//   the header above predicted in advance and is now observed rather than
+//   argued: *two different half-lives give different answers* is the only
+//   assertion here that can tell a consulted policy from an ignored one.
+//
+//   AND THE CHECK BESIDE IT PASSED WHILE ITS OWN LABEL WAS FALSE. *and a
+//   supplied half-life is reported AS promised, WITH THE VALUE USED* went
+//   green on a build that did not use the value. It compares the echoed field
+//   to the promise and never compares either to the arithmetic, so the final
+//   clause of its own name is the part it does not test. Not a bug in the
+//   check — a limit worth knowing, because that label reads like coverage §4
+//   does not have anywhere except in the pair above it.
+//
+//   THAT IS THE THIRD SIGHTING OF THIS SHAPE IN ONE NIGHT, which is why it is
+//   written here as a pattern rather than an anecdote: `microbiome`'s BY left a
+//   `limits` string truthfully describing an exclusion that had stopped
+//   happening; `standing`'s CE passed because its fixture could not
+//   discriminate; and here a label claims a behaviour it never checks. A check
+//   that reads the implementation's account of itself tests that the account
+//   is PRESENT, never that it is TRUE. `metabolism`'s AP said this first.
+//
+//   RUN COST: ~4 min. One `sandbox.sh` conductor, two agents, coordinator
+//   rebuild, repack, restart. DNA hash unchanged — coordinator-side. The CF
+//   bundle hashed `e1548a3dc247969d` at 1,759,863 bytes, recorded BEFORE the
+//   run rather than after, since a verification that only happens when the
+//   result looks surprising is not a verification.
+// ---------------------------------------------------------------------------
 // Prereqs: a sandbox conductor (scripts/sandbox.sh clean && start) and a built
 // .happ. Two agents, because caller-scoping is the main claim and one agent
 // cannot demonstrate it.
