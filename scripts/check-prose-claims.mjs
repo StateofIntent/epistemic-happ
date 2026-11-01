@@ -198,7 +198,11 @@ Return JSON only: {"claims":[{"quote":"...","artifact":"...","count":N,"is_total
 export async function extractWithModel(text, model = process.env.YOAI_MODEL) {
   if (!model) {
     const list = await fetch(`${YOAI}/models`).then((r) => r.json());
-    model = (list.data || [])[0]?.id;
+    // Prefer the `<name>:agent` variant — see adversary-spike.mjs.
+    const offered = (list.data || []).map((m) => m.id);
+    model = process.env.YOAI_ALLOW_PERSONA === '1'
+      ? offered.find((m) => !m.endsWith(':agent')) || offered[0]
+      : offered.find((m) => m.endsWith(':agent')) || offered[0];
     if (!model) throw new Error(`${YOAI} offers no models — open Your Own AI and pick an offline-only AI.`);
   }
   const res = await fetch(`${YOAI}/chat/completions`, {
@@ -206,6 +210,11 @@ export async function extractWithModel(text, model = process.env.YOAI_MODEL) {
     headers: {
       'Content-Type': 'application/json',
       'X-Your-Own-AI-Record': 'off',
+      // Agent mode, because `Memory: off` is honoured in AGENT MODE ONLY —
+      // persona mode always injects the author's memories. MEASURED 2026-11-01:
+      // this machine has no agentic model that fits, so this REFUSES rather than
+      // falling back to the leak. See scripts/adversary-spike.mjs for the detail.
+      ...(process.env.YOAI_ALLOW_PERSONA === '1' ? {} : { 'X-Your-Own-AI-Mode': 'agent' }),
       'X-Your-Own-AI-Memory': 'off',
     },
     body: JSON.stringify({

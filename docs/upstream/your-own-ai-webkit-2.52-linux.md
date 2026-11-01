@@ -197,3 +197,32 @@ The *ask* section asked for a known-issue line naming **Wayland**. Wayland was
 incidental: the trigger is NVIDIA's EGL, and the native-Wayland Error 71 and the
 XWayland GBM failures are both downstream of it. The guess that app SIGSEGV and
 MiniBrowser Error 71 were "two exits from the same root" held up.
+
+## Closed upstream — 2026-11-01
+
+Eric replied again. **The fix is built and ships in the next Your Own AI
+release**, and the shape of it answers the question raised in *Two things worth
+sending back* above:
+
+- The trigger is detected rather than assumed: **when the NVIDIA driver is
+  loaded and the user has set neither variable themselves**, the app points
+  WebKit at Mesa's EGL and turns WebKit's GBM path off.
+- **The llvmpipe cost was known and chosen.** In his words, a working window
+  beats a crash or a blank one, and the AI engine stays on the GPU — which is
+  the same split measured here: rendering, never inference. Point 1 above was
+  not news to them; it was a deliberate trade.
+- **`FLOWSTA_WEBVIEW_FIX=0` turns the fix off** for a setup that draws fine
+  through NVIDIA, and they will drop the fix once WebKitGTK fixes the bug.
+
+**The static-`h1` reproduction from this document is the part they took.** It is
+cleaner than their own — their in-house repro mutated the DOM every 400 ms,
+and this one shows the crash with no JavaScript at all, which removes DOM
+mutation from the list of things the bug needs. They will look for an existing
+WebKit report and add it there.
+
+**So this document is finished and stays unfiled.** Both ends are covered by
+someone else: the application fix is theirs and shipped, the WebKit report is
+theirs to find or file. Nothing here goes to `bugs.webkit.org` from this side —
+see the standing rule that upstream filing belongs to the author, not the
+assistant. What this file is for now is the record of how the cause was found
+and the two corrections it took to state it accurately.

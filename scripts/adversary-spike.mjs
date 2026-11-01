@@ -91,6 +91,8 @@ const SCHEMA = {
 };
 
 const LOCAL_BASE = process.env.YOAI_BASE || 'http://localhost:11435/v1';
+// Opt out of agent mode, accepting that the author's own memories are injected.
+const ALLOW_PERSONA = process.env.YOAI_ALLOW_PERSONA === '1';
 
 const SYSTEM = `You are reading a DRAFT claim that has not been published yet.
 
@@ -163,6 +165,26 @@ async function askLocal(draft) {
     // their own memories must not be mixed into the call. Documented at
     // docs.yourownai.net/external-apps/connect.
     'X-Your-Own-AI-Record': 'off',
+    // CORRECTED AGAIN 2026-11-01, by the same maintainer and by that page:
+    // `Memory: off` IS HONOURED IN AGENT MODE ONLY — "persona mode always
+    // includes memory". Sent against the plain `<name>` variant, which is what
+    // this script picked until today, it is a NO-OP, and the author's memories
+    // WERE mixed into every call — the exact property the paragraph above
+    // claimed. Agent mode is also the shape an integration wants: our system
+    // prompt leads and the AI lends its model, memory and records rather than
+    // its persona. The header goes here so it holds even when --model names a
+    // plain variant, and the pick below prefers `:agent` so the printed id
+    // does not lie about the mode.
+    //
+    // MEASURED the same day against the running app: agent mode needs an
+    // AGENTIC model and this machine has none that fits — Ministral 3 3B is
+    // refused as not agentic, and the Qwen2.5-Coder-7B that IS recognised is
+    // refused `MODEL_TOO_LARGE` on a 4 GB card, because the app will not split
+    // layers the way a hand-run `llama-server -ngl 20` does. So agent mode
+    // cannot run here today, and persona mode is a LEAK rather than a
+    // fallback: this script refuses instead of quietly choosing it, and
+    // `YOAI_ALLOW_PERSONA=1` is the author's explicit consent.
+    ...(ALLOW_PERSONA ? {} : { 'X-Your-Own-AI-Mode': 'agent' }),
     'X-Your-Own-AI-Memory': 'off',
   };
   if (process.env.YOAI_KEY) headers.Authorization = `Bearer ${process.env.YOAI_KEY}`;
@@ -173,7 +195,11 @@ async function askLocal(draft) {
     const list = await fetch(`${LOCAL_BASE}/models`, { headers }).then((r) => r.json());
     const ids = (list.data || []).map((m) => m.id);
     if (!ids.length) throw new Error(`${LOCAL_BASE} answered but offers no models — create an AI in the app first.`);
-    model = ids[0];
+    // Each AI is offered twice, as `<name>` and `<name>:agent`; `data[0]` is
+    // the PERSONA one (verified: reeves, reeves:agent, teresa, ...).
+    model = ALLOW_PERSONA
+      ? ids.find((id) => !id.endsWith(':agent')) || ids[0]
+      : ids.find((id) => id.endsWith(':agent')) || ids[0];
     console.error(`[spike] no --model given; using "${model}" of ${ids.length} offered (${ids.join(', ')})`);
   }
 
@@ -204,6 +230,21 @@ async function askLocal(draft) {
     // downloaded, and the one error this script should explain rather than
     // retry past.
     if (res.status === 503 || /routing_failed/.test(detail)) {
+      // Distinguish the TWO routing refusals; they ask for different things.
+      // "No installed model can drive agent work" / MODEL_TOO_LARGE is about
+      // agent mode. The generic one is about having no offline model at all.
+      if (!ALLOW_PERSONA && /agent work|MODEL_TOO_LARGE/i.test(detail)) {
+        throw new Error(
+          `${LOCAL_BASE} refused AGENT mode for "${model}": ${detail}\n` +
+          `[spike] Agent mode is the only mode in which X-Your-Own-AI-Memory: off is\n` +
+          `[spike] honoured — persona mode ALWAYS injects the author's memories\n` +
+          `[spike] (docs.yourownai.net/external-apps/connect). This script reads drafts\n` +
+          `[spike] that may never be published, so it will NOT silently fall back.\n` +
+          `[spike] Install an agentic model that fits (Qwen 3.6, GLM, Nemotron 3.5, a\n` +
+          `[spike] small coder), or re-run with YOAI_ALLOW_PERSONA=1 to accept memory\n` +
+          `[spike] injection deliberately.`,
+        );
+      }
       throw new Error(
         `${LOCAL_BASE} could not route to "${model}": ${detail}\n` +
         `[spike] This is the endpoint working, not failing. Each call is routed by the\n` +
