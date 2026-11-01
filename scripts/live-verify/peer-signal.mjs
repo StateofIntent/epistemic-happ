@@ -38,6 +38,52 @@
 //     `Saturated` may not be. The sender is host-verified; the assertion is
 //     not, and section 3 checks only the former.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing, and what it
+// confirms is a FIX that another harness paid for.
+//
+//   CH (2026-11-01): `send_peer_signal` writes one CapGrant entry per call on
+//   the SENDER's chain, while `open_signal_channel` goes on declaring
+//   `entries_written_per_signal: 0`.
+//   Result: 2 RED, 19 green, exit 1 — and the split is the whole point:
+//
+//     FAIL: the SENDER's chain did not grow across 5 signals (15 -> 20)
+//     FAIL: so the declaration entries_written_per_signal: 0 matches the measurement
+//     PASS: and declares zero entries per signal
+//     PASS: the RECEIVER's chain did not grow either (6 -> 6)
+//
+//   THE DECLARATION CHECK STAYED GREEN, which is exactly why the pair exists.
+//   `entries_written_per_signal: 0` is the implementation's account of itself
+//   and it went on being green while the chain grew by one per signal. Read
+//   alone it would have certified a build that writes on every message. The
+//   measurement is what caught it, and the PAIR is what makes the
+//   disagreement visible.
+//
+//   SO THIS IS `metabolism`'s BM REPRODUCED ON PURPOSE. BM found the same
+//   drift — a tick writing while `start_metabolism` still returned
+//   `writes_to_the_dht: false` — and the declaration-versus-measurement shape
+//   in this file was built BECAUSE of it, as the header says. CH is therefore
+//   not a new discovery: it is the evidence that the inherited fix works
+//   here, which is the same service `secretion`'s CA and CB performed for its
+//   own C6/C7 fixture. A pattern learned on one harness and applied to
+//   another is a claim until somebody re-runs the injection on the second one.
+//
+//   WHAT COULD NOT BE PROBED, and it is a limit rather than an omission.
+//   SECTION 1's CONTROL IS NOT INJECTABLE FROM INSIDE THIS CODEBASE. Its
+//   sensitivity rests on the HOST refusing `recv_remote_signal` without an
+//   unrestricted CapGrant, and nothing in this repository can withdraw that
+//   refusal. The only route would be to create the grant at install time, and
+//   this coordinator has no `init`, so adding one would be invention rather
+//   than injection. §1 is therefore UNPROVEN here rather than proven — the
+//   header is right that everything else depends on it, and that dependence
+//   is currently carried by the HDK's behaviour and not by anything this
+//   directory has watched fail.
+//
+//   RUN COST: ~6 min, longer than a sandbox harness because of the quiet
+//   window. `network.sh` (nodeA/B/C), coordinator rebuild, repack, clean
+//   restart. DNA hash UNCHANGED — coordinator-side — so the CH bundle was
+//   identified by hash instead: `a14f49013951e558` at 1,760,471 bytes.
+// ---------------------------------------------------------------------------
 // RUN IT ON A CLEAN DHT, and section 1 is the reason rather than tidiness:
 //
 //   scripts/network.sh clean && scripts/network.sh start
