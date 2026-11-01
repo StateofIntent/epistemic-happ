@@ -487,8 +487,20 @@ async function main() {
     // empty and the person retyped. A flake-dependent test would prove the
     // same thing only on the runs where it broke.
     log('\n=== 9. WHAT WAS TYPED SURVIVES A RE-RENDER (the user-facing half) ===');
-    await page.locator('[data-testid="foresight-commit-toggle"]').first().click();
-    await sleep(1500);
+    // REACHED THROUGH A CLAIM, NOT THROUGH THE TOGGLE, and the first version of
+    // this section got that wrong. "Choose a different question" exists only on
+    // the PREFILLED path — `main.ts` builds it inside `if (foresightPrefill)` —
+    // so opening a blank form with the toggle and then looking for that control
+    // finds nothing. The else branch below caught it on the first CI run
+    // instead of letting the section pass vacuously, which is the whole reason
+    // that branch asserts instead of logging.
+    await page.locator('nav.tab-bar button', { hasText: 'Browse' }).first().click();
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN);
+    await page.getByRole('button', { name: /load claims/i }).first().click();
+    await page.waitForSelector('[data-testid="predict-about-claim"]', { timeout: 20000 });
+    await page.locator('[data-testid="predict-about-claim"]').first().click();
+    await page.waitForSelector('[data-testid="foresight-form"]', { timeout: 10000 });
+    await sleep(3000);
     const KEEP_P = 'Typed, then interrupted by a background read.';
     const KEEP_S = 'salt-survives-render-9c4f';
     await page.locator('[data-testid="foresight-prediction-input"]').fill(KEEP_P);
