@@ -29,6 +29,57 @@
 // its author doing anything to surface it. That read is the difference between
 // this primitive and the one §9 refused.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing.
+//
+//   CG (2026-11-01): the late-reveal refusal deleted from
+//   `validate_revelation` in the INTEGRITY zome — the `action.timestamp() >
+//   reveal_deadline` arm removed, so a reveal after the deadline validates.
+//   This is README §9's laundering machine built on purpose: the author sees
+//   the outcome first and then decides whether the commitment counts.
+//   Result: 2 RED, both in §6, from one cause. 27 still green. Exit 1.
+//
+//     FAIL: revealing after the deadline has passed — REFUSED
+//           it was accepted, which is the defect this probe exists for
+//     FAIL: so it stays in EXPIRED after the attempt
+//
+//   THE SECOND RED IS THE ONE THAT MATTERS, and it is why §6 reads the record
+//   again after the refusal rather than stopping at the throw. The accepted
+//   late reveal MOVED THE COMMITMENT OUT OF `expired`, which is the
+//   denominator being edited after the outcome is known. A harness that only
+//   asserted "the call was refused" would have caught this too, but it would
+//   not have shown what the acceptance COSTS — and the cost is the whole
+//   subject of this file.
+//
+//   THIS IS THE FIRST INTEGRITY-ZOME INJECTION IN THIS DIRECTORY'S RECORDS,
+//   and it settles a correction from the same day in the other direction.
+//   `scale-dht`'s BX originally claimed its injection changed the DNA hash;
+//   it did not, because the hash covers the INTEGRITY zome and the modifiers
+//   and BX was coordinator-side. Measured here:
+//
+//     clean           uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh
+//     CG (integrity)  uhC0kLPLBQTFTF8M2WMYOmE_SOqLqcAarExgA6fTZvIFYSN383Lk9
+//
+//   So an integrity injection FORKS THE NETWORK and the `clean` is genuinely
+//   required, where for a coordinator injection it was waste. The differing
+//   hash is also the only self-evidencing proof of loading any of tonight's
+//   injections had: a coordinator change needs a bundle-mtime comparison
+//   because nothing observable differs, while this one cannot be mistaken for
+//   stale. Rebuild BOTH zomes for an integrity injection — the coordinator
+//   links against the integrity crate.
+//
+//   WHAT WAS NOT PROBED, because §4 already records why: the
+//   question-predates-commitment check in `validate_pre_registration` is
+//   UNREACHABLE, found by an earlier version of this harness that committed
+//   against a later-created question and saw it correctly accepted. It is
+//   kept as documentation of an intended rule rather than an enforced one, so
+//   an injection there would red nothing and prove nothing — the same
+//   fixture-cannot-discriminate shape as `standing`'s CE, written down here
+//   before anybody went looking for it.
+//
+//   RUN COST: ~5 min. One `sandbox.sh` conductor, both zomes rebuilt,
+//   `hc dna pack` + `hc app pack`, clean restart.
+// ---------------------------------------------------------------------------
 // Prereqs: a CLEAN sandbox (scripts/sandbox.sh clean && start).
 // ============================================================================
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
