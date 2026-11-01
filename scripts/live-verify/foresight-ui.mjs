@@ -368,8 +368,43 @@ async function main() {
 
     const UI_TEXT = 'Committed through the claim, with no hash typed anywhere.';
     const UI_SALT = 'salt-from-the-ui-7a2c';
+    // THE SETTLE, AND WHY IT IS HERE RATHER THAN TRUSTED TO waitForSelector.
+    // `main.ts`'s `render()` is `app.innerHTML = ''` followed by a full
+    // rebuild, and the submit handler reads `.value` off the input elements
+    // its own closure captured. So a render landing between the fill and the
+    // click replaces both: the click hits a NEW button whose closure reads
+    // NEW EMPTY inputs, validation refuses with "A question, a prediction and
+    // a salt are all required", and nothing is committed — no pending row and
+    // nothing on the chain, which is precisely the pair of reds this section
+    // has produced on four-plus CI runs.
+    //
+    // The renders are not hypothetical and not this harness's doing: there are
+    // twenty-one fire-and-forget `void load*()` calls in `main.ts` and twelve
+    // of the fourteen loaders end in `render()`. This section arrives at the
+    // form from a CLAIM CARD, which fires `loadResonance`,
+    // `loadGroundingChain`, `loadClaimEpistemicState` and
+    // `loadFrictionStatus` — any of which can resolve mid-fill. A loaded
+    // runner loses that race more often, which is the whole shape of the
+    // intermittency.
+    //
+    // This is `taxonomy-ui` §5's defect, which row 1.3 describes in exactly
+    // these terms: a re-render wiped the form and validation refused an empty
+    // name. The settle is the same remedy.
+    await sleep(3000);
     await page.locator('[data-testid="foresight-prediction-input"]').fill(UI_TEXT);
     await page.locator('[data-testid="foresight-salt-input"]').fill(UI_SALT);
+    // READ BACK BEFORE SUBMITTING, so a wiped form is reported as a wiped
+    // form instead of as a commit that never happened. Without this the two
+    // are indistinguishable from the outside, which is why four observations
+    // produced no diagnosis.
+    const stuckP = await page.locator('[data-testid="foresight-prediction-input"]').inputValue();
+    const stuckS = await page.locator('[data-testid="foresight-salt-input"]').inputValue();
+    check('the filled values survived to the moment of submit — no re-render wiped them',
+      stuckP === UI_TEXT && stuckS === UI_SALT);
+    if (stuckP !== UI_TEXT || stuckS !== UI_SALT) {
+      log(`    prediction=${JSON.stringify(stuckP)} salt=${JSON.stringify(stuckS)}`);
+      log('    A render rebuilt the form between fill and submit. See the note above.');
+    }
     await page.locator('[data-testid="foresight-commit-submit"]').click();
     // GUARDED, AND THE GUARD WAS ADDED BECAUSE CI NEEDED IT. This wait was a
     // bare `await`, and when it timed out in CI on 2026-10-28 it threw and
@@ -390,6 +425,17 @@ async function main() {
     } catch {
       pendingRendered = false;
       log('  (the pending list did not render within 20s — the chain read below says whether anything was written)');
+      // AND WHAT THE SCREEN SAYS, because the UI names its own refusal. If the
+      // form was rebuilt mid-fill the submit handler fails its own validation
+      // and writes the reason into the error box; printing it turns this
+      // failure from a mystery into a diagnosis.
+      for (const sel of ['foresight-commit-error', 'foresight-form-warning']) {
+        const box = page.locator(`[data-testid="${sel}"]`);
+        if (await box.count()) {
+          const t = (await box.first().innerText().catch(() => '')).trim();
+          if (t) log(`  (${sel}: ${t.slice(0, 160)})`);
+        }
+      }
     }
     const uiTruth = await node.call('get_foresight_record', node.me);
     check('the commitment appears in the pending list on screen', pendingRendered);
