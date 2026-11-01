@@ -37,6 +37,67 @@
 // different refusal and is checked for separately below so it cannot be
 // mistaken for the deadline holding.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — PHASE B, which is the control the whole result rests on.
+//
+// READINESS item 13 closed on 2026-10-18 with §5.22 CONFIRMED, reproduced
+// twice. Its own note says why that is trustworthy: *"Phase B is the control
+// and is what makes it trustworthy — it reproduces pre-registration.mjs §6 in
+// the same process against the same commitment, so the rule fires and the
+// harness works, and phase C differs by exactly one variable."* That control
+// had never been probed. If it could not fail, the confirmation would rest on
+// a check that was green by construction.
+//
+//   CI (2026-11-01): the late-reveal refusal deleted from
+//   `validate_revelation` — the same code change as `pre-registration`'s CG,
+//   applied here for a different question: not *is the rule enforced* but
+//   *can this harness's control detect its absence*.
+//   Result: 3 RED, ALL IN PHASE B, with phase C untouched and green. Exit 1.
+//
+//     FAIL: an HONEST late reveal is refused (reproduces pre-registration.mjs §6)
+//     FAIL: it is still EXPIRED after the refused attempt
+//     FAIL: and still NOT revealed
+//
+//   So the control is sensitive, and the §5.22 confirmation is not resting on
+//   a green-by-construction check. Phase C staying accepted is correct rather
+//   than suspicious: C was already accepted at baseline, so removing the rule
+//   cannot change it — which is itself the reason B and not C is the thing
+//   worth probing.
+//
+//   A FOURTH CHECK WAS PREDICTED AND DID NOT FIRE, recorded because the
+//   count is otherwise confusing. *and refused for the deadline, naming the
+//   rule* sits inside `if (bMsg)`, so it is only reached when there IS a
+//   refusal message. With the rule gone there is no refusal and no message,
+//   so the check does not run at all rather than failing. 3 reds, not 4.
+//
+//   WHAT THIS HARNESS STILL CANNOT PROBE, and it is structural. PHASE C's
+//   central question has BOTH BRANCHES HAND-WRITTEN — a literal true on the
+//   accepted path and a literal true on the refused path — because the file
+//   exists to record which way the protocol behaves, not to gate it. Either
+//   outcome is a finding. The only red available there is *phase C was a
+//   clean test of the deadline rule*, which fires when a `PrevActionError`
+//   means the run tested nothing. So C is a MEASUREMENT and B is an
+//   ASSERTION, and only assertions can carry negative evidence. Same shape as
+//   `cross-internet`, which was retired for it (see `injection-coverage.mjs`
+//   section 1b) — but this file is NOT retired, because phase B is a real
+//   assertion and is now probed.
+//
+//   THE BASELINE RUN WAS A THIRD REPRODUCTION, NOT A NEW RESULT. §5.22 was
+//   confirmed on 2026-10-18 and this run agrees: commit at +0, expired and
+//   refused at +3600, the identical call accepted at +60, and still reading as
+//   revealed once the clock is restored. Worth having — a fresh libfaketime
+//   build on a later date still reproduces it — but it is not news, and
+//   READINESS item 13 is where the result lives.
+//
+//   RUN COST: ~3 min per run, plus a one-off libfaketime build. It is built
+//   OUTSIDE the repository on purpose and nothing here depends on it:
+//     git clone --depth 1 https://github.com/wolfcw/libfaketime
+//     make -C libfaketime/src
+//     FAKETIME_LIB=.../libfaketime-time64.so.1 scripts/run-clock-skew-probe.sh
+//   CI is an INTEGRITY-zome change, so the DNA hash forks (see
+//   `pre-registration`'s CG for the measurement) and both zomes need
+//   rebuilding; the probe's own `sandbox.sh clean` handles the reinstall.
+// ---------------------------------------------------------------------------
 // Run: scripts/run-clock-skew-probe.sh  (it builds nothing; see that file)
 // ============================================================================
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
