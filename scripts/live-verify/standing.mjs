@@ -36,6 +36,61 @@
 // must hold regardless: BURIED strictly deeper than FRESH, a threshold that
 // separates them, and no atrophy at all when the caller promises nothing.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing, and the second
+// injection is the one worth reading.
+//
+//   CD (2026-11-01): `has_standing`'s `None => true` becomes `None => false`,
+//   so a caller who promised no threshold gets atrophy anyway.
+//   Result: EXACTLY 1 RED, *with no policy supplied, NOTHING atrophies — a
+//   real neutral position*, 33 still passing. Exit 1. The narrowest possible
+//   result, and it matters because that neutral position IS the resolution of
+//   Invariant 9 against Invariant 6: atrophy drives something only when a
+//   reader has promised a threshold, and a read layer that atrophies by
+//   default would be deciding what nobody asked it to decide.
+//
+//   CE (2026-11-01): `engagement_distance`'s `.min()` becomes `.max()`, so
+//   the measure takes the DEEPEST engagement rather than the claim's most
+//   recent one.
+//   Result: IT PASSED. 34 of 34, exit 0, and the reported distances are
+//   IDENTICAL to the clean run — `buried 3, fresh 0, lonely 3`.
+//
+//   WHY CE PASSED, AND IT IS NOT A WEAK ASSERTION ANYWHERE. This fixture
+//   gives every claim 0 or 1 engagements: BURIED is critiqued once (by c1,
+//   which is then critiqued in a chain), FRESH is critiqued once, LONELY not
+//   at all. `.min()` over a one-element iterator is `.max()` over a
+//   one-element iterator, so the two are the SAME FUNCTION on every input this
+//   fixture produces. No check is at fault; there is no observation to make.
+//
+//   SO THE SHALLOWEST-ENGAGEMENT RULE IS UNOBSERVABLE HERE, and it is the rule
+//   the measure is built on — the comment above it calls it "the claim's most
+//   recent engagement, in causal terms". A claim with two engagements at
+//   different depths would be reported as atrophied or standing depending on
+//   which one is chosen, and nothing in this file would notice the choice
+//   changing. On a harness whose header quotes item 2.3 — *a standing rule
+//   that cannot go red is this repository's recurring failure* — this is that
+//   failure one level up, in the fixture rather than the rule.
+//
+//   THE FIXTURE FIX THIS ASKS FOR, stated so the next run can check it rather
+//   than argue it: a fourth claim critiqued TWICE, once on the frontier and
+//   once from deep in a chain, so shallowest-versus-deepest is a question with
+//   two different answers. Then CE must red. Until that exists, CE is recorded
+//   as PASSED and `injection-coverage.mjs` counts it in its passing-injection
+//   section — which is exactly how `secretion`'s C6 and C7 came to be written,
+//   and that is the second time in one night this shape has surfaced.
+//
+//   HOW IT WAS CONFIRMED THAT CE WAS ACTUALLY LOADED, because a passing
+//   injection is indistinguishable from an unloaded one: the CE bundle hashes
+//   `8c579818c9ee…` at 1,760,512 bytes against the clean `f03f5cde8260…` at
+//   1,760,149, the conductor started after that repack, and all 34 checks ran.
+//   This is not paranoia — the first CD attempt exited 1 with zero passes and
+//   LOOKED like a successful injection, when in fact a `cd` had left the shell
+//   in `dna/`, the `.happ` was never repacked, and the harness never started.
+//   An exit code that agrees with the prediction is the most dangerous kind.
+//
+//   RUN COST: ~4 min per injection. One `sandbox.sh` conductor, two agents,
+//   coordinator rebuild, repack, restart. DNA hash unchanged — coordinator-side.
+// ---------------------------------------------------------------------------
 // Prereqs: a sandbox conductor (scripts/sandbox.sh clean && start), built .happ.
 // ============================================================================
 
