@@ -64,6 +64,55 @@
 // 11 wanted a measurement that made running them SAFE; this makes them
 // OBSERVABLE, and those are different promises.
 //
+// ---------------------------------------------------------------------------
+// NEGATIVE EVIDENCE — this harness has been watched failing, and the point of
+// these two runs was to test the FIXTURE rather than the code.
+//
+// The paragraph above says C6 and C7 exist because two injections passed
+// without them. That was an argument, not a measurement: nobody had re-run the
+// two against the extended fixture to confirm they now go red. Both were
+// re-run on 2026-11-01 and both now fail, so the claim C6 and C7 were added on
+// is now observed.
+//
+//   CA (2026-11-01): the proposer no longer short-circuits classification —
+//   `if by_proposer { .. }` followed by an unconditional `if
+//   prior_citations_seen > 0`, so its own citations count as adoption.
+//   PREVIOUSLY PASSED, 0 red, against the fixture that stopped at C4.
+//   Result: 3 RED. *the PROPOSER is not listed as an adopter of its own
+//   species, even citing at depth 1*; *so exactly one downstream adopter*;
+//   and *a cone-silent citation appears in NEITHER adopter list* — the third
+//   is the same cause reaching a different assertion, since that check tests
+//   agent 1's membership and CA puts the proposer into `downstream_adopters`
+//   via C6. Exit 1.
+//
+//   CB (2026-11-01): `parallel_adopters.retain(|a|
+//   !downstream_adopters.contains(a))` deleted, so an agent downstream on one
+//   target and parallel on another reads as two kinds of evidence.
+//   PREVIOUSLY PASSED, 0 red, against the fixture that stopped at C4.
+//   Result: EXACTLY 1 RED, *agent 2 is NOT also listed as parallel, though C7
+//   qualifies it*. Exit 1. The narrowest possible result: one injection, one
+//   check, no cascade.
+//
+//   WHAT THIS ESTABLISHES THAT A NORMAL INJECTION DOES NOT. An injection
+//   usually asks whether the CODE can be caught. These two asked whether the
+//   FIXTURE can catch, and the honest version of that question needs the
+//   before-and-after: 0 red then, 3 and 1 red now, same injections, same
+//   assertions, only C6 and C7 added. Had either still passed, the fix would
+//   have been prose about a fixture that did not work — which is the failure
+//   mode this file was built to resist, one level up from the subject.
+//
+//   AND IT IS WHY A PASSING INJECTION IS WORTH RECORDING AT ALL. These two
+//   would have been invisible if the first attempt had gone unlogged: nothing
+//   in a green run says which of its checks could never have been otherwise.
+//   `injection-coverage.mjs` counts passing injections separately for this
+//   reason, and this is the case that justifies the section.
+//
+//   RUN COST: ~5 min per injection. One `sandbox.sh` conductor with three
+//   agents, a coordinator rebuild, `hc dna pack` + `hc app pack`, restart.
+//   DNA hash unchanged both times — coordinator-side
+//   (`uhC0kb-i4w7LvWd-pzqG3Wmm76P0U4pFZ3yGXhWzp-aRCpinsVDdh`). Each restart
+//   verified by bundle mtime against conductor start.
+// ---------------------------------------------------------------------------
 // Prereqs: a sandbox conductor (scripts/sandbox.sh clean && start) and a built
 // .happ. Three agents.
 // ============================================================================
