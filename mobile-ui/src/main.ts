@@ -11,7 +11,7 @@ import {
   type Evidence,
   ANTIBODY_PATTERN_KINDS, type CritiqueSpecies, type AttestationPolicy,
   type CritiqueMode, type WorldlineTrace, type PeriodResonance,
-  NeighborRecall, type Assessment,
+  NeighborRecall, type Assessment, type UnseenReport,
 } from './types';
 import {
   layoutTree, countNodes, maxDepth, flattenPreOrder, NODE_RADIUS,
@@ -84,6 +84,21 @@ const conductanceByCritique = new Map<string, number>();
  * used to throw it away after scoring. Reinforcing needs exactly that
  * hash, so it is kept rather than resolved a second time. */
 const linkHashByCritique = new Map<string, Uint8Array>();
+
+/** critique actionHash (b64) -> its `critiques_unseen_by` report.
+ *
+ * READ FROM THE QUERY, NOT FROM THE ENTRY, and that is the difference
+ * between this and `renderConeState`. The entry carries what its author
+ * recorded; only the read carries the DENOMINATOR — how many sibling
+ * critiques this conductor knows of — and a cone count with no
+ * denominator is the half-statement open-work 6.1 was left holding. */
+const unseenByCritique = new Map<string, UnseenReport>();
+/** critique actionHash (b64) -> whether its unseen SET is expanded.
+ *
+ * The count line is always drawn; the identities sit behind this. Both
+ * cone states get the same disclosure with the same affordance, so
+ * neither is typographically privileged — see renderUnseenState. */
+const unseenOpen = new Set<string>();
 
 // --- Critique structure (spatial view) --------------------------------
 // A Critique is itself a valid critique target, so disagreement here is
@@ -1971,6 +1986,171 @@ function renderConeState(
   return line;
 }
 
+/** The DENOMINATOR for one critique's cone, and the set it leaves out.
+ *
+ * THIS IS THE SECOND HALF OF open-work 6.1, AND THE FIRST HALF IS WHAT
+ * MAKES IT SAFE TO DRAW. `renderConeState` already settles the rule
+ * that carried this row for weeks: an absent cone says the author
+ * RECORDED NOTHING, never that they saw nothing, and both states are
+ * drawn at the same typographic weight. What was still unsurfaced is
+ * `critiques_unseen_by` itself — the query that knows how many sibling
+ * critiques exist and which of them the cone omits. Without it the
+ * screen showed a numerator with the denominator hidden.
+ *
+ * WHY THE QUERY WAS HELD BACK AT ALL, because it is the thing to not
+ * undo: a list captioned "objections this author did not see", placed
+ * under an objection, reads as an accusation. And it would be a FALSE
+ * one in the common case — `past_cone` is `#[serde(default)]`, so for
+ * every critique written by a client that does not send the field the
+ * "unseen" list is simply every sibling, and rendering it as a gap
+ * manufactures a finding out of a missing feature.
+ *
+ * SO THE SET IS OFFERED IN ONE BRANCH AND REFUSED IN THE OTHER, and
+ * that asymmetry is the honest one rather than a lapse from the
+ * equal-weight rule. The equal-weight rule governs the STATE: both
+ * branches state themselves, in a line of the same class and the same
+ * weight, and neither is left bare. The SET is a different object. When
+ * a cone was recorded, the omitted siblings are a real and checkable
+ * gap in a statement its author chose to make, so they can be listed.
+ * When no cone was recorded there is no statement to have a gap in —
+ * the "set" is every objection already rendered above it — so this
+ * says why there is nothing to show instead of offering a disclosure
+ * that would list the author's neighbours under an accusing caption.
+ *
+ * THE COORDINATOR'S OWN `note` IS RENDERED, NOT PARAPHRASED. The
+ * division of labour is deliberate: this client states the FIGURES,
+ * which it can check, and the protocol states WHAT THEY SUPPORT, which
+ * is a judgement SPEC §9 writes down and a client should not drift
+ * from. A paraphrase here would be a second place for that wording to
+ * rot, and open-work 1.20 is this repository's record of what happens
+ * to duplicated prose claims.
+ *
+ * EVERY FIGURE CARRIES "this reader", because `total_known` is one
+ * observer's count over its own arc at read time. "Recorded seeing 1 of
+ * 2" stated flatly is a claim about the world; another peer may know of
+ * forty. */
+function renderUnseenState(
+  critique: DecodedRecord<Critique>,
+  siblings: DecodedRecord<Critique>[],
+): HTMLElement | null {
+  const key = b64(critique.actionHash);
+  const report = unseenByCritique.get(key);
+  // Nothing is drawn until the read returns. An interim "unknown" line
+  // would be a third state for a two-state distinction, and the cone
+  // line above has already said which state this critique is in.
+  if (!report) return null;
+
+  const box = document.createElement('div');
+  box.className = 'unseen-state';
+  box.dataset.testid = 'unseen-state';
+
+  const figures = document.createElement('p');
+  // SAME CLASS AS THE CONE LINE in both branches — `hint cone-state` is
+  // what carries 6.1's equal-weight rule, and a different class here
+  // for the recorded case would re-introduce the emphasis the wording
+  // was careful to avoid.
+  figures.className = 'hint cone-state';
+  figures.dataset.testid = 'unseen-figures';
+  const others = report.total_known;
+  const plural = others === 1 ? '' : 's';
+  if (!report.cone_recorded) {
+    figures.dataset.state = 'not-recorded';
+    figures.textContent =
+      `This reader knows of ${others} other objection${plural} to this claim. `
+      + 'Which of them this author had seen is not recorded either way, so '
+      + 'there is no gap here to show — the list would simply be all of them.';
+  } else if (report.unseen.length === 0) {
+    figures.dataset.state = 'recorded-complete';
+    figures.textContent =
+      `Recorded having seen every one of the ${others} other objection${plural} `
+      + 'this reader knows of. Another reader may know of more.';
+  } else {
+    figures.dataset.state = 'recorded-partial';
+    figures.textContent =
+      `Recorded having seen ${report.seen_count} of the ${others} other `
+      + `objection${plural} this reader knows of.`;
+  }
+  box.appendChild(figures);
+
+  // THE PROTOCOL'S SENTENCE, VERBATIM. It is the thing that says what
+  // the figures do and do not support, and it differs per branch
+  // because the coordinator computes it per branch.
+  const note = document.createElement('p');
+  note.className = 'hint';
+  note.dataset.testid = 'unseen-note';
+  note.textContent = report.note;
+  box.appendChild(note);
+
+  // THE SET, in the one branch where it is a statement about something
+  // its author said rather than about a field they never filled.
+  if (report.cone_recorded && report.unseen.length > 0) {
+    const byHash = new Map(siblings.map((c) => [b64(c.actionHash), c]));
+    const open = unseenOpen.has(key);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'link-button';
+    toggle.dataset.testid = 'unseen-toggle';
+    toggle.textContent = open
+      ? 'Hide the ones not recorded as seen'
+      : `Show the ${report.unseen.length} not recorded as seen`;
+    toggle.onclick = () => {
+      if (open) unseenOpen.delete(key); else unseenOpen.add(key);
+      render();
+    };
+    box.appendChild(toggle);
+
+    if (open) {
+      // THE CAPTION DENIES THE INFERENCE BEFORE THE LIST MAKES IT.
+      // Read in the other order — list first, caveat after — a reader
+      // has already drawn the conclusion by the time the denial
+      // arrives, which is the whole failure mode this row names.
+      const caption = document.createElement('p');
+      caption.className = 'hint';
+      caption.dataset.testid = 'unseen-caption';
+      caption.textContent =
+        'Absent from what this author recorded having seen. That may mean '
+        + 'these had not arrived yet, or had not been read — it does NOT mean '
+        + 'the author knew of them and ignored them, and nothing in the '
+        + 'protocol can tell the difference.';
+      box.appendChild(caption);
+
+      const list = document.createElement('ul');
+      list.className = 'unseen-list';
+      list.dataset.testid = 'unseen-list';
+      for (const hash of report.unseen) {
+        const item = document.createElement('li');
+        item.dataset.testid = 'unseen-item';
+        const sibling = byHash.get(b64(hash));
+        if (sibling) {
+          // Named by its MODE and its own words, because a reader can
+          // check those against the objection itself further up the
+          // panel. A bare hash would make the figure unauditable.
+          const mode = document.createElement('span');
+          mode.className = 'critique-mode';
+          mode.textContent = sibling.entry.critique_mode;
+          item.appendChild(mode);
+          const text = document.createElement('span');
+          text.textContent = ` ${sibling.entry.content}`;
+          item.appendChild(text);
+        } else {
+          // THE READ CAN SEE MORE THAN THE PANEL DID. Both go to the
+          // network, at different instants, so a sibling can be in the
+          // report and not in the list the panel was built from. Saying
+          // so is better than dropping the row and leaving the stated
+          // count larger than the rendered one.
+          item.dataset.testid = 'unseen-item-unresolved';
+          item.textContent =
+            'One this reader can count but could not fetch for this panel.';
+        }
+        list.appendChild(item);
+      }
+      box.appendChild(list);
+    }
+  }
+
+  return box;
+}
+
 /** The attributed positions filed on one claim.
  *
  * READ-ONLY, AND THAT IS NOT AN OVERSIGHT. `publish_assessment` has
@@ -2207,6 +2387,11 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       // the weaker claim by implication, so every row says which it is.
       const cone = renderConeState(critique.entry.past_cone, anyConeRecorded);
       if (cone) item.appendChild(cone);
+      // AND THE DENOMINATOR, from the query rather than the entry. The
+      // cone line above says what was recorded; this says what it was
+      // recorded OUT OF, which the entry cannot know.
+      const unseen = renderUnseenState(critique, list);
+      if (unseen) item.appendChild(unseen);
       panel.appendChild(item);
     }
   }
@@ -2376,6 +2561,11 @@ async function loadClaims(domain: string, fromTheBox = false) {
   expandedClaims.clear();
   antibodiesByClaim.clear();
   retractionsByClaim.clear();
+  // The reports are keyed by critique, but `total_known` is a count of
+  // what the conductor could see AT READ TIME — so a report held across
+  // a domain change would state a denominator for a different moment.
+  unseenByCritique.clear();
+  unseenOpen.clear();
   render();
   // Epistemic state is fetched after the claims are already on screen,
   // so a slow or failing read degrades the badges rather than the list.
@@ -2572,6 +2762,7 @@ async function loadCritiques(claim: DecodedRecord<Claim>) {
   render();
   void loadConductances(claim, decoded);
   void loadAssessments(claim);
+  void loadUnseen(decoded);
 }
 
 /** The assessments filed against one claim.
@@ -2621,6 +2812,46 @@ async function loadConductances(claim: DecodedRecord<Claim>, critiques: DecodedR
     } catch {
       // Same degradation rule as above: a critique with no conductance
       // reading renders without one rather than not rendering.
+    }
+  }));
+  render();
+}
+
+/** `critiques_unseen_by` for each critique on an expanded claim — the
+ * DETECTION half of the past cone, and open-work 6.1's remaining work.
+ *
+ * WHY THIS IS A SEPARATE READ FROM THE CONE ALREADY ON SCREEN, which
+ * is the thing 6.1 was actually still holding. `renderConeState` draws
+ * what the ENTRY carries: how many critiques this author recorded
+ * having seen. That number alone is a fraction with its denominator
+ * hidden — "recorded having seen 1" says nothing until a reader knows
+ * whether there was one other objection or forty. Only the query knows
+ * that, because the denominator is a count of what THIS conductor can
+ * resolve over the network right now, which no entry can carry.
+ *
+ * ONE CALL PER CRITIQUE, and only for a claim the user has expanded,
+ * so the fan-out is bounded by what is on screen — the same rule
+ * loadConductances follows for the same reason.
+ *
+ * FAILS SOFT, PER CRITIQUE. A conductor whose installed DNA predates
+ * the query refuses it, and the critique panel is the primary view: a
+ * critique with no report renders with its cone line and no figures,
+ * which is what this screen looked like before today. Degrading to
+ * silence is safe here in a way it would not be for the cone state
+ * itself — a missing report omits a denominator, while a missing cone
+ * line would leave an absence unmarked and let silence read as
+ * ignorance. */
+async function loadUnseen(critiques: DecodedRecord<Critique>[]) {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(critiques.map(async (critique) => {
+    try {
+      const report = await conn.callZome<UnseenReport>(
+        'critiques_unseen_by', critique.actionHash);
+      unseenByCritique.set(b64(critique.actionHash), report);
+    } catch {
+      // See the note above: no report is a missing denominator, not a
+      // missing caveat, so the screen stays honest without it.
     }
   }));
   render();

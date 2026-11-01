@@ -120,6 +120,33 @@ const countChromiumImporters = () =>
 const countHdkExterns = () =>
   (read('dna/coordinator/src/lib.rs').match(/#\[hdk_extern/g) || []).length;
 
+// THIS ONE USED TO BE A HAND-WRITTEN PAIR OF NUMBERS IN THE TABLE BELOW, which
+// is the defect this whole file exists to find — stated inside the output that
+// names stated figures as the problem. It had gone stale by 23 and 36 within
+// two days of being written. Measured now, by the same expression open-work
+// 1.21 quotes, so the sentence cannot drift from the suite again.
+//
+// COUNTS CALL SITES, NOT EXECUTIONS, and says so where it prints: a check
+// inside a loop runs more often than it is written. The word is not spelled
+// out anywhere in prose in this repository for the reason 1.21 records — the
+// expression matches its own name wherever it appears, comments included.
+const countCheckSites = (dir) => {
+  const re = /\bcheck\(/g;
+  let n = 0;
+  const walk = (rel) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (e.name === 'node_modules') continue;
+        walk(`${rel}/${e.name}`);
+      } else if (e.name.endsWith('.mjs')) {
+        n += (read(`${rel}/${e.name}`).match(re) || []).length;
+      }
+    }
+  };
+  walk(dir);
+  return n;
+};
+
 const enumBody = (src, name) => {
   const m = src.match(new RegExp(`pub enum ${name}\\s*\\{([\\s\\S]*?)\\n\\}`));
   return m ? m[1] : '';
@@ -145,7 +172,7 @@ const ARTIFACTS = [
 const UNCOVERED_BY_DESIGN = [
   ['open-work rows',   'two defensible counters disagree (82 vs 83) because one row embeds a literal "|" inside a grep pattern; a counter that is ambiguous must not ship as truth'],
   ['validation rules', 'no mechanical enumeration exists — SPEC states them in prose, which is precisely 1.15 and needs its own parser'],
-  ['check() calls',    'already gated per harness by check-harness-counts.mjs; the SUITE total (1,353 in live-verify, 1,389 across scripts/) is stated in prose and is a real extension candidate'],
+  ['check() calls',    `already gated per harness by check-harness-counts.mjs; the SUITE total (${countCheckSites('scripts/live-verify')} call sites in live-verify, ${countCheckSites('scripts')} across scripts/ — MEASURED here, not stated, because this line itself had gone stale by 23 and 36) is given in prose and is a real extension candidate`],
   ['packages',         'gated by check-packages.mjs and published-packages'],
   ['time fields',      'gated by check-time-units.mjs — this is 1.17, and it is closed'],
 ];
