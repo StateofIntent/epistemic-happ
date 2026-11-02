@@ -22,6 +22,50 @@ third-party.
 
 ## 0. In flight right now
 
+**CHECKPOINT, 2026-11-03 — RESUME HERE. THE TWO CHECKPOINT BLOCKS BELOW THIS
+ONE ARE OLDER; where they disagree with this block, this block wins.** Nothing
+is half-written and nothing is blocked on the model. **Three things wait on the
+author alone:**
+
+- **PR #436** — *"The count says where it came from, and when it is only a
+  floor"* (row 1.24). Open, unmerged. `gh pr merge` takes the author's word
+  every time.
+- **PR #437** — *"Eric answered, and one of 6.10's load-bearing constraints has
+  an expiry date"*, now also carrying `f0d9c7b`, the MoE measurement. Open,
+  unmerged.
+- **#350 stays HELD — DO NOT MERGE.**
+- **Reply 5 to Eric Doriean is DRAFTED AND UNSENT** at
+  `docs/funding/eric-doriean-reply-5-DRAFT.md` (local-only, gitignored, and
+  verified so). **The model does not send it** — 7.7/7.8. Two live decisions
+  inside it: it names a defect in his catalog metadata (cut the Granite
+  paragraph if that should be raised privately or not at all), and it offers
+  two pieces of work — a live folder test and a 9k-depth sweep — which should
+  only stay in if the author wants them done.
+
+**THE RECOMMENDED FIRST MOVE NEXT SESSION, deliberately not started: the
+three-node `get_agent_activity` measurement** (`network.sh`'s three
+conductors). It tests the code *inside #436*, which ships
+`counted_from: "chain"` while this substrate returns `ChainStatus::Empty` — so
+**the field's main arm may be dead code about to be merged and published**,
+which is the exact shape of the three published-but-unenforced claims this list
+already carries. It was left unlaunched because the author's background jobs
+were killed mid-run, and that reads as *no long unattended runs*; ask first.
+
+**WHAT 2026-11-03 ADDED, all of it recorded in row 6.10.** Eric's *GPU + RAM*
+claim was measured on this 4 GB card through **his own shipped engine and
+headless matrix** at head of his `main` (`6935069`), deliberately his decision
+path rather than an approximation: **LFM2.5-8B-A1B passes every agent gate
+here** (`--n-cpu-moe 18` of 24, 123 prompt / 39.9 gen tok/s, 2.05 GB on the
+card, against an `AGENT_MIN_TPS` of 8.0), so **the refuse-rather-than-leak
+scripts now have a local path that answers**; **Granite 4.0 Tiny cannot, for a
+reason that is not the hardware** (`agent_caps` 5 against a `>= 6` filter, no
+runtime promotion path), so it must never be reported as a 4 GB option. **The
+one trap worth carrying: a headless `leg_fit_truth` prints the PLAIN DENSE
+grade, not `assess()`'s** — its `claimed RED, actually RAN` is an artifact, and
+reporting it as the app's verdict would have inverted the finding.
+
+---
+
 **CHECKPOINT, 2026-10-27 EVENING — THE RELEASE SHIPPED AND THE DOMAIN IS
 FOUNDED. EVERYTHING BELOW THIS BLOCK UNTIL THE NEXT `---` IS SUPERSEDED: it
 says the first action is a release, and that is done.** The one step of 7.4
