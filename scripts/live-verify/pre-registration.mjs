@@ -185,6 +185,49 @@ async function main() {
   check('and leaves PENDING', !has(rec.pending, pr));
   check('and the revealed prediction is the one committed to', find(rec.revealed, pr)?.revealed_prediction === prediction);
 
+  log('\n--- 1b. THE COUNT SAYS WHERE IT CAME FROM, AND WHEN IT IS A FLOOR ---');
+  // open-work 1.24. The denominator used to be a `get_links` over
+  // `AgentToPreRegistration` — written by this zome's `pre_register`, never
+  // required by `validate_pre_registration`, and skippable via
+  // `attempt_raw_pre_registration`. So a client could hold a sealed
+  // commitment that no reader's count included, in the one mechanism this
+  // protocol leads with.
+  //
+  // THE DECISION WAS TO COUNT FROM THE AUTHOR'S CHAIN, which cannot be
+  // skipped. WHAT THE MEASUREMENT SAID IS THAT THE CHAIN CANNOT BE READ HERE:
+  // `get_agent_activity` returns `ChainStatus::Empty` with no activity on
+  // this substrate, for the agent's OWN chain and for another agent's, at
+  // every delay tried. So these checks assert the HONEST DEGRADATION rather
+  // than the fix — which is the thing that actually shipped.
+  check('the record says which source produced it',
+    rec.counted_from === 'chain' || rec.counted_from === 'index');
+  check('and what the author\'s chain said',
+    typeof rec.chain_status === 'string' && rec.chain_status.length > 0);
+  log(`    counted_from=${rec.counted_from} chain_status=${rec.chain_status} unindexed=${rec.unindexed}`);
+  // THE LOAD-BEARING CHECK, AND IT IS ABOUT THE WORDS. When the count comes
+  // from the index it is a FLOOR, because nothing requires a commitment to be
+  // indexed — and a floor presented as a denominator is the whole defect.
+  // This asserts the note says so, in the branch that is actually taken.
+  if (rec.counted_from === 'index') {
+    check('an index-derived count is called a FLOOR, not a denominator',
+      /floor rather than a denominator/i.test(rec.note));
+    check('and says the author\'s chain could not be read',
+      /chain could not be read/i.test(rec.note));
+    check('CONTROL: and it does NOT claim the chain as its source',
+      rec.chain_status !== 'valid');
+  } else {
+    check('a chain-derived count says so, and names the chain status',
+      /own source chain/i.test(rec.note) && /Chain status:/.test(rec.note));
+    check('CONTROL: and reports how many commitments the index missed',
+      typeof rec.unindexed === 'number');
+  }
+  // A ZERO COUNT MUST NEVER BE SILENT. Whatever the source, the note exists —
+  // the first version of this read returned an empty chain as a count of
+  // zero, which is the silently-smaller denominator 1.24 is about,
+  // reintroduced inside the fix for it.
+  check('the count is never reported without a note saying what it rests on',
+    typeof rec.note === 'string' && rec.note.length > 40);
+
   log('\n--- 2. a reveal must be WHAT WAS COMMITTED TO ---');
   const pr2 = await node.call('pre_register', {
     question, prediction: 'One cause, in the gossip layer.', salt: 'salt-two-11bb', reveal_deadline: far,
@@ -290,8 +333,24 @@ async function main() {
 
   log('\n--- 7. the read returns no score, which is Invariant #1 ---');
   const keys = Object.keys(rec).sort();
-  check('ForesightRecord has exactly revealed/expired/pending', JSON.stringify(keys) === JSON.stringify(['expired', 'pending', 'revealed']));
+  // AN EXACT KEY SET, AND IT EARNED ITS KEEP. This check went red the moment
+  // open-work 1.24 added provenance fields — which is exactly what an exact
+  // set is for: a new field on this read is a decision, not a detail, because
+  // the thing being guarded is that no SCORE ever appears here. Updated
+  // deliberately rather than loosened to a subset match.
+  //
+  // The four additions are all about where the count came from and what it
+  // rests on; none of them is a figure about an agent.
+  check('ForesightRecord has exactly the three lists plus its provenance',
+    JSON.stringify(keys) === JSON.stringify(
+      ['chain_status', 'counted_from', 'expired', 'note', 'pending', 'revealed', 'unindexed']));
   check('and carries no ratio, score or ordering field', !('score' in rec) && !('ratio' in rec) && !('rank' in rec));
+  // `unindexed` IS A COUNT AND NOT A SCORE, and the difference is worth
+  // asserting rather than asserting the absence of a word. It counts
+  // COMMITMENTS THE INDEX MISSED — a property of the record's completeness,
+  // identical for every caller, about no agent's standing.
+  check('CONTROL: and the one number it does carry is about the INDEX, not the agent',
+    typeof rec.unindexed === 'number' && /index/i.test(rec.note));
 
   log('\n--- 8. THE AUTHOR CAN RECOVER THEIR OWN SEALED CONTENT ---');
   // WHY THIS SECTION EXISTS, and it is a repair rather than a new feature.
