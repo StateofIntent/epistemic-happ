@@ -58,12 +58,13 @@ on the code, read [README.md](README.md) §6 instead.
 > and `0.3.x` are three separate DHTs and only peers sharing a hash gossip at
 > all. **Auto-update will not move anyone across a minor** — electron-updater
 > only offers semver-compatible releases, so anyone already running `0.1.x` or
-> `0.2.x` must download `v0.3.1` by hand. They keep their old data directory;
+> `0.2.x` must download `v0.3.2` by hand. They keep their old data directory;
 > the versions install side by side.
 >
-> **A PATCH is the opposite case, and `v0.3.1` is the first one.** Within
+> **A PATCH is the opposite case, and `v0.3.1` was the first one.** Within
 > `0.3.x` the network, the seed and the data directory are identical, so
-> auto-update *does* offer `v0.3.1` to a `v0.3.0` install and the upgrade
+> auto-update *does* offer a newer patch to an older `0.3.x` install — it
+> offered `v0.3.1` to `v0.3.0`, and offers `v0.3.2` to both — and the upgrade
 > happens in place, keeping the conductor, the keystore and the agent key.
 > One thing it does not carry: the app installs the hApp only when the app id
 > is absent, so an upgraded install runs the new UI against the
@@ -96,6 +97,14 @@ on the code, read [README.md](README.md) §6 instead.
 > carried out. The prediction in the paragraph above is therefore no longer a
 > prediction. **Cutting a release is not finished until this file and
 > `docs/the-invitation.md` §1 name the new version.**
+>
+> **IT DID NOT HAPPEN A FOURTH TIME, ON 2026-11-02, AND THE REASON IS WORTH
+> MORE THAN THE STREAK.** `v0.3.2` was cut and both files were updated in the
+> same sitting — not because anybody remembered, but because the rule above
+> was read off this file as part of doing the release rather than recalled
+> afterwards. The three failures were all the same shape: the version was
+> bumped where the build reads it and nowhere a person reads it. **The fix
+> that worked was treating this paragraph as a step.**
 
 ## Running two installs side by side (for release step 3's "against that build")
 
