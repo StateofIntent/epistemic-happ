@@ -148,6 +148,49 @@
 //   why the ordinary publish beside it is what actually pins the unit.
 //
 //   Restored and re-run: 73 checks green (from 52), 21 tools (from 19).
+//
+//   SECTION 5bb (open-work 1.22) WAS INJECTED THREE TIMES on 2026-11-02.
+//
+//   Injection CQ — THE CENTRAL FAKE AT THIS BOUNDARY: the
+//   `cone_recorded` branch removed, so the hashes are always listed.
+//   Result: TWO red, and NOTHING ELSE MOVED. `recorded_anything` was
+//   still correctly false, both figures were still correct, the protocol
+//   note was still relayed, and the description still refused the
+//   question — so a payload that hands a language model "the objections
+//   this author did not see" for an author who recorded nothing is
+//   **invisible to every other assertion in the section**. The two
+//   withholding checks are the whole of the defence, which is why they
+//   assert the TYPE of the field (a string, not an array) and the REASON
+//   in it rather than merely that something is present.
+//
+//   Injection CR: `critique_claim`'s fresh cone read removed — 1.19's
+//   gap restored, which is the state this server actually shipped in
+//   until today.
+//   Result: FIVE red, and FOUR OF THEM ARE IN THE READ. That coupling is
+//   the finding: before this section existed nothing exercised the read,
+//   so the missing cone on the write path was invisible to the whole
+//   suite — a tool recording nothing looks identical to a claim with no
+//   siblings. The read is what makes the write's absence legible, and it
+//   is the argument for adding both halves in one pass rather than
+//   surfacing a read and trusting the write that feeds it.
+//
+//   Injection CS: `protocol_note` paraphrased into this server's own
+//   voice — "This author recorded no cone", which is TRUE.
+//   Result: TWO red, every structural check green. A true-but-thin
+//   summary fails here on purpose: the coordinator's sentence carries
+//   the caveat that the author is *silent, not uninformed*, and a
+//   paraphrase that keeps the fact and drops the caveat is exactly the
+//   drift a second copy of SPEC's wording invites (open-work 1.20).
+//
+//   AND A CONTROL IN THIS SECTION WAS VACUOUS WHEN FIRST WRITTEN. "no
+//   verdict, fraction or ignoring field" is an ABSENCE check, and it
+//   passed on the run where a stale `dist/` made every call in the
+//   section fail and return nothing — fifteen red around one green that
+//   read as coverage. It now requires both payloads to be non-empty
+//   first. Build before you run, and never let an absence assertion
+//   stand without a presence clause.
+//
+//   Restored and re-run: 89 checks green (from 73), 22 tools (from 21).
 // ---------------------------------------------------------------------------
 
 import { spawn } from 'node:child_process';
@@ -412,6 +455,109 @@ async function main() {
     /do NOT compute a hit rate/i.test(record.text));
   check('naming the expired list as what stops the revealed one reading as being right',
     /expired/i.test(record.parsed?.no_score_note ?? ''));
+
+  // ---- 5bb. The past cone, both halves, at the tool boundary ----------
+  //
+  // open-work 1.22. The READ added here is `what_this_critique_recorded_seeing`,
+  // and building it found the WRITE half missing: 1.19 gave `assess` a cone
+  // read fresh at call time and left `critique_claim` without one, so every
+  // critique an agent wrote through this server recorded NOTHING about what
+  // it had seen — and the informative branch of the new read was unreachable
+  // from the very server that exposes it. Both halves are checked here, in
+  // that order, because the read's control depends on the write.
+  //
+  // THE SHAPE OF THIS SURFACE IS THE SCREEN'S AND NOT THE SDK's, DELIBERATELY.
+  // `EpistemicAgent#unseenBy` returns all six fields unchanged, because a
+  // library withholding data decides for its caller. Here the caller is a
+  // language model that will read a list and narrate it, exactly as a reader
+  // on a screen would — so this follows `mobile-ui`'s rule from 6.1: whether
+  // anything was recorded is stated first, the two figures travel together,
+  // and the hashes are WITHHELD in the branch where they are not a gap.
+  log('\n--- 5bb. What a critique recorded having seen, and what it did not ---');
+  const SECOND_CRITIQUE = `A second objection, filed knowing the first, stamped ${STAMP}.`;
+  const THIRD_CRITIQUE = `A third objection, filed recording nothing, stamped ${STAMP}.`;
+  const seenCritique = await callTool('critique_claim', {
+    claim_hash: hash, content: SECOND_CRITIQUE, mode: 'Methodological',
+  });
+  // THE FIGURE IS THE EVIDENCE THAT THE CONE WAS READ AT CALL TIME. One
+  // sibling exists, so a cone read fresh must be exactly 1 — a handler that
+  // recorded nothing, or took the caller's word, would report 0 and nothing
+  // else in this file would notice.
+  check('critique_claim now records what it had seen, read fresh at call time',
+    !seenCritique.isError && seenCritique.parsed?.critiques_recorded_as_seen === 1);
+  check('and says so, naming the tool that reads it back',
+    /what_this_critique_recorded_seeing/.test(seenCritique.text));
+  const silentCritique = await callTool('critique_claim', {
+    claim_hash: hash, content: THIRD_CRITIQUE, mode: 'Evidential',
+    record_what_i_read: false,
+  });
+  check('CONTROL: opting out records nothing, so the figure is not a constant',
+    !silentCritique.isError && silentCritique.parsed?.critiques_recorded_as_seen === 0);
+  check('and the opt-out says "did not record", never "saw nothing"',
+    /did not record|not as "saw nothing"/i.test(silentCritique.text));
+
+  const seenReport = await callTool('what_this_critique_recorded_seeing', {
+    critique_hash: seenCritique.parsed?.action_hash,
+  });
+  check('the read answers for a critique that recorded a cone',
+    !seenReport.isError && seenReport.parsed?.recorded_anything === true);
+  // BOTH FIGURES OR NEITHER. A count of what was seen with no count of what
+  // there was to see is a numerator with its denominator thrown away, and
+  // the denominator is this conductor's own count over its own arc.
+  check('stating what was seen AND what this conductor knows of',
+    seenReport.parsed?.recorded_having_seen === 1
+    && seenReport.parsed?.others_known_to_this_conductor === 2
+    && seenReport.parsed?.not_recorded_as_seen_count === 1);
+  check('the set is listed as hashes in this branch, since here it IS a gap',
+    Array.isArray(seenReport.parsed?.not_recorded_as_seen)
+    && seenReport.parsed.not_recorded_as_seen.length === 1
+    && seenReport.parsed.not_recorded_as_seen[0] === silentCritique.parsed?.action_hash);
+  check('the coordinator\'s own note is relayed, not paraphrased',
+    /recorded seeing 1 of 2/i.test(seenReport.parsed?.protocol_note ?? ''));
+  check('and the payload tells the caller to read the flag FIRST',
+    /READ recorded_anything FIRST/.test(seenReport.text));
+
+  // THE LOAD-BEARING ABSENCE, and the one defect this tool exists to not
+  // commit. For a critique that recorded nothing the "unseen" set is every
+  // other objection to the claim — identical to what a critique that
+  // genuinely saw nothing would report — so handing a model that list under
+  // this tool's name manufactures a finding out of a field the client never
+  // filled.
+  const silentReport = await callTool('what_this_critique_recorded_seeing', {
+    critique_hash: silentCritique.parsed?.action_hash,
+  });
+  check('CONTROL: the critique that recorded nothing reports the flag false',
+    !silentReport.isError && silentReport.parsed?.recorded_anything === false);
+  check('and the hashes are WITHHELD rather than listed as what it did not see',
+    typeof silentReport.parsed?.not_recorded_as_seen === 'string');
+  check('with the reason given, not the field quietly missing',
+    /WITHHELD/.test(silentReport.parsed?.not_recorded_as_seen ?? '')
+    && /manufacture a finding/i.test(silentReport.parsed?.not_recorded_as_seen ?? ''));
+  // CONTROL FOR THE DENOMINATOR IN THE BRANCH THAT HAS NO SET: the figures
+  // are still reported, so withholding the list is not withholding the fact.
+  check('CONTROL: the figures are still stated in the withheld branch',
+    silentReport.parsed?.others_known_to_this_conductor === 2
+    && silentReport.parsed?.recorded_having_seen === 0);
+  check('its protocol note says the author is silent, not uninformed',
+    /silent, not uninformed/i.test(silentReport.parsed?.protocol_note ?? ''));
+  // SAME CONTROL THE ASSESSMENT AND FORESIGHT PAYLOADS CARRY: a model will
+  // compute a verdict out of two numbers unless the payload refuses to hand
+  // it one, so no field may read as a conclusion about the author.
+  //
+  // AND IT ASSERTS THE PAYLOADS ARE NON-EMPTY FIRST, because the version
+  // without that clause PASSED on the run where both calls failed and
+  // returned nothing — an absence check is satisfied by an absent response.
+  // Found the honest way: this file was run against a stale `dist/` before
+  // `npm run build`, every other check in the section went red, and this one
+  // stayed green and read as coverage.
+  const VERDICT_FIELD = /"[a-z_]*(ignor|verdict|score|ratio|fraction|percent|negligen|guilt)[a-z_]*":/i;
+  check('CONTROL: neither branch carries a verdict, fraction or ignoring field',
+    seenReport.text.length > 0 && silentReport.text.length > 0
+    && !VERDICT_FIELD.test(seenReport.text)
+    && !VERDICT_FIELD.test(silentReport.text));
+  check('and the tool\'s own description refuses the question it cannot answer',
+    /CANNOT answer/i.test(
+      (tools.find((t) => t.name === 'what_this_critique_recorded_seeing') ?? {}).description ?? ''));
 
   // ---- 5c. The two tools that take a DOMAIN NAME -----------------------
   //

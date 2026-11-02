@@ -143,6 +143,16 @@ const TOOLS = [
         claim_hash: { type: 'string', description: 'Base64 entry hash of the claim, as returned by claims_in_domain.' },
         content: { type: 'string', description: 'The critique itself.' },
         mode: { type: 'string', enum: [...CRITIQUE_MODES], description: 'What kind of objection this is.' },
+        record_what_i_read: {
+          type: 'boolean',
+          description:
+            'Default true. Records which of this claim\'s OTHER objections you had seen when '
+            + 'you wrote, read fresh at call time so the record is what you actually fetched '
+            + 'rather than something asserted. Objecting without seeing the objections already '
+            + 'raised is a different act from objecting in spite of them, and only this record '
+            + 'can tell them apart later. Set false only if you genuinely did not read them — '
+            + 'recording nothing reads as "did not record", never as "saw nothing".',
+        },
       },
       required: ['claim_hash', 'content', 'mode'],
     },
@@ -351,6 +361,31 @@ const TOOLS = [
     },
   },
   {
+    name: 'what_this_critique_recorded_seeing',
+    description:
+      'What one critique\'s author RECORDED having seen of the other objections to the same '
+      + 'claim, and how many this conductor knows of. Use it for questions about what an author '
+      + 'had in front of them when they wrote. It CANNOT answer "did they ignore the rebuttal" '
+      + 'and no tool can: the protocol records what an author chose to state, never what they '
+      + 'read. Most critiques recorded NOTHING — the field is optional and nearly every client '
+      + 'omits it — and silence is not ignorance, so this tool reports whether anything was '
+      + 'recorded BEFORE it reports any gap, and withholds the list of unrecorded objections '
+      + 'entirely when nothing was recorded, because then the "gap" is simply every other '
+      + 'objection and naming it would invent an accusation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        critique_hash: {
+          type: 'string',
+          description:
+            'Base64 ACTION hash of the critique — what critique_claim returns and what '
+            + 'critiques_for_claim lists, not the claim\'s own hash.',
+        },
+      },
+      required: ['critique_hash'],
+    },
+  },
+  {
     name: 'commit_prediction',
     description:
       'Commit to a prediction about a claim WITHOUT revealing it yet, then reveal it later. This '
@@ -533,11 +568,33 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         return ok({ action_hash: b64(hash), note: 'Published under your own agent key.' });
       }
       case 'critique_claim': {
+        // THE SAME FRESH READ `assess` ALREADY DID, AND ITS ABSENCE HERE WAS
+        // A DEFECT FOUND BY BUILDING open-work 1.22. 1.19 gave `assess` a
+        // cone that is true by construction and left the critique path
+        // without one — so every critique an agent wrote through this server
+        // recorded NOTHING about what it had seen, and the informative branch
+        // of `what_this_critique_recorded_seeing` was unreachable from the
+        // very server that now exposes the read. A surfaced read whose
+        // interesting case its own writes cannot produce is this repository's
+        // half-surfaced defect wearing a third face.
+        const recording = a.record_what_i_read !== false;
+        const target = unb64(a.claim_hash);
+        const pastCone = recording
+          ? (await ep.witnessedCritiquesOf(target)).pastCone
+          : [];
         const hash = await ep.critique({
-          target: unb64(a.claim_hash), targetType: 'Claim',
-          content: a.content, mode: a.mode,
+          target, targetType: 'Claim',
+          content: a.content, mode: a.mode, pastCone,
         });
-        return ok({ action_hash: b64(hash) });
+        return ok({
+          action_hash: b64(hash),
+          critiques_recorded_as_seen: pastCone.length,
+          note: recording
+            ? 'Filed under your own agent key, recording which of this claim\'s other '
+              + 'objections you had seen. what_this_critique_recorded_seeing reads that back.'
+            : 'Filed under your own agent key, recording NOTHING about what you had seen '
+              + '— which reads as "did not record", not as "saw nothing".',
+        });
       }
       case 'claims_in_domain':
         return ok(decoded(await ep.claimsInDomain(a.domain)));
@@ -630,6 +687,53 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       case 'assessments_for':
         return ok(decoded(await ep.assessmentsFor(unb64(a.claim_hash))));
+
+      // THIS RESPONSE IS SHAPED LIKE THE SCREEN AND NOT LIKE THE SDK, AND
+      // THE ASYMMETRY IS DELIBERATE. `EpistemicAgent#unseenBy` returns all
+      // six fields unchanged, because a library withholding data from its
+      // caller is a library deciding what the caller may know. This layer
+      // is different: its caller is a language model that will read the
+      // list and narrate it, exactly as a reader on a screen would — so it
+      // follows `mobile-ui`'s rule instead (open-work 6.1). Whether a cone
+      // was recorded is stated FIRST, the two figures travel together, and
+      // the hashes of unrecorded objections are withheld in the branch
+      // where they are not a gap at all, with the reason given rather than
+      // the field silently missing.
+      case 'what_this_critique_recorded_seeing': {
+        const r = await ep.unseenBy(unb64(a.critique_hash));
+        return ok({
+          critique: b64(r.critique),
+          recorded_anything: r.cone_recorded,
+          // NAMED FOR WHAT THEY ARE A FRACTION OF. `seen_count` alone is a
+          // numerator with its denominator discarded, and `total_known` is
+          // this conductor's count over its own arc — not a global one.
+          recorded_having_seen: r.seen_count,
+          others_known_to_this_conductor: r.total_known,
+          not_recorded_as_seen_count: r.unseen.length,
+          // THE COORDINATOR'S OWN SENTENCE, RELAYED NOT SUMMARISED — the
+          // protocol states what the figures support, this server states
+          // the shape. Same division the SDK keeps.
+          protocol_note: r.note,
+          ...(r.cone_recorded
+            ? { not_recorded_as_seen: r.unseen.map(b64) }
+            : {
+              not_recorded_as_seen:
+                'WITHHELD, and not because it is empty. This author recorded nothing about '
+                + 'what they had seen, so there is no statement here for anything to be '
+                + 'absent from — the list would be every other objection to the claim, which '
+                + 'critiques_for_claim already returns. Reporting it as what they did not see '
+                + 'would manufacture a finding out of a field their client never filled.',
+            }),
+          note:
+            'READ recorded_anything FIRST. When it is false nothing here is evidence about '
+            + 'anybody\'s knowledge, and saying otherwise is the one error this tool exists to '
+            + 'prevent. When it is true, an objection absent from the cone may simply not have '
+            + 'arrived yet, or not been read; it does NOT mean the author knew of it and '
+            + 'ignored it, and nothing in the protocol can tell those apart. '
+            + 'others_known_to_this_conductor is this conductor\'s own count over its own arc — '
+            + 'another peer may know of more.',
+        });
+      }
 
       case 'commit_prediction': {
         const hours = typeof a.hours_until_deadline === 'number' ? a.hours_until_deadline : 24;
