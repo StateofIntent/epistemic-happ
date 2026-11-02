@@ -423,6 +423,76 @@ try {
   check('its note states both figures rather than the gap alone',
     /recorded seeing 1 of 2/i.test(partialReport.note));
 
+  log('\n=== The assessment side, which is a DIFFERENT SET ===');
+  // THE MISREADING THIS SECTION EXISTS TO PREVENT. `unseenByAssessment` reads
+  // like the mirror of `unseenBy` and is not one: `Assessment.past_cone`
+  // holds CRITIQUES of the target — validation refuses anything else — so
+  // this compares an assessment against the claim's OBJECTIONS, never
+  // against the other positions. There is no sibling-assessment cone in this
+  // protocol, so *did this assessor read the other assessments* is a
+  // question an agent will ask and nothing can answer.
+  const conedAssessment = await agent.publishAssessment({
+    target, stance: 'Supports', confidence: 'Moderate',
+    pastCone: [critiques[0].actionHash],
+  });
+  const assessmentPartial = await agent.unseenByAssessment(conedAssessment);
+  check('unseenByAssessment returns all six fields with its own first field',
+    assessmentPartial.assessment instanceof Uint8Array
+    && Array.isArray(assessmentPartial.unseen)
+    && typeof assessmentPartial.seen_count === 'number'
+    && typeof assessmentPartial.cone_recorded === 'boolean'
+    && typeof assessmentPartial.total_known === 'number'
+    && typeof assessmentPartial.note === 'string');
+  check('and nothing derived here either',
+    Object.keys(assessmentPartial).every((k) => /^(assessment|unseen|seen_count|cone_recorded|total_known|note)$/.test(k)));
+  // THE DENOMINATOR IS THE CLAIM'S CRITIQUES. Three critiques exist on this
+  // target at this point and so do several assessments, so a denominator of
+  // three proves it counts objections — the figure alone could not.
+  const critiqueCount = (await agent.critiquesFor(target)).length;
+  check('the denominator is the target\'s CRITIQUES, not its assessments',
+    assessmentPartial.total_known === critiqueCount && critiqueCount === 3);
+  check('and no assessment hash is in the unseen set',
+    !assessmentPartial.unseen.some((h) =>
+      JSON.stringify(Array.from(h)) === JSON.stringify(Array.from(conedAssessment))));
+  check('its note denies the position-anyway reading, not the ignoring one',
+    /took a position anyway/i.test(assessmentPartial.note));
+
+  // THE ZERO DENOMINATOR, AND IT IS THE ORDINARY CASE ON THIS SIDE: most
+  // claims carry no critiques, so an assessment of one records an empty cone
+  // necessarily — not from silence but because there was nothing to record.
+  const bareClaim = await agent.publishClaim({
+    content: 'A claim nobody has objected to, assessed anyway.',
+    domain: DOMAIN, confidence: 'Tentative',
+  });
+  const bareTarget = (await agent.claimsInDomain(DOMAIN))
+    .find((c) => JSON.stringify(Array.from(c.actionHash))
+      === JSON.stringify(Array.from(bareClaim)))?.entryHash;
+  const bareAssessment = await agent.publishAssessment({
+    target: bareTarget, stance: 'Supports', confidence: 'Moderate',
+  });
+  const bareReport = await agent.unseenByAssessment(bareAssessment);
+  check('an assessment of an UNCRITIQUED claim reports a denominator of zero',
+    bareReport.total_known === 0 && bareReport.unseen.length === 0
+    && bareReport.cone_recorded === false);
+  check('and its note says there was nothing to have seen, not that it is silent',
+    /every critique of the target/i.test(bareReport.note));
+
+  // THE NAMES PAIR AND THE SETS DO NOT, so the dangerous failure is a query
+  // that quietly answers the wrong question for the wrong kind of hash. Both
+  // arms must say WHICH type they wanted — and until this check existed
+  // `critiques_unseen_by` leaked a serde error instead, an unreachable
+  // message that had shipped since protocol_version 10.
+  let coneWrongKind = null;
+  try { await agent.unseenByAssessment(critiques[0].actionHash); }
+  catch (error) { coneWrongKind = error; }
+  check('a CRITIQUE hash is refused by the assessment query, naming the type',
+    coneWrongKind !== null && /not an Assessment/i.test(coneWrongKind.message));
+  let coneWrongKindBack = null;
+  try { await agent.unseenBy(conedAssessment); }
+  catch (error) { coneWrongKindBack = error; }
+  check('and an ASSESSMENT hash is refused by the critique query, naming the type',
+    coneWrongKindBack !== null && /not a Critique/i.test(coneWrongKindBack.message));
+
   log('\n=== Pre-registration: the mechanism an SDK agent could not use ===');
   const question = claims[0].actionHash;
   const PREDICTION = 'Committed through the SDK, revealed from the recovered values.';

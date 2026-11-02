@@ -1795,9 +1795,23 @@ pub struct UnseenReport {
 pub fn critiques_unseen_by(critique_hash: ActionHash) -> ExternResult<UnseenReport> {
     let record = get(critique_hash.clone(), GetOptions::default())?
         .ok_or(wasm_error!(WasmErrorInner::Guest("Critique not found.".into())))?;
-    let critique: Critique = record.entry()
-        .to_app_option().map_err(|e| wasm_error!(WasmErrorInner::Guest(format!("{:?}", e))))?
-        .ok_or(wasm_error!(WasmErrorInner::Guest("Target is not a Critique.".into())))?;
+    // SAME FIX, AND HERE IT IS A PRE-EXISTING DEFECT RATHER THAN A NEW ONE.
+    // This arm has been unreachable since `protocol_version: 10`: handed an
+    // Assessment's action hash it returned `Deserialize("missing field
+    // `target_type`")` instead of saying which type it wanted. Found 2026-11-02
+    // while writing `critiques_unseen_by_assessment`, by asserting that the
+    // two queries refuse each other's inputs — which nothing had checked,
+    // because until there was a second query there was no wrong hash to pass.
+    let critique: Critique = match record.entry().to_app_option::<Critique>() {
+        Ok(Some(critique)) => critique,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Target is not a Critique. `critiques_unseen_by` takes a Critique's \
+                 ActionHash; for an Assessment's, call \
+                 `critiques_unseen_by_assessment`.".into()
+            )));
+        }
+    };
 
     // Every critique of the same target that this observer can see. NOT a
     // global set: another observer with a different arc may know more, which
@@ -1844,6 +1858,141 @@ pub fn critiques_unseen_by(critique_hash: ActionHash) -> ExternResult<UnseenRepo
         unseen,
         cone_recorded,
         total_known: siblings.len() as u32,
+        note,
+    })
+}
+
+/// What `critiques_unseen_by_assessment` returns.
+///
+/// SEPARATE FROM `UnseenReport` BECAUSE THE TWO SETS ARE DIFFERENT KINDS OF
+/// THING, and sharing a struct would have hidden that. `UnseenReport.unseen`
+/// holds sibling CRITIQUES of a critique's target; this holds CRITIQUES of an
+/// ASSESSMENT's target. The shapes coincide and the meanings do not — one is
+/// "objections filed alongside yours", the other "objections you were taking
+/// a position in spite of, or not" — and a reader who assumed the first about
+/// this report would be reading it wrong in a way the field names would never
+/// correct.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AssessmentUnseenReport {
+    /// The assessment being asked about.
+    pub assessment: ActionHash,
+    /// Critiques of the same target absent from its recorded cone. IDENTICAL
+    /// whether the assessor genuinely saw nothing or simply recorded nothing,
+    /// which is why `cone_recorded` must be read first.
+    pub unseen: Vec<ActionHash>,
+    /// How many of the target's critiques the assessor DID record seeing.
+    pub seen_count: u32,
+    /// FALSE when the cone is empty, which is the "recorded nothing" case.
+    pub cone_recorded: bool,
+    /// Every critique of the target known to this observer right now. The
+    /// denominator, published so the figures can be checked rather than
+    /// trusted — and so a reader can see this is one observer's view.
+    pub total_known: u32,
+    /// Says what the numbers do and do not support. Never a verdict.
+    pub note: String,
+}
+
+/// Which critiques of an assessment's target the assessor did not record
+/// having seen.
+///
+/// THE ASSESSMENT SIDE OF THE C DIAL, and it is NOT the mirror of
+/// `critiques_unseen_by` that its name suggests on a first reading. That
+/// query compares a critique against its SIBLING CRITIQUES. This one compares
+/// an assessment against the target's CRITIQUES, because that is what
+/// `Assessment.past_cone` holds: validation requires every member to resolve
+/// to a `Critique` of the same target (integrity zome,
+/// `validate_assessment`). There is no sibling-assessment cone anywhere in
+/// this protocol and this does not invent one — an assessor is not recorded
+/// as having read other people's positions, only the objections.
+///
+/// WHY THIS EXISTS WHEN A CLIENT COULD SUBTRACT TWO LISTS ITSELF. It could:
+/// `get_critiques_for` returns the denominator and the cone is on the entry.
+/// Three things are lost when it does. The gating rule travels with the data
+/// here, and a caller computing `unseen` by hand is the caller most likely to
+/// report it as ignorance. The denominator is a count over THIS conductor's
+/// arc at read time, so a client that counts what it happened to have fetched
+/// for some other purpose publishes its own fetch window as the figure. And
+/// `note` is the protocol's own statement of what the numbers support, which
+/// a client would otherwise have to invent — which is the one thing SPEC §9
+/// asks clients not to do.
+///
+/// A pure read: no writes, no friction, no validation rule. Coordinator-only
+/// per SPEC §11, so it costs no DNA hash change.
+#[hdk_extern]
+pub fn critiques_unseen_by_assessment(assessment_hash: ActionHash) -> ExternResult<AssessmentUnseenReport> {
+    let record = get(assessment_hash.clone(), GetOptions::default())?
+        .ok_or(wasm_error!(WasmErrorInner::Guest("Assessment not found.".into())))?;
+    // BOTH ARMS RETURN THE FRIENDLY MESSAGE, and the first draft of this
+    // function did not — it inherited `critiques_unseen_by`'s shape, where a
+    // `map_err` on `to_app_option` leaks the serde failure. Handed a
+    // Critique's action hash, which resolves fine and simply is not this
+    // type, the caller got `Guest("Deserialize(\"missing field `assessor`\"")`
+    // and the message written for exactly that case was unreachable. The
+    // names of these two queries PAIR, so passing the wrong kind of hash is
+    // the likeliest caller error there is, and it must say which. Third
+    // occurrence of this shape in this file — see `get_my_sealed_prediction`
+    // and `create_membrane`.
+    let assessment: Assessment = match record.entry().to_app_option::<Assessment>() {
+        Ok(Some(assessment)) => assessment,
+        _ => {
+            return Err(wasm_error!(WasmErrorInner::Guest(
+                "Target is not an Assessment. `critiques_unseen_by_assessment` takes an \
+                 Assessment's ActionHash; for a Critique's, call `critiques_unseen_by`.".into()
+            )));
+        }
+    };
+
+    // THE TARGET'S CRITIQUES, not its assessments. Same link type
+    // `critiques_unseen_by` walks, for the same reason: this is the set the
+    // cone is drawn from, and nothing else would be comparable to it.
+    let links = get_links(
+        LinkQuery::try_new(assessment.target.clone(), LinkTypes::TargetToCritique)?,
+        GetStrategy::Network,
+    )?;
+    let mut critiques: Vec<ActionHash> = Vec::new();
+    for link in links {
+        if let Ok(h) = ActionHash::try_from(link.target) {
+            if !critiques.contains(&h) {
+                critiques.push(h);
+            }
+        }
+    }
+
+    // NO SELF-EXCLUSION HERE, and that is the one line where this genuinely
+    // differs from `critiques_unseen_by` rather than merely reading
+    // differently. A critique is a member of its own sibling set and has to
+    // be removed from it; an assessment is not a critique, so there is
+    // nothing to remove and every critique of the target counts.
+    let unseen: Vec<ActionHash> = critiques.iter()
+        .filter(|h| !assessment.past_cone.contains(h))
+        .cloned()
+        .collect();
+    let cone_recorded = !assessment.past_cone.is_empty();
+    let note = if !cone_recorded {
+        "This assessment recorded NO past cone, so nothing here is evidence of ignorance. \
+         An assessor whose client does not populate cones is silent, not uninformed. \
+         `unseen` is simply every critique of the target."
+            .to_string()
+    } else if unseen.is_empty() {
+        "This assessment recorded having seen every critique of its target THIS OBSERVER \
+         knows of. Another observer may know of more."
+            .to_string()
+    } else {
+        format!(
+            "This assessment recorded seeing {} of {} critique(s) of its target known to this \
+             observer. The {} in `unseen` were not recorded as seen — which may mean they had \
+             not arrived, or had not been read. It does NOT mean the assessor knew of them and \
+             took a position anyway.",
+            assessment.past_cone.len(), critiques.len(), unseen.len()
+        )
+    };
+
+    Ok(AssessmentUnseenReport {
+        assessment: assessment_hash,
+        seen_count: assessment.past_cone.len() as u32,
+        unseen,
+        cone_recorded,
+        total_known: critiques.len() as u32,
         note,
     })
 }

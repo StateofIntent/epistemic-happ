@@ -386,6 +386,32 @@ const TOOLS = [
     },
   },
   {
+    name: 'what_this_assessment_recorded_seeing',
+    description:
+      'What one ASSESSOR recorded having seen of the objections to the claim they took a '
+      + 'position on, and how many this conductor knows of. The companion to '
+      + 'what_this_critique_recorded_seeing, and it answers a DIFFERENT question: an '
+      + 'assessment\'s record covers the CRITIQUES of its target, never the other '
+      + 'assessments. Whether this assessor read anybody else\'s position is not recorded '
+      + 'anywhere in this protocol and this tool cannot tell you — do not report it as '
+      + '"positions they ignored". Most claims carry no critiques at all, in which case '
+      + 'there was nothing to have seen, which the payload says rather than reporting '
+      + 'silence. As with the critique tool, the list is withheld entirely when nothing was '
+      + 'recorded, because then the "gap" is simply every objection to the claim.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assessment_hash: {
+          type: 'string',
+          description:
+            'Base64 ACTION hash of the assessment — what assess returns and what '
+            + 'assessments_for lists, not the claim\'s own hash.',
+        },
+      },
+      required: ['assessment_hash'],
+    },
+  },
+  {
     name: 'commit_prediction',
     description:
       'Commit to a prediction about a claim WITHOUT revealing it yet, then reveal it later. This '
@@ -687,6 +713,52 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       case 'assessments_for':
         return ok(decoded(await ep.assessmentsFor(unb64(a.claim_hash))));
+
+      // THE ASSESSMENT SIDE, and the payload differs from its sibling in
+      // exactly the places the QUESTION differs. The set is the target's
+      // critiques rather than sibling assessments, so the field is named for
+      // objections; a zero denominator is the ORDINARY case here because most
+      // claims carry no critiques, so it gets its own sentence rather than
+      // being reported as an assessor who recorded nothing; and the note
+      // states outright what this cannot answer, because *did they read the
+      // other positions* is the question a model will actually be asked and
+      // there is no entry anywhere that bears on it.
+      case 'what_this_assessment_recorded_seeing': {
+        const r = await ep.unseenByAssessment(unb64(a.assessment_hash));
+        const nothingToSee = r.total_known === 0;
+        return ok({
+          assessment: b64(r.assessment),
+          recorded_anything: r.cone_recorded,
+          recorded_having_seen: r.seen_count,
+          objections_known_to_this_conductor: r.total_known,
+          not_recorded_as_seen_count: r.unseen.length,
+          protocol_note: r.note,
+          ...(r.cone_recorded
+            ? { not_recorded_as_seen: r.unseen.map(b64) }
+            : {
+              not_recorded_as_seen: nothingToSee
+                ? 'EMPTY BECAUSE THE CLAIM HAS NO OBJECTIONS this conductor knows of. '
+                  + 'There was nothing to have seen, so recording nothing says nothing '
+                  + 'about this assessor.'
+                : 'WITHHELD, and not because it is empty. This assessor recorded nothing '
+                  + 'about what they had seen, so there is no statement here for anything '
+                  + 'to be absent from — the list would be every objection to the claim, '
+                  + 'which critiques_for_claim already returns. Reporting it as what they '
+                  + 'did not see would manufacture a finding out of a field their client '
+                  + 'never filled.',
+            }),
+          note:
+            'THIS IS ABOUT OBJECTIONS, NOT OTHER POSITIONS. An assessment records which '
+            + 'CRITIQUES of its target the assessor had seen; whether they read anybody '
+            + 'else\'s assessment is not recorded in this protocol and nothing here stands '
+            + 'in for it. READ recorded_anything before drawing any inference: when it is '
+            + 'false this assessor recorded nothing, which is silence and not ignorance. '
+            + 'When it is true, an objection absent from the cone may not have arrived or '
+            + 'may not have been read; it does NOT mean the assessor knew of it and took a '
+            + 'position anyway. objections_known_to_this_conductor is this conductor\'s own '
+            + 'count over its own arc.',
+        });
+      }
 
       // THIS RESPONSE IS SHAPED LIKE THE SCREEN AND NOT LIKE THE SDK, AND
       // THE ASYMMETRY IS DELIBERATE. `EpistemicAgent#unseenBy` returns all

@@ -59,6 +59,7 @@ import type {
   MembranePromiseCompliance, MemberPromiseStanding,
   Assessment, Stance, SettlementPolicy, SettlementStatus,
   SettlementState, RecomputedSettlement, UnseenReport,
+  AssessmentUnseenReport,
   SealedPrediction, ForesightRecord, PublishedReading,
 } from './types.js';
 
@@ -1214,6 +1215,36 @@ export class EpistemicAgent {
    * and `Decoded<Critique>.actionHash`, not an entry hash. */
   async unseenBy(critiqueActionHash: Uint8Array): Promise<UnseenReport> {
     return this.call<UnseenReport>('critiques_unseen_by', critiqueActionHash);
+  }
+
+  /** The same detection move for an ASSESSMENT — and it is a different
+   * question, not the same one pointed elsewhere.
+   *
+   * `unseenBy` above compares a critique against its SIBLING critiques.
+   * This compares an assessment against the TARGET'S critiques, because
+   * that is what `Assessment.past_cone` holds: validation refuses any
+   * member that does not resolve to a `Critique` of the same target.
+   *
+   * WHAT THIS CANNOT TELL YOU, and an agent will reach for it anyway:
+   * whether the assessor read anybody else's POSITION. The protocol
+   * records no sibling-assessment cone, by design — an assessor is
+   * accountable for the objections they took a position in spite of,
+   * not for having surveyed the other assessors — so there is nothing
+   * to read and no figure here stands in for it. Reporting this report
+   * as "positions they ignored" asserts something no entry supports.
+   *
+   * Passed through unchanged for the reason `unseenBy` is, and the
+   * same gating applies: branch on `cone_recorded` before saying
+   * anything about what an assessor knew. One extra trap on this side —
+   * `total_known` of ZERO is the ORDINARY case, because most claims
+   * carry no critiques at all. That is not a silent assessor; there was
+   * nothing to have seen.
+   *
+   * Takes the assessment's ACTION hash, which `publishAssessment`
+   * returns and `Decoded<Assessment>.actionHash` carries. */
+  async unseenByAssessment(assessmentActionHash: Uint8Array): Promise<AssessmentUnseenReport> {
+    return this.call<AssessmentUnseenReport>(
+      'critiques_unseen_by_assessment', assessmentActionHash);
   }
 
   // --- Settlement ----------------------------------------------------

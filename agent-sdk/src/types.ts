@@ -405,6 +405,41 @@ export interface UnseenReport {
   note: string;
 }
 
+/** What `unseenByAssessment` returns.
+ *
+ * NOT THE MIRROR OF `UnseenReport` THAT THE NAMES SUGGEST, and reading
+ * it as one is the single most likely error here. `UnseenReport.unseen`
+ * holds a critique's SIBLING critiques. This holds critiques of the
+ * ASSESSMENT's target, because that is what `Assessment.past_cone`
+ * holds: validation refuses any member that does not resolve to a
+ * `Critique` of the same target.
+ *
+ * SO AN AGENT CANNOT ASK WHAT OTHER POSITIONS AN ASSESSOR READ. The
+ * protocol does not record it and there is no sibling-assessment cone
+ * to read — by design, because an assessor is accountable for the
+ * objections they took a position in spite of, not for having surveyed
+ * the other assessors. An agent that reports this report as "positions
+ * they ignored" is stating something no entry anywhere supports.
+ *
+ * `cone_recorded` gates every inference, on the same terms as
+ * `UnseenReport` — see that type. And `total_known` of ZERO is the
+ * ordinary case rather than a thin arc: most claims carry no critiques,
+ * so there was nothing to record having seen. */
+export interface AssessmentUnseenReport {
+  /** The assessment asked about. */
+  assessment: Uint8Array;
+  /** Critiques of its target absent from the recorded cone. */
+  unseen: Uint8Array[];
+  /** How many of the target's critiques the assessor DID record. */
+  seen_count: number;
+  /** FALSE when the cone is empty: the "recorded nothing" case. */
+  cone_recorded: boolean;
+  /** Every critique of the target known to THIS observer right now. */
+  total_known: number;
+  /** The coordinator's own words on what the figures support. */
+  note: string;
+}
+
 // --- Pre-registration (commit–reveal) ---------------------------------
 //
 // THE PROTOCOL'S CENTRAL MECHANISM, and until now the one thing an SDK
