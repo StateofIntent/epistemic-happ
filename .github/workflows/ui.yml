@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-one browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-two browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -329,6 +329,14 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/render-invariant.mjs
+
+      # open-work 6.10. The model is STUBBED here on purpose — the spike
+      # measures the model, this measures whether the client reads a reply
+      # honestly, which is where every defect the spike found actually was.
+      - name: compose-adversary — objections before the claim exists, and gone after
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/compose-adversary.mjs
 
       - name: taxonomy-ui — the critique vocabulary as a tree, writable, and never ranked
         run: |

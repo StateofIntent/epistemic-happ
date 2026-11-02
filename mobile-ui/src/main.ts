@@ -24,6 +24,7 @@ import {
   CONCEPT_NOTES, type Concept,
 } from './onboarding';
 import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
+import { askAdversary, AdversaryError, type AdversaryVerdict } from './adversary';
 import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
 
 // ============================================================================
@@ -438,6 +439,29 @@ let newClaimDraft: NewClaimDraft = emptyClaimDraft();
  * incomplete, and the most expensive kind of silence this app can produce. */
 let newClaimNotice: string | null = null;
 
+// --- The compose-time adversary (open-work 6.10) ----------------------
+//
+// EPHEMERAL ON PURPOSE, AND THAT IS THE DECISION RATHER THAN AN
+// OVERSIGHT. 6.10's second decision is that a machine objection NEVER
+// renders beside a real one: these exist in the draft form, before the
+// claim exists, and are gone the moment it is published. There is no
+// co-located surface and there must not be one — §(1) of that row
+// worried that machine objections at the same typographic weight as
+// attributed ones would INVENT CRITICS, and 6.1 spent weeks on how to
+// render two unequal claims honestly side by side. The lesson 6.1
+// actually earned is that sometimes the honest answer to "how do we
+// show this beside that" is NOT BESIDE IT. With no shared surface there
+// is no weight to equalise and no caption to get right.
+//
+// Held in module state like every other piece of UI state, so a
+// background render does not drop it — open-work 1.23's invariant.
+let adversaryVerdict: AdversaryVerdict | null = null;
+let adversaryRunning = false;
+let adversaryError: { kind: string; message: string } | null = null;
+/** The node holding whatever the model produced, so the publish path can
+ * empty it without a rebuild. Set when the form is built; null before. */
+let adversaryOutputEl: HTMLElement | null = null;
+
 /** What a successful publish resets, and what it deliberately keeps.
  *
  * Content and tags are cleared because the claim is written. Domain and
@@ -452,6 +476,17 @@ let newClaimNotice: string | null = null;
  * carrying the same text forward would silently create a SECOND Evidence entry
  * and cite it from the next claim, which is not something anybody asked for. */
 function clearAfterPublish(): void {
+  // THE ADVERSARY'S OUTPUT IS DISCARDED HERE, AND THIS LINE IS 6.10's
+  // SECOND DECISION ENFORCED. The objections exist before the claim does
+  // and are gone the moment it is published: there is no co-located
+  // surface, nothing is carried onto the claim card, and nothing is
+  // recorded. Keeping them so the author could "see what it said about
+  // the one they just published" is exactly how a machine objection ends
+  // up beside a real one.
+  adversaryVerdict = null;
+  adversaryError = null;
+  // The DOM half, because this path does not rebuild. See `advOutput`.
+  if (adversaryOutputEl) adversaryOutputEl.innerHTML = '';
   newClaimDraft = {
     ...newClaimDraft,
     content: '',
@@ -5051,6 +5086,11 @@ function renderNewClaimTab(): HTMLElement {
   const confidenceLabel = document.createElement('label');
   confidenceLabel.textContent = 'Confidence';
   const confidenceSelect = document.createElement('select');
+  // Named for the same reason `new-claim-tags` is: a harness has to be able
+  // to say WHICH select, and the header's theme picker is the first one on
+  // the page. `compose-adversary.mjs` asserts this box is never moved by the
+  // model's advice, which it cannot do without naming it.
+  confidenceSelect.dataset.testid = 'new-claim-confidence';
   for (const level of CONFIDENCE_LEVELS) {
     const opt = document.createElement('option');
     opt.value = level;
@@ -5060,6 +5100,190 @@ function renderNewClaimTab(): HTMLElement {
   }
   confidenceSelect.onchange = () => { newClaimDraft.confidence = confidenceSelect.value; };
   confidenceLabel.appendChild(confidenceSelect);
+
+  // --- THE COMPOSE-TIME ADVERSARY (open-work 6.10) -------------------
+  //
+  // PLACED AFTER CONFIDENCE AND BEFORE PUBLISH, which is the only place
+  // it belongs: §(2) of that row names the trap as an author RAISING
+  // their confidence because the draft survived an adversary that
+  // observed nothing and published nothing. The denial has to be where
+  // the confidence box is, not in a panel further down.
+  const adversary = document.createElement('fieldset');
+  adversary.className = 'adversary-fieldset';
+  adversary.dataset.testid = 'adversary';
+  const advLegend = document.createElement('legend');
+  advLegend.textContent = 'Before you sign (optional)';
+  adversary.appendChild(advLegend);
+
+  const advHint = document.createElement('p');
+  advHint.className = 'hint';
+  advHint.dataset.testid = 'adversary-hint';
+  advHint.textContent =
+    'A model on this machine reads the draft and says what it will be asked. '
+    + 'It writes nothing, it is not recorded anywhere, and nobody is on record '
+    + 'as having raised any of it. The draft does not leave this machine.';
+  adversary.appendChild(advHint);
+
+  const advBtn = document.createElement('button');
+  advBtn.type = 'button';
+  advBtn.dataset.testid = 'adversary-run';
+  advBtn.textContent = adversaryRunning ? 'Reading the draft…' : 'What will this be asked?';
+  advBtn.disabled = adversaryRunning || newClaimDraft.content.trim().length === 0;
+  advBtn.onclick = async () => {
+    adversaryRunning = true;
+    adversaryError = null;
+    adversaryVerdict = null;
+    render();
+    try {
+      adversaryVerdict = await askAdversary({
+        draft: newClaimDraft.content,
+        domain: newClaimDraft.domain || currentDomain || undefined,
+      });
+    } catch (err) {
+      // THE FOUR KINDS ARE TOLD APART, because conflating them is how
+      // "the weights have not finished downloading" becomes "the model
+      // had nothing to say about your draft".
+      adversaryError = err instanceof AdversaryError
+        ? { kind: err.kind, message: err.message }
+        : { kind: 'unusable', message: err instanceof Error ? err.message : String(err) };
+    } finally {
+      adversaryRunning = false;
+      render();
+    }
+  };
+  adversary.appendChild(advBtn);
+
+  // THE BUTTON FOLLOWS THE DRAFT WITHOUT A REBUILD, and it has to.
+  // `disabled` above is computed when the form is built, and typing
+  // deliberately does NOT re-render — a rebuild per keystroke is exactly
+  // the cost open-work 1.23 keeps this architecture honest about. So the
+  // state was stale: an author typed a draft and the button stayed off
+  // until something unrelated re-rendered. Found by
+  // `compose-adversary.mjs` timing out against a disabled button, which
+  // is a better way to find it than a user reporting it.
+  const previousInput = contentArea.oninput;
+  contentArea.oninput = (event) => {
+    previousInput?.call(contentArea, event as Event & { target: EventTarget });
+    advBtn.disabled = adversaryRunning || contentArea.value.trim().length === 0;
+  };
+
+  // ONE CONTAINER FOR EVERYTHING THE MODEL PRODUCED, so the publish path can
+  // drop it in a line. That path deliberately does NOT call `render()` — it
+  // resets the fields by hand — because a rebuild at that moment would let
+  // `captureFieldValues` restore the very text the publish just cleared. So
+  // the state clearing in `clearAfterPublish` needs a DOM counterpart here,
+  // and this is it. Found by `compose-adversary.mjs` §6: the verdict was
+  // nulled and the objections stayed on screen, which is 6.10's second
+  // decision broken by an invisible gap between state and DOM.
+  const advOutput = document.createElement('div');
+  advOutput.dataset.testid = 'adversary-output';
+  adversaryOutputEl = advOutput;
+  adversary.appendChild(advOutput);
+
+  if (adversaryError) {
+    const box = document.createElement('p');
+    box.className = 'hint';
+    box.dataset.testid = 'adversary-error';
+    box.dataset.kind = adversaryError.kind;
+    // AN ABSENT ADVERSARY IS NOT A VERDICT. Said explicitly, because a
+    // failure here is silent otherwise and an author could read an
+    // empty panel as "no objections found".
+    box.textContent = `${adversaryError.message} Nothing was checked, which is `
+      + 'not the same as nothing being wrong.';
+    advOutput.appendChild(box);
+  }
+
+  if (adversaryVerdict) {
+    const v = adversaryVerdict;
+    if (v.unconstrained) {
+      const warn = document.createElement('p');
+      warn.className = 'hint';
+      warn.dataset.testid = 'adversary-unconstrained';
+      warn.textContent =
+        'UNCONSTRAINED — this server could not hold the reply to a schema, so the '
+        + 'shape below was recovered by parsing rather than guaranteed.';
+      advOutput.appendChild(warn);
+    }
+
+    if (v.objections.length === 0) {
+      const none = document.createElement('p');
+      none.className = 'hint';
+      none.dataset.testid = 'adversary-none';
+      // HAVING NOTHING TO SAY IS A REAL ANSWER and is reported as one —
+      // but it is still not evidence, which the line below repeats
+      // because this is the case most likely to be over-read.
+      none.textContent =
+        'The model raised nothing. That is a real answer and not a verdict: it '
+        + 'read the words in front of it and nobody has looked at this claim.';
+      advOutput.appendChild(none);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'adversary-list';
+      list.dataset.testid = 'adversary-list';
+      for (const o of v.objections) {
+        const li = document.createElement('li');
+        li.dataset.testid = 'adversary-objection';
+        if (o.mode) {
+          const mode = document.createElement('span');
+          mode.className = 'critique-mode';
+          mode.dataset.testid = 'adversary-mode';
+          mode.textContent = o.mode;
+          li.appendChild(mode);
+          if (!o.modeIsReal) {
+            // SURFACED, NEVER CORRECTED. Four runs across two models
+            // established that small models read the five modes as
+            // topic categories; an enum at the sampler would hide that
+            // behind a plausible label. The author sees the mistake.
+            const bad = document.createElement('span');
+            bad.className = 'hint';
+            bad.dataset.testid = 'adversary-mode-unreal';
+            bad.textContent = ' NOT A MODE THIS PROTOCOL HAS ';
+            li.appendChild(bad);
+          }
+        }
+        const text = document.createElement('span');
+        text.textContent = ` ${o.text}`;
+        li.appendChild(text);
+        list.appendChild(li);
+      }
+      advOutput.appendChild(list);
+    }
+
+    if (v.evidenceGap) {
+      const gap = document.createElement('p');
+      gap.className = 'hint';
+      gap.dataset.testid = 'adversary-evidence-gap';
+      gap.textContent = `What would answer the strongest of these: ${v.evidenceGap}`;
+      advOutput.appendChild(gap);
+    }
+
+    // THE DENIAL, AND IT IS THE REASON THIS SECTION SITS WHERE IT DOES.
+    // §(2) of 6.10: a claim pre-hardened against a model's objections
+    // reads as better-grounded than it was. Nothing goes on the record —
+    // authors consult colleagues and cite nobody — so the honesty is
+    // owed on the screen instead, next to the box it would corrupt.
+    const notEvidence = document.createElement('p');
+    notEvidence.className = 'hint';
+    notEvidence.dataset.testid = 'adversary-not-evidence';
+    notEvidence.textContent =
+      'Surviving these is NOT evidence. This model observed nothing, replicated '
+      + 'nothing and published nothing; it cannot support a higher confidence, '
+      + 'and none of it is recorded anywhere or attributed to anybody.';
+    advOutput.appendChild(notEvidence);
+
+    if (v.confidence) {
+      const advised = document.createElement('p');
+      advised.className = 'hint';
+      advised.dataset.testid = 'adversary-confidence';
+      // RENDERED AS THE MODEL'S READING AND NEVER APPLIED. The select
+      // above is not touched: a client that moved the author's
+      // confidence would be making the claim for them.
+      advised.textContent =
+        `The model reads the draft as supporting ${v.confidence} at most. `
+        + 'Yours is the one that is published, and nothing here changes it.';
+      advOutput.appendChild(advised);
+    }
+  }
 
   const tagsLabel = document.createElement('label');
   tagsLabel.textContent = 'Tags (comma-separated, optional)';
@@ -5137,6 +5361,7 @@ function renderNewClaimTab(): HTMLElement {
   form.appendChild(contentLabel);
   form.appendChild(domainLabel);
   form.appendChild(confidenceLabel);
+  form.appendChild(adversary);
   form.appendChild(tagsLabel);
   form.appendChild(evidenceFieldset);
   form.appendChild(submitBtn);
