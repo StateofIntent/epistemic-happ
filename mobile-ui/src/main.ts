@@ -576,18 +576,62 @@ function fieldsWithKey(key: string): Field[] {
     .filter((field) => focusKey(field) === key);
 }
 
+/** The same idea for anything focusable that is NOT a text box.
+ *
+ * A button has no placeholder and no `name`, so it needs its own key:
+ * its testid, its label, or failing both its own words — which is how a
+ * reader would name it too. */
+function controlKey(el: HTMLElement): string | null {
+  return el.dataset.testid || el.getAttribute('aria-label')
+    || el.textContent?.trim().slice(0, 40) || null;
+}
+
+function controlsWithKey(key: string): HTMLElement[] {
+  return [...app.querySelectorAll<HTMLElement>('button, a[href], [tabindex]')]
+    .filter((el) => controlKey(el) === key);
+}
+
 /** Captures where the caret is, and returns the function that puts it back.
  *
  * Both halves run inside one `render()` call, so there is no window in which
  * a keystroke can arrive and find nothing focused: the DOM is single-threaded
- * and the rebuild is synchronous. Focus is restored ONLY when it was in a
- * field — a render caused by pressing a button leaves the button focused, and
- * dragging the caret back into a box the person just left would be its own
- * defect. */
+ * and the rebuild is synchronous.
+ *
+ * THIS COMMENT USED TO SAY "a render caused by pressing a button leaves the
+ * button focused", AND THAT WAS FALSE — measured 2026-11-02 by
+ * `render-invariant.mjs`: the button is destroyed with everything else and
+ * focus falls to `BODY`. For a keyboard user that is worse than losing a
+ * caret, because the next Tab restarts from the top of the document rather
+ * than continuing from the control they were on. It was the reason this
+ * function deliberately handled text boxes ONLY, so the reason was wrong and
+ * the scope with it.
+ *
+ * SO BUTTONS AND LINKS ARE RESTORED TOO, and the distinction the old comment
+ * was reaching for still holds: restoring focus to the control the person was
+ * ALREADY on is not the same as dragging the caret back into a box they had
+ * just left. Nothing here moves focus somewhere it was not. */
 function captureFocus(): () => void {
   const active = document.activeElement;
+  if (active instanceof HTMLElement
+      && !(active instanceof HTMLInputElement)
+      && !(active instanceof HTMLTextAreaElement)
+      && app.contains(active)) {
+    // A control rather than a text box: no caret to put back, so the key and
+    // the ordinal are the whole of what has to survive.
+    const key = controlKey(active);
+    if (key === null) return () => { /* nothing names this control */ };
+    const ordinal = controlsWithKey(key).indexOf(active);
+    return () => {
+      const restored = controlsWithKey(key)[ordinal];
+      // `preventScroll`, because the measurement that found this bug also
+      // established that a rebuild does NOT move the page — and a bare
+      // `.focus()` scrolls its target into view, which would introduce the
+      // jump this function is not supposed to cause.
+      if (restored) restored.focus({ preventScroll: true });
+    };
+  }
   if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) {
-    return () => { /* nothing was being typed into */ };
+    return () => { /* nothing was focused inside the app */ };
   }
   const key = focusKey(active);
   if (key === null) return () => { /* nothing names this box across a rebuild */ };
