@@ -58,7 +58,7 @@ import type {
   Constitution, ConstitutionPromise, Condition,
   MembranePromiseCompliance, MemberPromiseStanding,
   Assessment, Stance, SettlementPolicy, SettlementStatus,
-  SettlementState, RecomputedSettlement,
+  SettlementState, RecomputedSettlement, UnseenReport,
   SealedPrediction, ForesightRecord, PublishedReading,
 } from './types.js';
 
@@ -1179,6 +1179,41 @@ export class EpistemicAgent {
   }> {
     const critiques = await this.critiquesFor(target);
     return { critiques, pastCone: critiques.map((c) => c.actionHash) };
+  }
+
+  /** The DETECTION half of the past cone: which critiques of the same
+   * target a given critique's author did not record having seen.
+   *
+   * `witnessedCritiquesOf` above is the retention half — what an agent
+   * records when it writes. This is the half that reads somebody
+   * else's record back, and it is the one function in this library
+   * whose RESULT can be misused more easily than its arguments.
+   *
+   * PASSED THROUGH UNCHANGED, FIELD FOR FIELD, AND THAT IS THE DESIGN.
+   * There is no camelCase re-spelling, no derived boolean, no fraction,
+   * and there will not be one. Every convenience this method could
+   * offer is a convenience for drawing the inference the report exists
+   * to prevent: `cone_recorded` is false for most critiques in
+   * existence — `past_cone` is `#[serde(default)]` and every client
+   * that omits it records nothing — and in that case `unseen` is
+   * simply every sibling critique. An agent that reads `unseen.length`
+   * without branching on `cone_recorded` has turned a missing feature
+   * into a finding about a person.
+   *
+   * `total_known` IS THIS CONDUCTOR'S DENOMINATOR, counted over its own
+   * arc at read time. A peer with a different arc may know of more
+   * siblings, so `unseen.length` alone is a numerator with its
+   * denominator discarded — report the pair or neither.
+   *
+   * `note` is the coordinator's own sentence about what the figures do
+   * and do not support. Relay it; do not summarise it. The protocol
+   * states the judgement and this library states the shape, which is
+   * the same division `recomputeSettlement` keeps.
+   *
+   * Takes the critique's ACTION hash — `create_critique`'s return value
+   * and `Decoded<Critique>.actionHash`, not an entry hash. */
+  async unseenBy(critiqueActionHash: Uint8Array): Promise<UnseenReport> {
+    return this.call<UnseenReport>('critiques_unseen_by', critiqueActionHash);
   }
 
   // --- Settlement ----------------------------------------------------

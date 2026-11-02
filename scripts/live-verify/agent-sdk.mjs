@@ -153,6 +153,33 @@
 //
 //   Restored and re-run: all ninety green.
 //
+//   THE DETECTION SECTION (open-work 1.22) WAS INJECTED TWICE on
+//   2026-11-02, and both results are about the SHAPE of what comes back
+//   rather than the figures in it — which is what this section is for.
+//
+//   Injection CO: `unseenBy` adds a derived `ignored: unseen.length > 0`.
+//   Result: ONE red — "NOTHING derived" — and the six-fields check
+//   STAYED GREEN, correctly: all six are still there and the extra is
+//   the defect. The two checks are complementary and neither suffices
+//   alone, which is why the key set is asserted as an exact match rather
+//   than by presence. A derived flag is the one thing this method must
+//   not grow: `cone_recorded` is false for most critiques in existence,
+//   so `ignored` would read TRUE for authors whose client simply never
+//   filled the field.
+//
+//   Injection CP: a "tidy" passthrough keeping only `critique`, `unseen`
+//   and `cone_recorded` — the denominator and the coordinator's note
+//   dropped.
+//   Result: SIX red. AND THE INSTRUCTIVE PASS: "it recorded every
+//   sibling this conductor knows of" was GREEN, because it compared
+//   `seen_count === total_known` and under CP both were `undefined`.
+//   **An equality between two values that can both be absent is not an
+//   assertion until one of them is pinned**, so that check now also
+//   requires `total_known >= 1`. Found by injection rather than review,
+//   and it is the same vacuity injection D records one section up.
+//
+//   Restored and re-run: all one hundred and four green.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -325,6 +352,76 @@ try {
   } catch (error) { coneRefusal = error; }
   check('a cone over MAX_PAST_CONE is refused, not silently trimmed',
     coneRefusal !== null && /refused rather than trimmed|ceiling/i.test(coneRefusal.message));
+
+  log('\n=== The detection half: unseenBy, and what it must not be shaped like ===');
+  // open-work 1.22. The section above is RETENTION — what this agent records
+  // when it writes. This is DETECTION: reading somebody else's record back,
+  // and it is the one method in the library whose RESULT is easier to misuse
+  // than its arguments. The checks are therefore about the SHAPE of what
+  // comes back as much as the figures in it.
+  const completeReport = await agent.unseenBy(conedCritique);
+  check('unseenBy returns all six of the report\'s fields, none dropped',
+    completeReport !== null
+    && completeReport.critique instanceof Uint8Array
+    && Array.isArray(completeReport.unseen)
+    && typeof completeReport.seen_count === 'number'
+    && typeof completeReport.cone_recorded === 'boolean'
+    && typeof completeReport.total_known === 'number'
+    && typeof completeReport.note === 'string');
+  // THE LOAD-BEARING SHAPE CHECK. Every convenience this method could add is
+  // a convenience for drawing the inference the report exists to prevent, so
+  // the absence of a derived verdict is asserted rather than left to custom.
+  check('and NOTHING derived — no verdict, fraction or ignoring flag',
+    Object.keys(completeReport).every((k) => /^(critique|unseen|seen_count|cone_recorded|total_known|note)$/.test(k)));
+  check('the coned critique recorded a cone, so cone_recorded is true',
+    completeReport.cone_recorded === true);
+  // THE `>= 1` CLAUSE IS NOT DECORATION. Without it this check PASSED under
+  // injection CP, which dropped `seen_count` and `total_known` entirely:
+  // `undefined === undefined` is true, so the equality held over two fields
+  // that were not there. An equality between two values that can both be
+  // absent is not an assertion until one of them is pinned.
+  check('it recorded every sibling this conductor knows of, so the set is empty',
+    completeReport.unseen.length === 0
+    && completeReport.total_known >= 1
+    && completeReport.seen_count === completeReport.total_known);
+  // THE PROTOCOL'S SENTENCE, RELAYED. A library that paraphrased it would be
+  // a second place for SPEC's wording to rot — open-work 1.20's bug class.
+  check('and the note is the coordinator\'s own, keeping the observer caveat',
+    /another observer may know of more/i.test(completeReport.note));
+
+  // THE CONTROL, AND IT IS THE WHOLE REASON cone_recorded GATES EVERYTHING.
+  // The FIRST critique was written with no cone, which is the real-world
+  // case: the field is #[serde(default)] and most clients omit it. Its
+  // `unseen` is every sibling there is — identical to what a critique that
+  // genuinely saw nothing would report — so a caller reading the list
+  // without branching has turned a missing feature into a finding.
+  const silentReport = await agent.unseenBy(critiques[0].actionHash);
+  check('CONTROL: the critique that recorded nothing reports cone_recorded false',
+    silentReport.cone_recorded === false);
+  check('and its unseen set is EVERY sibling, which is why the flag gates it',
+    silentReport.unseen.length === silentReport.total_known
+    && silentReport.total_known >= 1);
+  check('its note says the author is silent rather than uninformed',
+    /silent, not uninformed/i.test(silentReport.note));
+
+  // A THIRD CRITIQUE, FILED AFTER THE CONED ONE AND IN NOBODY'S CONE. This
+  // is what turns the complete case into a PARTIAL one, and it is the only
+  // check here that proves total_known is counted FRESH at read time rather
+  // than carried on the entry — the coned critique has not changed.
+  const lateCritique = await agent.critique({
+    target, mode: 'Evidential',
+    content: 'Filed after the coned critique, so it is in nobody\'s cone.',
+  });
+  const partialReport = await agent.unseenBy(conedCritique);
+  check('the SAME critique now reports a larger denominator, read fresh',
+    partialReport.total_known === completeReport.total_known + 1
+    && partialReport.seen_count === completeReport.seen_count);
+  check('and the late critique is exactly what is not recorded as seen',
+    partialReport.unseen.length === 1
+    && JSON.stringify(Array.from(partialReport.unseen[0]))
+      === JSON.stringify(Array.from(lateCritique)));
+  check('its note states both figures rather than the gap alone',
+    /recorded seeing 1 of 2/i.test(partialReport.note));
 
   log('\n=== Pre-registration: the mechanism an SDK agent could not use ===');
   const question = claims[0].actionHash;

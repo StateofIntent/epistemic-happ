@@ -357,6 +357,54 @@ export interface RecomputedSettlement {
   note: string;
 }
 
+/** What `unseenBy` returns: which critiques of the same target a given
+ * critique's author did NOT record having seen.
+ *
+ * THE DETECTION HALF OF THE C DIAL; `Critique.past_cone` is retention.
+ * The fields are the zome's own, in the zome's own spelling, because
+ * this is the one shape where a convenient re-naming would be a lie —
+ * see the gating rule below.
+ *
+ * `cone_recorded` GATES EVERY INFERENCE AN AGENT MAY DRAW, and an agent
+ * is the caller most likely to skip it: the obvious move is to
+ * destructure `unseen` and treat a non-empty list as a finding. It is
+ * not one. `past_cone` is `#[serde(default)]`, so for every critique
+ * written by a client that does not send the field — which is most of
+ * them — `unseen` is simply EVERY sibling critique, and `cone_recorded`
+ * is false. An author whose client does not populate cones is SILENT,
+ * not uninformed, and reporting the two alike manufactures a finding
+ * out of a missing feature.
+ *
+ * `total_known` IS ONE OBSERVER'S DENOMINATOR, not a global count. The
+ * coordinator counts the siblings THIS conductor can resolve over the
+ * network at read time; a peer with a different arc may know of more.
+ * It is returned so the figures can be checked rather than trusted,
+ * which also means `unseen.length` on its own is a numerator with its
+ * denominator thrown away.
+ *
+ * THERE IS DELIBERATELY NO DERIVED FIELD HERE — no `isIgnoring`, no
+ * `gapFraction`, nothing that collapses the branch. A library that
+ * supplied one would be making the judgement this report exists to keep
+ * with the caller, and it would be wrong in the common case. `note` is
+ * the coordinator's own statement of what the figures do and do not
+ * support; pass it through rather than paraphrasing it. */
+export interface UnseenReport {
+  /** The critique asked about. */
+  critique: Uint8Array;
+  /** Siblings absent from its recorded cone. IDENTICAL whether the
+   * author genuinely saw nothing or simply recorded nothing. */
+  unseen: Uint8Array[];
+  /** How many siblings the author DID record seeing. */
+  seen_count: number;
+  /** FALSE when the cone is empty: the "recorded nothing" case, and the
+   * branch to take before saying anything about anybody's knowledge. */
+  cone_recorded: boolean;
+  /** Every sibling critique known to THIS observer right now. */
+  total_known: number;
+  /** The coordinator's own words on what the figures support. */
+  note: string;
+}
+
 // --- Pre-registration (commit–reveal) ---------------------------------
 //
 // THE PROTOCOL'S CENTRAL MECHANISM, and until now the one thing an SDK
