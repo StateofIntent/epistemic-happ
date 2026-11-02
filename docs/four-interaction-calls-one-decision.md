@@ -1,6 +1,17 @@
 # The four interaction calls — one decision, and one of them is mis-filed
 
-> ## STATUS: A DECISION BRIEF. NOTHING HERE IS BUILT, AND THE DECISION IS NOT TAKEN.
+> ## STATUS: A DECISION BRIEF. THE DECISION IS NOT TAKEN — BUT ONE OF THE FOUR IS NO LONGER WAITING ON IT.
+>
+> **6.1 IS BUILT, 2026-11-02, AND IT LEFT THIS BRIEF WITHOUT ANSWERING IT.**
+> Its decision was settled narrowly on 2026-10-28 — how an absent `past_cone`
+> must read — and once that rendering was demonstrated and checked, what
+> remained of 6.1 was wiring rather than a question. So the brief below
+> still poses the right question for 6.2, 6.3 and 6.4, and **6.1 is now a
+> worked example of what taking the decision looks like** rather than a
+> fourth instance of it: the figures carry their denominator, the
+> coordinator's own note is rendered verbatim, and the unseen SET is offered
+> only where a cone was recorded, because otherwise it is every sibling and
+> listing it manufactures a gap out of a missing feature.
 >
 > Open-work §6 lists four unsurfaced reads — 6.1 `critiques_unseen_by`,
 > 6.2 `publish_discourse_reading`, 6.3 the settlement screen, 6.4 the

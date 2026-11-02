@@ -370,6 +370,36 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-style: italic;
 }
 
+/* --- The unseen set and its denominator (open-work 6.1, second half)
+   CARRIES THE SAME RULE ONE LAYER OUT. `.unseen-figures` reuses
+   `.cone-state` in both branches on purpose, so the recorded and
+   not-recorded cases are the same size and the same weight; the only
+   thing added here is the indent that groups the figures, the
+   protocol's note and the set with the cone line they qualify.
+
+   THE LIST IS NOT STYLED AS A FINDING. No bullets-as-warnings, no
+   colour, no border: a critique that omitted a sibling from its cone
+   has not been shown to have done anything, and a palette that marked
+   it would assert at the stylesheet layer the accusation the wording
+   explicitly denies — the same trap the stance colours below avoid. */
+
+.unseen-state {
+  margin-top: 0.3rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--border);
+}
+
+.unseen-state .hint { font-size: 0.75rem; }
+
+.unseen-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.unseen-list li { margin-top: 0.2rem; }
+
 /* --- Positions taken (assessments) -----------------------------------
    NO STANCE IS STYLED AS THE GOOD ONE. Supports is not green, Disputes
    is not red, and Abstains is not grey: a palette that ranked them

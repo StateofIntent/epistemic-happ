@@ -35,6 +35,24 @@
 // critique WITH a cone and one WITHOUT, which is the control that makes the
 // distinction observable rather than asserted.
 //
+// AND §5 IS THE OTHER HALF OF THE SAME ROW, ADDED 2026-11-02, WHICH CLOSES IT.
+// §4 reads the ENTRY: it asserts whether an author recorded anything. That is
+// a numerator with its denominator hidden — "recorded having seen 1 other
+// objection" says nothing until a reader knows whether there was one other
+// objection or forty, and NO ENTRY CAN CARRY THE ANSWER, because the figure is
+// a count of what this conductor can resolve over its own arc at read time.
+// That is `critiques_unseen_by`, the query open-work 6.1 held unsurfaced, and
+// §5 is what it says on a screen.
+//
+// THE FAKE HERE IS A WORKING SCREEN, which is why the load-bearing check is an
+// ABSENCE. A panel that listed the unseen set under every critique would be
+// correct about every hash it drew and still be wrong: for a critique whose
+// client never sent `past_cone` the "unseen" set is EVERY sibling, so showing
+// it captioned as what the author did not see manufactures a gap out of a
+// missing feature and reads as an accusation nobody made. So §5 asserts that
+// NO set is offered in the not-recorded branch, beside a control proving one
+// IS offered where a cone genuinely omits something.
+//
 // SET UP THROUGH THE CONDUCTOR, MEASURED THROUGH THE BROWSER, for the reason
 // `foresight-ui.mjs` gives: the stances, the split and the cones are created
 // by zome call so the harness knows the truth before it looks at the screen.
@@ -68,6 +86,60 @@
 //   `cone_recorded = !past_cone.is_empty()` makes both "not recorded". There
 //   are two states. §4 failing against CORRECT UI behaviour is what surfaced
 //   it — the control asserted an absent-cone marker the UI would never draw.
+//
+//   FIVE MORE INJECTIONS CAME WITH §5, 2026-11-02, AND THREE OF THEM WENT RED
+//   WHERE NO WORDING CHECK COULD — which is the finding, not the count.
+//
+//   CJ: the `cone_recorded` guard removed, so the unseen SET is offered in
+//   the not-recorded branch too — the accusation manufactured out of a
+//   missing feature, and the one defect this section exists for.
+//   Result: THREE red. The absence check, the control beside it, and §5c's
+//   row count. THE CONTROL IS THE INTERESTING RED: it reads
+//   `toggles.first()`, and with every critique carrying a toggle the first
+//   one is no longer the partial case — so the control is coupled to the
+//   absence it controls for, and a reader of a future failure should expect
+//   both to move together rather than treat the second as a separate defect.
+//   WHAT STAYED GREEN IS WORTH MORE: "each is named by its own words"
+//   passed, because the injected list is a SUPERSET and still contains the
+//   two rows the check looks for. That check cannot discriminate a superset
+//   and is left recorded as such rather than tightened into something the
+//   row count already covers.
+//
+//   CK: the partial line's denominator dropped — "Recorded having seen 1
+//   other objections before writing".
+//   Result: TWO red, both in §5. §4's own cone check stayed green, correctly,
+//   because it asserts a different line; and the `data-state` check stayed
+//   green, which is the thing to notice — the state ATTRIBUTE and the WORDING
+//   can drift apart, so a screen can be in the right state and say the wrong
+//   sentence, and only the text assertions see it.
+//
+//   CL: the not-recorded line faded — `opacity: 0.55`, `font-size: 0.68rem`.
+//   Result: ONE red, and EVERY wording check green. This is 6.1's rule
+//   broken typographically after the words were careful not to break it, and
+//   it is invisible to every assertion that reads text. Caught only by
+//   reading `getComputedStyle` back off the rendered page, which the check
+//   prints: `10.88px|400|italic|0.55` against `12px|400|italic|1`.
+//
+//   CM: the coordinator's `note` paraphrased into the client's own voice.
+//   Result: THREE red — and "the coordinator's own note is rendered for every
+//   critique" STAYED GREEN, because it counts elements. A COUNT CANNOT TELL
+//   WHOSE WORDS ARE IN THEM, which is this directory's own recurring finding
+//   about checks that validate a self-description; the three wording
+//   assertions are what actually carry §5b.
+//
+//   CN: the denial moved to sit UNDER the list it qualifies.
+//   Result: ONE red, both wording checks green — the denial is still there
+//   and merely arrives too late to reach a reader who has already drawn the
+//   conclusion. Order is the assertion, so order is checked.
+//
+//   AND THE FIXTURE'S OWN DEFECT, found before the browser opened twice over:
+//   the first draft seeded two critiques and could not produce the PARTIAL
+//   outcome at all (the one that recorded a cone had seen every sibling there
+//   was), and the second asserted two siblings when there are three, having
+//   forgotten that the complete-case critique is itself a sibling of the
+//   partial one. Both were caught by asserting the fixture THROUGH THE QUERY
+//   before opening the page — without which §5 would have been asserting over
+//   a screen that had no partial state to draw, and passing.
 //
 //   Injection H: an accurate tally — `${supports} support, ${disputes}
 //   disputes` — rendered at the top of the panel. This is the fake this file
@@ -149,6 +221,16 @@ async function connect() {
 const CLAIM_TEXT = 'A claim with positions taken on it, for the positions surface.';
 const WITH_CONE = 'Filed while recording what had already been said.';
 const WITHOUT_CONE = 'Filed with no record of what had already been said.';
+// THE TWO FIXTURES §5 NEEDS, AND NEITHER BRANCH IS REACHABLE WITHOUT THEM.
+// `critiques_unseen_by` has three outcomes and the first draft of this setup
+// could only produce two: with A (no cone) and B (cone [A]) in existence, B
+// has seen every sibling there is, so the PARTIAL case — a cone that records
+// something and omits something — never occurred. LATE arrives after B and
+// is never in anybody's cone, which is what makes B partial; SAW_ALL records
+// all three and is the control that keeps "partial" from being the only
+// recorded state on screen.
+const LATE = 'Filed after the one that recorded a cone, so it is in nobody\'s.';
+const SAW_ALL = 'Filed last, recording every objection already on the claim.';
 const REASONED = 'Supported because the method replicates.';
 
 async function main() {
@@ -187,11 +269,50 @@ async function main() {
     evidence_hashes: [], species: null,
   });
   await sleep(500);
-  await node.call('create_critique', {
+  const withCone = await node.call('create_critique', {
     target, target_type: 'Claim', critique_mode: 'Methodological', content: WITH_CONE,
     author: node.me, timestamp: nowMicros(), replication_attempted: false,
     evidence_hashes: [], species: null, past_cone: [firstCritique],
   });
+  await sleep(500);
+  // AFTER the one that recorded a cone, and deliberately not in it — this is
+  // what turns `withCone` from "recorded everything" into "recorded 1 of 2",
+  // which is the only state where an unseen SET exists to be shown at all.
+  const late = await node.call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Evidential', content: LATE,
+    author: node.me, timestamp: nowMicros(), replication_attempted: false,
+    evidence_hashes: [], species: null,
+  });
+  await sleep(500);
+  // THE COMPLETE CASE, and transitive closure is why the list is all three:
+  // admitting `withCone` means admitting everything `withCone` admitted, so
+  // a cone of [withCone, late] alone would be REFUSED for omitting
+  // `firstCritique`. The validation rule and the fixture agree here by
+  // construction rather than by luck.
+  await node.call('create_critique', {
+    target, target_type: 'Claim', critique_mode: 'Experiential', content: SAW_ALL,
+    author: node.me, timestamp: nowMicros(), replication_attempted: false,
+    evidence_hashes: [], species: null, past_cone: [firstCritique, withCone, late],
+  });
+  await sleep(500);
+
+  // ASSERTED THROUGH THE QUERY BEFORE THE BROWSER IS OPENED, so a §5 red is
+  // known to be the screen's fault and not the fixture's. This is the
+  // `foresight-ui` rule — set up through the conductor, measured through the
+  // browser — applied to the thing §5 is actually about.
+  const coneReport = await node.call('critiques_unseen_by', withCone);
+  log(`    conductor says: withCone recorded ${coneReport.seen_count} of `
+    + `${coneReport.total_known}, ${coneReport.unseen.length} unseen`);
+  // THREE SIBLINGS, NOT TWO, AND THE FIRST DRAFT OF THIS ASSERTION SAID TWO
+  // — it forgot that the complete-case critique is itself a sibling of the
+  // partial one. Caught here rather than in the browser, which is the whole
+  // reason the fixture is asserted through the query before the page opens.
+  if (!(coneReport.cone_recorded && coneReport.unseen.length === 2
+        && coneReport.total_known === 3)) {
+    log('  SETUP FAILED: the PARTIAL cone case was not produced, so §5 would');
+    log('  be asserting over a screen that has no partial state to draw.');
+    process.exit(1);
+  }
 
   // A DELIBERATE 2-1 SPLIT, so a tally is available to be computed. Without an
   // uneven split "no tally on the page" would be satisfied by a page that
@@ -364,7 +485,137 @@ async function main() {
     check('the recorded case states HOW MANY were seen, not merely that some were',
       /seen \d+ other objection/i.test(await recorded.first().innerText()));
 
-    log('\n=== 5. ordering is the protocol\'s, not the client\'s ===');
+    log('\n=== 5. THE DENOMINATOR, AND THE SET IT LEAVES OUT (6.1 second half) ===');
+    // WHAT THIS SECTION IS FOR, and it is not "the query got a screen". §4
+    // asserts the cone STATE: whether an author recorded anything. That line
+    // is a numerator with its denominator hidden — "recorded having seen 1"
+    // says nothing until a reader knows whether there was one other
+    // objection or forty, and only `critiques_unseen_by` knows, because the
+    // denominator is a count of what THIS conductor can resolve right now.
+    //
+    // THE PLAUSIBLE FAKE HERE IS A WORKING SCREEN. A panel that renders the
+    // unseen list accurately under every critique would be correct about
+    // every hash it drew and would still be wrong: for a critique whose
+    // client never sent `past_cone` the "unseen" set is EVERY sibling, so
+    // listing it captioned as what the author did not see manufactures a
+    // gap out of a missing feature and reads as an accusation nobody made.
+    // So the load-bearing check below is an ABSENCE — no set is offered in
+    // the not-recorded branch — and it sits beside a control proving a set
+    // IS offered where one genuinely exists.
+    await page.waitForSelector('[data-testid="unseen-figures"]', { timeout: 20000 });
+    const figures = page.locator('[data-testid="unseen-figures"]');
+    check('every critique carries the denominator, not just the interesting one',
+      await figures.count() === 4);
+    const states = await figures.evaluateAll(
+      (els) => els.map((el) => el.dataset.state));
+    check('all three of the query\'s outcomes are on ONE screen',
+      states.filter((x) => x === 'not-recorded').length === 2
+      && states.filter((x) => x === 'recorded-partial').length === 1
+      && states.filter((x) => x === 'recorded-complete').length === 1);
+
+    const partial = figures.nth(states.indexOf('recorded-partial'));
+    const partialText = await partial.innerText();
+    log(`    partial reads: ${JSON.stringify(partialText)}`);
+    // BOTH NUMBERS OR NEITHER. A line stating what was seen without what it
+    // was seen out of is the exact half-statement this row was left holding.
+    check('the partial case states the numerator AND the denominator',
+      /seen 1 of the 3 other objections/i.test(partialText));
+    // ONE OBSERVER'S COUNT, SAID OUT LOUD. `total_known` is what this
+    // conductor could resolve over its own arc at read time; stated flatly
+    // the figure reads as a fact about the world.
+    check('and attributes the denominator to this reader, not to the world',
+      /this reader/i.test(partialText));
+
+    const absentFigures = figures.nth(states.indexOf('not-recorded'));
+    const absentFiguresText = await absentFigures.innerText();
+    log(`    not-recorded reads: ${JSON.stringify(absentFiguresText)}`);
+    check('CONTROL: the not-recorded case gets a denominator line too, not silence',
+      /knows of 3 other objections/i.test(absentFiguresText));
+    check('and says there is no gap to show rather than showing one',
+      /no gap here to show/i.test(absentFiguresText));
+
+    // THE LOAD-BEARING ABSENCE. Two critiques recorded nothing; neither may
+    // offer a list of what it "did not see", because there is no statement
+    // for that list to be a gap in.
+    const toggles = page.locator('[data-testid="unseen-toggle"]');
+    check('NO unseen set is offered for a critique that recorded nothing',
+      await toggles.count() === 1);
+    check('CONTROL: and one IS offered where a cone really does omit something',
+      /Show the 2 not recorded as seen/i.test(await toggles.first().innerText()));
+
+    // EQUAL WEIGHT, MEASURED RATHER THAN ASSERTED. 6.1's rule is that the
+    // not-recorded case must not be rendered more faintly than the recorded
+    // one — a fainter absence re-asserts ignorance typographically after the
+    // wording has avoided it. The two lines share a class so that it holds;
+    // this reads it back off the rendered page, which is the only place the
+    // claim is true or false.
+    const weights = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('[data-testid="unseen-figures"]')];
+      const pick = (state) => {
+        const el = els.find((e) => e.dataset.state === state);
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return `${s.fontSize}|${s.fontWeight}|${s.fontStyle}|${s.opacity}|${s.color}`;
+      };
+      return { absent: pick('not-recorded'), partial: pick('recorded-partial') };
+    });
+    log(`    absent: ${weights.absent}`);
+    log(`    partial: ${weights.partial}`);
+    check('the two cone states render at the SAME typographic weight',
+      weights.absent !== null && weights.absent === weights.partial);
+
+    log('\n=== 5b. the protocol says what the figures support, not the client ===');
+    // THE DIVISION OF LABOUR: the client states the figures, which it can
+    // check; the coordinator states what they do and do not support, which
+    // is a judgement SPEC writes down. Paraphrasing it here would be a
+    // second place for that wording to rot — open-work 1.20's bug class.
+    const notes = page.locator('[data-testid="unseen-note"]');
+    check('the coordinator\'s own note is rendered for every critique',
+      await notes.count() === 4);
+    const absentNote = await notes.nth(states.indexOf('not-recorded')).innerText();
+    log(`    absent note: ${JSON.stringify(absentNote.slice(0, 90))}`);
+    // VERBATIM FROM THE ZOME. These are the coordinator's words, so a client
+    // that rewrote them in its own voice fails here — which is the point.
+    check('and it is the zome\'s wording, carrying "silent, not uninformed"',
+      /silent, not uninformed/i.test(absentNote));
+    check('the absent note denies that any of it is evidence of ignorance',
+      /nothing here is evidence of ignorance/i.test(absentNote));
+    const completeNote = await notes.nth(states.indexOf('recorded-complete')).innerText();
+    check('and the complete case keeps the observer caveat',
+      /another observer may know of more/i.test(completeNote));
+
+    log('\n=== 5c. the set, and the denial that arrives BEFORE it ===');
+    await toggles.first().click();
+    await page.waitForSelector('[data-testid="unseen-list"]', { timeout: 10000 });
+    const unseenItems = page.locator('[data-testid="unseen-item"]');
+    check('the set opens and holds exactly as many rows as the figures stated',
+      await unseenItems.count() === 2);
+    // BOTH of them, by their own words — a list that rendered one row and
+    // stated two would leave the figure above it unverifiable, which is the
+    // failure this check exists to make impossible.
+    const setText = (await unseenItems.allInnerTexts()).join('\n');
+    check('each is named by its own words, so the figure can be checked',
+      setText.includes(LATE) && setText.includes(SAW_ALL));
+    check('and none is a bare hash the reader cannot audit',
+      await page.locator('[data-testid="unseen-item-unresolved"]').count() === 0);
+    // ORDER IS THE ASSERTION. A caveat printed under the list arrives after
+    // the reader has already drawn the conclusion.
+    const denialFirst = await page.evaluate(() => {
+      const caption = document.querySelector('[data-testid="unseen-caption"]');
+      const list = document.querySelector('[data-testid="unseen-list"]');
+      if (!caption || !list) return false;
+      return (caption.compareDocumentPosition(list)
+        & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    });
+    check('the denial is rendered BEFORE the list it qualifies, not after',
+      denialFirst);
+    const caption = await page.locator('[data-testid="unseen-caption"]').first().innerText();
+    check('and it denies the accusation in words, not merely omits it',
+      /does NOT mean the author knew of them and ignored them/i.test(caption));
+    check('naming the innocent reading too — they may not have arrived',
+      /had not arrived/i.test(caption));
+
+    log('\n=== 6. ordering is the protocol\'s, not the client\'s ===');
     // A panel that put Supports first would be ranking stances, and a reader
     // skims order as significance. The conductor's order is the only one
     // this client is entitled to show.
@@ -391,6 +642,14 @@ async function main() {
     log('counts it; and the past cone distinguishes "recorded nothing" from');
     log('"saw nothing" in both directions, which is open-work 6.1\'s rule and');
     log('was untestable until an agent could record a cone at all.');
+    log('');
+    log('AND THE DENOMINATOR IS ON SCREEN WITH IT, which closes 6.1: all three');
+    log('of critiques_unseen_by\'s outcomes render on one page, every figure is');
+    log('attributed to THIS reader rather than to the world, the coordinator\'s');
+    log('own note is rendered verbatim rather than paraphrased, and the unseen');
+    log('SET is offered ONLY where a cone was actually recorded — because for a');
+    log('critique whose client never sent past_cone that set is every sibling,');
+    log('and listing it would manufacture a gap out of a missing feature.');
   } else {
     log(`${failures} CHECK(S) FAILED.`);
   }

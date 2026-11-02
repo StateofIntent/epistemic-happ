@@ -111,6 +111,47 @@ export interface Assessment {
   timestamp: number;
 }
 
+/** critiques_unseen_by — which critiques of the same target a given
+ * critique's author did NOT record having seen.
+ *
+ * THE DETECTION HALF OF THE C DIAL; `Critique.past_cone` is the
+ * retention half. Open-work 6.1 held this read unsurfaced for a reason
+ * worth keeping in front of whoever renders it: a list of "objections
+ * this author did not see", shown beside an objection, is one step from
+ * reading as an accusation — and for most critiques in existence the
+ * list is EVERY sibling, because the field is `#[serde(default)]` and
+ * no client before `protocol_version: 10` sent it.
+ *
+ * SO `cone_recorded` GATES EVERY SENTENCE A SCREEN MAY SAY. When it is
+ * false the author recorded nothing, `unseen` is simply every sibling,
+ * and nothing in this report is evidence about anybody's knowledge. The
+ * coordinator says so in `note`, in as many words, rather than leaving
+ * it to be inferred.
+ *
+ * `total_known` IS THIS OBSERVER'S DENOMINATOR AND NOT A GLOBAL ONE.
+ * The coordinator counts the sibling critiques THIS conductor can see
+ * over the network at read time; another observer with a different arc
+ * may know of more. It is published so the figures can be checked
+ * rather than trusted, which also means a screen that shows `unseen`
+ * without it is stating a fraction while hiding what it is out of. */
+export interface UnseenReport {
+  /** The critique asked about. */
+  critique: Uint8Array;
+  /** Siblings absent from its recorded cone. IDENTICAL whether the
+   * author genuinely saw nothing or simply recorded nothing — which is
+   * why it must never be rendered without `cone_recorded`. */
+  unseen: Uint8Array[];
+  /** How many siblings the author DID record seeing. */
+  seen_count: number;
+  /** FALSE when the cone is empty: the "recorded nothing" case. */
+  cone_recorded: boolean;
+  /** Every sibling critique known to THIS observer right now. */
+  total_known: number;
+  /** The coordinator's own statement of what the figures do and do not
+   * support. Never a verdict, and rendered rather than paraphrased. */
+  note: string;
+}
+
 /** now_micros, matching every other place in this codebase that builds
  * a Holochain Timestamp-shaped microsecond value by hand (see
  * bridge/src/index.ts and this project's own live-verification
