@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-one browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -320,6 +320,15 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/positions-ui.mjs
+
+      # open-work 1.23: the decision to KEEP the whole-DOM rebuild rests on one
+      # claim, and this is the claim. It also found the defect it now gates —
+      # focus on a button did not survive a rebuild, and the comment on
+      # `captureFocus` asserted that it did.
+      - name: render-invariant — the whole-DOM rebuild loses nothing the app owns
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/render-invariant.mjs
 
       - name: taxonomy-ui — the critique vocabulary as a tree, writable, and never ranked
         run: |
