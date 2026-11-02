@@ -400,6 +400,48 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .unseen-list li { margin-top: 0.2rem; }
 
+/* --- The compose-time adversary (open-work 6.10) ---------------------
+   NOTHING HERE IS STYLED AS A FINDING, and that is the same rule the
+   unseen list follows for the same reason. These objections are nobody's
+   statement: no warning colour, no alert iconography, no border that
+   reads as an error. A palette that marked them would assert at the
+   stylesheet layer the standing the wording explicitly denies — and a
+   reader skims colour before text.
+
+   It also never appears outside this form. There is no `.claim-card
+   .adversary-*` rule and there must not be one: 6.10's second decision
+   is that a machine objection never renders beside a real one, and a
+   stylesheet is one of the places that could quietly be undone. */
+
+.adversary-fieldset {
+  margin-top: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem;
+}
+
+.adversary-fieldset legend { font-size: 0.8rem; padding: 0 0.3rem; }
+.adversary-fieldset .hint { font-size: 0.75rem; }
+
+.adversary-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+  list-style: none;
+}
+
+.adversary-list li { margin-top: 0.35rem; }
+
+/* The unreal-mode marker is the one thing here that must not be quiet:
+   it says the model used a word this protocol does not define, and an
+   author skimming needs to see it before they trust the label. Weight
+   rather than hue, so it carries in both themes and for anyone who
+   cannot distinguish the palette. */
+[data-testid="adversary-mode-unreal"] {
+  font-weight: 600;
+  font-style: normal;
+}
+
 /* --- Positions taken (assessments) -----------------------------------
    NO STANCE IS STYLED AS THE GOOD ONE. Supports is not green, Disputes
    is not red, and Abstains is not grey: a palette that ranked them
