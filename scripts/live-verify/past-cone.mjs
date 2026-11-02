@@ -68,6 +68,41 @@
 //   reports `cone_recorded=true` and the note stops distinguishing silence
 //   from ignorance, which is the one reading this query exists to prevent.
 //
+//   §6 AND §6b CAME WITH `critiques_unseen_by_assessment` on 2026-11-02 and
+//   were injected twice.
+//
+//   CT — THE CENTRAL FAKE, AND IT IS A PLAUSIBLE ANSWER RATHER THAN AN
+//   ERROR: the assessment query walks `TargetToAssessment` instead of
+//   `TargetToCritique`, so it counts the other POSITIONS instead of the
+//   target's OBJECTIONS.
+//   Result: EIGHT red — and the log line read `seen=2 of 3`, which would
+//   render perfectly on a screen and read perfectly in a sentence. WHAT
+//   STAYED GREEN IS THE WHOLE LESSON: both `cone_recorded` checks passed and
+//   the *silent, not uninformed* note passed, because the FLAG and the
+//   CAVEAT are still correct while every element of the set is the wrong
+//   kind of thing. The figure alone cannot distinguish the two sets — this
+//   claim had four critiques and three assessments, and a tool counting
+//   either prints a small number that looks right. Only the checks that pin
+//   the set's IDENTITY catch it: the denominator against the measured
+//   critique count, and the assertion that no assessment hash appears in
+//   `unseen`. Do not delete either.
+//
+//   CW: the friendly refusal replaced by the `map_err` shape that leaks
+//   serde — the state `critiques_unseen_by` itself shipped in.
+//   Result: ONE red, in §6b, with all twelve of §6's checks green. The
+//   message a caller gets for the WRONG KIND OF HASH is orthogonal to
+//   everything the query does with the right one, which is exactly why §6b
+//   exists as its own pair rather than being folded into §6.
+//
+//   AND §6b IS WHAT FOUND A DEFECT IN SHIPPED CODE. `critiques_unseen_by`'s
+//   *"Target is not a Critique."* had been unreachable since
+//   `protocol_version: 10`: handed an Assessment's action hash it returned
+//   `Deserialize("missing field `target_type`")`. Nothing had checked it
+//   because until there was a second query of this shape there was no wrong
+//   hash to pass. Third occurrence of that pattern in this repository —
+//   `get_my_sealed_prediction` and `create_membrane` are the other two — and
+//   the first draft of the new query inherited it by copying the idiom.
+//
 // Prereqs: a sandbox conductor and a built .happ at PROTOCOL_VERSION 10.
 // Two agents: the interesting case is one author answering another's critique
 // while the argument is still moving.
@@ -264,11 +299,106 @@ async function main() {
   check('THE LATER CRITIQUES ARE NAMED AS UNSEEN BY THE FIRST — the detection this exists for',
     reportSilent.unseen.some((h) => b64(h) === b64(honest)));
 
+  // === 6. THE ASSESSMENT SIDE, WHICH IS A DIFFERENT SET =================
+  //
+  // `critiques_unseen_by_assessment` reads like the mirror of the query above
+  // and is not one. `Assessment.past_cone` holds CRITIQUES of the target —
+  // `validate_assessment` refuses any member that does not resolve to one —
+  // so this compares an assessment against the target's OBJECTIONS, never
+  // against the other positions. THERE IS NO SIBLING-ASSESSMENT CONE in this
+  // protocol, so *did this assessor read the other assessments* is a question
+  // nothing can answer, and §6b asserts that the two queries refuse each
+  // other's inputs rather than quietly answering the wrong question.
+  log('\n--- 6. An assessment\'s cone, against the target\'s objections ---');
+  const assess = (agent, stance, past_cone, t = target) => agent.call('publish_assessment', {
+    assessor: agent.me, target: t, stance, confidence: 'Moderate',
+    rationale: null, past_cone, timestamp: nowMicros(),
+  });
+
+  const everyCritique = [first, second, honest, overclaim];
+  const partialAssessment = await assess(a1, 'Supports', [first, second]);
+  const silentAssessment = await assess(a2, 'Disputes', []);
+  const completeAssessment = await assess(a1, 'Abstains', everyCritique);
+
+  const partial = await a1.call('critiques_unseen_by_assessment', partialAssessment);
+  log(`    partial: seen=${partial.seen_count} of ${partial.total_known}, unseen=${partial.unseen.length}`);
+  check('an assessment that recorded a cone reports cone_recorded TRUE',
+    partial.cone_recorded === true);
+  // THE DENOMINATOR IS THE TARGET'S CRITIQUE COUNT, which is the whole claim
+  // this section exists to pin: four critiques were filed on this claim and
+  // three assessments, so a denominator of 4 proves it counts objections and
+  // a denominator of 2 or 3 would prove it was counting positions.
+  check('and the denominator is the target\'s CRITIQUES, not its assessments',
+    partial.total_known === everyCritique.length && partial.seen_count === 2);
+  check('the two it could not have recorded are named as unseen',
+    partial.unseen.length === 2
+    && partial.unseen.some((h) => b64(h) === b64(honest))
+    && partial.unseen.some((h) => b64(h) === b64(overclaim)));
+  check('and NO assessment hash appears in the unseen set — a different set entirely',
+    !partial.unseen.some((h) => b64(h) === b64(silentAssessment)
+      || b64(h) === b64(completeAssessment)));
+  check('its note states both figures and denies the position-anyway reading',
+    /recorded seeing 2 of 4/i.test(partial.note)
+    && /took a position anyway/i.test(partial.note));
+
+  const silent = await a1.call('critiques_unseen_by_assessment', silentAssessment);
+  check('CONTROL: an assessment that recorded nothing reports cone_recorded FALSE',
+    silent.cone_recorded === false && silent.seen_count === 0);
+  check('and its unseen set is EVERY critique, which is why the flag gates it',
+    silent.unseen.length === everyCritique.length);
+  check('its note says the assessor is silent rather than uninformed',
+    /silent, not uninformed/i.test(silent.note));
+
+  const complete = await a1.call('critiques_unseen_by_assessment', completeAssessment);
+  check('CONTROL: one that recorded every objection has an EMPTY unseen set',
+    complete.cone_recorded === true && complete.unseen.length === 0
+    && complete.seen_count === everyCritique.length);
+  check('and keeps the observer caveat, since another peer may know of more',
+    /another observer may know of more/i.test(complete.note));
+
+  // THE ZERO DENOMINATOR, AND IT IS THE ORDINARY CASE ON THIS SIDE. Most
+  // claims carry no critiques at all, so an assessment of one records an
+  // empty cone necessarily — not from silence but because there was nothing
+  // to record. A screen or an agent that reported that as "recorded nothing
+  // about what they had seen" would invite a reader to wonder what was
+  // missed when the answer is that nothing existed.
+  const bareClaim = await a1.call('create_claim', {
+    content: 'a claim nobody has objected to', domain: DOMAIN, author: a1.me,
+    timestamp: nowMicros(), evidence_hashes: [], confidence: 'Moderate',
+    semantic_tags: [], source_mew: null,
+  });
+  const bareRows = await a1.call('get_claims_by_domain', DOMAIN);
+  const bareTarget = bareRows.find((r) =>
+    b64(r.signed_action.hashed.hash) === b64(bareClaim))?.signed_action?.hashed?.content?.data?.entry_hash;
+  const onBare = await assess(a2, 'Supports', [], bareTarget);
+  const bare = await a1.call('critiques_unseen_by_assessment', onBare);
+  check('an assessment of an UNCRITIQUED claim reports a denominator of zero',
+    bare.total_known === 0 && bare.unseen.length === 0);
+  check('and that is not a thin arc — there was nothing to have seen',
+    bare.cone_recorded === false && bare.seen_count === 0);
+
+  log('\n--- 6b. The two queries refuse each other\'s inputs ---');
+  // THE NAMES PAIR AND THE SETS DO NOT, so the dangerous failure is a query
+  // that quietly answers the wrong question for the wrong kind of hash.
+  const critiqueToAssessmentQuery = await refusal(
+    a1, 'critiques_unseen_by_assessment', first);
+  check('a CRITIQUE hash is refused by the assessment query, not answered',
+    critiqueToAssessmentQuery !== null
+    && /not an Assessment/i.test(critiqueToAssessmentQuery));
+  const assessmentToCritiqueQuery = await refusal(
+    a1, 'critiques_unseen_by', partialAssessment);
+  check('and an ASSESSMENT hash is refused by the critique query',
+    assessmentToCritiqueQuery !== null
+    && /not a Critique/i.test(assessmentToCritiqueQuery));
+
   log('');
   if (failures === 0) {
     log('ALL CHECKS PASSED — a cone is retained, selective ignorance is refused,');
     log('over-claiming is admitted as unpreventable, and silence is not reported');
-    log('as ignorance.');
+    log('as ignorance. An assessment\'s cone is read against the target\'s');
+    log('OBJECTIONS and never against the other positions, the two queries');
+    log('refuse each other\'s inputs, and an uncriticised claim reports a');
+    log('denominator of zero rather than an assessor\'s silence.');
   } else {
     log(`${failures} CHECK(S) FAILED`);
   }

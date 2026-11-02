@@ -559,6 +559,111 @@ async function main() {
     /CANNOT answer/i.test(
       (tools.find((t) => t.name === 'what_this_critique_recorded_seeing') ?? {}).description ?? ''));
 
+  // ---- 5bc. The assessment side, which is a DIFFERENT SET -------------
+  //
+  // THE MISREADING THIS SECTION EXISTS TO PREVENT, and it is the likeliest
+  // one a model makes: `what_this_assessment_recorded_seeing` reads like the
+  // mirror of its sibling and is not. `Assessment.past_cone` holds CRITIQUES
+  // of the target — validation refuses anything else — so the figures are
+  // out of the claim's OBJECTIONS, never out of the other positions. There
+  // is no sibling-assessment cone in this protocol, so *did this assessor
+  // read the other assessments* cannot be answered and the payload says so.
+  log('\n--- 5bc. What an assessor recorded seeing OF THE OBJECTIONS ---');
+  // REUSES 5b's TWO ASSESSMENTS ON PURPOSE. `assessed` recorded its cone
+  // when ONE critique existed; §5bb then filed two more, so the same
+  // assessment is now PARTIAL without having changed — which is what proves
+  // the denominator is counted fresh at read time rather than carried.
+  const assessedReport = await callTool('what_this_assessment_recorded_seeing', {
+    assessment_hash: assessed.parsed?.action_hash,
+  });
+  check('the read answers for an assessment that recorded a cone',
+    !assessedReport.isError && assessedReport.parsed?.recorded_anything === true);
+  check('the denominator is named for OBJECTIONS, not positions',
+    assessedReport.parsed?.objections_known_to_this_conductor === 3
+    && assessedReport.parsed?.recorded_having_seen === 1
+    && assessedReport.parsed?.not_recorded_as_seen_count === 2);
+  // THE FIELD NAME IS THE ASSERTION. Three critiques and three assessments
+  // exist on this claim, so a tool counting the wrong set would print the
+  // same number — only the name distinguishes them.
+  check('CONTROL: no field here is named for assessments or positions',
+    !/"[a-z_]*(assessments_known|positions)[a-z_]*":/i.test(assessedReport.text));
+  check('the coordinator\'s own note is relayed, denying the position-anyway reading',
+    /recorded seeing 1 of 3/i.test(assessedReport.parsed?.protocol_note ?? '')
+    && /took a position anyway/i.test(assessedReport.parsed?.protocol_note ?? ''));
+  // THE PAYLOAD SAYS WHAT IT CANNOT ANSWER, because the question a model
+  // will be asked is "did they ignore the other positions" and the honest
+  // answer is that nothing records it.
+  check('and the payload refuses the other-positions question in words',
+    /not recorded in this protocol|NOT OTHER POSITIONS/i.test(assessedReport.text));
+
+  const optedOutReport = await callTool('what_this_assessment_recorded_seeing', {
+    assessment_hash: optedOut.parsed?.action_hash,
+  });
+  check('CONTROL: the assessment that recorded nothing reports the flag false',
+    !optedOutReport.isError && optedOutReport.parsed?.recorded_anything === false);
+  check('and its hashes are WITHHELD rather than listed as what it did not see',
+    typeof optedOutReport.parsed?.not_recorded_as_seen === 'string'
+    && /WITHHELD/.test(optedOutReport.parsed.not_recorded_as_seen));
+  check('CONTROL: with the figures still stated, so withholding is not hiding',
+    optedOutReport.parsed?.objections_known_to_this_conductor === 3);
+
+  // THE ZERO DENOMINATOR GETS ITS OWN SENTENCE, and this is the branch that
+  // does not exist on the critique side. Most claims carry no critiques at
+  // all, so an assessment of one records an empty cone necessarily — not
+  // from silence but because there was nothing to record. Reporting that as
+  // "recorded nothing" would be true and would still mislead.
+  // RE-READ THE DOMAIN. `inDomain` was fetched in §3, BEFORE §5 published
+  // the uncritiqued claim, so the stale list had one row and the lookup
+  // returned undefined — three reds whose cause was in a variable twenty
+  // lines of this file away from where they fired.
+  const domainNow = await callTool('claims_in_domain', { domain: DOMAIN });
+  const bareHash = (domainNow.parsed ?? []).find((c) => c.content === UNCRITIQUED)?.entry_hash;
+  check('the uncritiqued claim is in hand, so the branch below is reachable',
+    typeof bareHash === 'string' && bareHash.length > 0);
+  const bareAssessed = await callTool('assess', {
+    claim_hash: bareHash,
+    stance: 'Supports', confidence: 'Moderate',
+    rationale: 'Nothing has been objected to here.',
+  });
+  check('an uncritiqued claim can be assessed, so this branch is reachable',
+    !bareAssessed.isError && bareAssessed.parsed?.critiques_recorded_as_seen === 0);
+  const bareReport = await callTool('what_this_assessment_recorded_seeing', {
+    assessment_hash: bareAssessed.parsed?.action_hash,
+  });
+  check('and reports a denominator of zero rather than an assessor\'s silence',
+    !bareReport.isError
+    && bareReport.parsed?.objections_known_to_this_conductor === 0);
+  check('saying the claim has NO objections, not that nothing was recorded',
+    /EMPTY BECAUSE THE CLAIM HAS NO OBJECTIONS/.test(
+      bareReport.parsed?.not_recorded_as_seen ?? ''));
+  // NON-EMPTY FIRST, for the reason §5bb's control records: an absence check
+  // is satisfied by an absent response, and this one passed on the run where
+  // the stale-list bug above left `bareReport` with nothing in it.
+  check('CONTROL: and NOT the withheld wording, which would mislead here',
+    (bareReport.parsed?.not_recorded_as_seen ?? '').length > 0
+    && !/WITHHELD/.test(bareReport.parsed.not_recorded_as_seen));
+
+  // THE TWO TOOLS MUST REFUSE EACH OTHER'S HASHES. Their names pair, so a
+  // model handing the wrong one over is the likeliest error — and a tool
+  // that answered it would report a critique's siblings as an assessor's
+  // record. Both refusals must NAME the type, which is what makes them
+  // actionable rather than a dead end.
+  const wrongWay = await callTool('what_this_assessment_recorded_seeing', {
+    assessment_hash: seenCritique.parsed?.action_hash,
+  });
+  check('a CRITIQUE hash is refused by the assessment tool, naming the type',
+    wrongWay.isError === true && /not an Assessment/i.test(wrongWay.text));
+  const otherWay = await callTool('what_this_critique_recorded_seeing', {
+    critique_hash: assessed.parsed?.action_hash,
+  });
+  check('and an ASSESSMENT hash is refused by the critique tool, naming the type',
+    otherWay.isError === true && /not a Critique/i.test(otherWay.text));
+  // AND EACH REFUSAL POINTS AT THE RIGHT TOOL, because a refusal that only
+  // says no leaves a model guessing which call it wanted.
+  check('each refusal names the OTHER call as the one to make',
+    /critiques_unseen_by\b/.test(wrongWay.text)
+    && /critiques_unseen_by_assessment/.test(otherWay.text));
+
   // ---- 5c. The two tools that take a DOMAIN NAME -----------------------
   //
   // NEITHER WAS EVER CALLED BY THIS HARNESS, and that is how a dead tool

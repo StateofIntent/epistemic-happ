@@ -141,6 +141,39 @@
 //   before opening the page — without which §5 would have been asserting over
 //   a screen that had no partial state to draw, and passing.
 //
+//   §5d AND §5e CAME WITH `critiques_unseen_by_assessment` on 2026-11-02 and
+//   were injected twice. Both injections made the harness REPORT LESS THAN IT
+//   KNEW before they made it go red, and fixing that is the durable half.
+//
+//   CU: the `none-known` branch removed, so a claim with no objections falls
+//   through to the not-recorded wording.
+//   Result, FIRST TIME: a HARNESS ERROR. The unguarded `waitForSelector` was
+//   waiting for the very element the defect removes, so it timed out and
+//   ended the run — §5e reported nothing and every later check went
+//   unexercised. `foresight-ui.mjs` and `agent-sdk.mjs` both record this
+//   lesson from the same mistake; it is recorded a third time here because a
+//   third occurrence means the shape, not the file, is the problem.
+//   Result, AFTER GUARDING: THREE red and the run completes.
+//
+//   CV: the assessment surface handed `CRITIQUE_CONE` instead of
+//   `ASSESSMENT_CONE` — so it names the author rather than the assessor,
+//   says "other objection", denies the wrong inference, AND collides testids
+//   with the critique panel.
+//   Result, FIRST TIME: SIX red and then a HARNESS ERROR — `indexOf` returned
+//   -1 for a state that no longer rendered, and `locator.nth(-1)` is the LAST
+//   match, so `innerText()` waited thirty seconds on a locator matching
+//   nothing. Result, AFTER adding `textAt`: SIXTEEN red and the run
+//   completes, including the control asserting the critique side still has
+//   exactly four figures — which is what catches the testid collision.
+//
+//   THREE VACUOUS CHECKS WERE FOUND BY THOSE TWO RUNS, all the same shape:
+//   an ABSENCE assertion passes over an ABSENT element. "NOT the
+//   not-recorded wording", "never as positions" and "it is the assessor, not
+//   the author" all passed against an empty string. Each now requires its
+//   text to be non-empty first. This file already recorded the same hole in
+//   §5bb's sibling and in §5's complete-case equality; the rule is that an
+//   absence check needs a presence clause, every time.
+//
 //   Injection H: an accurate tally — `${supports} support, ${disputes}
 //   disputes` — rendered at the top of the panel. This is the fake this file
 //   exists for: every word true, and a verdict nobody published.
@@ -197,6 +230,22 @@ const check = (label, cond) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nowMicros = () => Date.now() * 1000;
+// Hashes are compared as base64 rather than byte-wise: the client hands back
+// Uint8Array in some places and Buffer-backed views in others, and `===` on
+// two different views of identical bytes is false.
+const b64 = (u8) => Buffer.from(u8).toString('base64');
+// Reads the nth match, or '' when there is no such match — because
+// `locator.nth(-1)` is the LAST match and `innerText()` on a locator that
+// matches nothing throws after a 30s timeout. Injection CV found this the
+// expensive way: the testids collided, `indexOf` returned -1, and a section
+// that should have reported two reds ended the run with a HARNESS ERROR
+// instead, taking every later section with it. Same lesson §5e's guard
+// carries, and the same one `foresight-ui.mjs` records.
+const textAt = async (locator, index) => {
+  if (index < 0) return '';
+  if (await locator.count() <= index) return '';
+  return locator.nth(index).innerText();
+};
 
 async function connect() {
   const admin = await AdminWebsocket.connect({ url: new URL(`ws://localhost:${ADMIN}`), wsClientOptions: { origin: 'live-verify' } });
@@ -317,8 +366,24 @@ async function main() {
   // A DELIBERATE 2-1 SPLIT, so a tally is available to be computed. Without an
   // uneven split "no tally on the page" would be satisfied by a page that
   // happened to have nothing interesting to count.
+  // ONE OF THE FOUR RECORDS A CONE, AND IT HAS TO, or §5d has one state to
+  // draw and a one-state indicator asserts nothing — the same trap §4 was
+  // stuck in before an SDK agent could record a cone at all. An assessment's
+  // cone holds CRITIQUES of the target (`validate_assessment` refuses
+  // anything else), so these are critique hashes and transitive closure
+  // applies: `withCone`'s own cone is `[firstCritique]`, so admitting
+  // `withCone` means admitting `firstCritique` too.
+  // THE HASH IS KEPT FROM THE WRITE rather than recovered from a read. The
+  // first draft searched `get_assessments_for` for a non-empty `past_cone`
+  // and found none: entry content comes back as msgpack bytes over the raw
+  // client, so `.past_cone` was undefined on every row and the setup guard
+  // fired on correct behaviour. The guard working is the only reason that
+  // was caught before the browser opened.
+  const conedAssessment = await node.call('publish_assessment', {
+    assessor: node.me, target, stance: 'Supports', confidence: 'High',
+    rationale: REASONED, past_cone: [firstCritique, withCone], timestamp: nowMicros(),
+  });
   for (const [stance, confidence, rationale] of [
-    ['Supports', 'High', REASONED],
     ['Supports', 'Tentative', null],
     ['Disputes', 'Moderate', 'Disputed because the sample is small.'],
     ['Abstains', 'Hypothetical', 'Looked, and will not take a side on this one.'],
@@ -327,6 +392,45 @@ async function main() {
       assessor: node.me, target, stance, confidence, rationale,
       past_cone: [], timestamp: nowMicros(),
     });
+  }
+
+  // A SECOND CLAIM WITH A POSITION AND NO OBJECTIONS, for §5e. This is the
+  // ORDINARY case on the assessment side — most claims carry no critiques —
+  // and it is the one branch where "recorded nothing" would be true and
+  // would still mislead, because there was nothing to record.
+  const BARE_CLAIM = 'A claim nobody has objected to, assessed anyway.';
+  const bareClaim = await node.call('create_claim', {
+    content: BARE_CLAIM, domain: DOMAIN, confidence: 'Tentative', semantic_tags: [],
+    author: node.me, timestamp: nowMicros(), evidence_hashes: [], attestation_policy: null,
+  });
+  const bareRows = await node.call('get_claims_by_domain', DOMAIN);
+  // MATCHED ON THE ACTION HASH THE WRITE RETURNED, for the same reason as
+  // above: entry content is msgpack over this client and cannot be read by
+  // field. `create_claim` returns the action hash and the row carries it.
+  const bareTarget = bareRows
+    .find((r) => b64(r.signed_action.hashed.hash) === b64(bareClaim))
+    ?.signed_action?.hashed?.content?.data?.entry_hash;
+  if (!bareTarget) {
+    log('  SETUP FAILED: the uncritiqued claim was not found by its own hash.');
+    process.exit(1);
+  }
+  await node.call('publish_assessment', {
+    assessor: node.me, target: bareTarget, stance: 'Supports', confidence: 'Moderate',
+    rationale: 'Nothing has been objected to here.', past_cone: [], timestamp: nowMicros(),
+  });
+
+  // ASSERTED THROUGH THE QUERY BEFORE THE BROWSER OPENS, like the cone
+  // fixture above: §5d needs the PARTIAL assessment state to exist, and a
+  // fixture that silently produced only one state would let the section pass
+  // over a screen with nothing to distinguish.
+  const assessmentReport = await node.call(
+    'critiques_unseen_by_assessment', conedAssessment);
+  log(`    conductor says: the coned assessment recorded ${assessmentReport.seen_count} `
+    + `of ${assessmentReport.total_known} objections, ${assessmentReport.unseen.length} unseen`);
+  if (!(assessmentReport.cone_recorded && assessmentReport.total_known === 4
+        && assessmentReport.unseen.length === 2)) {
+    log('  SETUP FAILED: the assessment PARTIAL case was not produced.');
+    process.exit(1);
   }
 
   const truth = await node.call('get_assessments_for', target);
@@ -615,6 +719,69 @@ async function main() {
     check('naming the innocent reading too — they may not have arrived',
       /had not arrived/i.test(caption));
 
+    log('\n=== 5d. AN ASSESSMENT\'S CONE IS READ AGAINST THE OBJECTIONS ===');
+    // THE DANGEROUS MISREADING THIS SECTION EXISTS TO PREVENT is not a
+    // missing denominator — it is a PLAUSIBLE one. `Assessment.past_cone`
+    // holds CRITIQUES of the target (`validate_assessment` refuses anything
+    // else), so a screen that said "recorded having seen 2 of the 4
+    // positions" would be stating a figure the protocol does not record and
+    // cannot: there is no sibling-assessment cone anywhere, by design. Every
+    // number here is out of the claim's OBJECTIONS, and the wording has to
+    // say which, because beside a list of positions "2 of 4" reads as
+    // positions.
+    const aFigures = page.locator('[data-testid="assessment-unseen-figures"]');
+    check('every position carries a denominator, not just the one with a cone',
+      await aFigures.count() === 4);
+    const aStates = await aFigures.evaluateAll((els) => els.map((el) => el.dataset.state));
+    check('both states occur, so neither branch is the only thing drawn',
+      aStates.filter((x) => x === 'recorded-partial').length === 1
+      && aStates.filter((x) => x === 'not-recorded').length === 3);
+    const aPartial = await textAt(aFigures, aStates.indexOf('recorded-partial'));
+    log(`    partial position reads: ${JSON.stringify(aPartial)}`);
+    // THE LOAD-BEARING WORD IS "objections". Four critiques and four
+    // positions exist, so a client counting the wrong set would also print
+    // "4" — the figure alone cannot distinguish them and the noun must.
+    check('the figures are stated as OBJECTIONS, never as positions',
+      /seen 2 of the 4 objections/i.test(aPartial)
+      && !/position/i.test(aPartial));
+    // NON-VACUOUS CLAUSE, because the line above is half an ABSENCE check and
+    // an empty string satisfies the `!/position/` half on its own.
+    check('and that assertion was made against real text, not an empty read',
+      aPartial.length > 0);
+    check('and attributed to this reader rather than to the world',
+      /this reader/i.test(aPartial));
+    // SEPARATE TESTIDS FROM THE CRITIQUE SIDE, asserted rather than assumed:
+    // §5's counts are over the critique panel, and one shared testid would
+    // have made both sections quietly count the other's rows.
+    check('CONTROL: the critique side\'s figures are still exactly four',
+      await page.locator('[data-testid="unseen-figures"]').count() === 4);
+    const aNote = await textAt(
+      page.locator('[data-testid="assessment-unseen-note"]'),
+      aStates.indexOf('recorded-partial'));
+    check('the coordinator\'s own note is rendered for the position too',
+      /recorded seeing 2 of 4/i.test(aNote));
+    // THE DENIAL THIS SIDE NEEDS IS A DIFFERENT ONE. A critique that omitted
+    // a sibling is accused of ignoring it; an assessor is accused of having
+    // taken a side in spite of it, which is a different sentence.
+    check('and it denies the position-anyway reading, not the ignoring one',
+      /took a position anyway/i.test(aNote));
+    const aToggles = page.locator('[data-testid="assessment-unseen-toggle"]');
+    check('the set is offered for the position that recorded a cone',
+      await aToggles.count() === 1);
+    check('CONTROL: and NOT for the three that recorded nothing',
+      await aToggles.count() === aStates.filter((x) => x === 'recorded-partial').length);
+    if (await aToggles.count() > 0) await aToggles.first().click();
+    await page.waitForSelector('[data-testid="assessment-unseen-list"]', { timeout: 10000 })
+      .catch(() => log('    (no assessment unseen list appeared; the checks below say so)'));
+    check('it lists the two objections absent from the cone',
+      await page.locator('[data-testid="assessment-unseen-item"]').count() === 2);
+    const aCaption = await textAt(
+      page.locator('[data-testid="assessment-unseen-caption"]'), 0);
+    check('its caption names the ASSESSOR and the position-anyway reading',
+      /assessor/i.test(aCaption) && /took a position anyway/i.test(aCaption));
+    check('CONTROL: and it is the assessor, not the author, that is named',
+      aCaption.length > 0 && !/\bauthor\b/i.test(aCaption));
+
     log('\n=== 6. ordering is the protocol\'s, not the client\'s ===');
     // A panel that put Supports first would be ranking stances, and a reader
     // skims order as significance. The conductor's order is the only one
@@ -626,6 +793,52 @@ async function main() {
       !/^Abstains/i.test(onScreen[0] ?? ''));
     check('CONTROL: the first rendered position is the first one published',
       /Supports/i.test(onScreen[0] ?? ''));
+
+    log('\n=== 5e. A CLAIM WITH NO OBJECTIONS SAYS THERE WAS NOTHING TO SEE ===');
+    // LAST, because expanding a second card changes every page-wide count
+    // above it. This is the ORDINARY case on the assessment side — most
+    // claims carry no critiques — and it is the one branch where "recorded
+    // nothing about what they had seen" would be TRUE and would still
+    // mislead, inviting a reader to wonder what was missed when the answer
+    // is that nothing existed. Latent on the critique side too (a claim's
+    // only critique has no siblings) and found by asking what this surface
+    // does on a claim nobody has argued with.
+    const cards = page.locator('[data-testid="toggle-critiques"]');
+    check('the second claim is on screen, so this section is not vacuous',
+      await cards.count() === 2);
+    await cards.nth(1).click();
+    // GUARDED, AND INJECTION CU IS WHY. An unguarded `waitForSelector` on the
+    // very element the defect removes turns this section into a HARNESS ERROR
+    // instead of reds — a harness fragile at exactly the point of the defect
+    // it exists to detect reports less than it knows, which `foresight-ui.mjs`
+    // and `agent-sdk.mjs` both record from the same mistake. The wait is still
+    // worth making: it is how the section tolerates a slow read rather than
+    // racing it. What must not happen is the timeout ending the run.
+    await page.waitForSelector('[data-testid="assessment-unseen-figures"]', { timeout: 20000 });
+    await page.waitForSelector('[data-state="none-known"]', { timeout: 20000 })
+      .catch(() => log('    (no none-known state appeared; the checks below say so)'));
+    const noneKnown = page.locator('[data-state="none-known"]');
+    check('its position reports that nothing was known to have been seen',
+      await noneKnown.count() >= 1);
+    // READ DEFENSIVELY for the same reason: `innerText()` on a locator that
+    // matches nothing throws, and the three checks below are worth more than
+    // the stack trace.
+    const noneText = await noneKnown.count() > 0
+      ? await noneKnown.first().innerText()
+      : '';
+    log(`    reads: ${JSON.stringify(noneText)}`);
+    check('saying there were NO objections rather than reporting silence',
+      /knows of no objections/i.test(noneText)
+      && /nothing here to have recorded seeing/i.test(noneText));
+    // THE LOAD-BEARING ABSENCE: the not-recorded wording must not appear,
+    // because it is the sentence that would mislead here.
+    // NON-EMPTY FIRST. Under CU this line is simply absent, and an absence
+    // check over an absent element passes — the same vacuity this file
+    // already records twice.
+    check('and NOT the not-recorded wording, which would mislead here',
+      noneText.length > 0 && !/is not recorded either way/i.test(noneText));
+    check('CONTROL: no set is offered, since there is nothing to list',
+      await page.locator('[data-testid="assessment-unseen-toggle"]').count() === 1);
 
     check('no page errors', pageErrors.length === 0);
     if (pageErrors.length) log(`    ${pageErrors[0].slice(0, 200)}`);

@@ -152,6 +152,42 @@ export interface UnseenReport {
   note: string;
 }
 
+/** critiques_unseen_by_assessment — which critiques of an ASSESSMENT's
+ * target the assessor did not record having seen.
+ *
+ * NOT THE MIRROR OF `UnseenReport` THAT THE NAMES SUGGEST, and the
+ * difference is the reason this is a separate type rather than a reuse.
+ * `UnseenReport.unseen` holds a critique's SIBLING critiques.
+ * `AssessmentUnseenReport.unseen` holds critiques of the assessment's
+ * target, because that is what `Assessment.past_cone` holds — the
+ * integrity zome refuses any member that does not resolve to a
+ * `Critique` of the same target.
+ *
+ * SO *HOW MANY OTHER POSITIONS DID THIS ASSESSOR READ* IS A QUESTION
+ * THE PROTOCOL DOES NOT RECORD, and no screen may imply it can answer
+ * it. There is no sibling-assessment cone anywhere, by design: an
+ * assessor is accountable for the objections they were taking a
+ * position in spite of, not for having surveyed the other assessors.
+ *
+ * `total_known` of ZERO is the ordinary case here rather than a thin
+ * arc — most claims carry no critiques at all — which is why the screen
+ * has a branch that says there was nothing to have seen instead of
+ * reporting an author's silence. */
+export interface AssessmentUnseenReport {
+  /** The assessment asked about. */
+  assessment: Uint8Array;
+  /** Critiques of its target absent from the recorded cone. */
+  unseen: Uint8Array[];
+  /** How many of the target's critiques the assessor DID record. */
+  seen_count: number;
+  /** FALSE when the cone is empty: the "recorded nothing" case. */
+  cone_recorded: boolean;
+  /** Every critique of the target known to THIS observer right now. */
+  total_known: number;
+  /** The coordinator's own words on what the figures support. */
+  note: string;
+}
+
 /** now_micros, matching every other place in this codebase that builds
  * a Holochain Timestamp-shaped microsecond value by hand (see
  * bridge/src/index.ts and this project's own live-verification
