@@ -96,12 +96,21 @@ a stranger installs resolves its own dependency tree, and that difference is
 precisely what neither existing check could see. It runs in `conductor.yml`.
 
 **Only a republish could fix that, and it happened on 2026-09-12.** Both
-packages are `0.2.x` on the registry and `latest` — `0.1.2`
-then, through `0.1.3`, `0.1.4` and `0.1.5`; this release is the first with
-twenty-one tools rather than nine, carrying pre-registration, assessment,
-settlement, discourse readings and domain founding. This package's dependency
-range is tightened to `^0.2.0` so an installer cannot resolve the SDK version
-being replaced. It was published by `scripts/publish-packages.sh --publish`,
+packages are `0.3.x` on the registry and `latest` — `0.1.2`
+then, through `0.1.3`, `0.1.4`, `0.1.5` and the `0.2.x` line, which was the
+first with twenty-one tools rather than nine, carrying pre-registration,
+assessment, settlement, discourse readings and domain founding. **`0.3.0`
+makes it twenty-three** and changes one default: `critique_claim` now records
+which of a claim's other objections you had seen, read fresh at call time,
+the way `assess` already did — set `record_what_i_read: false` to keep the
+old behaviour of recording nothing. The two new tools read that record back,
+`what_this_critique_recorded_seeing` and
+`what_this_assessment_recorded_seeing`, and they answer DIFFERENT questions:
+an assessment's record covers the CRITIQUES of its target, never the other
+assessments, so *did this assessor read the other positions* is not recorded
+in this protocol and neither tool pretends otherwise. This package's
+dependency range is tightened to `^0.3.0` so an installer cannot resolve the
+SDK version being replaced. It was published by `scripts/publish-packages.sh --publish`,
 which runs the packaging checks and the live check, refuses on a dirty tree, and
 publishes `agent-sdk` first and this package only once the registry can actually
 serve it — a dry run unless given `--publish`.

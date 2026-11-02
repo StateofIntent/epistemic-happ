@@ -2996,15 +2996,30 @@ The rest are decisions, and each is recorded with what it would cost to answer.
 | ~~Retrying the binary download in CI~~ | **Done** — `scripts/ci/install-holochain.sh` | §9, this section |
 
 **The one with real outside impact was the npm republish, and it happened on
-2026-09-12.** `@stateofintent/agent-sdk@0.2.0` and
-`@stateofintent/mcp-server@0.2.0` are on the registry and are `latest` on both, as of 2026-10-28.
-**Verified from the registry rather than from a tarball:** installed by version
-into an empty project outside this checkout — `npm ls` confirming
-`resolved: https://registry.npmjs.org/@stateofintent/agent-sdk/-/agent-sdk-0.1.2.tgz`
-— the SDK connects, authorizes signing, writes a claim a real conductor accepts,
-and reads it back; the MCP server advertises its nine tools and answers a
-`claims_in_domain` call that reaches that conductor and finds the claim. That is
-the install a stranger gets, and it works.
+2026-09-12.** **`0.3.0` of both packages is on the registry and is `latest`, as of
+2026-11-02** — `0.1.2` then, through `0.1.3`, `0.1.4`, `0.1.5`, the `0.2.x` line,
+and now this one. **Verified from the registry rather than from the tarball that
+was uploaded:** installed BY VERSION into an empty project outside this checkout,
+the lockfile confirming
+`resolved: https://registry.npmjs.org/@stateofintent/agent-sdk/-/agent-sdk-0.3.0.tgz`
+— the SDK connects, authorizes signing, writes a claim a real conductor accepts
+and reads it back, and `unseenBy` and `unseenByAssessment` both answer from that
+conductor rather than merely existing on the object; the MCP server advertises
+its **twenty-three** tools, declares `record_what_i_read` on `critique_claim`
+where an agent can actually reach it, and answers a call that reaches the same
+conductor. That is the install a stranger gets, and it works.
+
+**THE PUBLISH SPLIT IN HALF ONCE, AND THE SCRIPT'S REFUSAL IS WHY THAT WAS
+HARMLESS.** `agent-sdk@0.3.0` uploaded, npm replied *"Your package is being
+processed and may take a few minutes to become available"*, and the script's
+*wait until resolvable* loop — ten attempts, six seconds apart — expired first.
+It then **refused to publish `mcp-server`**, because an `mcp-server` whose
+`^0.3.0` cannot resolve hands its first installer the SDK version being
+replaced. Re-running skipped the published half (*"ALREADY PUBLISHED —
+skipping"*) and finished the other, which is exactly the resumability that
+ordering was built for. **The sixty-second ceiling is tuned shorter than the
+registry's own stated behaviour**, so hitting it is indistinguishable from a
+real failure on first read and costs a second round of 2FA; worth raising.
 
 **What was wrong with `0.1.1`, kept because the shape of it is the lesson.** The
 published SDK predated the `@holochain/client` 0.21 upgrade, matched no cell,
