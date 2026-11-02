@@ -9,25 +9,44 @@ on the code, read [README.md](README.md) §6 instead.
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **`v0.3.1`, published 2026-10-27, is the one to install.** It carries
+> **`v0.3.2`, published 2026-11-02, is the one to install.** It carries
 > `protocol_version: 11` — the version this repository actually describes,
 > including SPEC.md §5.19's eighteen link validation rules, the refusal of
 > entry updates, and all five autopoiesis stages. Building from source is not
 > the only way to run the current protocol.
 >
-> **`v0.3.1` IS A PATCH, AND IT IS THE FIRST ONE — so it behaves unlike every
-> bump before it.** It is the SAME network as `v0.3.0`: same `0.3.x` seed,
-> same cell, same data directory, and the bundle's DNA hash is unchanged
-> (verified identical across both releases by unpacking each and hashing it).
-> So a `v0.3.0` install is not stranded and loses nothing by upgrading.
+> **WHAT `v0.3.2` ADDS: the compose-time adversary.** Before you publish a
+> claim, a model **on your own machine** reads the draft and says what it will
+> be asked, while the objections are still free to answer. It writes nothing,
+> is recorded nowhere, is attributed to nobody, and never appears beside a
+> real critique — the objections exist only while the draft does. The draft
+> does not leave your machine: the model is served locally, and the client
+> refuses any endpoint that is not. **The ~2.1GB of weights are downloaded on
+> first use rather than shipped in the installer**, so an install that never
+> opens the compose form downloads nothing.
 >
-> **Upgrade anyway, and invitees should install `v0.3.1` rather than
+> **`v0.3.1` AND `v0.3.2` ARE PATCHES — so they behave unlike every bump
+> before them.** Both are the SAME network as `v0.3.0`: same `0.3.x` seed,
+> same cell, same data directory, and the bundle's DNA hash is unchanged
+> (verified identical across the releases by unpacking each and hashing it).
+> So a `v0.3.0` or `v0.3.1` install is not stranded and loses nothing by
+> upgrading.
+>
+> **ONE THING AN UPGRADE DOES NOT GET, AND IT IS SMALL.** The app only
+> installs the happ when there is no cell yet, so an upgraded install keeps
+> its existing coordinator. `v0.3.2`'s one coordinator addition — the
+> denominator beside an assessment's past cone — is therefore absent there,
+> and that one line renders without its figure. Everything else, the
+> compose-time adversary included, reaches every install. A fresh install
+> gets all of it.
+>
+> **Upgrade anyway, and invitees should install `v0.3.2` rather than
 > `v0.3.0`.** `v0.3.0` has no surface for publishing a promise: until item 6.7
 > the only call to `publish_constitution` was inside the founding form, so the
 > only way to promise anything was to found your own domain. The invitation
 > asks every joiner for a published constitution, and on `v0.3.0` that ask is
-> **unexecutable**. `v0.3.1` adds a standalone *Your promises* section on the
-> Domains tab.
+> **unexecutable**. `v0.3.1` added a standalone *Your promises* section on the
+> Domains tab, and `v0.3.2` carries it too.
 >
 > **Download the latest release and not `v0.2.0`.** `v0.2.0` (2026-10-12)
 > carries `protocol_version: 9`; the integrity zome has forked twice since,
