@@ -25,6 +25,8 @@ import {
 } from './onboarding';
 import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
 import { askAdversary, AdversaryError, type AdversaryVerdict } from './adversary';
+import { entryPoint } from './applet';
+import { hostContext } from './applet-host';
 import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
 
 // ============================================================================
@@ -5466,6 +5468,28 @@ function renderNewClaimTab(): HTMLElement {
 // still, from its own pre-paint read — this call is what keeps the two
 // agreeing once the module graph owns the state.
 initTheme();
+
+// RUNNING AS A MOSS TOOL — one branch, and standalone is the default.
+//
+// `applet.ts` carries the reasoning; what matters here is that this is the
+// ONLY line the host integration adds to the boot path, and that an unknown
+// or absent host renders exactly what it rendered before. A host integration
+// that could change the standalone app's behaviour would be a dependency on
+// Moss rather than an option to run inside it.
+if (entryPoint(hostContext()) === 'applet') {
+  // Deliberately not implemented yet, and it says so rather than rendering
+  // half an integration: the view contract (`AppletView`, `RenderInfo`) and
+  // the first `WeaveClient.connect()` are the next unit of work. Until then a
+  // Moss host gets an honest message instead of a UI that looks wired and is
+  // not — which is the "declared but unread" shape this project keeps finding.
+  document.body.dataset.host = 'applet';
+  const notice = document.createElement('p');
+  notice.dataset.testid = 'applet-not-implemented';
+  notice.textContent =
+    'Running inside Moss is detected but not yet implemented. The standalone app '
+    + 'is unaffected; this message exists so a host never sees a half-wired view.';
+  document.body.appendChild(notice);
+}
 
 render();
 

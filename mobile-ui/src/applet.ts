@@ -7,7 +7,27 @@
 // the Weave Interaction Protocol. A Tool brings ITS OWN happ, DNA and cells —
 // so nothing here touches the integrity zome, the DNA hash or the network.
 //
-// WHY THERE IS NO `@theweave/api` IMPORT IN THIS FILE.
+// THE DEPENDENCY LIVES IN `applet-host.ts`, NOT HERE, AND A TEST IS WHY.
+//
+// `@theweave/api` is installed at `0.7.0-dev.5`, and when its import sat in
+// this file the addressing rules below could not be exercised in node at all:
+// the package pulls `ws` through `isomorphic-ws`, which needs a CJS `require`
+// no ESM bundle for node will give it. So the rules that are OURS were
+// untestable because of a dependency they do not use — which is the same
+// coupling this module claims to avoid, present in the module that claims it.
+//
+// Split, so this file imports nothing and `applet-host.ts` is the only place
+// the dependency appears.
+//
+// TWO COSTS MEASURED RATHER THAN ASSUMED, both worth knowing before this ships
+// in an installer. It took `mobile-ui/node_modules` from 70M to 161M, and the
+// version is a DEV PRERELEASE — `0.7.0-dev.5` — which is the same class of
+// risk open-work 6.10 measured when it routed around Your Own AI: a surface
+// that moves under you. The difference is that this one is isolated to a
+// single module behind one function, and the standalone app is untouched by
+// it, so the cost of the surface moving is this file rather than the client.
+//
+// WHY THE PROTOTYPE THAT PRECEDED THIS HAD NO IMPORT.
 //
 // Two reasons, and the second is the one that matters. The first is that their
 // documentation says of itself that it is "still under construction", and a
@@ -21,11 +41,9 @@
 // deep-importing the client's own `isLauncher()`, and its comment gives the
 // reason: the name "is not the library's private detail but the HOST's
 // contract". The same reasoning applies here, with one honest difference —
-// `__HC_LAUNCHER_ENV__` was confirmed against installed source, and the Moss
-// equivalent below is confirmed only against the PUBLISHED API REFERENCE —
-// `isWeaveContext()` and `window.__WEAVE__`. That is a weaker warrant, it is
-// isolated into one function, and closing it means taking the dependency and
-// preferring `isWeaveContext()`.
+// `__HC_LAUNCHER_ENV__` was confirmed against installed source and the Moss
+// equivalent was not — a gap that turned out to matter, because the name taken
+// from the documentation was WRONG. See `hostContext` below.
 //
 // WHAT IS PROVED BY THIS FILE AND WHAT IS NOT. It proves the SHAPE: that the
 // entry point is a branch, that the standalone app is untouched by it, and
@@ -39,36 +57,6 @@
  *  development case, and a detector that guessed would be worse than one that
  *  declines. */
 export type HostContext = 'standalone' | 'applet' | 'unknown';
-
-/** `@theweave/api` exports `isWeaveContext()` for exactly this question, and
- *  the sentinel behind it is **`window.__WEAVE__`** — the same shape as the
- *  Launcher's `__HC_LAUNCHER_ENV__`, which is why the one-line check is
- *  written out here for the same reason `holochain.ts` writes that one out: a
- *  host's sentinel is the HOST's contract, not the library's private detail.
- *
- *  ONE DIFFERENCE FROM THAT PRECEDENT, STATED BECAUSE IT MATTERS.
- *  `holochain.ts` says of its check "Confirmed against the installed 0.17.1
- *  source." This one is **confirmed against the published API reference and
- *  NOT against installed source**, because no dependency has been taken. That
- *  is a weaker warrant, and it is the thing to close before this is wired:
- *  take the dependency and prefer `isWeaveContext()`, or read the installed
- *  source and say so here.
- *
- *  THE FRAMED-BUT-UNMARKED CASE STAYS `'unknown'`. Applets communicate over
- *  `AppletToParentRequest` / `ParentToAppletMessage`, a postMessage shape, so a
- *  Tool is framed — but plenty of things frame a page, and being framed is
- *  necessary rather than sufficient. Claiming applet context on that evidence
- *  is how a UI renders a host integration nobody is listening to.
- *
- *  The first call a Tool makes once the dependency exists is
- *  `WeaveClient.connect()`; this function only decides whether to make it. */
-export function hostContext(): HostContext {
-  if (typeof window === 'undefined') return 'unknown';
-  if ('__WEAVE__' in window) return 'applet';
-  if ('__HC_LAUNCHER_ENV__' in window) return 'standalone';
-  // Framed with no sentinel: not enough to act on. See above.
-  return window.parent !== window ? 'unknown' : 'standalone';
-}
 
 // --- Addressing: the decision this prototype exists to enforce --------------
 //
@@ -171,9 +159,13 @@ export interface WeaveHost {
   view(): 'main' | 'asset' | 'creatable';
 }
 
-/** The entry-point branch, and the whole point of the prototype: the
- *  standalone app is untouched. `applet` is a wrapper, never a rewrite, and
- *  anything that cannot be rendered in an applet renders standalone. */
-export function entryPoint(ctx: HostContext = hostContext()): 'standalone' | 'applet' {
+/** The entry-point branch: the standalone app is untouched, `applet` is a
+ *  wrapper rather than a rewrite, and anything uncertain renders standalone.
+ *
+ *  TAKES THE CONTEXT RATHER THAN FETCHING IT. A default of `hostContext()`
+ *  would drag the dependency back into this file and make these rules
+ *  untestable again — the caller knows where it is running, and this decides
+ *  what that means. */
+export function entryPoint(ctx: HostContext): 'standalone' | 'applet' {
   return ctx === 'applet' ? 'applet' : 'standalone';
 }
