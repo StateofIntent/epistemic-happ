@@ -69,6 +69,18 @@ jobs:
       - name: harness-counts — README states the number of checks each harness actually has
         run: node scripts/check-harness-counts.mjs
 
+      # 3.5's "accidental defence", ENFORCED — open-work 3.5 and 4.2, added
+      # 2026-11-08. The row recorded that swarm dispositions are mechanical,
+      # "every rule a property of data a reader can check", so ten observers
+      # differ even on one model. That was an ASSERTION with nothing watching:
+      # a prompt, a clock or a random tiebreak could have been added and
+      # nothing would have gone red. It enumerates the WHOLE behaviour space —
+      # 60 states, not a sample — because `assess` reads only four finite
+      # things. All five of its failure modes were watched going red before it
+      # was believed. It costs milliseconds and needs no conductor.
+      - name: dispositions — the swarm's variation comes from declared thresholds, not from a model
+        run: node scripts/swarm/check-dispositions-mechanical.mjs
+
       # The fourth in this family, and the only one guarding something this
       # repository did to ITSELF rather than something that drifted. Splitting
       # `partition-rejoin` out of `network` (see network.yml's own header) made
