@@ -109,13 +109,30 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 // Each must MEASURE, never be stated. A counter that is itself a hand-written
 // number would put this script in the class of defect it exists to catch.
 
-const countHarnesses = () =>
-  readdirSync(join(ROOT, 'scripts/live-verify')).filter((f) => f.endsWith('.mjs')).length;
+// SHARED MODULES ARE NOT HARNESSES, and counting them as such made this file
+// measure 68 where `check-harness-counts.mjs` measures 66 — two scripts in one
+// repository disagreeing about the artifact one of them ADJUDICATES. Found
+// 2026-11-08 while fixing `gatedBy`: the gate's own `harnessNames()` excludes
+// these (`check-harness-counts.mjs:139`) and this file excluded nothing, so the
+// truth it compared prose against was inflated by two. The list is duplicated
+// rather than imported because that script does not export it; if it grows
+// there and not here, this count silently re-inflates — which is why the
+// disagreement is now asserted below rather than left to be rediscovered.
+//
+// 1.21's `injection-coverage.mjs` set the precedent in the same words:
+// seven files with no `check()` are excluded as helpers rather than counted,
+// "because overstating the target set is the one direction this measurement
+// must not err".
+const SHARED_MODULES = new Set(['chromium.mjs', 'declared-wait.mjs']);
+
+const harnessFiles = () =>
+  readdirSync(join(ROOT, 'scripts/live-verify'))
+    .filter((f) => f.endsWith('.mjs') && !SHARED_MODULES.has(f));
+
+const countHarnesses = () => harnessFiles().length;
 
 const countChromiumImporters = () =>
-  readdirSync(join(ROOT, 'scripts/live-verify'))
-    .filter((f) => f.endsWith('.mjs'))
-    .filter((f) => read(`scripts/live-verify/${f}`).includes('CHROMIUM')).length;
+  harnessFiles().filter((f) => read(`scripts/live-verify/${f}`).includes('CHROMIUM')).length;
 
 const countHdkExterns = () =>
   (read('dna/coordinator/src/lib.rs').match(/#\[hdk_extern/g) || []).length;
@@ -200,6 +217,55 @@ function toNumber(tok) {
 // Conservative by construction: these suppress, and a wrong suppression is a
 // miss. Kept narrow and literal for that reason.
 const HISTORICAL = /\b(said|says|used to|claimed|stated|asserted|was wrong|were wrong|stale|rotted|CORRECTED|corrected|instead of|rather than|not four|~~)\b/;
+
+// A SUBSET MARKER BEFORE THE NUMBER WAS INVISIBLE, which is open-work 1.20's
+// own bug class inside 1.20's own tool. The `qualified` test below only ever
+// looked at the words BETWEEN the number and the noun, so `N more harnesses`
+// was caught and **`the other 43 harnesses`** was not — the marker sits in
+// front of the number, where the regex never captured. Found 2026-11-08 by
+// trying to execute this row's publish-as-`Claim`s half: of 36 claims the tool
+// called gated-and-unqualified, **not one had `stated == measured`**, because
+// they were local statements wearing a total counter's label.
+const SUBSET_BEFORE = /\b(other|others|another|further|more|remaining|rest|these|those|same|first|last|next|each|every|only|just|all but|of the|among|one of)\s+(?:[a-z][a-z-]*\s+){0,2}$/i;
+
+// `gatedBy` IS NOW READ FROM WHAT THE GATING SCRIPT ACTUALLY MATCHES, not
+// guessed from the prose. The old behaviour attached a gate per ARTIFACT, so
+// every harness claim carried `check-harness-counts.mjs` and local statements
+// were reported as adjudicated — the exact failure this row calls worse than no
+// detector, because it converts an unexamined claim into one somebody believes
+// has been examined.
+//
+// A prose-totality heuristic was tried first and rejected the same hour: it
+// matched *"every one of"* in `README:6113`, which quantifies over four
+// harnesses just named rather than over the suite. **An ambiguous marker must
+// not ship as truth** — this file already says so about open-work rows.
+//
+// What replaced it is exact. `check-harness-counts.mjs:275` gates ONE sentence,
+// by this literal pattern, as its FOURTH index claim:
+//
+//     drive it — <WORD> of them, each proving one property
+//
+// AND THAT SENTENCE IS INVISIBLE TO THIS EXTRACTOR, which is the finding. It
+// reads *"sixty-eight of them"* — an anaphor with no noun to match, the same
+// shape as 1.19's *"nineteen of them"* that this row records the vocabulary
+// mode missing and a model resolving. So the only adjudicated harness count in
+// the repository is one this mode cannot see, and **every claim it CAN see is
+// ungated.** `gated` is therefore 0, truthfully, and the publish-as-`Claim`s
+// half has nothing to draw from this mode: it needs the model extractor.
+const GATE_PATTERNS = {
+  // key -> the regex the gating script itself matches, or null when the gate
+  // adjudicates something that is not a prose count in FILES at all.
+  // The sentence reads "66 of them" — a NUMERAL. A first version of this
+  // pattern required a spelled-out word and matched NOTHING, which would have
+  // reported the gate as absent when it is present and passing. Accepts both.
+  harness: /drive it — [a-z0-9-]+ of them, each proving one property/i,
+  // check-harness-counts gates ui.yml's own header, which is not in FILES.
+  chromium: null,
+  // check-spec-drift asserts SET EQUALITY over SPEC §10, not a counted claim.
+  zomefn: null,
+  linktype: null,
+  entrytype: null,
+};
 
 // file + substring → reason. Suppresses one specific claim, never a pattern.
 const EXEMPT = [
@@ -300,9 +366,23 @@ export function scan(files = FILES, { source } = {}) {
           if (stated === null) continue;
           const window = line.slice(Math.max(0, m.index - 120), m.index + m[0].length + 120);
           if (HISTORICAL.test(window)) continue;
-          // Words between the number and the noun qualify it into a subset.
-          const qualified = m[0].replace(/\s+/g, ' ').split(' ').length > 1 + m[2].split(/\s+/).length;
-          found.push({ file: f, line: i + 1, artifact: art.key, noun: m[2], stated, text: m[0], gatedBy: art.gatedBy, qualified });
+          // Words between the number and the noun qualify it into a subset —
+          // and so do words BEFORE it, which this missed until 2026-11-08.
+          const between = m[0].replace(/\s+/g, ' ').split(' ').length > 1 + m[2].split(/\s+/).length;
+          const before = SUBSET_BEFORE.test(line.slice(Math.max(0, m.index - 40), m.index));
+          const qualified = between || before;
+          // Adjudicated only if this very line is what the gating script
+          // matches. Anything else is ungated, which over-reports the gap —
+          // the direction this measurement must err in.
+          const pat = GATE_PATTERNS[art.key];
+          const gatedBy = art.gatedBy && pat && pat.test(line) ? art.gatedBy : null;
+          found.push({
+            file: f, line: i + 1, artifact: art.key, noun: m[2], stated, text: m[0],
+            gatedBy, qualified,
+            // Kept so the change is auditable rather than invisible: what the
+            // old behaviour WOULD have said, beside what this one says.
+            gate_available: art.gatedBy, subset_marker_before: before,
+          });
         }
       });
     }
@@ -325,8 +405,14 @@ function main() {
 
   console.log(`prose counted claims about repository artifacts: ${claims.length} across ${FILES.length} documents\n`);
   for (const a of ARTIFACTS) {
-    const n = claims.filter((c) => c.artifact === a.key).length;
-    console.log(`  ${a.key.padEnd(10)} measured ${String(a.count()).padStart(4)}   claims found ${String(n).padStart(3)}   ${a.gatedBy ? 'gated by ' + a.gatedBy : 'GATED BY NOTHING'}`);
+    // REPORT PER-CLAIM GATING, NOT THE GATE THAT EXISTS. Printing `a.gatedBy`
+    // here said "gated by check-harness-counts.mjs" beside 56 harness claims of
+    // which only a total claim is actually adjudicated — the same over-claim
+    // the per-claim field carried until 2026-11-08, surviving one layer up.
+    const mine = claims.filter((c) => c.artifact === a.key);
+    const gated = mine.filter((c) => c.gatedBy !== null).length;
+    const avail = a.gatedBy ? a.gatedBy : 'no counter exists';
+    console.log(`  ${a.key.padEnd(10)} measured ${String(a.count()).padStart(4)}   claims found ${String(mine.length).padStart(3)}   ${String(gated).padStart(3)} adjudicated   (${avail})`);
   }
 
   console.log(`\n${ungated.length} claim(s) are of a shape no existing gate covers.`);
@@ -335,6 +421,25 @@ function main() {
   console.log('\nnot covered by this vocabulary, by design:');
   for (const [what, why] of UNCOVERED_BY_DESIGN) console.log(`  ${what.padEnd(16)} ${why}`);
 
+  // THE DUPLICATED LIST IS CHECKED AGAINST ITS SOURCE, because a copy that
+  // drifts re-inflates the truth this file compares prose against — and it did
+  // exactly that until 2026-11-08. Reported rather than failed: this mode's
+  // contract is that it exits zero, and `check-harness-counts.mjs` is the gate
+  // that may go red.
+  try {
+    const src = read('scripts/check-harness-counts.mjs');
+    const block = src.match(/const SHARED_MODULES = new Set\(\[([\s\S]*?)\]\)/);
+    const theirs = new Set([...(block?.[1] ?? '').matchAll(/'([^']+\.mjs)'/g)].map((m) => m[1]));
+    const mine = SHARED_MODULES;
+    const same = theirs.size === mine.size && [...theirs].every((f) => mine.has(f));
+    if (!same) {
+      console.log('\nSHARED_MODULES HAS DRIFTED from check-harness-counts.mjs:');
+      console.log(`  there: ${[...theirs].sort().join(', ') || '(none parsed)'}`);
+      console.log(`  here:  ${[...mine].sort().join(', ')}`);
+      console.log('  Until they agree, the harness total above is not the gate\'s total.');
+    }
+  } catch { /* the gate is the authority; a failed read here changes nothing */ }
+
   console.log('\nTHIS MODE ASSERTS NOTHING ABOUT STALENESS and always exits zero.');
   console.log('Comparing these claims against totals was measured and produced 63 false');
   console.log('reds on correct prose. Adjudication lives behind the model extractor, which');
@@ -342,4 +447,26 @@ function main() {
   console.log('historical defects before it is allowed to be believed.');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// --json emits the per-claim records rather than the summary, so a consumer
+// can act on individual claims — open-work 1.20's publish-as-`Claim`s half
+// needs `gatedBy` and `qualified` per claim, which the summary flattens away.
+// It is a SEPARATE mode and does not change what the gate reports or exits:
+// this script's contract is that it asserts nothing about staleness and always
+// exits zero, and adding an output format must not quietly alter that.
+export function claims() {
+  return scan().map((c) => ({ ...c, measured: measure(c.artifact) }));
+}
+
+function emitJson() {
+  const rows = claims();
+  console.log(JSON.stringify({
+    generated_for: 'open-work 1.20',
+    total: rows.length,
+    gated_and_unqualified: rows.filter((c) => c.gatedBy !== null && !c.qualified).length,
+    claims: rows,
+  }, null, 2));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv.includes('--json')) emitJson(); else main();
+}
