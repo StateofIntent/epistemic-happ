@@ -21,10 +21,11 @@
 // deep-importing the client's own `isLauncher()`, and its comment gives the
 // reason: the name "is not the library's private detail but the HOST's
 // contract". The same reasoning applies here, with one honest difference —
-// `__HC_LAUNCHER_ENV__` was CONFIRMED against installed source, and the Moss
-// equivalent below is NOT. So it is isolated into one function, named as the
-// single unverified fact in this file, and everything else is built and
-// testable around it.
+// `__HC_LAUNCHER_ENV__` was confirmed against installed source, and the Moss
+// equivalent below is confirmed only against the PUBLISHED API REFERENCE —
+// `isWeaveContext()` and `window.__WEAVE__`. That is a weaker warrant, it is
+// isolated into one function, and closing it means taking the dependency and
+// preferring `isWeaveContext()`.
 //
 // WHAT IS PROVED BY THIS FILE AND WHAT IS NOT. It proves the SHAPE: that the
 // entry point is a branch, that the standalone app is untouched by it, and
@@ -39,24 +40,34 @@
  *  declines. */
 export type HostContext = 'standalone' | 'applet' | 'unknown';
 
-/** THE ONE UNVERIFIED FACT IN THIS FILE.
+/** `@theweave/api` exports `isWeaveContext()` for exactly this question, and
+ *  the sentinel behind it is **`window.__WEAVE__`** — the same shape as the
+ *  Launcher's `__HC_LAUNCHER_ENV__`, which is why the one-line check is
+ *  written out here for the same reason `holochain.ts` writes that one out: a
+ *  host's sentinel is the HOST's contract, not the library's private detail.
  *
- *  Moss applets are rendered by a host and communicate over
- *  `AppletToParentRequest` / `ParentToAppletMessage`, which is a postMessage
- *  shape — so a Tool is framed rather than handed a `window` global the way a
- *  Launcher hands one over. Being framed is therefore necessary but NOT
- *  sufficient: plenty of things frame a page.
+ *  ONE DIFFERENCE FROM THAT PRECEDENT, STATED BECAUSE IT MATTERS.
+ *  `holochain.ts` says of its check "Confirmed against the installed 0.17.1
+ *  source." This one is **confirmed against the published API reference and
+ *  NOT against installed source**, because no dependency has been taken. That
+ *  is a weaker warrant, and it is the thing to close before this is wired:
+ *  take the dependency and prefer `isWeaveContext()`, or read the installed
+ *  source and say so here.
  *
- *  So this returns `'unknown'` rather than `'applet'` when it can only tell
- *  that it is framed. Claiming applet context on that evidence is how a UI
- *  ends up rendering a host integration that no host is listening to.
- *  CONFIRM AGAINST `@theweave/api` BEFORE RELYING ON THIS — the question is
- *  what a Tool may read synchronously to know it is one. */
+ *  THE FRAMED-BUT-UNMARKED CASE STAYS `'unknown'`. Applets communicate over
+ *  `AppletToParentRequest` / `ParentToAppletMessage`, a postMessage shape, so a
+ *  Tool is framed — but plenty of things frame a page, and being framed is
+ *  necessary rather than sufficient. Claiming applet context on that evidence
+ *  is how a UI renders a host integration nobody is listening to.
+ *
+ *  The first call a Tool makes once the dependency exists is
+ *  `WeaveClient.connect()`; this function only decides whether to make it. */
 export function hostContext(): HostContext {
   if (typeof window === 'undefined') return 'unknown';
+  if ('__WEAVE__' in window) return 'applet';
   if ('__HC_LAUNCHER_ENV__' in window) return 'standalone';
-  const framed = window.parent !== window;
-  return framed ? 'unknown' : 'standalone';
+  // Framed with no sentinel: not enough to act on. See above.
+  return window.parent !== window ? 'unknown' : 'standalone';
 }
 
 // --- Addressing: the decision this prototype exists to enforce --------------

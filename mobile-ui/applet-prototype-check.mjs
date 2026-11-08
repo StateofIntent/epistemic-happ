@@ -33,6 +33,29 @@ check('and the refusal names the field it was about to poison', (threw ?? '').in
 check('and says WHY, not just that a rule exists', /can never be edited/.test(threw ?? ''));
 check('an HRL ref passes through unchanged', mod.assertPersistable('uhC0kAAA/uhCkkBBB', 'x') === 'uhC0kAAA/uhCkkBBB');
 
+console.log('\n--- detection, against the three cases that actually occur ---');
+// `window` does not exist in node, so each case is stubbed explicitly. That is
+// the only way to exercise a host-sentinel check off the host.
+const withWindow = (w, fn) => {
+  const had = 'window' in globalThis;
+  const prev = globalThis.window;
+  globalThis.window = w;
+  try { return fn(); } finally { if (had) globalThis.window = prev; else delete globalThis.window; }
+};
+const self = {}; self.parent = self;
+check('a Moss sentinel reports applet',
+  withWindow({ __WEAVE__: {}, parent: self }, () => mod.hostContext()) === 'applet');
+check('a Launcher sentinel reports standalone, not applet',
+  withWindow({ __HC_LAUNCHER_ENV__: {}, parent: self }, () => mod.hostContext()) === 'standalone');
+check('an ordinary top-level tab reports standalone',
+  withWindow(self, () => mod.hostContext()) === 'standalone');
+// THE CASE THE PROTOTYPE REFUSES TO GUESS: framed, no sentinel.
+check('framed with NO sentinel reports unknown rather than applet',
+  withWindow({ parent: {} }, () => mod.hostContext()) === 'unknown');
+check('and unknown therefore renders standalone, so a wrong guess costs nothing',
+  mod.entryPoint(withWindow({ parent: {} }, () => mod.hostContext())) === 'standalone');
+check('no window at all reports unknown', mod.hostContext() === 'unknown');
+
 console.log('\n--- the entry point is a branch, and standalone is the default ---');
 check('unknown context renders standalone, never applet', mod.entryPoint('unknown') === 'standalone');
 check('standalone renders standalone', mod.entryPoint('standalone') === 'standalone');
