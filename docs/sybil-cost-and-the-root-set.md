@@ -78,6 +78,18 @@ is free. A set union costs what its cheapest member costs.
 
 ### 2.1 The arithmetic candidate (1) got wrong
 
+> **CHEAPER THAN ANYTHING BELOW, ADDED 2026-11-08 — open-work 1.27.** This
+> document costs the attack at K minted keys and K critiques. **The candidate
+> themselves was cheaper: zero keys.** `count_attestations_pure` checked
+> `roots.contains(attester)` before any self-exclusion, so an agent already
+> named in a reader's root set could supply one of their own required
+> attestations with a self-critique, and `min_attestations: 2` fell to a single
+> genuine voucher. It never promoted a stranger — outside the root set the gain
+> is zero — but it overstated independent vouching by one for exactly the agents
+> a reader had chosen to trust. **Self is now excluded at both layers**
+> (`direct_attesters_of` and the pure walk), with three unit tests watched
+> failing. The argument below stands; its cost figures were an upper bound.
+
 To make agent X appear attested by K distinct attesters:
 
 1. Mint K keys. Key generation is **not a DHT op** — nothing validates it,
