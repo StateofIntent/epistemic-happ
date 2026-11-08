@@ -499,12 +499,14 @@ export interface ForesightRecord {
   counted_from: string;
   /** `"valid"`, `"forked"`, `"empty"`, `"unreadable"` or `"unreachable"`.
    *
-   * MEASURED 2026-11-02: on holochain 0.7.0 as deployed here this is
-   * `"unreadable"` — `get_agent_activity` returns an empty chain for an agent
-   * whose index demonstrably holds commitments, for their own chain and for
-   * another agent's. So the chain route is DECIDED, BUILT AND CURRENTLY
-   * UNAVAILABLE, and the counts fall back to the index with `note` saying so.
-   * A FORKED chain is a fact about the author rather than an error. */
+   * ~~MEASURED 2026-11-02: on holochain 0.7.0 as deployed here this is
+   * `"unreadable"`~~ **CORRECTED 2026-11-08: that was true of a ONE-CONDUCTOR
+   * sandbox and is not true in general.** On a settled multi-member DHT
+   * `get_agent_activity` returns `"valid"` and the chain route works, read by
+   * the author and by peers for whom the activity authority cannot be self.
+   * What it also does is LAG a recent write by about five seconds, which is
+   * what `"index-superset"` reports (open-work 1.25). A FORKED chain is a fact
+   * about the author rather than an error. */
   chain_status: string;
   /** Commitments on the chain that the author's own index does NOT carry.
    * Non-zero means they wrote commitments without indexing them, which an
@@ -513,7 +515,11 @@ export interface ForesightRecord {
   unindexed: number;
   /** What the figures rest on, in the coordinator's words. **When
    * `counted_from` is `"index"` this says the number is a FLOOR rather than a
-   * denominator** — relay it, do not summarise it. */
+   * denominator** — relay it, do not summarise it. **`"index-superset"` is NOT
+   * that case**: there the chain was read and the index merely held more, so
+   * the note explains the authority was behind rather than warning of a floor
+   * (open-work 1.25). Relaying the coordinator's own words is what keeps these
+   * three apart without this comment having to. */
   note: string;
 }
 

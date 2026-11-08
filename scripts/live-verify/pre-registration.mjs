@@ -200,7 +200,7 @@ async function main() {
   // every delay tried. So these checks assert the HONEST DEGRADATION rather
   // than the fix — which is the thing that actually shipped.
   check('the record says which source produced it',
-    rec.counted_from === 'chain' || rec.counted_from === 'index');
+    ['chain', 'index', 'index-superset'].includes(rec.counted_from));
   check('and what the author\'s chain said',
     typeof rec.chain_status === 'string' && rec.chain_status.length > 0);
   log(`    counted_from=${rec.counted_from} chain_status=${rec.chain_status} unindexed=${rec.unindexed}`);
@@ -215,6 +215,21 @@ async function main() {
       /chain could not be read/i.test(rec.note));
     check('CONTROL: and it does NOT claim the chain as its source',
       rec.chain_status !== 'valid');
+  } else if (rec.counted_from === 'index-superset') {
+    // OPEN-WORK 1.25, AND THIS BRANCH ONLY OCCURS ON A REAL MULTI-MEMBER DHT.
+    // It is the arm taken for the first few seconds after a write, when the
+    // activity authority has not caught up and the local index has. A
+    // one-conductor substrate never reaches it, which is exactly why the
+    // defect it repairs shipped green: see `scripts/network.sh`, plus
+    // `start-node nodeD`, for the arrangement that does reach it.
+    check('a superset count blames the AUTHORITY being behind, not an unreadable chain',
+      /authority/i.test(rec.note) && !/could not be read/i.test(rec.note));
+    check('CONTROL: and it does NOT call itself a floor',
+      !/floor rather than a denominator/i.test(rec.note));
+    check('and reports nothing on the chain missing from the index, which this arm requires',
+      rec.unindexed === 0);
+    check('and the chain it compared against WAS readable',
+      rec.chain_status === 'valid' || rec.chain_status === 'forked');
   } else {
     check('a chain-derived count says so, and names the chain status',
       /own source chain/i.test(rec.note) && /Chain status:/.test(rec.note));
@@ -349,8 +364,18 @@ async function main() {
   // asserting rather than asserting the absence of a word. It counts
   // COMMITMENTS THE INDEX MISSED — a property of the record's completeness,
   // identical for every caller, about no agent's standing.
-  check('CONTROL: and the one number it does carry is about the INDEX, not the agent',
-    typeof rec.unindexed === 'number' && /index/i.test(rec.note));
+  //
+  // THIS CHECK USED TO DEMAND THE WORD "index" IN THE NOTE, AND THAT WAS THE
+  // SUBSTRATE TALKING — open-work 1.25. Every substrate this ran on took
+  // either the index arm or a chain arm with `unindexed > 0`, so the word was
+  // always there and the requirement looked free. On a settled multi-member
+  // DHT the chain is read and both sources agree, and then there is NOTHING
+  // true to say about the index: the note names the chain and stops. Demanding
+  // the word made this assert where the harness was running rather than what
+  // the field means. It now asserts that the note names its SOURCE, which is
+  // the property, and leaves which source to the substrate.
+  check('CONTROL: and the one number it does carry is about the RECORD, not the agent',
+    typeof rec.unindexed === 'number' && /chain|index/i.test(rec.note));
 
   log('\n--- 8. THE AUTHOR CAN RECOVER THEIR OWN SEALED CONTENT ---');
   // WHY THIS SECTION EXISTS, and it is a repair rather than a new feature.
