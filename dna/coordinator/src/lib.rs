@@ -7611,11 +7611,18 @@ pub struct ForesightRecord {
     pub revealed: Vec<ForesightEntry>,
     pub expired: Vec<ForesightEntry>,
     pub pending: Vec<ForesightEntry>,
-    /// WHERE THE SET CAME FROM: `"chain"` or `"index"`. Added for open-work
-    /// 1.24 and reported rather than implied, because the two answers have
-    /// different standing — one cannot be skipped by the writer and the other
-    /// can. A reader that does not look at this field is reading a number
-    /// whose meaning it has not established.
+    /// WHERE THE SET CAME FROM: `"chain"`, `"index"` or `"index-superset"`.
+    /// Added for open-work 1.24 and reported rather than implied, because the
+    /// answers have different standing — the chain cannot be skipped by the
+    /// writer and the index can. A reader that does not look at this field is
+    /// reading a number whose meaning it has not established.
+    ///
+    /// `"index-superset"` IS NOT A WEAKER `"index"` AND MUST NOT BE RENDERED
+    /// AS ONE — open-work 1.25. It means the chain WAS read, every hash on it
+    /// was indexed, and the index held more besides: the activity authority
+    /// was behind a recent write. That count is not a floor standing in for an
+    /// unreadable chain; it is the chain's own contents plus what the
+    /// authority had not caught up to. Only `"index"` is the floor.
     pub counted_from: String,
     /// What the author's chain said: `"valid"`, `"forked"`, `"empty"` or
     /// `"unreachable"`. A FORKED CHAIN IS INFORMATION ABOUT THE AUTHOR rather
@@ -7664,7 +7671,7 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
     // scan, so this is a proven dependency rather than a new one.
     let filter = ChainQueryFilter::new()
         .entry_type(EntryType::App(UnitEntryTypes::PreRegistration.try_into()?));
-    let (commitment_hashes, counted_from, chain_status, unindexed) = match get_agent_activity(
+    let (commitment_hashes, counted_from, chain_status, unindexed, unserved) = match get_agent_activity(
         agent.clone(),
         filter,
         ActivityRequest::Full,
@@ -7706,11 +7713,49 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
             // direction: the chain is a superset of the index by
             // construction, because the index is written from the same call
             // that writes the entry.
+            // OPEN-WORK 1.25. THE SUPERSET REASONING ABOVE IS TRUE OF TWO
+            // LOCAL READS AND FALSE OF A REMOTE ONE, WHICH IS THE ONLY KIND
+            // THAT MAKES `"chain"` REACHABLE AT ALL.
+            //
+            // Measured 2026-11-08 on a three-member DHT: for about five
+            // seconds after a write, the activity authority serves a view
+            // that does NOT yet contain the author's own fresh commitment,
+            // while the local index already does. Counting the chain there
+            // reports a SMALLER number than the index — the silently smaller
+            // denominator 1.24 exists to remove, arriving from the other
+            // direction, and at the one moment a denominator is actually
+            // read: the author just committed, which is why the screen is
+            // open.
+            //
+            // So the two directions of disagreement are both computed, and
+            // they mean different things. `missing` is chain-not-in-index:
+            // commitments written without being indexed, which is 1.24's
+            // finding and the index's only remaining job. `unserved` is
+            // index-not-in-chain: the authority behind the write.
+            let missing = chain.iter().filter(|h| !index_hashes.contains(h)).count() as u32;
+            let unserved = index_hashes.iter().filter(|h| !chain.contains(h)).count() as u32;
             if chain.is_empty() && !index_hashes.is_empty() {
-                (index_hashes.clone(), "index", "unreadable", 0)
+                (index_hashes.clone(), "index", "unreadable", 0, 0)
+            } else if missing == 0 && unserved > 0 {
+                // THE INDEX STRICTLY CONTAINS WHAT THE AUTHORITY SERVED:
+                // every chain hash is indexed and the index holds more. The
+                // chain is still the source a writer cannot skip, and nothing
+                // on it is absent here, so preferring the index costs no
+                // skippability and recovers the lagging write. DECIDED
+                // 2026-11-08, row 1.25.
+                //
+                // `unindexed` is 0 BY CONSTRUCTION in this arm — `missing` is
+                // what it reports, and this arm requires it to be zero.
+                (index_hashes.clone(), "index-superset", status, 0, unserved)
             } else {
-                let missing = chain.iter().filter(|h| !index_hashes.contains(h)).count() as u32;
-                (chain, "chain", status, missing)
+                // Either the two agree, or they disagree in BOTH directions —
+                // an unindexed commitment on the chain alongside a lagging
+                // authority. The count stays the chain, because that is the
+                // source a writer cannot skip, and the note says plainly that
+                // it is short by `unserved`. Counting the union would be a
+                // different decision than the one taken, and is not taken
+                // here.
+                (chain, "chain", status, missing, unserved)
             }
         }
         // UNREACHABLE IS NOT ZERO, and this branch exists so it can never be
@@ -7718,7 +7763,7 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
         // and `counted_from` plus the note say the figure is provisional —
         // a silently smaller denominator is the exact defect 1.24 is about,
         // and it would be absurd to reintroduce it in the recovery path.
-        Err(_) => (index_hashes.clone(), "index", "unreachable", 0),
+        Err(_) => (index_hashes.clone(), "index", "unreachable", 0, 0),
     };
 
     // CAPTURED BEFORE THE LOOP CONSUMES THE VECTOR, because the note compares
@@ -7788,6 +7833,19 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
 
     let readable = revealed.len() + expired.len() + pending.len();
     let note = match counted_from {
+        // OPEN-WORK 1.25. The count came from the index BECAUSE the index
+        // strictly contained what the authority served — the opposite of the
+        // `"index"` case below, and it must not be worded like it. This number
+        // is not short of what the chain showed; it is longer, and the reason
+        // is the authority rather than the author.
+        "index-superset" => format!(
+            "Counted from the author's own index, which here CONTAINS everything the \
+             chain authority served and {unserved} more: the authority's view is behind \
+             a recent write. Nothing on the chain was missing from the index, so this is \
+             not an index-only count standing in for a chain it could not read — it is \
+             the chain's own contents plus what the authority had not caught up to. \
+             Chain status: {chain_status}."
+        ),
         "chain" => {
             let mut n = format!(
                 "Counted from the author's own source chain, which they cannot write a \
@@ -7797,6 +7855,18 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
                 n.push_str(&format!(
                     " {unindexed} of these are NOT in the author's own index — written \
                      without being indexed, which an index-only count would have missed."
+                ));
+            }
+            // THE MIXED CASE, AND IT IS REPORTED RATHER THAN COUNTED — 1.25.
+            // The index disagrees in BOTH directions, so the superset arm
+            // above does not apply and the chain stays the count. Saying so is
+            // the whole of this project's habit about disagreement: a number
+            // that is known to be short must say it is short.
+            if unserved > 0 {
+                n.push_str(&format!(
+                    " {unserved} commitment(s) in the author's index were NOT in what the \
+                     authority served — its view lagging a recent write — and are NOT \
+                     included above, so this count is short by at least that many."
                 ));
             }
             if chain_status == "forked" {

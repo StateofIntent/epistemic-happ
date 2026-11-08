@@ -5954,12 +5954,25 @@ function renderForesightTab(): HTMLElement {
   // measured on 2026-11-02 that is the branch always taken, because
   // `get_agent_activity` cannot read a chain here — so this is not a rare
   // caveat, it is the current state of the feature and the screen says so.
+  // THREE SOURCES, AND ONLY ONE OF THEM IS A FLOOR — open-work 1.25.
+  //
+  // `index-superset` means the chain WAS read and the index held more besides,
+  // because the activity authority was behind a recent write. Calling that a
+  // floor would be the inverse of this screen's job: the number is longer than
+  // the chain's, not shorter, and a reader told to treat it as a floor would
+  // discount the one commitment they just made. The caveat still renders —
+  // the count is not the authority's own view and the screen never implies it
+  // is — but it says what actually happened, and the coordinator's `note`
+  // carries the rest verbatim as before.
   if (myForesight.counted_from !== 'chain') {
     const floor = document.createElement('p');
     floor.className = 'hint';
     floor.dataset.testid = 'foresight-floor';
     floor.textContent =
-      'These lists are a FLOOR rather than a complete count. ' + myForesight.note;
+      (myForesight.counted_from === 'index-superset'
+        ? 'These lists include a recent commitment the network has not caught up to yet. '
+        : 'These lists are a FLOOR rather than a complete count. ')
+      + myForesight.note;
     wrap.appendChild(floor);
   }
 
