@@ -9,13 +9,25 @@ on the code, read [README.md](README.md) §6 instead.
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **`v0.3.2`, published 2026-11-02, is the one to install.** It carries
+> **`v0.3.3`, published 2026-11-08, is the one to install.** It carries
 > `protocol_version: 11` — the version this repository actually describes,
 > including SPEC.md §5.19's eighteen link validation rules, the refusal of
 > entry updates, and all five autopoiesis stages. Building from source is not
 > the only way to run the current protocol.
 >
-> **WHAT `v0.3.2` ADDS: the compose-time adversary.** Before you publish a
+> **WHAT `v0.3.3` FIXES: a denominator that briefly under-counted your own
+> newest commitment.** The foresight count is an enumeration of your source
+> chain, which no client can skip. On a real multi-member network that chain is
+> served by a remote authority, and the authority lags a write by about five
+> seconds — so for those few seconds the count was SMALLER than your own index,
+> at the one moment anyone looks: just after committing. It now prefers your own
+> index whenever that index strictly contains what the authority served, and
+> says which of the three sources answered. The screen no longer calls that case
+> a floor, because a reader told to discount it would be discounting the
+> commitment they had just made. Measured on a three-member network rather than
+> reasoned about — open-work 1.25.
+>
+> **WHAT `v0.3.2` ADDED: the compose-time adversary.** Before you publish a
 > claim, a model **on your own machine** reads the draft and says what it will
 > be asked, while the objections are still free to answer. It writes nothing,
 > is recorded nowhere, is attributed to nobody, and never appears beside a
@@ -25,28 +37,34 @@ on the code, read [README.md](README.md) §6 instead.
 > first use rather than shipped in the installer**, so an install that never
 > opens the compose form downloads nothing.
 >
-> **`v0.3.1` AND `v0.3.2` ARE PATCHES — so they behave unlike every bump
-> before them.** Both are the SAME network as `v0.3.0`: same `0.3.x` seed,
+> **`v0.3.1`, `v0.3.2` AND `v0.3.3` ARE PATCHES — so they behave unlike every
+> bump before them.** All are the SAME network as `v0.3.0`: same `0.3.x` seed,
 > same cell, same data directory, and the bundle's DNA hash is unchanged
 > (verified identical across the releases by unpacking each and hashing it).
-> So a `v0.3.0` or `v0.3.1` install is not stranded and loses nothing by
-> upgrading.
+> So a `v0.3.0`, `v0.3.1` or `v0.3.2` install is not stranded and loses nothing
+> by upgrading.
 >
-> **ONE THING AN UPGRADE DOES NOT GET, AND IT IS SMALL.** The app only
-> installs the happ when there is no cell yet, so an upgraded install keeps
-> its existing coordinator. `v0.3.2`'s one coordinator addition — the
-> denominator beside an assessment's past cone — is therefore absent there,
-> and that one line renders without its figure. Everything else, the
-> compose-time adversary included, reaches every install. A fresh install
-> gets all of it.
+> **ONE THING AN UPGRADE DOES NOT GET, AND IN `v0.3.3` IT IS THE HEADLINE
+> FIX.** The app only installs the happ when there is no cell yet, so an
+> upgraded install keeps its existing coordinator — and the coordinator is
+> where `v0.3.3`'s under-count fix lives. **So upgrading in place does NOT
+> repair the count; only a fresh install carries it.** The UI half does travel,
+> so an upgraded install stops printing the word *floor* over a case that is not
+> one, while still counting from the authority's lagging view underneath. That
+> combination is worth naming rather than discovering: the wording improves and
+> the number does not. `v0.3.2`'s coordinator addition — the denominator beside
+> an assessment's past cone — is absent on an upgrade for the same reason, and
+> that line renders without its figure. Everything that lives in the UI, the
+> compose-time adversary included, reaches every install. **A fresh install gets
+> all of it, and if the foresight count is what you care about, install fresh.**
 >
-> **Upgrade anyway, and invitees should install `v0.3.2` rather than
+> **Upgrade anyway, and invitees should install `v0.3.3` rather than
 > `v0.3.0`.** `v0.3.0` has no surface for publishing a promise: until item 6.7
 > the only call to `publish_constitution` was inside the founding form, so the
 > only way to promise anything was to found your own domain. The invitation
 > asks every joiner for a published constitution, and on `v0.3.0` that ask is
 > **unexecutable**. `v0.3.1` added a standalone *Your promises* section on the
-> Domains tab, and `v0.3.2` carries it too.
+> Domains tab, and `v0.3.2` and `v0.3.3` carry it too.
 >
 > **Download the latest release and not `v0.2.0`.** `v0.2.0` (2026-10-12)
 > carries `protocol_version: 9`; the integrity zome has forked twice since,
@@ -58,13 +76,13 @@ on the code, read [README.md](README.md) §6 instead.
 > and `0.3.x` are three separate DHTs and only peers sharing a hash gossip at
 > all. **Auto-update will not move anyone across a minor** — electron-updater
 > only offers semver-compatible releases, so anyone already running `0.1.x` or
-> `0.2.x` must download `v0.3.2` by hand. They keep their old data directory;
+> `0.2.x` must download `v0.3.3` by hand. They keep their old data directory;
 > the versions install side by side.
 >
 > **A PATCH is the opposite case, and `v0.3.1` was the first one.** Within
 > `0.3.x` the network, the seed and the data directory are identical, so
 > auto-update *does* offer a newer patch to an older `0.3.x` install — it
-> offered `v0.3.1` to `v0.3.0`, and offers `v0.3.2` to both — and the upgrade
+> offered `v0.3.1` to `v0.3.0`, and offers `v0.3.3` to all three — and the upgrade
 > happens in place, keeping the conductor, the keystore and the agent key.
 > One thing it does not carry: the app installs the hApp only when the app id
 > is absent, so an upgraded install runs the new UI against the
@@ -102,7 +120,11 @@ on the code, read [README.md](README.md) §6 instead.
 > MORE THAN THE STREAK.** `v0.3.2` was cut and both files were updated in the
 > same sitting — not because anybody remembered, but because the rule above
 > was read off this file as part of doing the release rather than recalled
-> afterwards. The three failures were all the same shape: the version was
+> afterwards. **NOR A FIFTH TIME, ON 2026-11-08**, for the same reason and with
+> one addition: the sweep was run as `grep -rn '0\.3\.2'` across this file, the
+> invitation, the README and READINESS rather than by reading for the headline,
+> which is what turned up the nine references here against the one everybody
+> would have looked at. The three failures were all the same shape: the version was
 > bumped where the build reads it and nowhere a person reads it. **The fix
 > that worked was treating this paragraph as a step.**
 

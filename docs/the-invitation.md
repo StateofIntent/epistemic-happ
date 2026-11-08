@@ -136,9 +136,12 @@ written to be sent as-is, or edited for tone but not for content.
 > screen once, because nothing starts until you do.
 >
 > Install the **same version** I am on — different versions are different
-> networks and see nothing of each other. I am on `v0.3.2`, and it is the
+> networks and see nothing of each other. I am on `v0.3.3`, and it is the
 > version you want: anything before `v0.3.1` has no way to publish the promise
-> I ask for below without founding a domain of your own.
+> I ask for below without founding a domain of your own. If you already have an
+> older `0.3.x` installed, the app will offer you the update — but take a fresh
+> install if you can, because one fix in `v0.3.3` lives in a part that an
+> in-place upgrade keeps from the old version.
 >
 > **One thing I'd ask of you before you write.** When you join, publish a
 > short statement — the app calls it a constitution — saying four things:
