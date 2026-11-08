@@ -488,6 +488,33 @@ export interface ForesightRecord {
   revealed: ForesightEntry[];
   expired: ForesightEntry[];
   pending: ForesightEntry[];
+  /** WHERE THE SET CAME FROM: `"chain"` or `"index"` — open-work 1.24.
+   *
+   * The two answers have different standing. A chain count cannot be skipped
+   * by the writer, because writing the entry puts it on their chain. An index
+   * count can: `AgentToPreRegistration` is written by the coordinator and
+   * required by no validation rule, so a client can commit and stay out of
+   * it. **A reader that ignores this field is holding a number whose meaning
+   * it has not established.** */
+  counted_from: string;
+  /** `"valid"`, `"forked"`, `"empty"`, `"unreadable"` or `"unreachable"`.
+   *
+   * MEASURED 2026-11-02: on holochain 0.7.0 as deployed here this is
+   * `"unreadable"` — `get_agent_activity` returns an empty chain for an agent
+   * whose index demonstrably holds commitments, for their own chain and for
+   * another agent's. So the chain route is DECIDED, BUILT AND CURRENTLY
+   * UNAVAILABLE, and the counts fall back to the index with `note` saying so.
+   * A FORKED chain is a fact about the author rather than an error. */
+  chain_status: string;
+  /** Commitments on the chain that the author's own index does NOT carry.
+   * Non-zero means they wrote commitments without indexing them, which an
+   * index-only count silently missed. A count about the RECORD's
+   * completeness, identical for every caller, about nobody's standing. */
+  unindexed: number;
+  /** What the figures rest on, in the coordinator's words. **When
+   * `counted_from` is `"index"` this says the number is a FLOOR rather than a
+   * denominator** — relay it, do not summarise it. */
+  note: string;
 }
 
 /** An attributed reading of a membrane's discourse health, published as

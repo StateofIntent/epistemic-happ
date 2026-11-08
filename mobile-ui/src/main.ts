@@ -5557,6 +5557,15 @@ interface ForesightRecord {
   revealed: ForesightEntry[];
   expired: ForesightEntry[];
   pending: ForesightEntry[];
+  /** `"chain"` or `"index"` — open-work 1.24. A chain count cannot be
+   * skipped by the writer; an index count can. */
+  counted_from: string;
+  /** `"valid"`, `"forked"`, `"empty"`, `"unreadable"` or `"unreachable"`. */
+  chain_status: string;
+  /** Commitments on the chain the author's own index does not carry. */
+  unindexed: number;
+  /** The coordinator's own statement of what the figures rest on. */
+  note: string;
 }
 /// The author's own sealed content, as `get_my_sealed_prediction` returns it.
 /// `null` is a real answer and not an error: it means this chain does not
@@ -5932,6 +5941,27 @@ function renderForesightTab(): HTMLElement {
     myForesight.pending,
     'No open commitments.',
   ));
+
+  // AND WHETHER THESE LISTS ARE THE DENOMINATOR OR ONLY A FLOOR — open-work
+  // 1.24. The expired group above calls itself "the denominator", and that is
+  // true only when the count came from the author's CHAIN, which they cannot
+  // write a commitment outside of. When it came from their own INDEX it is a
+  // floor: nothing in validation requires a commitment to be indexed, so a
+  // client can hold one that no reader's count includes.
+  //
+  // RENDERED FROM THE COORDINATOR'S OWN `note`, not paraphrased, and only in
+  // the branch where it changes what the lists mean. On the substrate as
+  // measured on 2026-11-02 that is the branch always taken, because
+  // `get_agent_activity` cannot read a chain here — so this is not a rare
+  // caveat, it is the current state of the feature and the screen says so.
+  if (myForesight.counted_from !== 'chain') {
+    const floor = document.createElement('p');
+    floor.className = 'hint';
+    floor.dataset.testid = 'foresight-floor';
+    floor.textContent =
+      'These lists are a FLOOR rather than a complete count. ' + myForesight.note;
+    wrap.appendChild(floor);
+  }
 
   // SAID IN WORDS AS WELL AS IN STRUCTURE. The structural guarantee is that
   // expired is always rendered; this sentence is what a reader takes away if
