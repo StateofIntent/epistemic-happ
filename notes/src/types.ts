@@ -127,6 +127,17 @@ export interface Note {
    * removal whose record can be quietly erased is a removal with no history,
    * and the history is the whole argument for recording it as a note. */
   removal?: Removal;
+  /** What this note's own text refers to — open-work 6.5, see
+   * `citations.ts`. DERIVED from `text` by a pure function at every write,
+   * never supplied by a caller and never accumulated: a note cites what it
+   * currently says, so editing a hash out removes it. That is what makes it
+   * re-derivable by anybody holding the note instead of a bookkeeping claim
+   * the room asks to be believed.
+   *
+   * It is a CANDIDATE and not a cone. Nothing here is signed, nothing reaches
+   * the DHT, and no promotion sends a `past_cone` on anyone's behalf. */
+  citations?: import('./citations.js').Citations;
+
   /** How many times this note's text has been rewritten, starting at 0.
    *
    * It exists so a save can refuse to clobber. Any member may rewrite any

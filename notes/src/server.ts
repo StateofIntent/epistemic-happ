@@ -29,6 +29,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { NotesError, NotesStore } from './store.js';
+import { CANDIDATE_CAVEAT } from './citations.js';
 import {
   capsFromEnv, clientAddress, Limiter, MEMBER_CAPS, RateLimitError, type CapName,
 } from './limits.js';
@@ -186,6 +187,26 @@ export function buildRoutes(options: NotesServerOptions): Route[] {
       handler: ({ token }, [spaceId]) => {
         store.requireMemberOf(token, spaceId);
         return { signals: store.signals(spaceId) };
+      },
+    },
+    {
+      // THE CANDIDATE CONE A PROMOTION OFFERS — open-work 6.5.
+      method: 'GET', pattern: /^\/spaces\/([^/]+)\/citations$/,
+      handler: ({ token, url }, [spaceId]) => {
+        store.requireMemberOf(token, spaceId);
+        // `exclude` drops the note being promoted from its own note-refs. A
+        // query parameter rather than a path segment because it is optional
+        // and a caller who omits it gets the whole room, which is the right
+        // default for a reader browsing rather than promoting.
+        const exclude = url.searchParams.get('exclude') ?? undefined;
+        return {
+          candidate: store.citationCandidate(spaceId, exclude),
+          // SENT WITH THE DATA, EVERY TIME. A client that renders the hashes
+          // without this sentence is making the over-claim 6.5 refuses, and
+          // the way to make that hard is to put the words in the payload
+          // rather than trusting a UI to remember them.
+          caveat: CANDIDATE_CAVEAT,
+        };
       },
     },
     {

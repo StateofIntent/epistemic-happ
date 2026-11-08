@@ -25,6 +25,7 @@
 // ============================================================================
 
 import { randomBytes } from 'node:crypto';
+import { citationsAcross, citationsIn } from './citations.js';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
@@ -629,6 +630,11 @@ export class NotesStore {
       exemplar,
       createdAt: now,
       updatedAt: now,
+      // Derived here so EVERY note has it, including the exemplars a space
+      // creator writes and the removal records nobody may rewrite — a field
+      // present on some notes and absent on others would make a reader check
+      // which kind they were holding before trusting it.
+      citations: citationsIn(text),
       rev: 0,
       promotions: [],
     };
@@ -647,6 +653,25 @@ export class NotesStore {
     return Object.values(this.state.notes)
       .filter((n) => n.spaceId === spaceId)
       .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** THE CANDIDATE A PROMOTION SHOULD OFFER — open-work 6.5.
+   *
+   * The union of what this room's notes refer to, in the order the room met
+   * them, with the note being promoted excluded from its own note-references.
+   * A promotion carries one note's excerpt across the gate, but the thing the
+   * author had in front of them was the THREAD — so offering one note's
+   * citations would under-report, and offering a ranked or scored set would
+   * invent a judgement this layer refuses to make.
+   *
+   * IT IS A CANDIDATE. This service cannot publish and holds no credentials;
+   * `CANDIDATE_CAVEAT` is the sentence a client must show while offering it,
+   * and it is kept beside the derivation rather than in the UI so a client
+   * cannot paraphrase it into a claim about what anybody read. */
+  citationCandidate(spaceId: string, excludeNoteId?: string) {
+    this.getSpace(spaceId);
+    const notes = this.listNotes(spaceId).map((n) => ({ id: n.id, text: n.text }));
+    return citationsAcross(notes, excludeNoteId);
   }
 
   getNote(noteId: string): Note {
@@ -692,6 +717,10 @@ export class NotesStore {
       }
     }
     note.text = trimmed(text, 'text', 40000);
+    // RE-DERIVED, NOT MERGED. A note cites what it says now; a citation
+    // accumulated from a previous revision would be the room claiming a
+    // reference the text no longer makes — see citations.ts.
+    note.citations = citationsIn(note.text);
     note.updatedAt = Date.now();
     note.rev = rev + 1;
     this.touched();

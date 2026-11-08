@@ -613,6 +613,87 @@ async function main() {
     check('the built notes service imports no Holochain client and cannot publish anything',
       !/@holochain|AppWebsocket|callZome/.test(built));
 
+    // === The candidate cone — open-work 6.5 =====================================
+    //
+    // `Critique.past_cone` is `#[serde(default)]` and nothing fills it, so
+    // `cone_recorded` is false everywhere. 6.5 is why, and the reason is not
+    // wiring: a client populating a cone is ASSERTING WHAT ITS USER READ, and
+    // one that over-claims makes its user look better informed than they were.
+    //
+    // The room is a third option. It does not read minds and it does not
+    // guess — a hash somebody pasted into a note was in front of the room, and
+    // the extraction is a pure function of the text, so anybody holding the
+    // note can re-derive it. What the service produces is a CANDIDATE the
+    // author confirms. These checks are about that boundary, because the
+    // dangerous version of this feature is the one that quietly becomes a
+    // cone.
+    log('\n--- The candidate cone: what the room was reading (6.5) ---');
+    // THE FIRST-MET HASH SORTS LAST, DELIBERATELY. A first version used
+    // A-filled and B-filled hashes, where alphabetical order and
+    // first-appearance order are the SAME — so the ordering check below passed
+    // under an injection that replaced first-appearance with a sort, and
+    // proved nothing. A fixture that cannot distinguish the property from its
+    // defect is not a fixture.
+    const ACT_A = `uhCkk${'Z'.repeat(48)}`;
+    const ACT_B = `uhCkk${'A'.repeat(48)}`;
+    const ENT = `uhCEk${'C'.repeat(48)}`;
+    const DNA = `uhC0k${'D'.repeat(48)}`;
+
+    const cited = await call('POST', `/spaces/${space.id}/notes`, {
+      token: ada, body: { text: `Reading ${ACT_A} and the entry ${ENT} and the dna ${DNA}.` },
+    });
+    check('a note records the action hashes its own text mentions',
+      cited.body.note.citations.actions.length === 1 && cited.body.note.citations.actions[0] === ACT_A);
+    check('AND a non-action hash is reported separately rather than offered as cone material',
+      cited.body.note.citations.other.length === 2
+      && cited.body.note.citations.other.some((o) => o.ref === ENT && o.kind === 'entry')
+      && cited.body.note.citations.other.some((o) => o.ref === DNA && o.kind === 'dna'));
+
+    const answering = await call('POST', `/spaces/${space.id}/notes`, {
+      token: ada, body: { text: `Answering ${cited.body.note.id}, and also ${ACT_B}.` },
+    });
+    check('a note that references another note records that too',
+      answering.body.note.citations.notes.includes(cited.body.note.id));
+
+    const cand = await call('GET', `/spaces/${space.id}/citations`, { token: ada });
+    check('the room offers the THREAD\'s action hashes, not one note\'s',
+      cand.body.candidate.actions.includes(ACT_A) && cand.body.candidate.actions.includes(ACT_B));
+    check('in the order the room met them, which is stable and is not a ranking',
+      cand.body.candidate.actions.indexOf(ACT_A) < cand.body.candidate.actions.indexOf(ACT_B)
+      // Stated twice on purpose: the first clause is the property, and this
+      // one is why the fixture can see it — the first-met hash sorts LAST, so
+      // a sorted candidate would fail here.
+      && ACT_A > ACT_B);
+    // THE LOAD-BEARING ONE. A client that renders the hashes without this
+    // sentence is making 6.5's over-claim, so the words travel with the data
+    // rather than living in a UI that can forget them.
+    check('and the caveat ships WITH the candidate, saying the room did not watch anyone read',
+      typeof cand.body.caveat === 'string' && /did not watch anyone read/.test(cand.body.caveat));
+    check('excluding a note drops it from its own note-references',
+      !(await call('GET', `/spaces/${space.id}/citations?exclude=${cited.body.note.id}`, { token: ada }))
+        .body.candidate.notes.includes(cited.body.note.id));
+
+    // RE-DERIVED, NEVER ACCUMULATED. This is the honesty property: a note
+    // cites what it SAYS, so editing a hash out removes it. An accumulating
+    // list would be the room asserting a reference the text no longer makes —
+    // which is the over-claim one layer down from the one 6.5 refuses.
+    const rewritten = await call('PATCH', `/notes/${cited.body.note.id}`, {
+      token: ada, body: { text: 'I have thought again and cite nothing.', expectedRev: cited.body.note.rev },
+    });
+    check('editing a hash out of a note REMOVES the citation rather than keeping it',
+      rewritten.body.note.citations.actions.length === 0
+      && rewritten.body.note.citations.other.length === 0);
+    const afterEdit = await call('GET', `/spaces/${space.id}/citations`, { token: ada });
+    check('and the thread candidate shrinks with it',
+      !afterEdit.body.candidate.actions.includes(ACT_A) && afterEdit.body.candidate.actions.includes(ACT_B));
+    check('CONTROL: a note citing nothing gets empty lists rather than a missing field',
+      (await call('POST', `/spaces/${space.id}/notes`, { token: ada, body: { text: 'a bare half-thought' } }))
+        .body.note.citations.actions.length === 0);
+    // The service still cannot publish, and a candidate is not a promotion.
+    check('CONTROL: offering a candidate creates no promotion',
+      (await call('GET', `/spaces/${space.id}/notes`, { token: ada }))
+        .body.notes.filter((n) => n.promotions.length > 0).length === 1);
+
     // === Liveness, without holding a socket per note ===
     log('\n--- Long-poll liveness ---');
     const first = await call('GET', `/spaces/${space.id}/events?since=0`, { token: ada });
