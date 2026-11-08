@@ -4496,6 +4496,31 @@ pub struct AttestationPolicy {
 fn direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResult<Vec<AgentPubKey>> {
     let mut attesters: Vec<AgentPubKey> = Vec::new();
 
+    // SELF IS NOT AN ATTESTER — open-work 1.27, decided 2026-11-08.
+    //
+    // Both sources below skip a link whose author IS the candidate, and the
+    // reason is that vouching is a relation between two agents: a link from
+    // an agent to their own claim says nothing about them that they had not
+    // already said by publishing it. Before this, such a link was collected
+    // like any other, and `count_attestations_pure`'s cycle guard did NOT
+    // catch it for a candidate inside the reader's root set — that guard
+    // blocks the TRANSITIVE path back to the candidate, which is only
+    // reachable through the `max_depth` branch, and a root-set member never
+    // reaches it because `roots.contains(attester)` matches first. So
+    // `min_attestations: 2` was satisfiable with one genuine voucher and one
+    // self-link, for exactly the agents a reader had already named.
+    //
+    // It is excluded HERE as well as in the pure walk because the two layers
+    // fail for different reasons: here the list itself would be wrong for
+    // every consumer, and there a caller's closure could still hand self back.
+    // §2.6 is defended at two layers for the same kind of reason.
+    //
+    // THE SELF-LINK IS FREE AND WAS ALREADY REACHABLE: `create_critique`
+    // writes a SynapticLink to the target claim, and `validate_critique`'s
+    // only author rule is that the author matches the action author —
+    // anti-spoofing, never anti-self. Critiquing your own claim was the whole
+    // of the cost.
+
     // Source 1: SynapticLink-derived — free, global, unscoped by
     // membrane (a SynapticLink is created wherever a critique happens,
     // with no membrane context anywhere in that schema).
@@ -4505,7 +4530,7 @@ fn direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResul
             let claim_hash = hash_entry(&claim)?;
             let links = get_links(LinkQuery::try_new(claim_hash, LinkTypes::SynapticLink)?, GetStrategy::Network)?;
             for link in links {
-                if !attesters.contains(&link.author) {
+                if &link.author != agent && !attesters.contains(&link.author) {
                     attesters.push(link.author);
                 }
             }
@@ -4518,7 +4543,11 @@ fn direct_attesters_of(agent: &AgentPubKey, membrane: &EntryHash) -> ExternResul
     let grant_links = get_links(LinkQuery::try_new(membrane.clone(), LinkTypes::AttestationGrant)?, GetStrategy::Network)?;
     for link in grant_links {
         if let Ok(candidate) = AgentPubKey::try_from(link.target.clone()) {
-            if &candidate == agent && !attesters.contains(&link.author) {
+            // `&link.author != agent` is 1.27's exclusion. A grant an agent
+            // wrote for themselves would otherwise count, and the integrity
+            // zome has no reason to refuse one: its checks are tenure, budget
+            // and authorship, none of which a self-grant violates.
+            if &candidate == agent && &link.author != agent && !attesters.contains(&link.author) {
                 attesters.push(link.author);
             }
         }
@@ -4555,6 +4584,17 @@ where
 
     let mut count = 0usize;
     for attester in &attesters {
+        // SELF NEVER COUNTS — open-work 1.27. `direct_attesters_of` already
+        // refuses to collect it, so in production this is the second of two
+        // layers; it is repeated here because this function takes an
+        // ARBITRARY closure, and the guarantee belongs to the walk rather
+        // than to one of its callers. It must come BEFORE the roots check:
+        // the `visited` cycle guard below only protects a candidate who is
+        // NOT in `roots`, because `roots.contains` matches first for one who
+        // is, which was exactly the defect.
+        if attester == candidate {
+            continue;
+        }
         if roots.contains(attester) {
             count += 1;
         } else if max_depth > 0 {
@@ -6876,6 +6916,55 @@ mod tests {
         let mut visited = HashSet::new();
         let count = count_attestations_pure(&candidate, &[root_a, root_b], 0, &lookup, &mut visited).unwrap();
         assert_eq!(count, 2);
+    }
+
+    // --- open-work 1.27: self never counts --------------------------------
+    //
+    // THE TWO-CYCLE TEST BELOW LOOKS LIKE IT COVERS THIS AND DOES NOT.
+    // A→B→A is not A→A: the first reaches the `max_depth` branch, where the
+    // `visited` guard stops it, and the second reaches `roots.contains`
+    // first whenever the candidate is itself a root — which is the whole
+    // defect 1.27 recorded. These two tests exist because the near-miss was
+    // the reason it survived seven tests and a shipped release.
+
+    #[test]
+    fn count_attestations_self_attestation_by_a_root_member_does_not_count() {
+        // The candidate IS in the reader's root set and attests themselves.
+        // Before 1.27 this returned 1 — manufactured from nothing but a
+        // self-link, for an agent the reader had already named.
+        let candidate = fixture_agent(1);
+        let lookup = fixture_attestation_graph(&[(1, 1)]);
+        let mut visited = HashSet::new();
+        let count = count_attestations_pure(&candidate, &[candidate.clone()], 0, &lookup, &mut visited).unwrap();
+        assert_eq!(count, 0, "an agent cannot attest themselves, even from inside the root set");
+    }
+
+    #[test]
+    fn count_attestations_self_link_cannot_pad_a_two_attester_threshold() {
+        // The case that made this worth a decision: one GENUINE root-set
+        // voucher plus the candidate's own self-link. A `min_attestations: 2`
+        // policy was satisfiable by one real voucher; it must now count 1.
+        let candidate = fixture_agent(1);
+        let other_root = fixture_agent(2);
+        let lookup = fixture_attestation_graph(&[(1, 1), (2, 1)]);
+        let mut visited = HashSet::new();
+        let count = count_attestations_pure(
+            &candidate, &[candidate.clone(), other_root], 0, &lookup, &mut visited,
+        ).unwrap();
+        assert_eq!(count, 1, "only the genuine voucher counts, so a 2-attester bar is not cleared");
+    }
+
+    #[test]
+    fn count_attestations_self_exclusion_does_not_break_a_genuine_root_attester() {
+        // CONTROL. The exclusion must not cost a real attestation anything —
+        // an assertion that only ever goes down is indistinguishable from a
+        // function that always returns zero.
+        let candidate = fixture_agent(1);
+        let root = fixture_agent(2);
+        let lookup = fixture_attestation_graph(&[(2, 1), (1, 1)]);
+        let mut visited = HashSet::new();
+        let count = count_attestations_pure(&candidate, &[root], 0, &lookup, &mut visited).unwrap();
+        assert_eq!(count, 1, "the genuine attester still counts with a self-link present");
     }
 
     #[test]
