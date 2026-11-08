@@ -7611,23 +7611,133 @@ pub struct ForesightRecord {
     pub revealed: Vec<ForesightEntry>,
     pub expired: Vec<ForesightEntry>,
     pub pending: Vec<ForesightEntry>,
+    /// WHERE THE SET CAME FROM: `"chain"` or `"index"`. Added for open-work
+    /// 1.24 and reported rather than implied, because the two answers have
+    /// different standing — one cannot be skipped by the writer and the other
+    /// can. A reader that does not look at this field is reading a number
+    /// whose meaning it has not established.
+    pub counted_from: String,
+    /// What the author's chain said: `"valid"`, `"forked"`, `"empty"` or
+    /// `"unreachable"`. A FORKED CHAIN IS INFORMATION ABOUT THE AUTHOR rather
+    /// than an error here, and `"unreachable"` is the one value that makes the
+    /// counts provisional.
+    pub chain_status: String,
+    /// Commitments on the chain that the INDEX does not carry. This is 1.24
+    /// made visible: a non-zero value means the author wrote commitments
+    /// without indexing them, which the old count would have silently missed.
+    pub unindexed: u32,
+    /// What the figures do and do not support. Never a verdict.
+    pub note: String,
 }
 
 #[hdk_extern]
 pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord> {
     let now = sys_time()?.as_micros() as u64;
-    let links = get_links(
+
+    // THE INDEX IS STILL READ AND IS NO LONGER THE ANSWER — open-work 1.24.
+    //
+    // It used to be the whole enumeration, and that made the denominator
+    // SKIPPABLE: `AgentToPreRegistration` is written by `pre_register` in this
+    // zome, `validate_pre_registration` never mentions it, and
+    // `attempt_raw_pre_registration` already ships an entry-without-link path.
+    // So a client could hold a sealed commitment that no reader's count
+    // included — in the one mechanism this protocol leads with.
+    //
+    // It survives as a HINT, for two reasons. It is cheap, and it is the only
+    // thing that can say whether the author indexed what they wrote, which is
+    // what `unindexed` reports.
+    let index_hashes: Vec<ActionHash> = get_links(
         LinkQuery::try_new(agent_anchor_hash(&agent)?, LinkTypes::AgentToPreRegistration)?,
         GetStrategy::Network,
-    )?;
+    )?
+    .into_iter()
+    .filter_map(|l| ActionHash::try_from(l.target).ok())
+    .collect();
+
+    // THE CHAIN IS THE ANSWER, because writing the entry puts it there
+    // whatever the client does. `get_agent_activity` returns action hashes for
+    // actions matching the filter, filtered AT THE SOURCE, and the activity is
+    // held by the neighbourhood of the agent's public key. Hashes are enough:
+    // a denominator needs a COUNT, and the commitment content is sealed.
+    //
+    // THE SAME MECHANISM THE INTEGRITY ZOME ALREADY TRUSTS for its friction
+    // scan, so this is a proven dependency rather than a new one.
+    let filter = ChainQueryFilter::new()
+        .entry_type(EntryType::App(UnitEntryTypes::PreRegistration.try_into()?));
+    let (commitment_hashes, counted_from, chain_status, unindexed) = match get_agent_activity(
+        agent.clone(),
+        filter,
+        ActivityRequest::Full,
+        GetOptions::default(),
+    ) {
+        Ok(activity) => {
+            let chain: Vec<ActionHash> = activity
+                .valid_activity
+                .iter()
+                .map(|(_, h)| h.clone())
+                .collect();
+            let status = match &activity.status {
+                ChainStatus::Valid(_) => "valid",
+                ChainStatus::Forked(_) => "forked",
+                ChainStatus::Empty => "empty",
+                // A variant this build does not know by name is reported as
+                // itself rather than flattened into "valid" — the point of
+                // this field is that a reader can tell what they are holding.
+                _ => "other",
+            };
+            // AN EMPTY CHAIN BESIDE A NON-EMPTY INDEX IS NOT ZERO, AND
+            // TREATING IT AS ZERO WAS THIS FUNCTION'S OWN FIRST BUG.
+            //
+            // Measured on a one-conductor sandbox: `get_agent_activity`
+            // returns `ChainStatus::Empty` and no activity for an agent whose
+            // index demonstrably holds commitments — consistently, at 0, 5,
+            // 10, 20 and 30 seconds, and with `GetOptions::default()` already
+            // being `network()`. Whatever the cause, the activity authority
+            // did not serve us that chain.
+            //
+            // The first version of this code reported that as a count of
+            // zero, which is A SILENTLY SMALLER DENOMINATOR — precisely the
+            // defect 1.24 exists to remove, reintroduced in the fix for it.
+            // Caught by the probe rather than by reasoning, which is why the
+            // probe ran before any of this shipped.
+            //
+            // So the index is used as the floor and the status says the chain
+            // was not readable. The two answers can only disagree in this
+            // direction: the chain is a superset of the index by
+            // construction, because the index is written from the same call
+            // that writes the entry.
+            if chain.is_empty() && !index_hashes.is_empty() {
+                (index_hashes.clone(), "index", "unreadable", 0)
+            } else {
+                let missing = chain.iter().filter(|h| !index_hashes.contains(h)).count() as u32;
+                (chain, "chain", status, missing)
+            }
+        }
+        // UNREACHABLE IS NOT ZERO, and this branch exists so it can never be
+        // read as zero. Falling back to the index keeps the screen useful,
+        // and `counted_from` plus the note say the figure is provisional —
+        // a silently smaller denominator is the exact defect 1.24 is about,
+        // and it would be absurd to reintroduce it in the recovery path.
+        Err(_) => (index_hashes.clone(), "index", "unreachable", 0),
+    };
+
+    // CAPTURED BEFORE THE LOOP CONSUMES THE VECTOR, because the note compares
+    // what was COUNTED against what could be READ, and those differ whenever
+    // a commitment is on the chain but not fetchable by this observer.
+    let commitment_count = commitment_hashes.len();
 
     let mut revealed = Vec::new();
     let mut expired = Vec::new();
     let mut pending = Vec::new();
 
-    for link in links {
-        let Ok(pr_hash) = ActionHash::try_from(link.target) else { continue };
+    for pr_hash in commitment_hashes {
         let Some(record) = get(pr_hash.clone(), GetOptions::default())? else { continue };
+        // THE FILTER ALREADY NARROWED TO PreRegistration, so a non-match here
+        // means the record could not be fetched as that type rather than that
+        // the author wrote something else. Skipped either way, and the count
+        // above is the one reported — `revealed + expired + pending` can
+        // therefore be SMALLER than the chain count, which is honest: those
+        // are commitments this observer knows exist and could not read.
         let Ok(Some(pr)) = record.entry().to_app_option::<PreRegistration>() else { continue };
 
         let reveals = get_links(
@@ -7676,7 +7786,57 @@ pub fn get_foresight_record(agent: AgentPubKey) -> ExternResult<ForesightRecord>
         }
     }
 
-    Ok(ForesightRecord { revealed, expired, pending })
+    let readable = revealed.len() + expired.len() + pending.len();
+    let note = match counted_from {
+        "chain" => {
+            let mut n = format!(
+                "Counted from the author's own source chain, which they cannot write a \
+                 commitment outside of. Chain status: {chain_status}."
+            );
+            if unindexed > 0 {
+                n.push_str(&format!(
+                    " {unindexed} of these are NOT in the author's own index — written \
+                     without being indexed, which an index-only count would have missed."
+                ));
+            }
+            if chain_status == "forked" {
+                n.push_str(
+                    " THE CHAIN IS FORKED, which is a fact about the author rather than \
+                     an error in this read: two heads exist and the counts cover the \
+                     activity this observer was served.",
+                );
+            }
+            n
+        }
+        // BOTH FALLBACK CASES SAY THE SAME THING, because they mean the
+        // same thing to a reader: `"unreachable"` is the query failing and
+        // `"unreadable"` is the query answering nothing while the index
+        // disagrees. Either way the number below is a FLOOR.
+        _ => format!(
+            "THE AUTHOR'S CHAIN COULD NOT BE READ, so this is the author's own INDEX \
+             instead and may be short: nothing requires a commitment to be indexed. \
+             Treat it as a floor rather than a denominator. Chain status: {chain_status}."
+        ),
+    };
+    let note = if readable < commitment_count {
+        format!(
+            "{note} {} of {commitment_count} commitments could not be fetched and are \
+             absent from the lists below, though they are counted here.",
+            commitment_count - readable
+        )
+    } else {
+        note
+    };
+
+    Ok(ForesightRecord {
+        revealed,
+        expired,
+        pending,
+        counted_from: counted_from.to_string(),
+        chain_status: chain_status.to_string(),
+        unindexed,
+        note,
+    })
 }
 
 // ============================================================================
