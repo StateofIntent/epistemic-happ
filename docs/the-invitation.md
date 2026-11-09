@@ -74,7 +74,7 @@ written to be sent as-is, or edited for tone but not for content.
 ---
 
 > I've built something and I'd like you to try it. Before you do, there are
-> four things I'm obliged to tell you, and one of them is permanent.
+> five things I'm obliged to tell you, and one of them is permanent.
 >
 > **Nothing you write in it can ever be deleted.** Not by you, not by me,
 > not by anyone. There is no delete button, no edit, and no admin who can
@@ -93,6 +93,24 @@ written to be sent as-is, or edited for tone but not for content.
 > planned rather than hypothetical. So what you publish now is permanent
 > *within this network* and will not carry over to the next one. Both of
 > those are true at once, and neither cancels the other.
+>
+> **One of the computers holding what you write is mine, and it never goes
+> offline.** There is no server here — but that also means the network only
+> exists while people are actually running the app, and with a handful of us
+> that turned out to be almost never. So I keep a machine connected that holds
+> a copy of everything anyone publishes. It is what lets you publish on a
+> Tuesday and have me read it on a Thursday without us arranging to be awake
+> at the same time. It publishes nothing itself and takes no part: it only
+> listens and stores.
+>
+> Two things follow, and I'd rather you heard them from me. Every
+> participant's computer already keeps copies of other people's entries —
+> that is simply how this kind of network works — so mine is a difference of
+> degree rather than of kind. But it is the one that is always on, it is in
+> my house, and it means that when I tell you nothing can be deleted, there
+> is a specific machine of mine that specifically still has it. If that is
+> not a trade you want, say so before you publish rather than after, because
+> afterwards I will have no way to undo it.
 >
 > **It is honest about what it does, and it is not secure against someone
 > trying.** I can vouch for the first: the documentation says accurately
@@ -121,7 +139,9 @@ written to be sent as-is, or edited for tone but not for content.
 > **What to expect mechanically**, because this is the thing everyone
 > reports as "it's broken" and it isn't:
 >
-> - When we are both online, things appear in **seconds**.
+> - When we are both online, things appear in **seconds**. Because of the
+>   always-on machine above, you no longer have to wait for me to be at my
+>   desk for anything to reach me — publish whenever suits you.
 > - If you close your laptop and come back, expect to wait **five to twelve
 >   minutes** to catch up — and longer the longer you were away. The app
 >   looks stale during that time. It is not; it is syncing.
