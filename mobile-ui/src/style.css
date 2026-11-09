@@ -240,6 +240,16 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-size: 0.85rem;
 }
 
+/* Found while giving Browse an error state: `.error` was already set on two
+   paragraphs and defined by none of them, so a failed read rendered in the
+   body colour and read as ordinary prose. Text rather than a box, because
+   all three sites are a line inside a flowing section — `.error-box` above
+   is the banner. */
+.error {
+  color: var(--danger-text);
+  font-size: 0.85rem;
+}
+
 /* --- Connect screen --- */
 
 .connect-screen { padding: 1.25rem; }
@@ -1302,8 +1312,11 @@ button:disabled { opacity: 0.6; cursor: default; }
 /* The author byline on a claim card is a button, because it navigates —
    but it sits inside a line of running text, so it is styled as the link
    it behaves like rather than as another control competing with the
-   card's real actions. */
-.author-link {
+   card's real actions. The domain breadcrumb beside it is the same shape
+   doing the same job for a field rather than an agent, so it shares the
+   rule rather than acquiring a second look. */
+.author-link,
+.domain-link {
   background: none;
   border: none;
   padding: 0;
@@ -1315,7 +1328,9 @@ button:disabled { opacity: 0.6; cursor: default; }
 }
 
 .author-link:hover,
-.author-link:focus-visible {
+.author-link:focus-visible,
+.domain-link:hover,
+.domain-link:focus-visible {
   text-decoration-thickness: 2px;
 }
 
@@ -1716,4 +1731,59 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-size: 0.75rem;
   opacity: 0.7;
   margin: 0.25rem 0 0;
+}
+
+/* ROW 6.16 — the way back to a domain you have been in. Chips rather than a
+   list, because the two groups are short by construction (what you have
+   published in, and the last dozen you loaded here) and a reader scanning for
+   a name they half-remember does it faster across a row than down a column.
+   They are buttons and they look like buttons: unlike the breadcrumb on a
+   claim card, these do not sit inside a line of running text. */
+.where-youve-been {
+  margin: 0.6rem 0 0.2rem;
+}
+
+.domain-recall + .domain-recall {
+  margin-top: 0.6rem;
+}
+
+.domain-recall .hint {
+  margin: 0 0 0.3rem;
+}
+
+.domain-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.domain-chip {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  /* A domain string is arbitrary user text and some of them are long; it
+     wraps rather than pushing the page sideways, which `layout-fits.mjs`
+     measures at 320px. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.domain-chip:hover,
+.domain-chip:focus-visible {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The localStorage half says what it is worth, and says it quietly: it is a
+   caveat on a convenience, not a warning. */
+.hint.subtle {
+  font-size: 0.75rem;
+  margin: 0.3rem 0 0;
+  opacity: 0.85;
 }
