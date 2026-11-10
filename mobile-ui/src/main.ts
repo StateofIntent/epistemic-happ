@@ -220,6 +220,52 @@ const chainByClaim = new Map<string, GroundingStep[]>();
 const chainLoading = new Set<string>();
 /** claim entryHash (b64) -> whether its retract form is open */
 const retractingClaims = new Set<string>();
+
+// --- 6.14: a retraction can name what replaced it -------------------------
+//
+// `Retraction.replacement_claim` is `Option<EntryHash>` — *"Optional: what I
+// believe now"* — and `create_retraction` writes a `RetractionToReplacement`
+// link whenever one is named. Until now this form passed `null` as a LITERAL,
+// so the link type had no producer anywhere and SPEC §4's *"read by nothing
+// yet"* understated it: it was written by nothing reachable either.
+//
+// WHAT THIS BUILDS AND WHAT IT DELIBERATELY DOES NOT. The field is offered
+// over claims the author has ALREADY published, which is the half that needs
+// no decision. The half that does is 6.14's `[D]`: a replacement usually
+// needs to be published BEFORE the retraction so a hash exists to point at,
+// which inverts the order an author actually works in — they realise they
+// were wrong first. Composing both entries in one act is a write of two
+// permanent entries that can half-fail with no transaction available, and the
+// alternative is a LATER claim pointing BACK, which is a different link and a
+// different entry. Neither is wiring, so neither is done here, and the empty
+// state below says so to the author rather than leaving them to infer it.
+
+/** The author's own claims, for the replacement picker. `null` means NEVER
+ *  ASKED, which is a different fact from an empty array — the distinction
+ *  6.13 is about, and the one the applet asset surface got wrong first. */
+let myClaimsForReplacement: DecodedRecord<Claim>[] | null = null;
+let myClaimsReplacementLoading = false;
+let myClaimsReplacementError = '';
+
+/** Replacement chosen per open retract form, keyed by the retracted claim's
+ *  entryHash (b64). `''` means none.
+ *
+ *  MODULE STATE RATHER THAN READ OFF THE `<select>` AT SUBMIT TIME, and the
+ *  reason is a real hazard rather than tidiness: `captureFieldValues` covers
+ *  `input, textarea` and NOT `select`, so any background render — a friction
+ *  poll, an epistemic-state load — rebuilds the picker at its first option.
+ *  A choice would reset to "none" with nothing on screen having changed, and
+ *  the retraction would silently lose its replacement. This is why the New
+ *  Claim form's confidence picker is backed by `newClaimDraft.confidence`;
+ *  the same convention, for the same reason. */
+const replacementChoice = new Map<string, string>();
+
+/** Replacement claims resolved for display, keyed by the replacement's own
+ *  entryHash (b64). A present key with a `null` value means the read
+ *  completed and returned nothing — NOT that no replacement was named. */
+const replacementClaimByHash = new Map<string, Claim | null>();
+const replacementReading = new Set<string>();
+const replacementReadFailed = new Map<string, string>();
 /** claim entryHash (b64) -> whether its antibody-flag form is open */
 const flaggingClaims = new Set<string>();
 // --- Author constitutions ---------------------------------------------
@@ -1853,6 +1899,22 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     // had a third party retracted.
     banner.textContent = `Retracted by its author — ${retraction.entry.reason}`;
     card.appendChild(banner);
+
+    // WHAT THE AUTHOR BELIEVES NOW — 6.14's read half, and it is half of the
+    // row rather than a nicety. `RetractionToReplacement` was written by
+    // nothing reachable and read by nothing at all; adding the producer alone
+    // would have left a link type with a writer and no reader, which is the
+    // "declared but unread" shape this list keeps finding and the row itself
+    // complains about.
+    //
+    // A retraction with no replacement says *I was wrong*; one WITH a
+    // replacement says *I was wrong, and here is what I think now* — and the
+    // second is the only structure that lets a reader follow a position
+    // FORWARD through an author's own corrections instead of finding a
+    // withdrawn claim and stopping.
+    if (retraction.entry.replacement_claim) {
+      card.appendChild(renderReplacementLine(retraction.entry.replacement_claim));
+    }
   }
 
   // Whether this claim's evidence chain reaches a real Evidence entry.
@@ -2084,7 +2146,24 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     retractBtn.textContent = retractingClaims.has(key) ? 'Cancel retraction' : 'Retract this claim';
     retractBtn.onclick = () => {
       if (retractingClaims.has(key)) retractingClaims.delete(key);
-      else retractingClaims.add(key);
+      else {
+        retractingClaims.add(key);
+        // Loaded when the form OPENS rather than on connect, because this is
+        // a whole-source-chain read for one optional field on one form — the
+        // same reasoning the notes tab's own load uses. Fired here and not
+        // inside `renderRetractForm`, so a render cannot start a read.
+        //
+        // EVERY OPEN, NOT ONLY THE FIRST, and the `=== null` guard this
+        // replaced was a staleness bug with a plausible path: open a retract
+        // form, cancel, publish the narrower claim, reopen — and the picker
+        // would still be offering the list from before the claim it exists
+        // to point at. That is 6.16's rule in a second place (re-read rather
+        // than append locally), and the cost is one chain read per opening of
+        // a form that is already a deliberate act. A list already on screen
+        // stays on screen while the re-read runs, so there is no flicker and
+        // nothing an author could pick is anything but a claim that exists.
+        void loadMyClaimsForReplacement();
+      }
       render();
     };
     card.appendChild(retractBtn);
@@ -2354,6 +2433,207 @@ function renderFlagAffordance(claim: DecodedRecord<Claim>): HTMLElement {
   return wrap;
 }
 
+/** The author's own claims, read once per form opening.
+ *
+ *  `get_claims_by_agent` on the caller's OWN key. That read is already how
+ *  the By Author tab works, so nothing new is asked of the protocol — and it
+ *  returns records rather than entries, which is what makes a picker possible
+ *  at all: `replacement_claim` is an `EntryHash` and a human cannot type one. */
+async function loadMyClaimsForReplacement(): Promise<void> {
+  if (!connection || myClaimsReplacementLoading) return;
+  const conn = connection;
+  myClaimsReplacementLoading = true;
+  myClaimsReplacementError = '';
+  render();
+  try {
+    const records = await conn.callZome<unknown[]>('get_claims_by_agent', conn.myAgentPubKey);
+    myClaimsForReplacement = decodeRecords<Claim>(records);
+  } catch (err) {
+    // Left as `null` — never set to `[]` on a failure. An empty list and a
+    // read that did not happen render different sentences below, and
+    // collapsing them would tell an author they have nothing to point at
+    // when the truth is that nobody asked.
+    myClaimsForReplacement = null;
+    myClaimsReplacementError = err instanceof Error ? err.message : String(err);
+  } finally {
+    myClaimsReplacementLoading = false;
+    render();
+  }
+}
+
+/** Reads a claim named as a replacement, for the banner on the read side.
+ *
+ *  KEYED BY THE REPLACEMENT'S HASH, not by the retracted claim's, so two
+ *  retractions naming the same replacement share one read. */
+async function loadReplacementClaim(hash: Uint8Array): Promise<void> {
+  if (!connection) return;
+  const key = b64(hash);
+  if (replacementClaimByHash.has(key) || replacementReading.has(key)) return;
+  const conn = connection;
+  replacementReading.add(key);
+  replacementReadFailed.delete(key);
+  try {
+    const claim = await conn.callZome<Claim | null>('get_claim', hash);
+    replacementClaimByHash.set(key, claim ?? null);
+  } catch (err) {
+    replacementReadFailed.set(key, err instanceof Error ? err.message : String(err));
+  } finally {
+    replacementReading.delete(key);
+    render();
+  }
+}
+
+/** The replacement, on the read side: *what the author believes now*.
+ *
+ *  FOUR STATES, AND THE THIRD IS THE ONE THAT MATTERS ON A DHT. A read that
+ *  returned nothing is NOT proof the replacement does not exist — nobody
+ *  reachable is holding it yet is the likelier answer, and the retraction
+ *  itself is permanent evidence that the author named something. So the
+ *  absent case reports the read and never the claim's existence, which is
+ *  6.13's finding and the one the applet asset surface got wrong first.
+ *
+ *  RENDERED READ-ONLY, with no critique or retraction controls, and the
+ *  reason is the same trap `renderAppletAsset` hit: `get_claim` answers with
+ *  a `Claim` and not a record, so there is no `entryHash` to key those
+ *  controls with. The replacement's own card — with every control on it —
+ *  is one domain button away, and a control that looks live and reads
+ *  nothing would be worse than not offering it. */
+function renderReplacementLine(hash: Uint8Array): HTMLElement {
+  const key = b64(hash);
+  const line = document.createElement('div');
+  line.className = 'retraction-banner';
+  line.dataset.testid = 'replacement-line';
+
+  const failure = replacementReadFailed.get(key);
+  if (failure) {
+    line.dataset.state = 'error';
+    line.textContent = `The author named what they believe now, and it could not be read: ${failure}`;
+    return line;
+  }
+  if (!replacementClaimByHash.has(key)) {
+    // Covers both "not asked yet" and "in flight", deliberately: see
+    // `AppletAssetState` for why those are one sentence to a reader.
+    line.dataset.state = 'reading';
+    line.textContent = 'Looking up what the author believes now…';
+    return line;
+  }
+  const replacement = replacementClaimByHash.get(key) ?? null;
+  if (!replacement) {
+    line.dataset.state = 'absent';
+    line.textContent =
+      'The author named what they believe now, and nothing came back for it. '
+      + 'On a DHT that means nobody reachable is holding it yet — not that it '
+      + 'does not exist.';
+    return line;
+  }
+
+  line.dataset.state = 'ready';
+  const lead = document.createElement('span');
+  lead.textContent = 'What the author believes now: ';
+  line.appendChild(lead);
+  const content = document.createElement('span');
+  content.dataset.testid = 'replacement-content';
+  content.textContent = replacement.content;
+  line.appendChild(content);
+  // The same breadcrumb 6.12 built, for the same reason: a reader who can see
+  // the replacement and not reach it has been shown a dead end.
+  const go = document.createElement('button');
+  go.className = 'author-link';
+  go.dataset.testid = 'replacement-domain';
+  go.textContent = replacement.domain;
+  go.onclick = () => {
+    activeTab = 'browse';
+    void loadClaims(replacement.domain);
+  };
+  line.append(' · in ');
+  line.appendChild(go);
+  return line;
+}
+
+/** The replacement picker: *what I believe now*, over claims that exist.
+ *
+ *  FOUR STATES AND THE EMPTY ONE CARRIES THE ROW'S OPEN DECISION. A reader
+ *  who has published nothing else is not being told "no" — they are being
+ *  told the order this protocol currently requires, which is the `[D]` half
+ *  of 6.14 and is not a thing this form can decide for them.
+ *
+ *  THE CLAIM BEING RETRACTED IS EXCLUDED, and that is the client refusing
+ *  something validation permits. `validate_retraction` checks only that a
+ *  named `replacement_claim` EXISTS (`must_get_entry`) — it does not require
+ *  the replacement to differ from the target, nor to be the author's own, nor
+ *  even to be a `Claim`. So a retraction naming itself as its own replacement
+ *  validates today, and a reader following it loops. Filed as an observation
+ *  on 6.14 rather than fixed here: closing it is an integrity-zome change and
+ *  a protocol version bump, which this row is not. */
+function renderReplacementPicker(claim: DecodedRecord<Claim>): HTMLElement {
+  const key = b64(claim.entryHash);
+  const wrap = document.createElement('div');
+  wrap.dataset.testid = 'replacement-picker';
+
+  const label = document.createElement('p');
+  label.className = 'hint';
+  label.textContent = 'Optional — what you believe now, if you have already published it:';
+  wrap.appendChild(label);
+
+  if (myClaimsReplacementError) {
+    const err = document.createElement('p');
+    err.className = 'hint error-box';
+    err.dataset.testid = 'replacement-error';
+    err.textContent = `Could not read your own claims, so there is nothing to choose from: ${myClaimsReplacementError}`;
+    wrap.appendChild(err);
+    return wrap;
+  }
+  // `unasked` and `reading` render the same sentence, for the reason
+  // `AppletAssetState` gives: to a reader they are one fact, and the
+  // alternative is a negative answer shown before the question was asked.
+  if (myClaimsForReplacement === null || myClaimsReplacementLoading) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.dataset.testid = 'replacement-loading';
+    p.textContent = 'Looking up your own claims…';
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  const candidates = myClaimsForReplacement.filter((c) => b64(c.entryHash) !== key);
+  if (candidates.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.dataset.testid = 'replacement-none-available';
+    // SAYS THE ORDER, because the order is the surprising part and it is the
+    // row's open decision rather than a limitation of this screen.
+    p.textContent =
+      'You have not published anything else yet, so there is nothing to point at. '
+      + 'A replacement has to exist before a retraction can name it — publish the '
+      + 'narrower claim first, then retract this one and choose it here. Retracting '
+      + 'without a replacement is a complete act on its own.';
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  const select = document.createElement('select');
+  select.dataset.testid = 'replacement-select';
+  const chosen = replacementChoice.get(key) ?? '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = '— none —';
+  if (chosen === '') none.selected = true;
+  select.appendChild(none);
+  for (const candidate of candidates) {
+    const opt = document.createElement('option');
+    opt.value = b64(candidate.entryHash);
+    // The domain is in the label because two claims of the author's can read
+    // alike out of context, and the domain is the thing that tells them apart.
+    const text = candidate.entry.content.trim();
+    opt.textContent = `${text.length > 70 ? `${text.slice(0, 69)}…` : text} · ${candidate.entry.domain}`;
+    if (opt.value === chosen) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.onchange = () => { replacementChoice.set(key, select.value); };
+  wrap.appendChild(select);
+  return wrap;
+}
+
 function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
   const key = b64(claim.entryHash);
   const form = document.createElement('div');
@@ -2372,6 +2652,11 @@ function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
   reason.dataset.testid = 'retract-reason';
   form.appendChild(reason);
 
+  // AFTER the reason and before the button, because the reason is required
+  // and this is not: an optional field above a required one invites somebody
+  // to treat the required one as optional too.
+  form.appendChild(renderReplacementPicker(claim));
+
   const error = document.createElement('p');
   error.className = 'error-box';
   error.dataset.testid = 'retract-error';
@@ -2389,16 +2674,43 @@ function renderRetractForm(claim: DecodedRecord<Claim>): HTMLElement {
       error.textContent = 'A reason is required — the record is the point of a retraction.';
       return;
     }
+    // 6.14's write half. Read out of module state and NOT off the `<select>`
+    // — see `replacementChoice` for why a background render would otherwise
+    // reset this to "none" silently.
+    const chosen = replacementChoice.get(key) ?? '';
+    let replacement: Uint8Array | null = null;
+    if (chosen) {
+      try {
+        replacement = bytesFromB64(chosen);
+      } catch {
+        error.hidden = false;
+        error.textContent = 'That replacement could not be read. Reopen the form and choose again.';
+        return;
+      }
+      // Belt to the picker's braces. The picker cannot offer the retracted
+      // claim, so reaching this needs stale state — but validation PERMITS a
+      // self-replacement (`validate_retraction` only checks the replacement
+      // exists), so nothing downstream would refuse it, and a retraction
+      // pointing at the claim it retracts is a loop in a permanent record.
+      if (b64(replacement) === key) {
+        error.hidden = false;
+        error.textContent =
+          'A claim cannot replace itself. Choose a different claim, or retract '
+          + 'without naming a replacement.';
+        return;
+      }
+    }
     submit.disabled = true;
     try {
       await connection.callZome('create_retraction', {
         target_claim: claim.entryHash,
         reason: reason.value.trim(),
-        replacement_claim: null,
+        replacement_claim: replacement,
         author: connection.myAgentPubKey,
         timestamp: nowMicros(),
       });
       retractingClaims.delete(key);
+      replacementChoice.delete(key);
       await loadClaims(currentDomain);
     } catch (err) {
       error.hidden = false;
@@ -3392,8 +3704,18 @@ async function loadClaimEpistemicState() {
         conn.callZome<GroundingPath>('get_grounding_path', claim.entryHash),
       ]);
       antibodiesByClaim.set(key, decodeRecords<AntibodyPattern>(antibodies));
-      retractionsByClaim.set(key, decodeRecords<Retraction>(retractions));
+      const decodedRetractions = decodeRecords<Retraction>(retractions);
+      retractionsByClaim.set(key, decodedRetractions);
       groundingByClaim.set(key, grounding);
+      // 6.14's read half. Started HERE rather than from the banner, so no
+      // render begins a read — and `loadReplacementClaim` is keyed by the
+      // replacement's own hash, so two retractions naming the same claim
+      // share one call and a re-render starts none.
+      for (const retraction of decodedRetractions) {
+        if (retraction.entry.replacement_claim) {
+          void loadReplacementClaim(retraction.entry.replacement_claim);
+        }
+      }
     } catch {
       // A failed epistemic read must never take the claim list down with
       // it — the claim is still real and still readable without its

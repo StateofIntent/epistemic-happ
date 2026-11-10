@@ -2884,6 +2884,18 @@ fn validate_create_link(
         // than when a reader arrives: an unvalidated link type acquires its
         // first reader long after the commit that could have constrained
         // it, and that reader has no way to tell the difference.
+        //
+        // STILL TRUE OF THE LINK AS OF 2026-11-10, AND THAT DATE BORE THE
+        // REASONING ABOVE OUT RATHER THAN DATING IT. Open-work 6.14 gave this
+        // link a producer a client can actually reach — the retraction form
+        // passed `replacement_claim: null` as a LITERAL until then, so the
+        // write was unreachable too and the sentence above understated the
+        // gap. The UI's new reader reads the FIELD off the Retraction entry
+        // rather than traversing this link, because
+        // `get_retractions_for_claim` already returns the entry and no getter
+        // walks this. So the link's first reader is still ahead of us, the
+        // rules below are what its writes are checked against in the
+        // meantime, and they were written before any of it existed.
         let retraction_hash = match ActionHash::try_from(base_address) {
             Ok(h) => h,
             Err(_) => {
