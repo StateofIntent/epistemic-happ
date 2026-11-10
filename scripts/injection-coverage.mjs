@@ -152,6 +152,18 @@ function report() {
   console.log(`   Generating injections should start from section 1 and stop there until the`);
   console.log(`   per-check question is answered by recording it going forward, not by guessing`);
   console.log(`   backwards from prose.`);
+  console.log('');
+  console.log(`== AND THAT RECORDING NOW EXISTS — scripts/injection-ledger/ledger.mjs ==`);
+  console.log(`   Section 1 is ${noEvidence.length === 0 ? 'EMPTY, so that scope is exhausted' : `${noEvidence.length} harness(es) deep`}. The per-check question is answered`);
+  console.log(`   GOING FORWARD by the ledger, which resolves a run's \`FAIL:\` labels back to`);
+  console.log(`   call sites by STRING EQUALITY — the step this script refuses to take from`);
+  console.log(`   prose, and the reason it is safe to take from output. Run:`);
+  console.log(`     node scripts/injection-ledger/ledger.mjs report`);
+  console.log(`   The two figures answer different questions and neither replaces the other:`);
+  console.log(`   the ${Math.round((boundSeenRed / totalChecks) * 100)}% above is a CEILING over every injection ever documented here,`);
+  console.log(`   and the ledger's is an EXACT floor over the ones recorded through it. Nothing`);
+  console.log(`   from the prose can be promoted into the ledger without the judgment 1.20`);
+  console.log(`   measured as unreliable, so nothing is.`);
 
 }
 
