@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-three browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-four browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -399,6 +399,19 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/browse-states.mjs
+
+      # The fake here is a count that is correct as soon as anybody uses the
+      # screen normally: taken from the map the critique panel fills rather
+      # than from the DHT. So the critiques are a second agent's and no panel
+      # is ever opened. The other fake is quieter — an unread count rendered
+      # as zero tells every author nobody disagreed with them, and corrects
+      # itself before any sampled check could see it, so one assertion here
+      # is against what the card was EVER displaying rather than what it
+      # displays now.
+      - name: own-critiques — an author learns somebody disagreed, and the number stays a fact
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/own-critiques.mjs
 
       - name: layout-fits — every tab at every width this UI is for, with an unbreakable token on screen
         run: |

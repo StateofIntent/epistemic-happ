@@ -1787,3 +1787,20 @@ button:disabled { opacity: 0.6; cursor: default; }
   margin: 0.3rem 0 0;
   opacity: 0.85;
 }
+
+/* ROW 6.15 — how many critiques came back on one of your own claims.
+   STYLED AS A FACT, NOT AS AN ALERT. A badge, a colour that reads as a
+   warning, or a dot would make this an attention ordering, which is the half
+   of 6.15 that is still an open decision; `.answered` is a weight change and
+   nothing more, so a claim somebody disagreed with is easier to FIND without
+   being presented as worse. */
+.critique-count {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0;
+}
+
+.critique-count.answered {
+  color: var(--text);
+  font-weight: 600;
+}
