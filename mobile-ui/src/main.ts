@@ -1,8 +1,7 @@
 import './style.css';
 import {
   HolochainConnection, loadConfig, saveConfig, decodeRecords,
-  type ConductorConfig, type DecodedRecord,
-} from './holochain';
+  type ConductorConfig, type DecodedRecord, decodeEntry } from './holochain';
 import {
   type Claim, type Critique, CONFIDENCE_LEVELS, CRITIQUE_MODES, nowMicros, nowSecs,
   type SynapticFrictionStatus, type AntibodyPattern, type Retraction,
@@ -334,7 +333,96 @@ let worldlineChecksumOk: boolean | null = null;
 /** the last resonance probe: the tag asked, and what came back */
 let resonanceProbe: { tag: string; hits: PeriodResonance[] } | null = null;
 /** period index -> the real records inside that window, once opened */
-const sampledPeriods = new Map<number, number>();
+// --- 6.17: a window opens its records ---------------------------------
+//
+// WHAT THIS REPLACED AND WHY IT WAS WRONG. This was
+// `Map<number, number>` — a COUNT — and `samplePeriod` fetched the records,
+// stored `records.length`, and threw the records away. The button said
+// *"Show what is in this window"* and, on being clicked, relabelled itself
+// *"2 records in this window"*. It never opened anything.
+//
+// FOUND BY A PILOT PARTICIPANT, 2026-11-11, in their own words: *"clicking to
+// show the records in this window only shows — 2 records in this window.
+// (expectation would've been that it would open the record."* That
+// expectation is the correct reading of the label, and THREE places in this
+// repository already agreed with them before the report arrived:
+// `PeriodResonance`'s own doc comment in `types.ts` says the boundary is
+// paired *"with sample_period to open that window's real records"*, the
+// button's label promises to show them, and the coordinator returns
+// `Vec<Record>` with `include_entries(true)` — the records were on the wire
+// and discarded one line after arriving.
+//
+// AND THE HARNESS CERTIFIED IT. `worldline-ui.mjs` asserted
+// `sample_period opens the window's real records` with the predicate
+// `/\d+ record/.test(sampleText)` — a label about opening records over a
+// test that only requires a digit next to the word. It was green throughout.
+// That check is rewritten in the same commit, and it is the reason this
+// survived to reach a participant.
+type PeriodSample =
+  | { state: 'reading' }
+  | { state: 'failed'; why: string }
+  | { state: 'open'; records: SampledRecord[] };
+
+/** One record from a sampled window, identified by the ACTION's own
+ *  `entry_type` rather than by reading its bytes.
+ *
+ *  THAT CHOICE IS LOAD-BEARING, NOT STYLISTIC. `check-entry-type-confusion.mjs`
+ *  records a LIVE one-directional confusion — a `Claim`'s bytes read as a
+ *  `Mew` — so identifying an entry by sniffing its decoded fields would
+ *  mislabel exactly the entry type this app is mostly made of. The action
+ *  carries `entry_type: { App: { entry_index, zome_index, visibility } }`,
+ *  which is what the integrity zome actually committed. Measured against a
+ *  live conductor before this was written. */
+interface SampledRecord {
+  entryIndex: number;
+  kind: string;
+  /** True when this is the chain's own machinery rather than something the
+   *  agent wrote — a capability grant, say. Kept VISIBLE and labelled rather
+   *  than filtered out: Invariant 1 says raw history stays open and
+   *  queryable, and hiding rows from an agent's own view of their own chain
+   *  would be this UI deciding what their history contains. Flagged so the
+   *  screen can say *the app wrote this, not you*, which is the honest
+   *  version of the same mercy. */
+  machinery: boolean;
+  /** Micros, from the action header — NOT from the entry, whose own
+   *  `timestamp` field is author-supplied and which SPEC §5.22 says
+   *  validation cannot check against a clock. */
+  writtenAt: number | null;
+  /** Whatever the entry carries as prose, if it carries any. Absent is a
+   *  real answer: a `Membrane` has a description, a `WorldlineTrace` has no
+   *  prose at all, and inventing a line for it would be worse than a blank. */
+  content: string | null;
+}
+
+/** `entry_index` -> the integrity zome's own name for it.
+ *
+ *  POSITION-INDEXED, WHICH IS THE SAME HAZARD `LinkTypes` CARRIES AND SAYS SO
+ *  IN ITS OWN COMMENT: an entry type inserted in the MIDDLE of
+ *  `EntryTypes` renumbers everything after it, and this map would then put
+ *  the wrong name on every record below the insertion — silently, because
+ *  nothing about a number looks wrong. So it is GATED:
+ *  `scripts/check-entry-index-map.mjs` parses the Rust enum and fails if this
+ *  map and that order disagree. Do not edit one without the other. */
+const ENTRY_KINDS: Record<number, string> = {
+  0: 'Mew', 1: 'Claim', 2: 'Retraction', 3: 'Critique', 4: 'Evidence',
+  5: 'Membrane', 6: 'Constitution', 7: 'Critique species', 8: 'Worldline trace',
+  9: 'Bridge record', 10: 'External critique', 11: 'Antibody pattern',
+  12: 'Federation record',
+};
+
+/** Entry types that are not app entries at all. Holochain writes these to an
+ *  agent's own chain as a consequence of using the app — a `CapGrant` appears
+ *  the moment signing credentials are authorized — so they turn up in a
+ *  sampled window beside the agent's claims, and a reader deserves to be told
+ *  which is which in words rather than in jargon. NOT position-indexed: these
+ *  arrive as a plain string naming themselves. */
+const NON_APP_KINDS: Record<string, string> = {
+  CapGrant: 'Permission the app granted itself — not something you wrote',
+  CapClaim: 'Permission the app is holding — not something you wrote',
+  AgentPubKey: 'Your own key, written when you joined',
+};
+
+const sampledPeriods = new Map<number, PeriodSample>();
 /** which period indices have their sample expanded */
 const openPeriods = new Set<number>();
 
@@ -4428,13 +4516,79 @@ async function samplePeriod(index: number) {
   if (!connection || !myWorldline) return;
   const boundary = myWorldline.period_boundaries[index];
   if (!boundary) return;
+  // `reading` BEFORE the await, so the screen can say the read is in flight
+  // rather than showing an answer it does not have yet — 6.13's rule, and the
+  // one the applet asset surface got wrong first.
+  sampledPeriods.set(index, { state: 'reading' });
+  render();
   try {
     const records = await connection.callZome<any[]>('sample_period', boundary);
-    sampledPeriods.set(index, records.length);
-  } catch {
-    // absent, not zero
+    sampledPeriods.set(index, { state: 'open', records: records.map(sampledRecord) });
+  } catch (err) {
+    // A FAILED READ IS NOT AN EMPTY WINDOW. The previous version swallowed
+    // this entirely with the comment "absent, not zero" and then rendered
+    // nothing, which is the same sentence for both — 6.13's finding, here.
+    sampledPeriods.set(index, {
+      state: 'failed',
+      why: err instanceof Error ? err.message : String(err),
+    });
   }
   render();
+}
+
+/** One conductor Record -> the narrow shape this screen draws.
+ *
+ *  Reads the entry type off the ACTION and the time off the HEADER. Both were
+ *  measured against a live conductor rather than assumed: the action data
+ *  carries `type`, `entry_type` and `entry_hash` and NO timestamp, while the
+ *  header carries `author`, `timestamp`, `action_seq` and `prev_action`. A
+ *  first draft of this read `content.data.timestamp` and got `undefined`. */
+function sampledRecord(record: any): SampledRecord {
+  const content = record?.signed_action?.hashed?.content ?? {};
+  // `entry_type` IS NOT ALWAYS AN OBJECT, and the first version of this
+  // assumed it was. Measured against a live conductor: an app entry gives
+  // `{ App: { entry_index, zome_index, visibility } }`, and a capability
+  // grant gives the plain STRING `"CapGrant"`. A chain that has authorized
+  // signing credentials has one of those in it, so the very first record of
+  // the very first window rendered as "Entry type (unreadable)" — machinery
+  // reported to the agent as a failure to read their own history. Caught by
+  // reading the harness's own output rather than its exit code, which was 0.
+  const rawType = content?.data?.entry_type;
+  const idx = rawType?.App?.entry_index;
+  const entryIndex = typeof idx === 'number' ? idx : -1;
+  if (typeof rawType === 'string' || (rawType && typeof rawType === 'object' && !rawType.App)) {
+    const name = typeof rawType === 'string' ? rawType : Object.keys(rawType)[0] ?? 'Unknown';
+    return {
+      entryIndex: -1,
+      kind: NON_APP_KINDS[name] ?? `${name} — written by the app, not by you`,
+      machinery: true,
+      writtenAt: typeof content?.header?.timestamp === 'number' ? content.header.timestamp : null,
+      content: null,
+    };
+  }
+  let prose: string | null = null;
+  try {
+    const entry = record?.entry?.Present ? decodeEntry(record.entry.Present.entry) : null;
+    // `content` on a Claim/Critique/Evidence, `description` on a Membrane.
+    // Nothing is inferred from the SHAPE of the entry — the kind already came
+    // from the action — so this only picks a field to display.
+    const candidate = entry?.content ?? entry?.description ?? null;
+    prose = typeof candidate === 'string' && candidate.trim() ? candidate : null;
+  } catch {
+    prose = null;
+  }
+  return {
+    entryIndex,
+    // An App entry at an index this client does not name is reported BY ITS
+    // INDEX rather than as unreadable — it is a type this build predates, not
+    // a broken record, and the two deserve different words.
+    kind: ENTRY_KINDS[entryIndex] ?? (entryIndex >= 0
+      ? `An entry type this version does not know (#${entryIndex})`
+      : 'An entry whose type could not be read'),
+    machinery: false,
+    writtenAt: typeof content?.header?.timestamp === 'number' ? content.header.timestamp : null,
+    content: prose,
+  };
 }
 
 function renderWorldlineTab(): HTMLElement {
@@ -4535,20 +4689,26 @@ function renderWorldlineTab(): HTMLElement {
       li.appendChild(count);
 
       // sample_period is what turns any hint about this window into
-      // something checkable against the chain itself.
+      // something checkable against the chain itself — and 6.17 is why it now
+      // DRAWS those records instead of counting them.
+      const sampled = sampledPeriods.get(i);
+      const isOpen = openPeriods.has(i);
       const open = document.createElement('button');
       open.className = 'link-button';
       open.dataset.testid = 'period-sample';
-      const sampled = sampledPeriods.get(i);
-      open.textContent = openPeriods.has(i) && sampled !== undefined
-        ? `${sampled} record${sampled === 1 ? '' : 's'} in this window`
-        : 'Show what is in this window';
+      // THE LABEL NOW DESCRIBES WHAT THE BUTTON DOES, in both directions. The
+      // version this replaced said "Show what is in this window" and then
+      // relabelled itself with a count, so after one click the only control
+      // on the row was a number and there was no way back.
+      open.textContent = isOpen ? 'Hide this window' : 'Show what is in this window';
       open.onclick = () => {
+        if (openPeriods.has(i)) { openPeriods.delete(i); render(); return; }
         openPeriods.add(i);
         if (!sampledPeriods.has(i)) void samplePeriod(i);
         else render();
       };
       li.appendChild(open);
+      if (isOpen) li.appendChild(renderPeriodWindow(i, b, sampled));
       list.appendChild(li);
     });
     exact.appendChild(list);
@@ -4563,6 +4723,121 @@ function renderWorldlineTab(): HTMLElement {
 /** The resonance probe. Everything here is framed as a hint because the
  * coordinator says it is one; the value of the screen is that each hint
  * lands next to the exact period it points at. */
+/** The records in one window — 6.17, and the row a participant opened.
+ *
+ *  FIVE STATES, AND THE LAST TWO ARE THE ONES THAT MATTER. `unasked`,
+ *  `reading`, `open with records`, `open with NONE`, and `failed`. A read that
+ *  failed and a window that is genuinely empty are different facts, and the
+ *  version this replaces had one sentence — a count — for all five.
+ *
+ *  WHY THE TWO NUMBERS ON THIS ROW CAN DISAGREE, SAID ON SCREEN RATHER THAN
+ *  LEFT TO BE DISCOVERED. The row's own `entry_count` is what the TRACE
+ *  grouped into this period, and a period is a time window AND a domain tag.
+ *  `sample_period` filters the chain on TIME ALONE — measured: two boundaries
+ *  with the same window and different tags return byte-identical results, and
+ *  neither matches its own `entry_count`. That is not obviously a defect: the
+ *  coordinator's records are the chain's raw answer for that stretch of time,
+ *  which is exactly what makes them a CHECK on the trace rather than a repeat
+ *  of it. But a screen showing two different numbers for one window without
+ *  saying why is a screen that looks broken, so it says why. Whether
+ *  `sample_period` should honour `domain_tag` is filed as 6.17's `[D]` and
+ *  deliberately not decided here — it would change what a published zome
+ *  function returns to every existing caller. */
+function renderPeriodWindow(
+  index: number,
+  boundary: { entry_count: number; domain_tag: string },
+  sampled: PeriodSample | undefined,
+): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'period-window';
+  box.dataset.testid = 'period-window';
+  box.dataset.period = String(index);
+
+  const only = (testid: string, text: string, bad = false) => {
+    const p = document.createElement('p');
+    p.className = bad ? 'hint error-box' : 'hint';
+    p.dataset.testid = testid;
+    p.textContent = text;
+    box.appendChild(p);
+    return box;
+  };
+
+  // `unasked` and `reading` are one sentence to a reader: the answer is not
+  // known yet. Same reasoning as the applet asset surface.
+  if (!sampled || sampled.state === 'reading') {
+    return only('period-window-reading', 'Reading this window from your own chain…');
+  }
+  if (sampled.state === 'failed') {
+    return only('period-window-error',
+      `That window could not be read: ${sampled.why}. This says nothing about `
+      + 'what is in it — the read did not complete.', true);
+  }
+  if (sampled.records.length === 0) {
+    return only('period-window-empty',
+      'Nothing on your chain falls in this window. That is an answer, not a failure.');
+  }
+
+  const note = document.createElement('p');
+  note.className = 'hint';
+  note.dataset.testid = 'period-window-note';
+  const n = sampled.records.length;
+  note.textContent = n === boundary.entry_count
+    ? `${n} record${n === 1 ? '' : 's'} on your chain in this window.`
+    : `${n} record${n === 1 ? '' : 's'} on your chain in this stretch of time — the `
+      + `row says ${boundary.entry_count} because that counts only `
+      + `${boundary.domain_tag}, while this reads the chain by time alone. Both are `
+      + 'true; the difference is other work you did in the same window.';
+  box.appendChild(note);
+
+  const ul = document.createElement('ul');
+  ul.className = 'period-records';
+  ul.dataset.testid = 'period-records';
+  for (const r of sampled.records) {
+    const li = document.createElement('li');
+    li.className = 'period-record';
+    li.dataset.testid = 'period-record';
+    li.dataset.kind = r.kind;
+
+    const kind = document.createElement('span');
+    kind.className = 'period-record-kind';
+    kind.dataset.testid = 'period-record-kind';
+    kind.textContent = r.kind;
+    li.appendChild(kind);
+
+    if (r.writtenAt !== null) {
+      const when = document.createElement('span');
+      when.className = 'period-record-when';
+      // The ACTION's time, which is the chain's own, not the author-supplied
+      // field inside the entry — see `SampledRecord`.
+      when.textContent = new Date(r.writtenAt / 1000).toISOString().slice(0, 16).replace('T', ' ');
+      li.appendChild(when);
+    }
+
+    if (r.content !== null) {
+      const text = document.createElement('p');
+      text.className = 'period-record-content';
+      text.dataset.testid = 'period-record-content';
+      // IN FULL, NOT TRUNCATED. The participant who opened this row said they
+      // were "unable to see your full critique", and a window that opened its
+      // records and then cut them off would answer the letter of that and not
+      // the point.
+      text.textContent = r.content;
+      li.appendChild(text);
+    } else {
+      const none = document.createElement('span');
+      none.className = 'hint';
+      none.dataset.testid = 'period-record-no-prose';
+      // Said rather than left blank: a Worldline trace has no prose, and an
+      // empty line would read as a failed decode.
+      none.textContent = 'carries no text of its own';
+      li.appendChild(none);
+    }
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  return box;
+}
+
 function renderResonanceProbe(): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'resonance';

@@ -1267,6 +1267,57 @@ button:disabled { opacity: 0.6; cursor: default; }
   opacity: 0.7;
 }
 
+/* 6.17 — the records a window opens. Added WITH the markup rather than after
+   it: on 2026-11-10 this file was found missing a rule for a `.error` class
+   two paragraphs already carried, so a failed read rendered in the body colour
+   and read as ordinary prose. A class with no rule is invisible, not subtle. */
+.period-window {
+  margin: 0.35rem 0 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 2px solid var(--border);
+  /* `--surface`, not an invented `--surface-sunken`: a first draft referenced
+     a token that does not exist in this file, which would have silently
+     fallen through to its literal fallback for ever. Checked against the
+     declared set at the top rather than assumed. */
+  background: var(--surface);
+  border-radius: 0 4px 4px 0;
+}
+
+.period-records {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.period-record {
+  font-size: 0.78rem;
+  /* The one thing that must not collapse: a record's own text has to be
+     readable at the width this UI actually ships at. */
+  overflow-wrap: anywhere;
+}
+
+.period-record-kind {
+  font-weight: 600;
+  margin-right: 0.5rem;
+}
+
+.period-record-when {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.period-record-content {
+  margin: 0.2rem 0 0;
+  /* NOT clamped and NOT truncated — see renderPeriodWindow: the participant
+     who opened 6.17 reported being unable to see a critique in full, and a
+     window that opens its records and then cuts them off would miss the
+     point. */
+  white-space: pre-wrap;
+}
+
 .resonance {
   margin-top: 1.1rem;
   padding-top: 0.8rem;

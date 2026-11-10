@@ -5784,7 +5784,7 @@ each of these is currently exactly that.
 
   **This agent's own worldline only, deliberately.** The coordinator accepts any `AgentPubKey`, but a "how strongly does this agent resonate with domain X" probe over other people would hand every client a per-agent scalar that `get_membrane_members` makes enumerable and sortable — the leaderboard §9 records removing `get_credit_balance` to avoid, arriving by another route. The protocol permitting a read does not oblige a UI to offer it. The harness asserts there is no agent selector on the screen at all.
 
-  **Verified live, and observed failing first.** `scripts/live-verify/worldline-ui.mjs`, eighteen checks, with a control that refuses to run unless the seeded trace has a real HRR payload and at least one period — otherwise "the exact half renders" would pass vacuously. Then the §2.5 inversion was injected — the probe rendered before the exact record, and the score restated as "73% match" — and two checks failed.
+  **Verified live, and observed failing first.** `scripts/live-verify/worldline-ui.mjs`, twenty-five checks, with a control that refuses to run unless the seeded trace has a real HRR payload and at least one period — otherwise "the exact half renders" would pass vacuously. Then the §2.5 inversion was injected — the probe rendered before the exact record, and the score restated as "73% match" — and two checks failed.
 
   **Neighborhood binding is not included, and that is §2.5's own division:** it calls neighborhood and worldline binding "two distinct HRR use cases, not one", independent rather than two halves of one job.
 
