@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-five browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-six browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -424,6 +424,22 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/own-critiques.mjs
+
+      # The pilot walked into this one: an author retracted a claim because
+      # somebody changed their mind, republished it narrower, and had nowhere
+      # to attach the second to the first — the form passed
+      # `replacement_claim: null` as a LITERAL, so the `RetractionToReplacement`
+      # link type had no reachable producer at all. Both halves are under test
+      # here, because a producer with no reader is the same defect wearing the
+      # other shoe. §2 is the one to read if this ever goes red for a reason
+      # that looks unrelated: it asserts the form's empty state, which depends
+      # on the author's WHOLE SOURCE CHAIN being fresh, and its first check is
+      # a control that says so rather than letting a dirty sandbox pass it
+      # vacuously.
+      - name: retraction-replacement — a retraction names what replaced it, and a reader can follow it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/retraction-replacement.mjs
 
       - name: layout-fits — every tab at every width this UI is for, with an unbreakable token on screen
         run: |
