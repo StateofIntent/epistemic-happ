@@ -260,12 +260,13 @@ function cmdReport() {
 
   const byLine = new Map();   // "harness:line" -> labels
   const perHarness = new Map();
-  let ambiguous = 0; let unresolved = 0;
+  let ambiguous = 0; let unresolved = 0; let exactReds = 0;
   for (const r of records) {
     const h = perHarness.get(r.harness) ?? { runs: 0, lines: new Set() };
     h.runs += 1;
     for (const red of r.red) {
       if (red.kind === 'exact') {
+        exactReds += 1;
         const key = `${r.harness}:${red.line}`;
         byLine.set(key, red.label);
         h.lines.add(red.line);
@@ -286,6 +287,24 @@ function cmdReport() {
   for (const [h, v] of [...perHarness].sort()) {
     console.log(`   ${h.padEnd(34)} ${String(v.lines.size).padStart(3)} site(s) red over ${v.runs} run(s)`);
   }
+  // WHY THE OTHER TOOL'S FIGURE IS A CEILING, MEASURED RATHER THAN ASSERTED.
+  // `injection-coverage.mjs` says of its own number: "two injections may red
+  // the same check, and the prose does not say which". That is exactly the
+  // double-count this ledger can see and prose cannot, so the gap between
+  // reds recorded and distinct sites reached is the first measurement of how
+  // much the prose method inflates.
+  if (exactReds > byLine.size) {
+    const inflation = ((100 * exactReds) / byLine.size - 100).toFixed(0);
+    console.log('');
+    console.log('== HOW MUCH A SUM OF REDS WOULD OVERSTATE ==');
+    console.log(`   ${exactReds} resolved red(s) across these runs reached ${byLine.size} DISTINCT call site(s).`);
+    console.log(`   Summing them — which is all the prose method can do — would claim ${exactReds} and`);
+    console.log(`   overstate by ${inflation}%. This is the double-count \`injection-coverage.mjs\``);
+    console.log('   names as the reason its own figure is a ceiling, measured here for the first');
+    console.log('   time. It is also the honest argument for this file: the same check reddened');
+    console.log('   by three injections is one check tested, not three.');
+  }
+
   if (ambiguous || unresolved) {
     console.log('');
     console.log(`== NOT COUNTED: ${ambiguous} ambiguous, ${unresolved} unresolved ==`);
