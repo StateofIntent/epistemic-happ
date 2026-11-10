@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-four browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-five browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -248,6 +248,18 @@ jobs:
         working-directory: mobile-ui
         run: npx playwright install --with-deps chromium
 
+      # NOT REGISTERED ANYWHERE UNTIL NOW, which is how 14 checks sat in the
+      # repository for two days being run by nobody. It needs no conductor and
+      # no browser — `src/applet.ts` imports nothing, which is the whole
+      # reason it is a separate module from `applet-host.ts` — so it runs here,
+      # before the five-minute pack, and a broken addressing rule fails the job
+      # in seconds instead of twenty minutes.
+      - name: applet rules — the WAL refusal, the surface mapping, and what a host may never gate
+        working-directory: mobile-ui
+        run: |
+          npx esbuild src/applet.ts --format=esm --outfile=/tmp/applet.mjs
+          node applet-prototype-check.mjs /tmp/applet.mjs
+
       # The repository's own documented build-and-pack path, driven unmodified.
       # It builds the zomes BEFORE packing, because `hc dna pack` compiles
       # nothing and packing first would wrap stale wasm in a fresh timestamp —
@@ -417,6 +429,20 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/layout-fits.mjs
+
+      # The OTHER host path, and it belongs beside the Launcher one because it
+      # has the same shape of risk: a connection this UI is handed rather than
+      # one it makes, and an Admin API it must never reach for. The fake Moss
+      # host's `appletClient` bridges to a real conductor in the harness
+      # process, so "a Tool render reaches real DHT data without touching
+      # admin" is measured rather than reasoned about. It also holds the only
+      # gate on a defect read out of the installed library: `WeaveClient.
+      # connect()` never resolves when render info is absent, and an unguarded
+      # await there is a permanently blank page with nothing in the console.
+      - name: applet-view — this UI rendering as a Moss Tool, against a fake host and a real conductor
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/applet-view.mjs
 
       # The path an installed bundle actually takes, which is not the path
       # `vite preview` takes — this is the only check that the packed `.webhapp`

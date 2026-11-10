@@ -25,8 +25,8 @@ import {
 } from './onboarding';
 import { getThemePreference, setThemePreference, initTheme, type ThemePreference } from './theme';
 import { askAdversary, AdversaryError, type AdversaryVerdict } from './adversary';
-import { entryPoint } from './applet';
-import { hostContext } from './applet-host';
+import { entryPoint, type AppletSurface, type AppletTarget, type WeaveHost } from './applet';
+import { hostContext, connectAppletHost } from './applet-host';
 import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
 
 // ============================================================================
@@ -42,6 +42,34 @@ let connection: HolochainConnection | null = null;
  * set on the hosted path, where there is no form for the practitioner to
  * retry from and so no other place this could be reported. */
 let hostedConnectError: string | null = null;
+
+// --- Running as a Moss Tool (open-work 1.28) --------------------------------
+//
+// Five variables, and four of them exist so that THREE DIFFERENT THINGS do not
+// render the same screen. Inside Moss there is no connect form — the Admin API
+// this app's form describes is not reachable from a Tool at all, exactly as
+// under a Launcher (holochain.ts's header, shapes 1 and 3) — so "connecting",
+// "the host declined" and "connected" would otherwise collapse into one blank
+// panel. That collapse is this repository's most-repeated defect: an answer
+// that is not yet known rendered as an answer.
+
+/** The narrowed host, once it has answered. `null` while connecting and
+ *  `null` for good if it never did. */
+let appletHost: WeaveHost | null = null;
+/** Which surface Moss asked for. Decided ONCE, by `connectAppletHost`, from
+ *  `renderInfo` — never re-derived here, because `renderInfo.view.type` is
+ *  `'main'` on both arms of the union and a second reading could disagree
+ *  with the first. */
+let appletSurfaceNow: AppletSurface | null = null;
+/** True from the moment the applet branch is taken until the host answers.
+ *  DISTINCT FROM `appletHost === null`, which is also true after a failure. */
+let appletConnecting = false;
+/** The host was detected and could not be used — a timeout, a throw, or a
+ *  render shape this UI declines (a cross-group view, which carries no
+ *  `appletClient` at all). Says so instead of looking like a slow connect
+ *  forever. */
+let appletUnavailable = false;
+
 let currentDomain = '';
 /** What is TYPED in the browse tab's domain box right now, as distinct from
  * `currentDomain`, which is the domain whose claims are currently loaded.
@@ -880,6 +908,21 @@ function render() {
       app.appendChild(renderConnectScreen());
       return;
     }
+    // A WRAPPER, NEVER A REWRITE — constraint (1) of open-work 1.28. Each of
+    // the three surfaces below reaches the SAME renderers the standalone app
+    // reaches; what the host chooses is which of them to show, and `main` is
+    // the whole app unchanged. If this block were deleted the standalone UI
+    // would be exactly what it was, which is the property that makes the
+    // dependency survivable.
+    if (appletHost) app.appendChild(renderAppletFrame(appletHost));
+    if (appletSurfaceNow === 'asset') {
+      app.appendChild(renderAppletAsset());
+      return;
+    }
+    if (appletSurfaceNow === 'creatable') {
+      app.appendChild(renderAppletCreatable());
+      return;
+    }
     app.appendChild(renderTabs());
   } finally {
     restoreValues();
@@ -1024,6 +1067,30 @@ function renderConnectScreen(): HTMLElement {
   const config = loadConfig();
   const section = document.createElement('section');
   section.className = 'connect-screen';
+
+  // Inside Moss, the same prohibition as the Launcher below and for the same
+  // reason — a Tool is handed its `AppClient` on `renderInfo.appletClient` and
+  // has no Admin API (holochain.ts's header, shape 3) — but THREE states, not
+  // two, because this path can also end in "the host is there and unusable".
+  //
+  // A cross-group render is the honest case of that: its `RenderInfo` arm
+  // carries no `appletClient` at all, so there is nothing to connect to, and
+  // the right answer is to say the view is not supported rather than to spin.
+  // The other case is the measured one — `WeaveClient.connect()` never
+  // resolves when render info is absent, so without the timeout in
+  // `connectAppletHost` this screen is the LAST thing a Moss user would ever
+  // see, permanently, with nothing in the console.
+  if (appletConnecting || appletUnavailable) {
+    const status = document.createElement('p');
+    status.className = appletUnavailable ? 'hint error-box' : 'hint';
+    status.dataset.testid = appletUnavailable ? 'applet-unavailable' : 'applet-connecting';
+    status.textContent = appletUnavailable
+      ? 'This Moss view is not one this Tool can render. Open the Tool\u2019s main '
+        + 'view, or run the app on its own — nothing about it depends on Moss.'
+      : 'Connecting through Moss\u2026';
+    section.appendChild(status);
+    return section;
+  }
 
   // Under the Launcher there is nothing to ask and nothing to configure:
   // the host chose the app interface port and issued the token, and the
@@ -5798,7 +5865,7 @@ function renderNewClaimTab(): HTMLElement {
       source_mew: null,
     };
     try {
-      await connection.callZome('create_claim', claim);
+      const createdAt = await connection.callZome<Uint8Array>('create_claim', claim);
       // SAYS WHAT HAPPENED LOCALLY, AND WHAT HAS NOT HAPPENED YET.
       //
       // "Claim published." was true and incomplete, and the gap between those
@@ -5827,6 +5894,34 @@ function renderNewClaimTab(): HTMLElement {
       // wrong by being a frozen snapshot. Re-read rather than appended to
       // locally, so the screen shows what the chain says.
       void loadMyDomains();
+      // THE RESOLVE HALF OF THE `creatable` SURFACE (open-work 1.28), and the
+      // one place in this handler that knows the hash. Moss opened a dialog
+      // asking for a claim; it stays open until `resolve`, `reject` or
+      // `cancel` is called (`types.d.ts:122-136`), so a publish that did not
+      // call it would leave the host hanging on a claim that is already on
+      // the chain — success, presented as a hang.
+      //
+      // `createdAt` is the ActionHash `create_claim` returns, which is what
+      // the WAL carries. The DNA hash is asked for here rather than cached at
+      // connect time because this is the only surface that needs it, and a
+      // failure to get it must not stop the publish that has already
+      // happened: `finishCreatable` is a notification to another program
+      // about an entry that exists either way.
+      if (appletSurfaceNow === 'creatable' && appletHost && !appletCreatableSettled) {
+        appletCreatableSettled = true;
+        void (async () => {
+          try {
+            const dna = await connection!.dnaHash();
+            if (!dna) return;
+            await appletHost!.finishCreatable({ ok: true, dnaHash: dna, targetHash: createdAt });
+          } catch {
+            // The host gets told nothing and closes its own dialog on the
+            // user's next action. Reported nowhere on purpose: there is no
+            // screen left to report it in, the dialog is the host's, and the
+            // claim is published.
+          }
+        })();
+      }
       successBox.hidden = false;
       successBox.textContent = newClaimNotice;
       clearAfterPublish();
@@ -5852,6 +5947,246 @@ function renderNewClaimTab(): HTMLElement {
   return section;
 }
 
+// ============================================================================
+// THE APPLET VIEW — open-work 1.28. Moss asked for one of three surfaces and
+// this is where each one is drawn.
+//
+// NONE OF THESE IS A NEW SCREEN. `main` is `renderTabs()`, the whole app.
+// `creatable` is `renderNewClaimTab()`, the same form, with the tab bar taken
+// away because the host has already framed it as "create a claim" and a nav
+// bar inside somebody else's modal is two navigations arguing. `asset` is the
+// one surface with its own renderer, and the reason is stated where it is
+// defined. Delete this section and the standalone app is untouched.
+// ============================================================================
+
+/** The claim this view was opened ON, for an `asset` render. */
+let appletAsset: Claim | null = null;
+let appletAssetError = '';
+
+/** SIX STATES, AND THE FIRST ONE IS WHY THIS IS A STATE MACHINE AND NOT A
+ *  BOOLEAN. The first version of this surface had `appletAssetLoading` and a
+ *  `null` claim, and `bootApplet` renders once before it starts the read — so
+ *  the first frame of every asset view said "Nothing came back for that
+ *  address", about a claim that was there, before anything had been asked.
+ *  `applet-view.mjs` caught it on its first green run, through the
+ *  MutationObserver rather than through any of the checks that read the panel,
+ *  which by then showed the claim.
+ *
+ *  That is open-work 6.13's finding — an unasked question rendered as a
+ *  negative answer — arriving unprompted in new code written by someone who
+ *  had just read the row. Hence a named `unasked`, which renders exactly what
+ *  `reading` renders, because to a reader they are the same fact: this is not
+ *  answered yet.
+ *
+ *  `unreadable` is separate from `absent` on the same principle. A WAL this
+ *  Tool cannot address at all — a malformed `hrl`, a hash of length zero — is
+ *  known synchronously and is a different thing from a read that returned
+ *  nothing, which on a DHT is never proof of absence. */
+type AppletAssetState = 'unasked' | 'reading' | 'ready' | 'absent' | 'unreadable' | 'error';
+let appletAssetState: AppletAssetState = 'unasked';
+/** Set once a `creatable` render has been resolved or cancelled, so the form
+ *  stops offering to do it twice. The host closes its own dialog on the first
+ *  call; a second would be a call into a view that is being torn down. */
+let appletCreatableSettled = false;
+
+/** A one-line frame naming where this UI is running and, when the host told
+ *  us, which group.
+ *
+ *  THE GROUP NAME IS A LABEL AND NOT A MEMBERSHIP CLAIM, which is why it is
+ *  rendered as plain text next to the word "Moss" rather than as anything a
+ *  reader could take for a scope. `RenderInfo.groupProfiles` documents itself
+ *  as NON-EXHAUSTIVE — a federated applet may be shared with groups this
+ *  agent is not in — so the first entry is the host's idea of context, and
+ *  this protocol's own answer to "who can see this" is the membrane, which is
+ *  on the chain and is not affected by any of this. */
+function renderAppletFrame(host: WeaveHost): HTMLElement {
+  const frame = document.createElement('p');
+  frame.className = 'hint';
+  frame.dataset.testid = 'applet-frame';
+  const group = host.groupLabel();
+  frame.textContent = group
+    ? `Running as a Moss Tool in ${group}.`
+    : 'Running as a Moss Tool.';
+  return frame;
+}
+
+/** The `asset` surface: ONE claim, because the host asked about one claim.
+ *
+ *  WHY THIS DOES NOT CALL `renderClaimCard`, which would have been the obvious
+ *  reuse. That renderer keys every control it draws — the critique panel, the
+ *  grounding chain, the retraction form — off `claim.entryHash`, and what
+ *  arrives here is a WAL, whose hash is an `AnyDhtHash`: the `ActionHash`
+ *  `create_claim` returned is what another Tool would most naturally have
+ *  stored. `get_claim` resolves either (`AnyDhtHash` in the zome signature),
+ *  but it answers with a `Claim` and NOT a record, so there is no entry hash
+ *  to key those controls with. Passing the action hash in its place would
+ *  produce controls that look live and silently read nothing — the exact shape
+ *  open-work exists to catch, and the shape this row was opened for.
+ *
+ *  So: the claim is rendered read-only, and the way to the controls is the
+ *  Tool's own main view, which the host can open and where the claim is
+ *  reached by the browse path that does have records. An honest smaller
+ *  surface, not a broken larger one. */
+function renderAppletAsset(): HTMLElement {
+  const wrap = document.createElement('main');
+  wrap.className = 'tab-content';
+  wrap.dataset.testid = 'applet-asset';
+
+  const only = (testid: string, text: string, bad = false) => {
+    const p = document.createElement('p');
+    p.className = bad ? 'hint error-box' : 'hint';
+    p.dataset.testid = testid;
+    p.textContent = text;
+    wrap.appendChild(p);
+    return wrap;
+  };
+
+  // `unasked` and `reading` render the SAME panel on purpose — see
+  // `AppletAssetState`. Anything else puts a negative answer on screen before
+  // the question has been asked.
+  if (appletAssetState === 'unasked' || appletAssetState === 'reading') {
+    return only('applet-asset-loading', 'Looking this claim up on the DHT…');
+  }
+  if (appletAssetState === 'unreadable') {
+    // Known without asking anyone, and therefore NOT the same sentence as
+    // `absent` below. Saying "nothing came back" about an address that was
+    // never addressable would blame the network for a malformed WAL.
+    return only('applet-asset-unreadable',
+      'That address is not one this Tool can read. Nothing was asked of the '
+      + 'network, so this says nothing about whether the claim exists.', true);
+  }
+  if (appletAssetState === 'error') {
+    // NOT "no such claim". A read that failed and a claim that is not here
+    // are different facts, and on a DHT the second one is never knowable from
+    // a single read — 6.13's whole finding, in a second place.
+    return only('applet-asset-error', appletAssetError, true);
+  }
+  if (appletAssetState === 'absent' || !appletAsset) {
+    return only('applet-asset-absent',
+      'Nothing came back for that address. On a DHT that means nobody '
+      + 'reachable is holding it yet, which is not the same as it not existing.');
+  }
+
+  const content = document.createElement('p');
+  content.className = 'claim-content';
+  content.dataset.testid = 'applet-asset-content';
+  content.textContent = appletAsset.content;
+  wrap.appendChild(content);
+
+  const meta = document.createElement('div');
+  meta.className = 'claim-meta';
+  meta.dataset.testid = 'applet-asset-meta';
+  meta.textContent = `${appletAsset.confidence} confidence · in ${appletAsset.domain}`;
+  wrap.appendChild(meta);
+  return wrap;
+}
+
+/** Reads the claim an `asset` render was opened on.
+ *
+ *  TAKES THE RAW HASH AND NEVER DECODES ONE. `AppletTarget` carries both
+ *  forms precisely so this function does not have to choose an encoder, and
+ *  the choice is a real trap rather than a hypothetical one: this file's own
+ *  `b64`/`bytesFromB64` are plain base64 over raw bytes, while a Holochain
+ *  hash in text is base64url with a `u` prefix (`uhCkk…`). Those two produce
+ *  the same byte COUNT and different bytes, so crossing them gives a read
+ *  that quietly returns nothing for a claim that is there. The one conversion
+ *  lives in `applet-host.ts`, beside the library that defines it. */
+async function loadAppletAsset(at: AppletTarget | null): Promise<void> {
+  if (!connection) return;
+  // A WAL that yielded no addressable hash. Reached synchronously and given
+  // its own state rather than falling through to `absent`, which would report
+  // a network answer nobody asked for.
+  if (!at) { appletAssetState = 'unreadable'; render(); return; }
+  appletAssetState = 'reading';
+  appletAssetError = '';
+  render();
+  try {
+    appletAsset = await connection.callZome<Claim | null>('get_claim', at.target);
+    appletAssetState = appletAsset ? 'ready' : 'absent';
+  } catch (err) {
+    appletAsset = null;
+    appletAssetState = 'error';
+    appletAssetError = `Could not read that claim: ${err instanceof Error ? err.message : String(err)}`;
+  } finally {
+    render();
+  }
+}
+
+/** The `creatable` surface: the New Claim form, and a way out of it.
+ *
+ *  THE CANCEL BUTTON IS NOT A COURTESY. `AppletView`'s creatable arm hands the
+ *  view `resolve`, `reject` and `cancel`, and the host's dialog stays open
+ *  until one of them is called (`types.d.ts:122-136`). A form with no cancel
+ *  leaves a user who changed their mind holding a modal they cannot close,
+ *  inside an application that is not ours — a hang rather than an error, which
+ *  is the worse of the two. The resolve half is in the publish handler, where
+ *  the hash exists. */
+function renderAppletCreatable(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.dataset.testid = 'applet-creatable';
+  if (!appletCreatableSettled) {
+    const cancel = document.createElement('button');
+    cancel.className = 'link-button';
+    cancel.dataset.testid = 'applet-creatable-cancel';
+    cancel.textContent = '← Cancel';
+    cancel.onclick = () => {
+      appletCreatableSettled = true;
+      void appletHost?.finishCreatable({ ok: false, reason: 'cancel' });
+      render();
+    };
+    wrap.appendChild(cancel);
+  }
+  wrap.appendChild(renderNewClaimTab());
+  return wrap;
+}
+
+/** Boots the Moss path, and renders the standalone app if it cannot.
+ *
+ *  THE ORDER HERE IS THE WHOLE DESIGN. `appletConnecting` is set BEFORE the
+ *  await and the first `render()` happens before it too, so the first frame a
+ *  Moss user sees says "connecting through Moss" rather than this app's
+ *  connect form — a form whose three fields describe an Admin API that is not
+ *  reachable from inside a Tool. Getting that order wrong is not cosmetic: it
+ *  asks somebody to type a websocket URL that will be ignored, which is
+ *  `launcher-packaging.mjs`'s whole finding arriving a second time on a second
+ *  host.
+ *
+ *  AND THE FALLBACK IS A STATE, NOT A SILENCE. When the host does not answer
+ *  — the timeout in `connectAppletHost`, a throw, or a cross-group render with
+ *  no `appletClient` in it — `appletUnavailable` makes the screen say so. The
+ *  alternative, leaving `appletConnecting` true, is a spinner that never
+ *  stops, which is exactly the failure the measured `connect()` hang produces
+ *  and exactly the one the timeout exists to convert into a sentence. */
+async function bootApplet(): Promise<void> {
+  const config = loadConfig();
+  appletConnecting = true;
+  const got = await connectAppletHost(config);
+  appletConnecting = false;
+  if (!got) {
+    appletUnavailable = true;
+    render();
+    return;
+  }
+
+  appletHost = got.host;
+  appletSurfaceNow = got.host.surface();
+  // Adopted, not connected — holochain.ts's shape (3). No socket is opened
+  // here and no token is issued, because Moss installed and authenticated
+  // this Tool's own happ before it rendered anything.
+  connection = HolochainConnection.fromAppClient(got.appClient, config);
+  markDone('connected');
+  if (appletSurfaceNow === 'creatable') activeTab = 'new-claim';
+  render();
+
+  // The same three background loads the Launcher path does, and for the same
+  // reason: the species picker lives in the critique form, which a Tool user
+  // reaches without ever visiting the taxonomy tab.
+  void loadFrictionStatus();
+  void loadTaxonomy().catch(() => { /* the tab shows its own empty state */ });
+  void loadMyDomains();
+  if (appletSurfaceNow === 'asset') void loadAppletAsset(got.host.openedOn());
+}
+
 // --- Boot -------------------------------------------------------------
 
 // Before the first render, so a pinned theme is in force for the first
@@ -5868,18 +6203,17 @@ initTheme();
 // that could change the standalone app's behaviour would be a dependency on
 // Moss rather than an option to run inside it.
 if (entryPoint(hostContext()) === 'applet') {
-  // Deliberately not implemented yet, and it says so rather than rendering
-  // half an integration: the view contract (`AppletView`, `RenderInfo`) and
-  // the first `WeaveClient.connect()` are the next unit of work. Until then a
-  // Moss host gets an honest message instead of a UI that looks wired and is
-  // not — which is the "declared but unread" shape this project keeps finding.
+  // Implemented as of open-work 1.28. `data-host` is stamped SYNCHRONOUSLY,
+  // before the await inside `bootApplet`, because it is the only thing on this
+  // path that is known without asking the host anything — and because the
+  // first `render()` below has to be able to tell "inside Moss, still asking"
+  // from "a browser tab with no host", which are two different first frames.
   document.body.dataset.host = 'applet';
-  const notice = document.createElement('p');
-  notice.dataset.testid = 'applet-not-implemented';
-  notice.textContent =
-    'Running inside Moss is detected but not yet implemented. The standalone app '
-    + 'is unaffected; this message exists so a host never sees a half-wired view.';
-  document.body.appendChild(notice);
+  // Deliberately not awaited: `render()` below must paint the connecting
+  // state, and awaiting here would leave the page blank for however long the
+  // host takes — up to `CONNECT_TIMEOUT_MS` when it takes forever, which the
+  // installed source says it can.
+  void bootApplet();
 }
 
 render();

@@ -36,6 +36,16 @@
 //      Appropriate for developing against your own local conductor;
 //      still not a production multi-tenant auth model, and still not
 //      what an installed `.webhapp` uses.
+//
+//   3. ADOPTED (`fromAppClient()` below — a Moss Tool render). Not
+//      reached by `connect()` at all, because on this path the client
+//      is not something to go and get: Moss installs the Tool's own
+//      happ, authenticates it, and hands the live `AppClient` over on
+//      `renderInfo.appletClient`. So this shape opens no socket, issues
+//      no token, and — like shape 1 and for the same reason — must
+//      never touch the Admin API. `mobile-ui/src/applet-host.ts` is the
+//      only caller; see open-work 1.28 for why the Tool bringing its own
+//      DNA is what keeps this one connection layer rather than two.
 import { AdminWebsocket, AppWebsocket, CellType, type AppClient, type CellId } from '@holochain/client';
 import { decode } from '@msgpack/msgpack';
 
@@ -146,6 +156,26 @@ export class HolochainConnection {
     return new HolochainConnection(client, config, client.myPubKey);
   }
 
+  /** Adopts a connection a HOST already made — see this file's header,
+   *  shape (3). Not a connect: there is nothing to connect to.
+   *
+   *  THE REASON THIS IS FOUR LINES AND NOT A SECOND CLIENT. Open-work 1.28's
+   *  closing warning is "do not let it become a second client", and this
+   *  method is where that is either honoured or lost. A Moss Tool brings its
+   *  own happ, DNA and cells — no fork, no hash change — so the cell this
+   *  `AppClient` speaks to is the same cell the standalone app speaks to, and
+   *  `callZome` below needs no knowledge of which shape produced it. Every
+   *  read and write in this UI runs unchanged.
+   *
+   *  `client.myPubKey` for the same reason as the Launcher path: it comes from
+   *  the `AppInfo` the host's own authentication was issued against, which is
+   *  the authoritative answer to "who am I" here. Digging a key out of a cell
+   *  id would require enumerating cells for signing authorization, which is
+   *  the step a hosted path must not perform. */
+  static fromAppClient(client: AppClient, config: ConductorConfig): HolochainConnection {
+    return new HolochainConnection(client, config, client.myPubKey);
+  }
+
   /** Direct-admin path — see this file's header, shape (2). */
   private static async connectViaAdmin(config: ConductorConfig): Promise<HolochainConnection> {
     // bridge/src/index.ts's own connect() passes an explicit
@@ -205,6 +235,38 @@ export class HolochainConnection {
 
     const myAgentPubKey = cellIds[0][1];
     return new HolochainConnection(client, config, myAgentPubKey);
+  }
+
+  /** The DNA hash of the cell this connection calls into.
+   *
+   *  ASKED FOR, NOT CACHED AT CONNECT TIME, because exactly one caller needs
+   *  it: the `creatable` applet surface, which has to hand Moss a WAL and a
+   *  WAL is `[DnaHash, ActionHash]`. Fetching it on every connect would add a
+   *  round trip to every path for one surface on one host.
+   *
+   *  `appInfo()` is on the APP interface, not the admin one, so this is
+   *  reachable on all three connection shapes — including the two that must
+   *  never touch the Admin API. Answers `null` rather than throwing if the
+   *  role is not there: the one caller is notifying another program about an
+   *  entry that is already published, and must not turn a successful publish
+   *  into an error.
+   *
+   *  Matches on `CellType.Provisioned` only. A clone shares the role name but
+   *  is a different DNA with a different hash, so returning one for a call
+   *  that went to the provisioned cell would be a WAL pointing at the wrong
+   *  network — and wrong hashes in something another program stores is the
+   *  hazard `applet.ts`'s addressing rules exist for. */
+  async dnaHash(): Promise<Uint8Array | null> {
+    try {
+      const info = await this.client.appInfo();
+      if (!info) return null;
+      for (const cell of info.cell_info[this.config.roleName] ?? []) {
+        if (cell?.type === CellType.Provisioned) return cell.value.cell_id[0];
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   async callZome<T = unknown>(fnName: string, payload: unknown): Promise<T> {
