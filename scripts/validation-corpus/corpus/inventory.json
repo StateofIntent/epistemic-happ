@@ -1616,7 +1616,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2890,
+      "line": 2902,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base must be the Retraction's ActionHash.",
       "passthrough": null,
@@ -1627,7 +1627,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2899,
+      "line": 2911,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base is not a Retraction.",
       "passthrough": null,
@@ -1638,7 +1638,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2905,
+      "line": 2917,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base Retraction names no replacement_claim, so there is no replacement for this link to record.",
       "passthrough": null,
@@ -1649,7 +1649,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2913,
+      "line": 2925,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement target must be a Claim's EntryHash.",
       "passthrough": null,
@@ -1660,7 +1660,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2919,
+      "line": 2931,
       "validator": "validate_create_link",
       "message": "A RetractionToReplacement link must point at the Claim the Retraction itself names in replacement_claim.",
       "passthrough": null,
@@ -1671,7 +1671,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2925,
+      "line": 2937,
       "validator": "validate_create_link",
       "message": "A RetractionToReplacement link may only be created by the Retraction's own author.",
       "passthrough": null,
@@ -1682,7 +1682,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2950,
+      "line": 2962,
       "validator": "validate_create_link",
       "message": "TargetToCritique target must be an ActionHash.",
       "passthrough": null,
@@ -1693,7 +1693,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2959,
+      "line": 2971,
       "validator": "validate_create_link",
       "message": "TargetToCritique target is not a Critique.",
       "passthrough": null,
@@ -1704,7 +1704,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2972,
+      "line": 2984,
       "validator": "validate_create_link",
       "message": "A TargetToCritique link must hang from the node the Critique itself names in target. A critique of one node may not be filed against another.",
       "passthrough": null,
@@ -1715,7 +1715,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2978,
+      "line": 2990,
       "validator": "validate_create_link",
       "message": "A TargetToCritique link may only be created by the Critique's own author.",
       "passthrough": null,
@@ -1726,7 +1726,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3000,
+      "line": 3012,
       "validator": "validate_create_link",
       "message": "TargetToAntibody target must be an ActionHash.",
       "passthrough": null,
@@ -1737,7 +1737,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3009,
+      "line": 3021,
       "validator": "validate_create_link",
       "message": "TargetToAntibody target is not an AntibodyPattern.",
       "passthrough": null,
@@ -1748,7 +1748,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3015,
+      "line": 3027,
       "validator": "validate_create_link",
       "message": "A TargetToAntibody link must hang from the node the AntibodyPattern itself names in target.",
       "passthrough": null,
@@ -1759,7 +1759,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3021,
+      "line": 3033,
       "validator": "validate_create_link",
       "message": "A TargetToAntibody link may only be created by the AntibodyPattern's own author.",
       "passthrough": null,
@@ -1770,7 +1770,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3046,
+      "line": 3058,
       "validator": "validate_create_link",
       "message": "AgentToClaim target must be an ActionHash.",
       "passthrough": null,
@@ -1781,7 +1781,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3055,
+      "line": 3067,
       "validator": "validate_create_link",
       "message": "AgentToClaim target is not a Claim.",
       "passthrough": null,
@@ -1792,7 +1792,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3066,
+      "line": 3078,
       "validator": "validate_create_link",
       "message": "AgentToClaim base must be an EntryHash anchor.",
       "passthrough": null,
@@ -1803,7 +1803,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3072,
+      "line": 3084,
       "validator": "validate_create_link",
       "message": "AgentToClaim base anchor does not match the claim's own author. A claim may only be indexed under the agent who wrote it.",
       "passthrough": null,
@@ -1814,7 +1814,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3085,
+      "line": 3097,
       "validator": "validate_create_link",
       "message": "AgentToClaim tag must be the claim's own domain, which is the only domain a by-agent reader has to go on.",
       "passthrough": null,
@@ -1825,7 +1825,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3097,
+      "line": 3109,
       "validator": "validate_create_link",
       "message": "An AgentToClaim link may only be created by the claim's own author.",
       "passthrough": null,
@@ -1836,7 +1836,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3121,
+      "line": 3133,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies target must be an ActionHash.",
       "passthrough": null,
@@ -1847,7 +1847,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3130,
+      "line": 3142,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies target is not a Critique.",
       "passthrough": null,
@@ -1858,7 +1858,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3138,
+      "line": 3150,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies base must be a CritiqueSpecies' EntryHash.",
       "passthrough": null,
@@ -1869,7 +1869,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3151,
+      "line": 3163,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique itself declares in `species`, not a different one.",
       "passthrough": null,
@@ -1880,7 +1880,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3157,
+      "line": 3169,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link cannot record an adoption the Critique does not declare: its `species` field is None.",
       "passthrough": null,
@@ -1891,7 +1891,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3164,
+      "line": 3176,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link may only be created by the Critique's own author.",
       "passthrough": null,
@@ -1902,7 +1902,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3181,
+      "line": 3193,
       "validator": "validate_create_link",
       "message": "AgentToConstitution target must be an ActionHash.",
       "passthrough": null,
@@ -1913,7 +1913,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3190,
+      "line": 3202,
       "validator": "validate_create_link",
       "message": "AgentToConstitution target is not a Constitution.",
       "passthrough": null,
@@ -1924,7 +1924,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3195,
+      "line": 3207,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1935,7 +1935,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3198,
+      "line": 3210,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1946,7 +1946,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3201,
+      "line": 3213,
       "validator": "validate_create_link",
       "message": "An AgentToConstitution link may only be created by the agent whose constitution it indexes.",
       "passthrough": null,
@@ -1957,7 +1957,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3216,
+      "line": 3228,
       "validator": "validate_create_link",
       "message": "AgentToWorldlineTrace target must be an ActionHash.",
       "passthrough": null,
@@ -1968,7 +1968,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3225,
+      "line": 3237,
       "validator": "validate_create_link",
       "message": "AgentToWorldlineTrace target is not a WorldlineTrace.",
       "passthrough": null,
@@ -1979,7 +1979,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3230,
+      "line": 3242,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1990,7 +1990,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3233,
+      "line": 3245,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2001,7 +2001,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3236,
+      "line": 3248,
       "validator": "validate_create_link",
       "message": "An AgentToWorldlineTrace link may only be created by the agent whose chain the trace compresses.",
       "passthrough": null,
@@ -2012,7 +2012,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3250,
+      "line": 3262,
       "validator": "validate_create_link",
       "message": "AgentToMew target must be an ActionHash.",
       "passthrough": null,
@@ -2023,7 +2023,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3259,
+      "line": 3271,
       "validator": "validate_create_link",
       "message": "AgentToMew target is not a Mew.",
       "passthrough": null,
@@ -2039,7 +2039,7 @@
       "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
-      "line": 3264,
+      "line": 3276,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2050,7 +2050,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3267,
+      "line": 3279,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2061,7 +2061,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3270,
+      "line": 3282,
       "validator": "validate_create_link",
       "message": "An AgentToMew link may only be created by the Mew's own author.",
       "passthrough": null,
@@ -2072,7 +2072,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3299,
+      "line": 3311,
       "validator": "validate_create_link",
       "message": "SpeciesToParent target must be an ActionHash.",
       "passthrough": null,
@@ -2083,7 +2083,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3308,
+      "line": 3320,
       "validator": "validate_create_link",
       "message": "SpeciesToParent target is not a CritiqueSpecies.",
       "passthrough": null,
@@ -2094,7 +2094,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3316,
+      "line": 3328,
       "validator": "validate_create_link",
       "message": "SpeciesToParent base must be the parent CritiqueSpecies' EntryHash.",
       "passthrough": null,
@@ -2105,7 +2105,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3334,
+      "line": 3346,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link must hang from the CritiqueSpecies the child itself declares in parent_species, not a different one.",
       "passthrough": null,
@@ -2116,7 +2116,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3340,
+      "line": 3352,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link cannot record a parent the child does not declare: its parent_species field is None.",
       "passthrough": null,
@@ -2127,7 +2127,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3347,
+      "line": 3359,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link may only be created by the child species' own proposer.",
       "passthrough": null,
@@ -2138,7 +2138,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3385,
+      "line": 3397,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation target must be an ActionHash.",
       "passthrough": null,
@@ -2149,7 +2149,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3394,
+      "line": 3406,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation target is not a Revelation.",
       "passthrough": null,
@@ -2160,7 +2160,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3402,
+      "line": 3414,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation base must be the PreRegistration's ActionHash.",
       "passthrough": null,
@@ -2171,7 +2171,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3409,
+      "line": 3421,
       "validator": "validate_create_link",
       "message": "A PreRegistrationToRevelation link must hang from the PreRegistration the Revelation itself names. A reveal of one commitment may not be recorded against another — that is how an expired commitment is made to look revealed.",
       "passthrough": null,
@@ -2182,7 +2182,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3421,
+      "line": 3433,
       "validator": "validate_create_link",
       "message": "A PreRegistrationToRevelation link may only be created by the revealing agent.",
       "passthrough": null,
@@ -2193,7 +2193,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3438,
+      "line": 3450,
       "validator": "validate_create_link",
       "message": "AgentToPreRegistration target must be an ActionHash.",
       "passthrough": null,
@@ -2204,7 +2204,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3447,
+      "line": 3459,
       "validator": "validate_create_link",
       "message": "AgentToPreRegistration target is not a PreRegistration.",
       "passthrough": null,
@@ -2215,7 +2215,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3452,
+      "line": 3464,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2226,7 +2226,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3455,
+      "line": 3467,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2237,7 +2237,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3458,
+      "line": 3470,
       "validator": "validate_create_link",
       "message": "An AgentToPreRegistration link may only be created by the committing agent.",
       "passthrough": null,
@@ -2248,7 +2248,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3483,
+      "line": 3495,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration target must be an ActionHash.",
       "passthrough": null,
@@ -2259,7 +2259,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3492,
+      "line": 3504,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration target is not a PreRegistration.",
       "passthrough": null,
@@ -2270,7 +2270,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3501,
+      "line": 3513,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration base must be an EntryHash anchor.",
       "passthrough": null,
@@ -2281,7 +2281,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3507,
+      "line": 3519,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration base anchor does not match the question the PreRegistration itself names. A commitment may only be indexed under the question it was made about.",
       "passthrough": null,
@@ -2292,7 +2292,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3514,
+      "line": 3526,
       "validator": "validate_create_link",
       "message": "A QuestionToPreRegistration link may only be created by the committing agent.",
       "passthrough": null,
@@ -2303,7 +2303,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3527,
+      "line": 3539,
       "validator": "validate_create_link",
       "message": "MewToClaim target must be an ActionHash.",
       "passthrough": null,
@@ -2314,7 +2314,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3536,
+      "line": 3548,
       "validator": "validate_create_link",
       "message": "MewToClaim target is not a Claim.",
       "passthrough": null,
@@ -2325,7 +2325,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3544,
+      "line": 3556,
       "validator": "validate_create_link",
       "message": "MewToClaim base must be a Mew's EntryHash.",
       "passthrough": null,
@@ -2336,7 +2336,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3552,
+      "line": 3564,
       "validator": "validate_create_link",
       "message": "A MewToClaim link must hang from the Mew the Claim itself names in source_mew.",
       "passthrough": null,
@@ -2347,7 +2347,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3558,
+      "line": 3570,
       "validator": "validate_create_link",
       "message": "A MewToClaim link cannot record a promotion the Claim does not claim: its source_mew is None.",
       "passthrough": null,
@@ -2358,7 +2358,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3565,
+      "line": 3577,
       "validator": "validate_create_link",
       "message": "A MewToClaim link may only be created by the promoted Claim's own author.",
       "passthrough": null,
@@ -2369,7 +2369,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3580,
+      "line": 3592,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord target must be an ActionHash.",
       "passthrough": null,
@@ -2380,7 +2380,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3589,
+      "line": 3601,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord target is not a FederationRecord.",
       "passthrough": null,
@@ -2391,7 +2391,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3597,
+      "line": 3609,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord base must be a Membrane's EntryHash.",
       "passthrough": null,
@@ -2402,7 +2402,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3603,
+      "line": 3615,
       "validator": "validate_create_link",
       "message": "A MembraneToFederationRecord link must hang from the Membrane the FederationRecord itself names in local_membrane.",
       "passthrough": null,
@@ -2413,7 +2413,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3609,
+      "line": 3621,
       "validator": "validate_create_link",
       "message": "A MembraneToFederationRecord link may only be created by the FederationRecord's own author — who §5.18 already requires to be the membrane's founder.",
       "passthrough": null,
@@ -2424,7 +2424,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3635,
+      "line": 3647,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's target must be an ActionHash.",
       "passthrough": null,
@@ -2435,7 +2435,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3644,
+      "line": 3656,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's target is not a BridgeRecord.",
       "passthrough": null,
@@ -2446,7 +2446,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3652,
+      "line": 3664,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's base must be an EntryHash.",
       "passthrough": null,
@@ -2457,7 +2457,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3658,
+      "line": 3670,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link must hang from the entry the BridgeRecord itself names in mew_hash.",
       "passthrough": null,
@@ -2468,7 +2468,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3670,
+      "line": 3682,
       "validator": "validate_create_link",
       "message": "A ClaimToBridgeRecord link's base is not a Claim. A mirror of a Mew filed as a claim's would make get_unbridged_claims answer about the wrong entry.",
       "passthrough": null,
@@ -2479,7 +2479,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3677,
+      "line": 3689,
       "validator": "validate_create_link",
       "message": "A MewToBridgeRecord link's base is not a Mew.",
       "passthrough": null,
@@ -2495,7 +2495,7 @@
       "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
-      "line": 3682,
+      "line": 3694,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link may only be created by the agent who recorded the mirror.",
       "passthrough": null,
@@ -2506,7 +2506,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3696,
+      "line": 3708,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique target must be an ActionHash.",
       "passthrough": null,
@@ -2517,7 +2517,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3705,
+      "line": 3717,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique target is not an ExternalCritique.",
       "passthrough": null,
@@ -2528,7 +2528,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3713,
+      "line": 3725,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique base must be a Claim's EntryHash.",
       "passthrough": null,
@@ -2539,7 +2539,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3719,
+      "line": 3731,
       "validator": "validate_create_link",
       "message": "A ClaimToExternalCritique link must hang from the Claim the ExternalCritique itself names in linked_holochain_claim.",
       "passthrough": null,
@@ -2550,7 +2550,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3728,
+      "line": 3740,
       "validator": "validate_create_link",
       "message": "A ClaimToExternalCritique link may only be created by the importing agent.",
       "passthrough": null,
@@ -2561,7 +2561,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3743,
+      "line": 3755,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target must be an ActionHash.",
       "passthrough": null,
@@ -2572,7 +2572,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3747,
+      "line": 3759,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target does not resolve.",
       "passthrough": null,
@@ -2583,7 +2583,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3751,
+      "line": 3763,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target is not an Assessment.",
       "passthrough": null,
@@ -2594,7 +2594,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3755,
+      "line": 3767,
       "validator": "validate_create_link",
       "message": "A TargetToAssessment link must hang from the node the Assessment itself names in target.",
       "passthrough": null,
@@ -2605,7 +2605,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3760,
+      "line": 3772,
       "validator": "validate_create_link",
       "message": "A TargetToAssessment link may only be created by the Assessment's own assessor.",
       "passthrough": null,
@@ -2616,7 +2616,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3766,
+      "line": 3778,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target must be an ActionHash.",
       "passthrough": null,
@@ -2627,7 +2627,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3770,
+      "line": 3782,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target does not resolve.",
       "passthrough": null,
@@ -2638,7 +2638,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3774,
+      "line": 3786,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target is not a SettlementStatus.",
       "passthrough": null,
@@ -2649,7 +2649,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3778,
+      "line": 3790,
       "validator": "validate_create_link",
       "message": "A TargetToSettlementStatus link must hang from the node the SettlementStatus itself names in target.",
       "passthrough": null,
@@ -2660,7 +2660,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3783,
+      "line": 3795,
       "validator": "validate_create_link",
       "message": "A TargetToSettlementStatus link may only be created by the status's own aggregator.",
       "passthrough": null,
@@ -2671,7 +2671,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3817,
+      "line": 3829,
       "validator": "agent_index_anchor_matches",
       "message": "{link_name} base must be an EntryHash anchor.",
       "passthrough": null,
@@ -2681,7 +2681,7 @@
       "entry": null
     },
     {
-      "line": 3823,
+      "line": 3835,
       "validator": "agent_index_anchor_matches",
       "message": "{link_name} base anchor does not match the agent the target entry names. An entry may only be indexed under the agent it belongs to.",
       "passthrough": null,
