@@ -229,6 +229,17 @@ jobs:
       - name: entry-type-confusion — no entry type's bytes can be read as another's, beyond the known two
         run: node scripts/check-entry-type-confusion.mjs
 
+      # The injection ledger records which CHECK an injection reddened, resolved
+      # from the run's own `FAIL:` labels by string equality. That makes it rot
+      # the way the validation corpus rots: rename a check and the record names
+      # a check that no longer exists, which is worse than no record because it
+      # reads like one. `verify` re-resolves every recorded red against the
+      # current source, repairs line numbers that merely moved (a comment above
+      # a check shifts every line below it — the corpus inventory learned that
+      # the hard way), and exits 1 on anything that no longer resolves.
+      - name: injection-ledger — no recorded red names a check that has gone
+        run: node scripts/injection-ledger/ledger.mjs verify
+
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.
       - name: Install and build the notes service
