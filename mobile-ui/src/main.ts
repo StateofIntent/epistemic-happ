@@ -346,6 +346,34 @@ let proposingSpecies = false;
 /** claim's own base64 entry-hash key -> its critiques, loaded lazily
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
+
+/** ROW 6.15's PULL HALF — how many critiques came back on each of the
+ * reader's OWN claims, keyed by the claim's entry hash in base64.
+ *
+ * WHY IT EXISTS, and a participant asked for it in these words hours after
+ * filing the pilot's first critique: "when someone posts a critique, how does
+ * the author of the claim find out? If there's no notification, discussions
+ * might fade simply because the author doesn't know someone responded."
+ * `create_claim` emits a signal and `create_critique` emits NOTHING, so the
+ * one act this protocol exists to carry is the one act that announces itself
+ * to nobody. The first two critiques in its history were both delivered over
+ * Telegram.
+ *
+ * WHY A COUNT AND NOT A NOTIFICATION. Push is the row's `[D]` half and stays
+ * undecided, for a reason that is a cost rather than a taste:
+ * `send_peer_signal` writes a permanent CapGrant per call on the SENDER's
+ * chain, so notifying on every critique would grow a critic's own chain in
+ * proportion to how much they disagree — a per-act permanent cost on exactly
+ * the behaviour the protocol wants more of. A read on the author's side
+ * writes nothing and is the opposite trade.
+ *
+ * THE ABSENCE OF AN ENTRY IS NOT A ZERO, which is 6.13's lesson arriving in a
+ * second costume. A claim with no entry here has not been asked about; a
+ * claim mapped to 0 has been asked about and nobody disagreed. Rendering the
+ * first as the second would tell an author they are unchallenged at the
+ * moment the screen opens, before any read has returned — the most
+ * expensive false statement this surface could make. */
+const myCritiqueCounts = new Map<string, number>();
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
 
@@ -1368,12 +1396,38 @@ function renderTabs(): HTMLElement {
 // ranking agents, sorting the claims by anything readable as merit, or
 // putting a total in the header that reads as a standing. So this screen
 // takes one agent at a time and only because someone asked for that agent,
-// renders the claims in the order the DHT returned them, and shows NO
-// count. A per-species adoption count is precedent for showing a number as
-// a fact rather than a position, but agents are the thing Invariant 1 is
+// renders the claims in the order the DHT returned them, and shows NO TALLY
+// OF CLAIMS. A per-species adoption count is precedent for showing a number
+// as a fact rather than a position, but agents are the thing Invariant 1 is
 // actually about, and a claim tally next to a person is a great deal closer
 // to karma than an adoption tally next to a critique type. Omitted on
 // purpose; the list is right there to be counted by anyone who wants to.
+//
+// ONE NUMBER DOES NOW APPEAR HERE, AND THIS PARAGRAPH USED TO SAY "shows NO
+// count" FLATLY, SO THE DISTINCTION IS WORTH STATING RATHER THAN ASSUMING.
+// Row 6.15 put a count of CRITIQUES on each of the reader's OWN claims. That
+// is a different object from the one refused above, in three ways that all
+// have to hold at once:
+//
+//   - it is attached to a CLAIM, not to a person. "Two people disagreed with
+//     this sentence" is a fact about the sentence; "this agent has made
+//     fourteen claims" is a figure about the agent.
+//   - it appears ONLY on the reader's own claims, so there is no second
+//     number beside it to compare it with. A critique count rendered across
+//     a domain's claims WOULD be comparative, and would quietly become the
+//     ranking surface Invariant 1 exists to refuse — which is why nothing
+//     outside `loadMyCritiqueCounts` ever writes that map.
+//   - nothing is ordered by it, and no total is taken across claims. A sum
+//     in the header would be precisely the "total that reads as a standing"
+//     this paragraph already rules out, and the framing note below still
+//     carries no digit at all — `author-scope-ui.mjs` asserts that.
+//
+// AND THE REASON FOR ADMITTING IT: there is no notification anywhere in this
+// protocol, so without this number an author learns they were disagreed with
+// only by reopening their own claim and looking. The first two critiques in
+// the pilot's history were both delivered over Telegram. A disagreement
+// protocol whose disagreements arrive by side channel has the side channel
+// as a dependency.
 
 function renderByAuthorTab(): HTMLElement {
   const section = document.createElement('section');
@@ -1394,6 +1448,20 @@ function renderByAuthorTab(): HTMLElement {
   agentInput.onkeydown = (e) => { if (e.key === 'Enter') loadBtn.click(); };
   searchRow.appendChild(agentInput);
   searchRow.appendChild(loadBtn);
+  // ROW 6.15. The reader's own listing was reachable only by pasting their
+  // own base64 key into this box, which is the same unusability 6.16 was
+  // about one screen over: a read that exists and that nobody can get to is
+  // not a surface. It is also the ONLY listing that carries the critique
+  // counts, so the route to it being awkward meant the answer to "did anyone
+  // respond to me" was effectively unreachable.
+  if (connection) {
+    const mineBtn = document.createElement('button');
+    mineBtn.textContent = 'Your claims';
+    mineBtn.setAttribute('data-testid', 'author-mine');
+    mineBtn.title = 'Your own claims, and how many critiques came back on each';
+    mineBtn.onclick = () => void loadClaimsByAuthor(b64(connection!.myAgentPubKey));
+    searchRow.appendChild(mineBtn);
+  }
   section.appendChild(searchRow);
 
   const note = document.createElement('p');
@@ -1648,6 +1716,37 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   };
   meta.appendChild(domainBtn);
   card.appendChild(meta);
+
+  // ROW 6.15's pull half, rendered where the author will see it.
+  //
+  // THREE STATES, NOT TWO, and the middle one is the whole point: no entry in
+  // the map means nobody has asked yet, and 0 means somebody asked and the
+  // answer was none. Telling an author they are unchallenged before the read
+  // has returned is the expensive version of this screen, and it is exactly
+  // the defect 6.13 closed on the Browse tab one screen over.
+  //
+  // It can only ever appear on the reader's own claims, because
+  // `loadMyCritiqueCounts` is the only writer of that map — see the Invariant
+  // 1 note above `renderByAuthorTab` for why that restriction is load-bearing
+  // rather than incidental.
+  const mineForCount = connection
+    && b64(claim.entry.author) === b64(connection.myAgentPubKey);
+  if (mineForCount && myCritiqueCounts.has(key)) {
+    const n = myCritiqueCounts.get(key)!;
+    const line = document.createElement('p');
+    line.className = n > 0 ? 'critique-count answered' : 'critique-count';
+    line.setAttribute('data-testid', 'critique-count');
+    line.dataset.count = String(n);
+    // Says what happened, and does not say what to do about it. An
+    // instruction here would be the attention ordering the row's `[D]` half
+    // is still undecided about; a fact is not.
+    line.textContent = n === 0
+      ? 'No critiques on this yet.'
+      : n === 1
+        ? '1 critique on this claim.'
+        : `${n} critiques on this claim.`;
+    card.appendChild(line);
+  }
   card.appendChild(renderAuthorConstitution(claim.entry.author));
 
   // An expertise assertion is an ordinary Claim and must read as one.
@@ -3121,6 +3220,10 @@ async function loadClaimsByAuthor(agentB64: string) {
     const records = await connection.callZome<any[]>('get_claims_by_agent', agent);
     authorClaims = decodeRecords<Claim>(records);
     authorLoaded = true;
+    // 6.15: only for the reader's own listing, and started after the claims
+    // are already on screen so a slow count degrades the answer rather than
+    // delaying it.
+    if (agentB64 === b64(connection.myAgentPubKey)) void loadMyCritiqueCounts(authorClaims);
   } catch (e) {
     authorError = `Could not read this agent's claims: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -3272,6 +3375,35 @@ async function loadFrictionStatus() {
   } catch {
     frictionStatus = null;
   }
+}
+
+/** ROW 6.15. Counts the critiques on each of the reader's own claims.
+ *
+ * ONE `get_critiques_for` PER CLAIM AND NO NEW EXTERN — which is the whole
+ * reason this half needed no decision. The calls are independent, so they go
+ * out together rather than in a chain: a grounding path is sequential because
+ * each node is cited by the one before it, and these are not.
+ *
+ * EACH CLAIM IS SETTLED ON ITS OWN. One rejected read leaves that claim
+ * without an entry — unasked, which the screen can say — rather than failing
+ * the batch and leaving every claim looking unchallenged.
+ *
+ * SCOPED TO THE READER'S OWN CLAIMS BY CONSTRUCTION, not by a flag the render
+ * could forget: nothing else writes to this map, so a card can ask it for a
+ * count and a card belonging to somebody else will never find one. The
+ * restriction matters — see the Invariant 1 note above `renderByAuthorTab`
+ * for why a critique count across OTHER people's claims would be a different
+ * and worse object than this one. */
+async function loadMyCritiqueCounts(claimsOfMine: DecodedRecord<Claim>[]) {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(claimsOfMine.map(async (claim) => {
+    try {
+      const records = await conn.callZome<any[]>('get_critiques_for', claim.entryHash);
+      myCritiqueCounts.set(b64(claim.entryHash), records.length);
+    } catch { /* unasked rather than zero — see the map's own comment */ }
+  }));
+  render();
 }
 
 async function loadCritiques(claim: DecodedRecord<Claim>) {
