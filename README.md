@@ -679,7 +679,7 @@ scripts/sandbox.sh clean    # wipe it entirely — next `start` is genuinely fre
 ```
 
 With a conductor up, `scripts/live-verify/` holds the harnesses that
-drive it — 66 of them, each proving one property against real zome
+drive it — 67 of them, each proving one property against real zome
 calls and real DHT validation, several of them through a real
 Playwright-controlled browser against the production UI bundle. That
 directory's own README says what each one covers, and carries the rule

@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-two browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-three browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -384,6 +384,21 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/author-scope-ui.mjs
+
+      # Two fakes here, and neither is a broken screen. One sentence stood for
+      # a domain nobody has written in, a read that never ran and a conductor
+      # that is down, so a verification run had to load a known-populated
+      # domain by hand to find out whether its own button worked. And the
+      # "where you have been" list has the impostor author-scope-ui was built
+      # against: assembled from what Browse already loaded, which looks right
+      # the moment anybody uses it. Measured against the unfixed screen: 20 of
+      # 31 red, and most of the eleven that stayed green assert a state is NOT
+      # shown — which passes vacuously when the element never existed. The
+      # first check is the one that catches that.
+      - name: browse-states — an empty domain, a read in flight and a failure are three different answers
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/browse-states.mjs
 
       - name: layout-fits — every tab at every width this UI is for, with an unbreakable token on screen
         run: |

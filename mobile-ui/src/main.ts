@@ -504,6 +504,92 @@ function clearAfterPublish(): void {
 let authorLoaded = false;
 /** a failed or malformed read, shown rather than swallowed into an empty list. */
 let authorError = '';
+/** Browse's half of the same distinction, for the same reason, and it was
+ * missing for longer: one sentence stood for "never asked", "came back
+ * empty" and "the read failed" at once. 6.13 — found by driving the shipped
+ * build to check whether a participant's claims had landed, where a second
+ * known-populated domain had to be loaded as a positive control to find out
+ * whether the button worked at all. */
+let browseLoaded = false;
+/** a failed Browse read, shown rather than leaving the previous screen up. */
+let browseError = '';
+
+/** ROW 6.16. The domains this agent has PUBLISHED in, derived from
+ * `get_claims_by_agent(me)` — every claim it returns carries its own
+ * `.domain`, so this needs no new extern, writes nothing, and survives a
+ * reinstall because it is read off the chain rather than off this device.
+ *
+ * WHY IT EXISTS, and the route it replaces was found by a user rather than
+ * here. Asked how they returned to a domain somebody had given them, a pilot
+ * participant answered: "I go to Worldline, then my records, copy the domain
+ * name and paste it in again." That is `WorldlineBoundary.domain_tag`, a field
+ * on a trace of their own activity, discovered independently as navigation
+ * when it was never built to be any — AND IT DECAYS SILENTLY. `loadWorldline`
+ * READS an existing trace; `generate_worldline_trace` is a separate explicit
+ * act that COMMITS an entry. So the list they were navigating by is a snapshot
+ * frozen at whenever the trace was last generated, every domain written in
+ * since is missing from it, nothing on screen says it has an age, and the only
+ * refresh is a permanent write. A navigation aid that omits your most recent
+ * work is worse than none, because it reads as complete.
+ *
+ * WHY THIS IS NOT 6.12'S BLOCKED HALF, which is the reason it could be built
+ * today. 6.12 is blocked on whether to index domains nobody founded — a
+ * LOOKUP surface, which SECURITY.md's "containment holds for what you traverse
+ * to and nothing for what you look up" is precisely about. This enumerates
+ * nothing the reader has not already seen: it is their own history, it leaks
+ * to nobody, and there is no lens for it to need.
+ *
+ * There is no `loaded` flag beside it, unlike `browseLoaded` three lines up,
+ * and the asymmetry is deliberate rather than an omission: Browse has to tell
+ * an empty answer from an unasked question because the reader ASKED and is
+ * owed an answer. Nobody asked for this list. It is absent until it has
+ * something to say, which is the honest render of a convenience. */
+let myDomains: string[] = [];
+
+/** The weaker half, kept visibly separate rather than merged into the list
+ * above. READING IS NOT AN ACT THE PROTOCOL RECORDS — there is no entry for
+ * "I looked at this" and 6.16 does not propose one — so a domain somebody
+ * merely visited cannot come from the chain at all. It lives here, per-device
+ * and losable, and the screen says so: presenting it beside a chain-derived
+ * list without that distinction would be the same overclaim the Worldline
+ * route makes by looking complete. */
+const VISITED_KEY = 'epistemic-mobile-ui:visited-domains';
+const VISITED_CAP = 12;
+
+function readVisited(): string[] {
+  try {
+    const raw = localStorage.getItem(VISITED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((d) => typeof d === 'string') : [];
+  } catch {
+    // A private window, cleared site data, or storage the browser refuses.
+    // An empty list is the correct render, not an error worth a screen.
+    return [];
+  }
+}
+
+let visitedDomains: string[] = readVisited();
+
+/** Recorded only once a read has actually come back, for the same reason
+ * `markDone('browsed-domain')` moved below the await: a domain a conductor
+ * never answered for is not somewhere the reader has been. */
+function rememberVisited(domain: string): void {
+  visitedDomains = [domain, ...visitedDomains.filter((d) => d !== domain)].slice(0, VISITED_CAP);
+  try { localStorage.setItem(VISITED_KEY, JSON.stringify(visitedDomains)); } catch { /* see readVisited */ }
+}
+
+/** First-seen order, deduplicated — the order the network returned the claims
+ * in, not an ordering this client invented. Nothing is counted: a tally of
+ * claims per domain beside a person is the shape Invariant 1 is about, and
+ * the By Author tab already declines to print one. */
+function distinctDomains(records: DecodedRecord<Claim>[]): string[] {
+  const seen: string[] = [];
+  for (const r of records) {
+    if (r.entry.domain && !seen.includes(r.entry.domain)) seen.push(r.entry.domain);
+  }
+  return seen;
+}
 
 function b64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
@@ -990,6 +1076,13 @@ function renderConnectScreen(): HTMLElement {
       // tab. Loaded once on connect so the vocabulary is offered where
       // it is actually used, not only where it is browsed.
       void loadTaxonomy().catch(() => { /* tab shows its own empty state */ });
+      // 6.16. Loaded on connect rather than when the Browse tab first
+      // renders, because a render that starts a network read is a render
+      // that can start several, and the list is wanted the first time
+      // somebody opens Browse rather than the second. BOTH connect paths
+      // call it, for the reason the taxonomy load above records: the one
+      // that ships is the other one.
+      void loadMyDomains();
     } catch (err) {
       errorBox.hidden = false;
       errorBox.textContent = err instanceof Error ? err.message : String(err);
@@ -1379,14 +1472,45 @@ function renderBrowseTab(): HTMLElement {
   searchRow.appendChild(loadBtn);
   section.appendChild(searchRow);
 
+  section.appendChild(renderWhereYouHaveBeen());
+
+  // Four states where there was one, taken from By Author in this same file
+  // rather than invented: a failure, a question not yet asked, a read in
+  // flight, and a real empty answer. A conductor that is down, a domain
+  // nobody has written in, and a button that was never pressed used to be
+  // one indistinguishable sentence — and with an always-on node still the
+  // only thing making a laptop's claims readable, the empty answer is the
+  // one a participant sees most often.
+  if (browseError) {
+    const err = document.createElement('p');
+    err.className = 'error';
+    err.setAttribute('data-testid', 'browse-error');
+    err.textContent = browseError;
+    section.appendChild(err);
+    return section;
+  }
+
   const list = document.createElement('div');
   list.className = 'claim-list';
+  list.setAttribute('data-testid', 'browse-claim-list');
   if (claims.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'hint';
-    empty.textContent = currentDomain
-      ? `No claims loaded yet for "${currentDomain}".`
-      : 'Enter a domain above and load its claims.';
+    if (!currentDomain) {
+      empty.textContent = 'Enter a domain above and load its claims.';
+    } else if (!browseLoaded) {
+      empty.textContent = 'Reading…';
+    } else {
+      // A real answer, and a different one from "not asked yet". The wording
+      // says the domain is empty rather than that the app failed to load it,
+      // because an empty domain is an ordinary thing here: publishing does
+      // not require founding, so a string with nothing behind it is as
+      // likely to be a typo as a quiet field.
+      empty.setAttribute('data-testid', 'browse-empty');
+      empty.textContent = `No claims in "${currentDomain}". Nobody has published `
+        + 'here, or the domain string is not the one you were given — it is an '
+        + 'exact match, capitals and spaces included.';
+    }
     list.appendChild(empty);
   }
   for (const claim of claims) {
@@ -1395,6 +1519,83 @@ function renderBrowseTab(): HTMLElement {
   section.appendChild(list);
 
   return section;
+}
+
+/** ROW 6.16 — the way back to a domain you have already been in.
+ *
+ * THE PILOT'S COMPLAINT WAS NEVER "I CANNOT DISCOVER NEW DOMAINS". It was
+ * "I cannot get back to the one I was in ten minutes ago", and those were one
+ * problem with the other until somebody who had to live with it separated
+ * them. This is the second half; the first is 6.12's, and it is blocked.
+ *
+ * THE TWO LISTS ARE NOT MERGED, AND THE LABELS ARE THE POINT. The published
+ * list is read off the chain, so it is true on any device and survives a
+ * reinstall. The visited list is this browser's localStorage, because reading
+ * is not an act the protocol records — it is losable, and it is the weaker of
+ * the two. Merging them would produce one list with two different warranties
+ * and no way for a reader to tell which line carried which, which is exactly
+ * the mistake the Worldline route makes by looking complete while being a
+ * frozen snapshot.
+ *
+ * NOTHING IS COUNTED AND NOTHING IS ORDERED BY ANYTHING BUT RECENCY and the
+ * order the network returned. A busiest-domains list would be a ranking, and
+ * Invariant 1 is about exactly that. */
+function renderWhereYouHaveBeen(): HTMLElement {
+  const block = document.createElement('div');
+  block.className = 'where-youve-been';
+  block.setAttribute('data-testid', 'where-youve-been');
+
+  // Published first, because it is the list with the stronger claim behind
+  // it, and the one a reader can trust from a machine they have never used.
+  const visitedOnly = visitedDomains.filter((d) => !myDomains.includes(d));
+  if (myDomains.length === 0 && visitedOnly.length === 0) {
+    // Not an error and not worth a sentence: a reader who has published
+    // nothing and loaded nothing has nothing to go back to, and the box
+    // above already says what to do.
+    block.hidden = true;
+    return block;
+  }
+
+  const group = (label: string, domains: string[], testid: string, hint?: string) => {
+    if (domains.length === 0) return;
+    const row = document.createElement('div');
+    row.className = 'domain-recall';
+    const title = document.createElement('p');
+    title.className = 'hint';
+    title.textContent = label;
+    row.appendChild(title);
+    const chips = document.createElement('div');
+    chips.className = 'domain-chips';
+    chips.setAttribute('data-testid', testid);
+    for (const domain of domains) {
+      const chip = document.createElement('button');
+      chip.className = 'domain-chip';
+      chip.textContent = domain;
+      chip.title = `Load the claims in ${domain}`;
+      chip.onclick = () => { void loadClaims(domain); };
+      chips.appendChild(chip);
+    }
+    row.appendChild(chips);
+    if (hint) {
+      const note = document.createElement('p');
+      note.className = 'hint subtle';
+      note.textContent = hint;
+      row.appendChild(note);
+    }
+    block.appendChild(row);
+  };
+
+  group('Domains you have published in', myDomains, 'my-domains');
+  group(
+    'Domains you have loaded on this device',
+    visitedOnly,
+    'visited-domains',
+    'This half is remembered by this browser only — reading is not something '
+    + 'the protocol records, so it is lost if you clear your data or move to '
+    + 'another machine. The list above is read from your own chain and is not.',
+  );
+
+  return block;
 }
 
 function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
@@ -1425,6 +1626,27 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     void loadClaimsByAuthor(b64(claim.entry.author));
   };
   meta.appendChild(authorBtn);
+  // 6.12's cheap half. The card printed content, confidence and author and
+  // never the claim's own domain, so a reader who arrived from anywhere but
+  // the Browse box — the By Author tab, a critique, a link passed in chat —
+  // could not learn the one string that would show them its neighbours. The
+  // byline carried them to an agent when the question was about a field.
+  //
+  // A button for the same reason the byline is one: copying a string out of
+  // a card and into a box is the move nobody makes. It routes through
+  // `loadClaims` with `fromTheBox` false, which is the case that function's
+  // own comment already described as "following a domain from a card".
+  meta.append(' · in ');
+  const domainBtn = document.createElement('button');
+  domainBtn.className = 'domain-link';
+  domainBtn.setAttribute('data-testid', 'claim-domain');
+  domainBtn.textContent = claim.entry.domain;
+  domainBtn.title = 'Browse the other claims in this domain';
+  domainBtn.onclick = () => {
+    activeTab = 'browse';
+    void loadClaims(claim.entry.domain);
+  };
+  meta.appendChild(domainBtn);
   card.appendChild(meta);
   card.appendChild(renderAuthorConstitution(claim.entry.author));
 
@@ -2819,9 +3041,13 @@ async function loadClaims(domain: string, fromTheBox = false) {
   if (!connection || !domain) return;
   currentDomain = domain;
   if (!fromTheBox) domainDraft = domain;
-  markDone('browsed-domain');
-  const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
-  claims = decodeRecords<Claim>(records);
+  browseError = '';
+  browseLoaded = false;
+  // Cleared BEFORE the await rather than after it, so what is on screen
+  // during the read is this domain's unanswered state rather than the last
+  // domain's claims. A list that stays up while a different domain is being
+  // read is the same lie as an empty one that cannot say it was asked.
+  claims = [];
   critiquesByClaim.clear();
   assessmentsByClaim.clear();
   expandedClaims.clear();
@@ -2835,9 +3061,37 @@ async function loadClaims(domain: string, fromTheBox = false) {
   unseenByAssessment.clear();
   unseenOpenAssessment.clear();
   render();
+  try {
+    const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
+    claims = decodeRecords<Claim>(records);
+    browseLoaded = true;
+    // Marked once the read has come back, not before it. The step claims the
+    // reader has browsed a domain, and a call that was rejected is not that
+    // — it used to advance the tour on a conductor that was down.
+    markDone('browsed-domain');
+    rememberVisited(domain);
+  } catch (e) {
+    browseError = `Could not read claims for "${domain}": `
+      + (e instanceof Error ? e.message : String(e));
+  }
+  render();
   // Epistemic state is fetched after the claims are already on screen,
   // so a slow or failing read degrades the badges rather than the list.
-  void loadClaimEpistemicState();
+  if (browseLoaded) void loadClaimEpistemicState();
+}
+
+/** ROW 6.16's read, and it is `get_claims_by_agent` again rather than
+ * anything new. Failure is deliberately silent: this is a navigation aid
+ * beside a working domain box, so a conductor that will not answer it should
+ * degrade the convenience and leave the Browse tab's own four states to say
+ * what happened to the read the user actually asked for. */
+async function loadMyDomains() {
+  if (!connection) return;
+  try {
+    const records = await connection.callZome<any[]>('get_claims_by_agent', connection.myAgentPubKey);
+    myDomains = distinctDomains(decodeRecords<Claim>(records));
+    render();
+  } catch { /* the aid is absent rather than wrong */ }
 }
 
 /** Reads every claim one agent has published. Separate from loadClaims in
@@ -5436,6 +5690,11 @@ function renderNewClaimTab(): HTMLElement {
       // same if the content were the opposite.
       newClaimNotice = 'Published to your own chain. Peers may take '
         + 'minutes to see it — that is expected on this network, not a fault.';
+      // 6.16: a domain just published into is the one a reader is most likely
+      // to want back, and this list is the thing the Worldline route got
+      // wrong by being a frozen snapshot. Re-read rather than appended to
+      // locally, so the screen shows what the chain says.
+      void loadMyDomains();
       successBox.hidden = false;
       successBox.textContent = newClaimNotice;
       clearAfterPublish();
@@ -5510,6 +5769,7 @@ if (HolochainConnection.isHosted()) {
       // reaches without visiting the taxonomy tab. Both connect paths
       // load it, or the picker is empty on exactly the path that ships.
       void loadTaxonomy().catch(() => { /* tab shows its own empty state */ });
+      void loadMyDomains();
     } catch (err) {
       hostedConnectError = err instanceof Error ? err.message : String(err);
       render();
