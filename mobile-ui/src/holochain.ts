@@ -291,6 +291,17 @@ export interface DecodedRecord<T> {
   entry: T;
 }
 
+/** One entry's raw msgpack bytes, decoded.
+ *
+ *  Exported so `main.ts` can read an entry whose TYPE it learned from the
+ *  action rather than from the bytes — see `ENTRY_KINDS` there, and
+ *  `check-entry-type-confusion.mjs` for why the type must not be inferred
+ *  from the fields. Kept here, beside `decodeRecords`, so the msgpack import
+ *  stays at this boundary and no screen reaches for it directly. */
+export function decodeEntry(bytes: Uint8Array): any {
+  return decode(bytes);
+}
+
 export function decodeRecords<T>(records: any[]): DecodedRecord<T>[] {
   const out: DecodedRecord<T>[] = [];
   for (const record of records) {

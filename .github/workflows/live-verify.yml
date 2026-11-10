@@ -240,6 +240,18 @@ jobs:
       - name: injection-ledger — no recorded red names a check that has gone
         run: node scripts/injection-ledger/ledger.mjs verify
 
+      # The client turns an action's `entry_index` into a word a reader sees —
+      # *Claim*, *Critique* — and that index is POSITION-INDEXED into the
+      # integrity zome's `EntryTypes`. Insert a variant in the middle and every
+      # index after it shifts, so the UI labels a Critique as an Evidence,
+      # silently, because nothing about a number looks wrong. `LinkTypes` own
+      # comment forbids mid-enum insertion for the same reason; nothing
+      # enforced it for entry types, and nothing connected the Rust order to
+      # the TypeScript map at all. Watched failing: one inserted variant
+      # mislabels ten indices and this exits 1.
+      - name: entry-index-map — the client names the entry type the zome committed
+        run: node scripts/check-entry-index-map.mjs
+
       # `npm ci` rather than `npm install`, so a run verifies the dependency
       # set that is actually committed.
       - name: Install and build the notes service

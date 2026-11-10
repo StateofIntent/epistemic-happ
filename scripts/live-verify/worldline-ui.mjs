@@ -66,6 +66,9 @@ const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
 const PREVIEW_PORT = 4186;
 const DOMAIN = `Worldline${Date.now()}`;
+// Named so §4 can assert a record is shown BY ITS OWN TEXT rather than by a
+// count — see that section's note on the check it replaced.
+const CLAIM_TEXT = 'Loaded carries reduce recurrence';
 
 const log = (...a) => console.log(...a);
 let failures = 0;
@@ -255,11 +258,75 @@ async function main() {
       Array.isArray(emptyForNoTrace));
 
     log('\n=== 4. A hint can be checked against the chain itself ===');
+    // THIS SECTION'S CHECK USED TO CERTIFY THE DEFECT IT WAS NAMED AFTER, and
+    // that is why open-work 6.17 reached a pilot participant instead of CI. It
+    // read:
+    //
+    //   [check] "sample_period opens the window's real records (got X)"
+    //           with the predicate  /\d+ record/.test(X)
+    //
+    // — written here WITHOUT the literal call shape on purpose:
+    // `check-harness-counts.mjs` counts call sites by regex over the opening
+    // of a labelled call, and a
+    // commented-out example is indistinguishable from a real one to it. The
+    // first draft of this comment quoted the old line verbatim and pushed the
+    // stated count to 26 against 25 that actually run, which is the same
+    // class of defect as everything else in this section.
+    //
+    // A label about OPENING RECORDS over a predicate that only required a
+    // digit next to the word "record" — and the screen it passed on showed a
+    // COUNT and nothing else, because `samplePeriod` fetched the records,
+    // stored `records.length`, and discarded them. The check was green for as
+    // long as the defect existed, which is the worst available outcome for a
+    // gate: it occupied the place where the real assertion belonged.
+    //
+    // What it asserts now is that the records themselves are on screen.
     await page.locator('[data-testid="period-sample"]').first().click();
     await page.waitForTimeout(2500);
-    const sampleText = await page.locator('[data-testid="period-sample"]').first().innerText();
-    check(`sample_period opens the window's real records (got "${sampleText}")`,
-      /\d+ record/.test(sampleText));
+
+    // FIRST, so every absence below can fail: the container names itself.
+    const windowOpened = await page.locator('[data-testid="period-window"]').count() === 1;
+    check('clicking the window OPENS it, rather than relabelling the button', windowOpened);
+    const records = await page.locator('[data-testid="period-record"]').count();
+    check(`and the window draws the records themselves (${records} of them)`, records > 0);
+    const kinds = await page.locator('[data-testid="period-record-kind"]').allTextContents();
+    // The kind comes off the ACTION's `entry_type`, never from sniffing the
+    // decoded entry — `check-entry-type-confusion.mjs` records a live
+    // Claim-reads-as-Mew confusion, so a field-sniffing identification would
+    // mislabel the entry type this app is mostly made of.
+    check(`each record says what KIND it is (${kinds.slice(0, 5).join(' / ')})`,
+      kinds.length === records && kinds.every((k) => k.trim().length > 0));
+    // AND NOT ONE OF THEM MAY READ AS A FAILURE, which the check above cannot
+    // tell: "Entry type (unreadable)" is a non-empty string and passed it.
+    // That is exactly what the first build of 6.17 put in front of a reader —
+    // a `CapGrant` is written to an agent's own chain the moment signing
+    // credentials are authorized, its `entry_type` is the plain STRING
+    // "CapGrant" rather than an `{App:…}` object, and the code assumed the
+    // object. So the first row of the first window told the agent their own
+    // history could not be read. Found by reading this harness's OUTPUT after
+    // it exited 0, which is this repository's own standing lesson about exit
+    // codes arriving on schedule.
+    check('and none of them reports itself as unreadable or unknown',
+      kinds.every((k) => !/unreadable|unknown|undefined|NaN/i.test(k)));
+    // A chain that has authorized signing credentials HAS machinery on it, so
+    // this is a real case and not a hypothetical. It must be named in words a
+    // participant can act on rather than filtered out — Invariant 1 keeps raw
+    // history open, and hiding rows from an agent's own view of their own
+    // chain would be this UI deciding what their history contains.
+    check('machinery on the chain is named in plain words, not hidden and not jargon',
+      kinds.some((k) => /not something you wrote|written when you joined/i.test(k)));
+    const sampleText = await page.locator('[data-testid="period-window"]').first().innerText();
+    check('a claim written in this window is shown by its own text, not by a number',
+      sampleText.includes(CLAIM_TEXT));
+    // The button is now a toggle with a way back. Before 6.17 it relabelled
+    // itself to a count, so after one click the row had no control on it at
+    // all and no way to collapse what had not opened.
+    const label = await page.locator('[data-testid="period-sample"]').first().innerText();
+    check(`the button offers a way back once open (got "${label}")`, /hide/i.test(label));
+    await page.locator('[data-testid="period-sample"]').first().click();
+    await page.waitForTimeout(500);
+    check('and clicking it again closes the window',
+      await page.locator('[data-testid="period-window"]').count() === 0);
 
     log('\n=== 5. Only this agent\'s own worldline is probed ===');
     // The scoping decision, asserted rather than trusted: no field
