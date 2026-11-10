@@ -637,14 +637,32 @@ async function main() {
       const wal = hostCalls.find((c) => c.kind === 'resolve')?.detail;
       const hrl = wal?.hrl;
       check('with a WAL, not a weave url — a url carries a version and this is permanent',
-        Array.isArray(hrl) && hrl.length === 2 && hrl[0] instanceof Uint8Array);
+        Array.isArray(hrl) && hrl.length === 2
+        && hrl[0] instanceof Uint8Array && hrl[1] instanceof Uint8Array);
       check('whose DNA hash is this cell\'s real one, not the applet hash',
         Boolean(hrl) && b64(hrl[0]) === b64(dnaHash));
-      // The claim really is on the chain — a resolve for an entry that was
-      // never written would be the worst of the available bugs.
-      const back = await call('get_claims_by_domain', DOMAIN);
-      check('and the claim it points at is really on the chain',
-        JSON.stringify(back).includes(published.slice(0, 40)) || back.length >= 2);
+      // THE LOOP CLOSED, AND THE FIRST VERSION OF THIS CHECK DID NOT CLOSE IT.
+      // It read `get_claims_by_domain` and passed on
+      // `includes(published) || back.length >= 2` — and the second half is true
+      // of this domain the moment the seed claim and this one both exist, so it
+      // would have gone green for a resolve carrying ANY hash, including a
+      // wrong one. That is this file's own subject committed inside it: a check
+      // whose cheaper disjunct cannot fail.
+      //
+      // What matters is not that a claim was written — the publish handler's
+      // own success notice already says that — but that the hash handed to
+      // MOSS resolves to THIS claim. Anything else is a WAL another Tool will
+      // store permanently and never be able to open. So the target hash is
+      // resolved directly, by an independent client, with no fallback.
+      let pointsAtIt = false;
+      if (hrl && hrl[1] instanceof Uint8Array) {
+        try {
+          const claim = await call('get_claim', hrl[1]);
+          pointsAtIt = Boolean(claim) && claim.content === published;
+        } catch { pointsAtIt = false; }
+      }
+      check('and the hash handed to Moss resolves to THAT claim, read independently',
+        pointsAtIt);
       await page.close();
     }
 
