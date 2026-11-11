@@ -9,13 +9,37 @@ on the code, read [README.md](README.md) §6 instead.
 > install it yourself, read [READINESS.md](READINESS.md) instead — it is one
 > page and it answers that question directly.)*
 >
-> **`v0.3.3`, published 2026-11-08, is the one to install.** It carries
+> **`v0.3.4`, published 2026-11-11, is the one to install.** It carries
 > `protocol_version: 11` — the version this repository actually describes,
 > including SPEC.md §5.19's eighteen link validation rules, the refusal of
 > entry updates, and all five autopoiesis stages. Building from source is not
 > the only way to run the current protocol.
 >
-> **WHAT `v0.3.3` FIXES: a denominator that briefly under-counted your own
+> **WHAT `v0.3.4` FIXES, AND IT IS THE FIRST RELEASE HERE CUT BECAUSE A
+> PARTICIPANT ASKED FOR IT.** Four things, all reported in two messages on
+> 2026-11-11 by the person who published the first critique on this protocol:
+>
+> - The Worldline tab's *Show what is in this window* button **opens the
+>   records** instead of printing a count and discarding them. Their reading of
+>   the button was right and the code's was wrong (open-work 6.17).
+> - **A critique says who wrote it**, and says when the claim's own author is
+>   the one answering. The byline leads to that agent's other claims, the way a
+>   claim's byline already did. Before this, five people in one thread were five
+>   blocks of text (6.18).
+> - **Line breaks survive to the screen.** A claim or critique written as
+>   paragraphs now reads as paragraphs — on the claim, the critique, a
+>   retraction, a flag and an assessment's reasons (6.20).
+> - **The box you write in grows to fit your draft**, so something permanent can
+>   be read back before it is signed, capped so the button that signs it stays
+>   on screen (6.20).
+>
+> **AND EVERY ONE OF THOSE REACHES AN UPGRADE IN PLACE, which is new here.**
+> They are all UI, and the UI travels in the installer. The releases before this
+> one each carried their headline fix in the coordinator, which an upgraded
+> install keeps — see the upgrade note below, which for the first time is about
+> something nobody complained about rather than about the main fix.
+>
+> **WHAT `v0.3.3` FIXED: a denominator that briefly under-counted your own
 > newest commitment.** The foresight count is an enumeration of your source
 > chain, which no client can skip. On a real multi-member network that chain is
 > served by a remote authority, and the authority lags a write by about five
@@ -37,34 +61,39 @@ on the code, read [README.md](README.md) §6 instead.
 > first use rather than shipped in the installer**, so an install that never
 > opens the compose form downloads nothing.
 >
-> **`v0.3.1`, `v0.3.2` AND `v0.3.3` ARE PATCHES — so they behave unlike every
-> bump before them.** All are the SAME network as `v0.3.0`: same `0.3.x` seed,
-> same cell, same data directory, and the bundle's DNA hash is unchanged
-> (verified identical across the releases by unpacking each and hashing it).
-> So a `v0.3.0`, `v0.3.1` or `v0.3.2` install is not stranded and loses nothing
-> by upgrading.
+> **`v0.3.1`, `v0.3.2`, `v0.3.3` AND `v0.3.4` ARE PATCHES — so they behave
+> unlike every bump before them.** All are the SAME network as `v0.3.0`: same
+> `0.3.x` seed, same cell, same data directory, and the bundle's DNA hash is
+> unchanged (verified identical across the releases by unpacking each artifact
+> and hashing the DNA inside it, which is the only check that settles it). So a
+> `v0.3.0`, `v0.3.1`, `v0.3.2` or `v0.3.3` install is not stranded and loses
+> nothing by upgrading.
 >
-> **ONE THING AN UPGRADE DOES NOT GET, AND IN `v0.3.3` IT IS THE HEADLINE
-> FIX.** The app only installs the happ when there is no cell yet, so an
-> upgraded install keeps its existing coordinator — and the coordinator is
-> where `v0.3.3`'s under-count fix lives. **So upgrading in place does NOT
-> repair the count; only a fresh install carries it.** The UI half does travel,
-> so an upgraded install stops printing the word *floor* over a case that is not
-> one, while still counting from the authority's lagging view underneath. That
-> combination is worth naming rather than discovering: the wording improves and
-> the number does not. `v0.3.2`'s coordinator addition — the denominator beside
-> an assessment's past cone — is absent on an upgrade for the same reason, and
-> that line renders without its figure. Everything that lives in the UI, the
-> compose-time adversary included, reaches every install. **A fresh install gets
-> all of it, and if the foresight count is what you care about, install fresh.**
+> **WHAT AN UPGRADE STILL DOES NOT GET — AND IN `v0.3.4` IT IS NO LONGER THE
+> HEADLINE.** The app only installs the happ when there is no cell yet, so an
+> upgraded install keeps its existing coordinator, and anything living there
+> arrives only with a fresh install. In `v0.3.4` that is **one change nobody
+> asked for**: an agent attesting themselves no longer counts. The four fixes
+> above are all UI and all travel.
 >
-> **Upgrade anyway, and invitees should install `v0.3.3` rather than
+> **It was the other way round in every earlier patch, and those gaps persist
+> on an upgraded install.** `v0.3.3`'s under-count fix is in the coordinator, so
+> an install upgraded from `0.3.0`-`0.3.2` stops printing the word *floor* over
+> a case that is not one while still counting from the authority's lagging view
+> underneath — the wording improves and the number does not. `v0.3.2`'s
+> coordinator addition, the denominator beside an assessment's past cone, is
+> absent for the same reason and that line renders without its figure. **A
+> fresh install gets all of it; if the foresight count is what you care about,
+> install fresh. If what you want is the things a participant reported, an
+> upgrade is enough.**
+>
+> **Upgrade anyway, and invitees should install `v0.3.4` rather than
 > `v0.3.0`.** `v0.3.0` has no surface for publishing a promise: until item 6.7
 > the only call to `publish_constitution` was inside the founding form, so the
 > only way to promise anything was to found your own domain. The invitation
 > asks every joiner for a published constitution, and on `v0.3.0` that ask is
 > **unexecutable**. `v0.3.1` added a standalone *Your promises* section on the
-> Domains tab, and `v0.3.2` and `v0.3.3` carry it too.
+> Domains tab, and `v0.3.2`, `v0.3.3` and `v0.3.4` carry it too.
 >
 > **Download the latest release and not `v0.2.0`.** `v0.2.0` (2026-10-12)
 > carries `protocol_version: 9`; the integrity zome has forked twice since,
@@ -76,13 +105,13 @@ on the code, read [README.md](README.md) §6 instead.
 > and `0.3.x` are three separate DHTs and only peers sharing a hash gossip at
 > all. **Auto-update will not move anyone across a minor** — electron-updater
 > only offers semver-compatible releases, so anyone already running `0.1.x` or
-> `0.2.x` must download `v0.3.3` by hand. They keep their old data directory;
+> `0.2.x` must download `v0.3.4` by hand. They keep their old data directory;
 > the versions install side by side.
 >
 > **A PATCH is the opposite case, and `v0.3.1` was the first one.** Within
 > `0.3.x` the network, the seed and the data directory are identical, so
 > auto-update *does* offer a newer patch to an older `0.3.x` install — it
-> offered `v0.3.1` to `v0.3.0`, and offers `v0.3.3` to all three — and the upgrade
+> offered `v0.3.1` to `v0.3.0`, and offers `v0.3.4` to all four — and the upgrade
 > happens in place, keeping the conductor, the keystore and the agent key.
 > One thing it does not carry: the app installs the hApp only when the app id
 > is absent, so an upgraded install runs the new UI against the
@@ -127,6 +156,13 @@ on the code, read [README.md](README.md) §6 instead.
 > would have looked at. The three failures were all the same shape: the version was
 > bumped where the build reads it and nowhere a person reads it. **The fix
 > that worked was treating this paragraph as a step.**
+>
+> **NOR A SIXTH TIME, ON 2026-11-11.** `grep -rn '0\.3\.3'` across the same four
+> files returned **eleven** references — ten here and one in the invitation —
+> against the single headline anybody would have checked. Six of them are
+> history and were kept as history (*FIXES* became *FIXED*); the five that are
+> instructions were followed, because naming a version and following it are
+> different edits and this file has the scar to prove it.
 
 ## Running two installs side by side (for release step 3's "against that build")
 
