@@ -48,11 +48,21 @@ MERGE.**
 
 **LATER ON 2026-11-11 THE SAME PARTICIPANT REPLIED AGAIN, AND THREE MORE ROWS
 CAME OUT OF ONE MESSAGE: 6.18, 6.19, 6.20.** Two are BUILT and one is
-recorded. **Nothing of mine is merged** — this work sits on
-`fix/a-thread-says-who-is-speaking`, stacked on PR #461 (the checkpoint
-above), and waits on the author's word like every other. The suite is now
-**72 harnesses, 1,708 `check()` call sites**; `docs/open-work.md` is **101
-rows**.
+recorded. **BOTH PRs ARE MERGED — #461 then #462, in that order and on the
+author's explicit word, `main` at `6a53d8d`** (#462 was stacked on #461, so
+merging it first would have left the checkpoint a no-op PR to close by hand).
+All seven checks were green on #462, `partition-rejoin` included, and the `ui`
+job's own LOG was read for the new harness's PASS lines rather than the tick
+being trusted — which is row 1.29's lesson applied to the commit that adds a
+harness. The suite is now **72 harnesses, 1,708 `check()` call sites**;
+`docs/open-work.md` is **101 rows**.
+
+**AND THE ONLY THING LEFT ON THIS IS A RELEASE.** 6.17, 6.18 and 6.20 are all
+UI-only, so `main` does nothing for the participant who found them: the fix
+reaches them when a **0.3.x patch** ships from the desktop repository, and it
+must stay on 0.3.x because the always-on pilot node's network seed carries the
+desktop's MINOR version. That release is what the reply of 2026-11-11
+promised, and it is the debt at the top of this block.
 
 > **6.18 — a critique had no byline.** The entry has carried `author` since
 > the integrity zome was written; the claim card above the panel and the
