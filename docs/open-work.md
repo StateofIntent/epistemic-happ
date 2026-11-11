@@ -24,9 +24,21 @@ third-party.
 
 **CHECKPOINT, 2026-11-11 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
 IS OLDER; where they disagree with this block, this block wins.** `main` is at
-`7aa19b1`, the working tree is clean, nothing is in flight — no open PR of
+`a59f187`, the working tree is clean, nothing is in flight — no open PR of
 mine, no CI run in progress, nothing half-written. **#350 stays HELD — DO NOT
 MERGE.**
+
+> **ONE THING IS OWED TO SOMEBODY OUTSIDE THIS REPOSITORY, AND IT IS THE ONLY
+> SUCH DEBT ON THE LIST: when a release ships, TELL KUPUKUPU.** The reply sent
+> 2026-11-11 said *"it'll reach you in the next build — I'll tell you when
+> that's out rather than have you keep checking."* 6.17's fix is UI-only, so
+> landing on `main` does nothing for somebody running an installed build. This
+> is the opposite of every other outreach line here, which all read *do not
+> chase*: this one is **chase once, when there is something true to say.**
+> **Two questions to them are also outstanding — do NOT re-ask.** Their answer
+> decides whether the *"unable to see your full critique"* half of their report
+> is 6.17 or a separate defect; critique content renders in full
+> (`main.ts:3345`), so it is one or the other.
 
 **FOUR PRs MERGED 2026-11-10, each on the author's explicit word, all seven
 checks green on every one.** The suite is **71 harnesses, 1,671 `check()` call
@@ -38,12 +50,48 @@ sites**; `docs/open-work.md` is **98 rows**.
 | **#456** `58b1ce7` | **6.14's `[M]` BUILT, both sides** | a retraction can name what replaced it, and a reader can follow it. 36 checks. The `[D]` on entry order is untouched and now *said on screen* |
 | **#457** `1777fe9` | **1.21's recording half BUILT** | `scripts/injection-ledger/ledger.mjs` — which CHECK went red, resolved from a run's own `FAIL:` labels by **string equality** |
 | **#458** `7aa19b1` | **3.2 MEASURED** | the answer is **negative**, and that is the result |
+| **#459** `a74f3bd` | — | this checkpoint, and row 1.21's stale sentence corrected |
+| **#460** `a59f187` | **6.17 `[M]` BUILT** | **a pilot participant read a button correctly and the code did not** — Worldline's *"Show what is in this window"* showed a count and opened nothing, because `samplePeriod` discarded the records one line after fetching them. 25 checks, and a new gate |
 
 **ONE ROW OPENED: 1.29** — nine harnesses carrying 210 assertions that **no
 workflow runs**, and not one of them declares itself manual the way the six
 real experiments here do. `check-harness-counts.mjs` structurally cannot catch
 it: it compares the README's index claims against what EXISTS, never against
 what any workflow INVOKES.
+
+### 6.17 IS WORTH READING FOR HOW IT WAS MISSED, NOT FOR WHAT IT WAS
+
+**THE HARNESS CERTIFIED THE DEFECT FOR AS LONG AS IT EXISTED.**
+`worldline-ui.mjs` §4 asserted ``sample_period opens the window's real
+records`` with the predicate ``/\d+ record/.test(sampleText)`` — a label
+naming the missing feature, over a test that only required a digit beside the
+word *record*. It was green on a runner throughout. **That is the
+mislabelled-check class in its worst costume, and it is why this reached a
+participant instead of CI.** When a check's label describes a capability,
+assert the capability.
+
+**A SECOND DEFECT CAME FROM READING THE OUTPUT AFTER IT EXITED 0.** A
+`CapGrant` sits on every chain that has authorized signing credentials, and its
+`entry_type` is the plain STRING `"CapGrant"` rather than an `{App:…}` object.
+The first build assumed the object, so the first row of the first window told
+the agent their own history could not be read — and the new check passed it,
+because *"Entry type (unreadable)"* is a non-empty string. Machinery is now
+named in plain words and still shown: Invariant 1 keeps raw history open, and
+hiding rows from an agent's view of their own chain would be this UI deciding
+what their history contains.
+
+**NEW GATE: `scripts/check-entry-index-map.mjs`.** The client turns an action's
+`entry_index` into a word a reader sees, and that index is POSITION-INDEXED
+into the integrity zome's `EntryTypes` — the hazard `LinkTypes`' own comment
+forbids, which nothing enforced for entry types and nothing connected to the
+TypeScript map. Watched failing: one variant inserted mid-enum mislabels **ten**
+indices, exit 1.
+
+**AND THE COUNTER READS COMMENTS AS CODE.** `check-harness-counts.mjs` matches
+a labelled call by regex, so a commented-out example counts as a call site —
+then the comment written to explain *that* contained one and was counted
+itself. Stated count, call sites and executed checks now all agree at 25. Do
+not put the literal call shape in a comment.
 
 ### THE FIRST THING TO DO NEXT, AND IT IS A CLAIM OF MINE THAT WENT STALE IN A DAY
 
@@ -76,7 +124,7 @@ do not count and are deliberately absent from the ledger.
 Everything else carrying `M` is blocked on §4's bump, on a `[D]`, or on
 another row.
 
-### FOUR DECISIONS WAITING ON THE AUTHOR, AND NONE OF THEM IS WORK
+### FIVE DECISIONS WAITING ON THE AUTHOR, AND NONE OF THEM IS WORK
 
 - **1.29** — per harness: register it, or declare it manual with the reason.
 - **6.14's validation gap.** `validate_retraction` **permits a retraction
@@ -92,6 +140,14 @@ another row.
   takes the strict reading — changing what every existing conductance read
   returns, explicitly not taken on 2026-10-19 — or the asymmetry is recorded
   as deliberate.
+- **6.17's `[D]` — should `sample_period` honour `domain_tag`?** Measured: it
+  filters the chain on TIME ALONE, so two boundaries sharing a window return
+  byte-identical results matching neither's `entry_count`. That is arguably
+  the point — the chain's raw answer is what makes it a CHECK on the trace
+  rather than a repeat of it — so the coordinator was left alone and the
+  window explains the difference on screen. Changing it needs no DNA bump,
+  which makes it cheap enough to be worth deciding deliberately rather than
+  by default.
 - **7.18 / 7.19** — both written; publishing is a decision.
 
 ### THREE OPERATIONAL TRAPS THIS SESSION PAID FOR
