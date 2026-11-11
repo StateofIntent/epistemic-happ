@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-six browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-seven browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -424,6 +424,22 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/own-critiques.mjs
+
+      # The same participant, the following day, on the panel above: "it
+      # doesnt show if an author responded, who the other person is. Just
+      # text." Three measured defects behind that sentence — a critique with
+      # no byline, every line break in a permanent entry collapsed by CSS,
+      # and a three-line box to compose one in — and each check here has a
+      # flat control beside it, because "tall because a break survived" and
+      # "tall because the screen is narrow" are the same measurement without
+      # one. The fixture publishes the SAME WORDS twice, once with blank
+      # lines and once with spaces, and the three critiques are written by
+      # two agents in stranger-author-stranger order so that a byline taken
+      # from whoever is logged in, and a thread grouped by person, both red.
+      - name: reading-a-thread — who wrote this, and is it shaped the way they wrote it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/reading-a-thread.mjs
 
       # The pilot walked into this one: an author retracted a claim because
       # somebody changed their mind, republished it narrower, and had nowhere

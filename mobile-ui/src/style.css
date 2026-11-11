@@ -319,6 +319,41 @@ button:disabled { opacity: 0.6; cursor: default; }
   line-height: 1.4;
 }
 
+/* --- Somebody else's prose, as they wrote it -------------------------
+ *
+ * OPEN-WORK 6.20, FIRST HALF. Reported by the pilot's first publisher,
+ * 2026-11-11: "formatting, right now reading such a blurb becomes
+ * unpleasant." Measured rather than taken on trust — `white-space`
+ * appeared three times in this stylesheet before this rule and not once on
+ * a surface that renders a permanent entry's free text, so every paragraph
+ * break anybody typed into a claim or a critique was collapsed into a
+ * space. The text was all there; the shape of it was not.
+ *
+ * `.period-record-content` already carried this rule, added hours earlier
+ * for 6.17 and with this same participant's name on the comment — which is
+ * the useful detail: the ONE surface built after the complaint got it, and
+ * the five that predate it went on collapsing. A per-class rule was always
+ * going to drift that way, so this is a list of every surface that renders
+ * somebody's own words, not just the two that were complained about.
+ *
+ * NOT `pre`, and the difference matters on a 390px screen: `pre-wrap`
+ * keeps the author's line breaks and still wraps long lines, where `pre`
+ * would hand back the sideways scroll `layout-fits.mjs` exists to refuse.
+ * `overflow-wrap: anywhere` is already inherited from `html, body`.
+ *
+ * NOT markdown, and that is a decision rather than an omission: rendering
+ * `*` and `#` would mean a claim's bytes on the DHT and the claim on
+ * screen are no longer the same text, and every reader's client would have
+ * to agree about the dialect for a permanent entry to read the same way
+ * twice. Line breaks are what the author typed. */
+.claim-content,
+.critique-content,
+.retraction-banner,
+.antibody-flag,
+[data-testid="assessment-rationale"] {
+  white-space: pre-wrap;
+}
+
 .claim-meta {
   color: var(--text-dim);
   font-size: 0.8rem;
@@ -364,8 +399,62 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .critique-item p { margin: 0.25rem 0 0; }
 
+/* The other half of "reading such a blurb becomes unpleasant": the critique
+   content had no line-height of its own, so it rendered at the browser's
+   `normal` — tighter than the claim it is objecting to, two inches above it
+   on the same card. Stated in a number for the same reason `.claim-content`
+   states one, and the number is the one the longer prose surfaces in this
+   file already use. */
+.critique-content { line-height: 1.45; }
+
+/* The byline, open-work 6.18. Styled as the assessment panel's assessor is,
+   deliberately and to the pixel: the two render the same object — a person
+   who put their key on something — one above the other on the same card, and
+   making one of them louder would say the protocol weights them differently.
+   It does not.
+
+   A BYLINE IS NOT A BADGE, which is the whole of why this is dim and small.
+   `--text-dim` at 0.7rem reads as attribution; the same key in accent colour
+   at the weight of the critique mode beside it would read as a credential,
+   which is the comparative mark on an identity Invariant #1 refuses. */
+.critique-author,
+.critique-relation {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-left: 0.5rem;
+}
+
+/* `you, the claim's author` has to be legible as a fact about this row and
+   not as a rank, so it gets the enclosing box every other stated fact in
+   this UI gets and no colour of its own. */
+.critique-relation {
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
 .critique-form { margin-top: 0.8rem; }
 .critique-form select { margin-bottom: 0.5rem; }
+
+/* --- The two boxes that write something permanent -------------------
+ *
+ * OPEN-WORK 6.20, and the floor rather than the mechanism: `fitProseBox` in
+ * main.ts grows every textarea to fit what is in it, so this is what an
+ * EMPTY box looks like. Five rem — the global default — is about three
+ * lines, which is what a claim and a critique were composed in.
+ *
+ * Only these two, and the restraint is the point: the flag rationale, the
+ * evidence fields and the founding form all write permanent entries too,
+ * but none of them is a paragraph of argument and `.founding-form` already
+ * sets a SMALLER floor on purpose, because that form is nine fields deep
+ * and a tall box in it pushes the rest off a phone screen. The growth rule
+ * in main.ts is app-wide and covers all of them; this is a starting size
+ * for the two surfaces where the first thing anybody does is write prose. */
+.claim-form textarea,
+.critique-form textarea {
+  min-height: 8.5rem;
+  line-height: 1.45;
+}
 
 /* --- Past-cone state (open-work 6.1) ---------------------------------
    Deliberately the SAME weight whether a cone was recorded or not. The

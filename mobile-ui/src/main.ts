@@ -1023,6 +1023,60 @@ function captureFieldValues(): () => void {
   };
 }
 
+// --- A box you can read back what you wrote in ------------------------
+//
+// OPEN-WORK 6.20, SECOND HALF, and the report is one sentence long: "The
+// window to write in could be made bigger, right now wanting to read back
+// (as it is permanent) is difficult."
+//
+// THAT LAST CLAUSE IS THE WHOLE ARGUMENT. Every box in this app writes
+// something that cannot be edited afterwards, so re-reading a draft is not a
+// convenience here the way it is in a chat window — it is the last moment the
+// text is still free to change, which is the same reason open-work 6.10
+// exists. The stylesheet gave every textarea `min-height: 5rem`: about three
+// lines, from which a five-paragraph critique is read three lines at a time
+// through a scroll bar.
+//
+// IT GROWS RATHER THAN BEING TALLER. A box fixed at twenty lines pushes the
+// submit button below the fold of a 390x844 phone before anything is typed,
+// which is the defect `layout-fits.mjs` exists for wearing the other shoe. So
+// the height follows the content, with a cap — past the cap the box scrolls,
+// because a draft long enough to fill half the screen must not be able to
+// push the button that commits it out of reach.
+const PROSE_BOX_CAP = 0.55;
+
+function fitProseBox(area: HTMLTextAreaElement) {
+  // A box that is not laid out has no scrollHeight worth reading: a hidden
+  // form would otherwise be pinned to 0 and come back the wrong size.
+  if (!area.offsetParent) return;
+  // `auto` FIRST so the box can shrink again — without it `scrollHeight`
+  // never falls below the height already set, and deleting a paragraph
+  // leaves the hole it was in.
+  area.style.height = 'auto';
+  const cap = Math.max(120, Math.round(window.innerHeight * PROSE_BOX_CAP));
+  const wanted = area.scrollHeight;
+  area.style.height = `${Math.min(wanted, cap)}px`;
+  area.style.overflowY = wanted > cap ? 'auto' : 'hidden';
+}
+
+/** Every textarea in the app, after a rebuild.
+ *
+ * App-wide rather than per form, and for the same reason `captureFieldValues`
+ * is: these forms are built in eleven places and a rule that has to be
+ * remembered at each of them is a rule that will be missing from the twelfth.
+ * Nothing here reads which form it is in. */
+function fitProseBoxes() {
+  for (const area of app.querySelectorAll<HTMLTextAreaElement>('textarea')) fitProseBox(area);
+}
+
+// Delegated, and installed ONCE. `render()` rebuilds the whole document on
+// every state change, so a listener attached per element would be re-attached
+// a few hundred times a session; this one survives every rebuild because it
+// is on the container the rebuild happens inside.
+app.addEventListener('input', (e) => {
+  if (e.target instanceof HTMLTextAreaElement) fitProseBox(e.target);
+});
+
 function render() {
   const restoreFocus = captureFocus();
   // AFTER the focus capture and restored BEFORE it, so the caret lands in a
@@ -1061,6 +1115,10 @@ function render() {
   } finally {
     restoreValues();
     restoreFocus();
+    // AFTER the values are back, never before: the box is sized to what is
+    // in it, and a draft restored into a rebuilt form is exactly the case
+    // where the size would otherwise be a frame behind its contents.
+    fitProseBoxes();
   }
 }
 
@@ -3271,7 +3329,15 @@ function renderAssessmentPanel(claim: DecodedRecord<Claim>): HTMLElement | null 
     by.dataset.testid = 'assessment-assessor';
     by.textContent = short(assessment.entry.assessor);
     by.title = 'Read this agent’s other claims';
-    by.onclick = () => { void loadClaimsByAuthor(b64(assessment.entry.assessor)); };
+    // THE TAB SWITCH WAS MISSING HERE, found 2026-11-11 while giving the
+    // critique beside it the same byline (6.18). This read the assessor's
+    // claims into a tab the reader was not on, so the button looked inert
+    // and the reader was left to find By Author themselves — the claim
+    // card's byline has set both lines since it was written.
+    by.onclick = () => {
+      activeTab = 'by-author';
+      void loadClaimsByAuthor(b64(assessment.entry.assessor));
+    };
     item.appendChild(by);
 
     if (assessment.entry.rationale) {
@@ -3348,6 +3414,66 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       modeLabel.className = 'critique-mode';
       modeLabel.textContent = critique.entry.critique_mode;
       item.appendChild(modeLabel);
+
+      // WHO WROTE IT — open-work 6.18, and the words are the pilot's first
+      // publisher's own, 2026-11-11: "on the app you see now a big blurb of
+      // text. It doesnt show if an author responded, who the other person is.
+      // Just text. If 5 people would enter, you wouldnt know if you're
+      // speaking to the same or others."
+      //
+      // THE ENTRY HAS CARRIED `author` ALL ALONG, and the assessment panel
+      // rendered sixty lines below this one has had exactly this byline since
+      // 6.4's read half shipped. A critique was the one thing in this UI that
+      // arrived anonymous, on the one screen where the whole point is that
+      // somebody can be held to what they said.
+      //
+      // A BYLINE, NOT A TALLY, which is the line Invariant #1 draws and the
+      // reason the By Author tab shows no count per agent: naming who said
+      // something is attribution, counting how often they say it is a score.
+      // Nothing here is grouped, ordered or totalled by author — the list
+      // stays in the order the DHT returned it, and `reading-a-thread.mjs`
+      // asserts that against a fixture whose wire order is deliberately NOT
+      // author-grouped.
+      const by = document.createElement('button');
+      by.className = 'link-button critique-author';
+      by.dataset.testid = 'critique-author';
+      by.textContent = short(critique.entry.author);
+      by.title = 'Read this agent’s other claims';
+      by.onclick = () => {
+        // The tab switch is part of the affordance rather than a nicety: a
+        // read that lands on a tab the reader is not looking at is a button
+        // that appears to do nothing. Same two lines as the claim card's
+        // byline, for the same reason.
+        activeTab = 'by-author';
+        void loadClaimsByAuthor(b64(critique.entry.author));
+      };
+      item.appendChild(by);
+
+      // AND WHETHER THIS IS THE CLAIM'S AUTHOR ANSWERING, which is the first
+      // half of what they asked for and is not derivable from a shortened key
+      // by a reader who has not memorised one. Stated only when it is TRUE of
+      // this critique; an unmarked row is a stranger's objection, which is
+      // what makes the marked one say anything at all.
+      //
+      // "the claim’s author" is reachable today only because an author can
+      // critique their own claim — `validate_critique`'s author rule is
+      // anti-spoofing, not anti-self. Replying to the critique itself is
+      // open-work 6.19 and is NOT what this line claims: it says who wrote
+      // this, never what it is attached to.
+      const relations: string[] = [];
+      if (connection && b64(critique.entry.author) === b64(connection.myAgentPubKey)) {
+        relations.push('you');
+      }
+      if (b64(critique.entry.author) === b64(claim.entry.author)) {
+        relations.push('the claim’s author');
+      }
+      if (relations.length > 0) {
+        const rel = document.createElement('span');
+        rel.className = 'critique-relation';
+        rel.dataset.testid = 'critique-relation';
+        rel.textContent = relations.join(', ');
+        item.appendChild(rel);
+      }
 
       // Conductance renders as a visual attribute and deliberately does
       // NOT reorder the list. It scores a SynapticLink — a critique's
@@ -3429,7 +3555,16 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
         const note = renderConceptNote('conductance');
         if (note) item.appendChild(note);
       }
+      // AS IT WAS WRITTEN — open-work 6.20. `textContent` has always put the
+      // whole string on screen, and the stylesheet then collapsed every line
+      // break in it, so a critique written as three paragraphs arrived as one
+      // run of prose. The class is new because this element had none at all
+      // and `.critique-item p` cannot say it: the cone and unseen lines below
+      // are the app's own sentences, not the author's, and they are not
+      // whitespace-significant.
       const text = document.createElement('p');
+      text.className = 'critique-content';
+      text.dataset.testid = 'critique-content';
       text.textContent = critique.entry.content;
       item.appendChild(text);
       // AFTER the critique's own words, never before them. The cone is
