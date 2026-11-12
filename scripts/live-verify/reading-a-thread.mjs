@@ -1022,30 +1022,38 @@ async function main() {
     await replyTo(agent1, hiddenOnWire[0].entryHash, HIDDEN_REPLY);
     log(`the fold will hide ${hiddenOnWire.length} critiques, one of which now has a reply`);
 
-    // RELOADED RATHER THAN RE-OPENED, and the first attempt here is worth
-    // recording because it looked like a product bug and is not one:
-    // collapsing the panel and opening it again renders the CACHED three.
-    // `loadCritiques` is guarded by `if (!critiquesByClaim.has(key))` in the
-    // toggle handler, so a critique published after a panel was first opened
-    // does not appear in it for the rest of the session. That is pre-existing
-    // and out of this row's scope — noted in 6.22 rather than fixed here —
-    // but it means only a full reload measures what a reader arriving fresh
-    // would see, which is the state this row is about.
-    await page.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: /connect/i }).first().click();
-    await page.waitForSelector('[data-testid="friction-meter"]', { timeout: 20000 });
-    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN);
-    await page.getByRole('button', { name: 'Load claims' }).first().click();
-    await page.waitForTimeout(2500);
+    // CLOSED AND RE-OPENED, WHICH ROW 6.24 MADE SUFFICIENT.
+    //
+    // This had to be a full page reload, and the comment here recorded why:
+    // `loadCritiques` was guarded by `if (!critiquesByClaim.has(key))`, so a
+    // critique published after a panel was first opened stayed invisible for
+    // the rest of the session and collapsing the panel changed nothing. 6.24
+    // dropped that guard, so the gesture a reader would actually make now
+    // works — and this harness no longer has to reload to see the truth.
+    //
+    // THE CHANGE OF GESTURE IS ITSELF THE ASSERTION. A reload would still pass
+    // against the old caching code; a close-and-re-open would not, which is
+    // why 6.24's check below is this one rather than an extra.
     const sixIdx = await page.evaluate((needle) => [...document.querySelectorAll('.claim-card')]
       .findIndex((c) => c.textContent.includes(needle)), CLAIM_BROKEN);
     if (sixIdx < 0) {
-      log('  SETUP FAILED: the critiqued claim did not render after the reload.');
+      log('  SETUP FAILED: the critiqued claim is not on screen.');
       process.exit(1);
     }
-    await page.locator('.claim-card').nth(sixIdx)
-      .locator('[data-testid="toggle-critiques"]').click();
+    const sixCard = page.locator('.claim-card').nth(sixIdx);
+    // Collapse, then re-open. No reload anywhere.
+    await sixCard.locator('[data-testid="toggle-critiques"]').click();
+    await page.waitForTimeout(500);
+    await sixCard.locator('[data-testid="toggle-critiques"]').click();
     await page.waitForTimeout(4000);
+
+    check('ROW 6.24: closing and re-opening the panel picks up critiques published '
+      + 'since it was first opened — no page reload, which is the gesture a reader '
+      + 'would actually make',
+      (await page.locator('.critique-item:not(.critique-reply)').count()) > 3);
+    check('CONTROL: and the panel is not claiming to be stale, since the re-read '
+      + 'succeeded — otherwise the count above could be the OLD list beside a notice',
+      (await page.locator('[data-testid="critiques-stale"]').count()) === 0);
 
     const visible = await page.locator('.critique-item:not(.critique-reply)').count();
     check(`the long list is capped — ${visible} critiques on screen of 6 published`,
