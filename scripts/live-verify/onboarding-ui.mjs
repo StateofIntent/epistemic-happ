@@ -16,6 +16,32 @@
 // critique with its mode and content, and the protocol's own discourse
 // drift warning. Only explanations and routine domain detail are staged.
 //
+// ONE ASSERTION HERE WAS RE-EXPRESSED BY ROW 6.22, AND THE REASONING IS
+// RECORDED BECAUSE RELAXING A GATE TO FIT NEW CODE IS EXACTLY WHAT THIS
+// FILE EXISTS TO CATCH. It read `.critique-item` count === 5 against a
+// fixture that seeds five. 6.22 caps a long list at four and renders a
+// control naming the rest, so that count now reads four and this harness
+// went red on a runner — which is the gate doing its job.
+//
+// IT IS NOT A §4.4 VIOLATION, read against the section's own words rather
+// than against this harness's proxy for them. §4.4 requires that "claim
+// text, its critiques, their CritiqueModes, authorship and ordering should
+// render identically for every viewer" and permits "navigation, layout,
+// information density, onboarding, theming and progressive disclosure" to
+// adapt freely. What it forbids is a PER-USER presentation, because that
+// "breaks this silently — the cross-check degrades and nobody can see that
+// it has". The fold is identical for every viewer, says on screen exactly
+// what it is holding back, and is undone by the reader rather than by the
+// client. Nothing is keyed to who is looking.
+//
+// AND THE FOLD MUST APPLY TO A NEWCOMER FOR THE SAME REASON: exempting
+// newcomers from it would make the artifact render differently per viewer,
+// which is the actual violation. So the assertion below is NOT "the fold
+// is off for newcomers" — it is that nothing is held back silently and
+// everything is one click away, which is strictly more specific than the
+// count it replaces. A client that dropped a critique, hid one without
+// saying so, or staged one on the basis of being a newcomer still reds.
+//
 // Prereqs: scripts/sandbox.sh start (clean), and `npx vite build` in
 // mobile-ui/.
 // ============================================================================
@@ -205,8 +231,32 @@ async function main() {
 
     await page.getByRole('button', { name: /view \/ add critiques/i }).first().click();
     await page.waitForSelector('.critique-item', { timeout: 20000 });
-    check('every critique renders for a newcomer',
-      await page.locator('.critique-item').count() === 5);
+    // ROW 6.22 — see the header. Five are seeded; four render and the control
+    // names the fifth.
+    // WRITTEN AGAINST THE INVARIANT, NOT AGAINST 6.22's THRESHOLD. An earlier
+    // draft asserted "four render and the control names one more", which
+    // pinned this §4.4 gate to a number that belongs to a different row — so
+    // changing the fold threshold would have reddened a harness that has no
+    // opinion about it. Either shape is legitimate here; what is never
+    // legitimate is a critique held back without the screen saying so.
+    const SEEDED = 5;
+    const shownToNewcomer = await page.locator('.critique-item:not(.critique-reply)').count();
+    const foldCount = await page.locator('[data-testid="critique-fold-toggle"]').count();
+    const foldLabel = foldCount
+      ? (await page.locator('[data-testid="critique-fold-toggle"]').first().innerText()).trim()
+      : '';
+    const held = SEEDED - shownToNewcomer;
+    check(`nothing is held back SILENTLY from a newcomer — ${shownToNewcomer} of ${SEEDED} `
+      + `critiques render${held > 0 ? ` and the control names the other ${held} ("${foldLabel}")` : ' with nothing folded'}`,
+      held === 0
+        ? foldCount === 0
+        : foldCount === 1 && new RegExp(`\\b${held}\\b`).test(foldLabel) && /critique/i.test(foldLabel));
+    if (foldCount) {
+      await page.locator('[data-testid="critique-fold-toggle"]').first().click();
+      await page.waitForTimeout(500);
+    }
+    check('and every critique is reachable, with nothing gated on being a newcomer',
+      await page.locator('.critique-item:not(.critique-reply)').count() === SEEDED);
     // Queued behind whatever is still undismissed on this screen, so
     // the assertion is that at most one note shows anywhere — the
     // invariant that matters — rather than which one won the race.
