@@ -607,9 +607,41 @@ async function main() {
     check(`the claim's own author answering says so, rather than leaving a reader to `
       + `recognise a shortened key (${authorRel})`,
       typeof authorRel === 'string' && /the claim’s author/.test(authorRel));
-    check('CONTROL: and the stranger\'s rows carry NO such marker — otherwise the check '
-      + 'above passes on a screen that labels everybody',
-      (await relationFor(CRIT_ONE)) === null && (await relationFor(CRIT_PARA)) === null);
+    // RE-EXPRESSED BY ROW 6.23, NOT RELAXED. This read `relationFor(...) === null`
+    // for both stranger rows — no relation marker at all. 6.23 gives the
+    // stranger's SECOND critique a marker of its own ("same author as an
+    // earlier critique"), which is a true statement about a different thing,
+    // so the blanket null is no longer the right assertion.
+    //
+    // The control's PURPOSE is unchanged and is what the test now says
+    // directly: the claim's-author marker must not be applied to everybody.
+    // A screen that labelled every row "the claim's author" still reds here.
+    const strangerOne = await relationFor(CRIT_ONE);
+    const strangerPara = await relationFor(CRIT_PARA);
+    check('CONTROL: and NEITHER stranger row claims to be the claim\'s author — '
+      + 'otherwise the check above passes on a screen that labels everybody '
+      + `(${JSON.stringify(strangerPara)}, ${JSON.stringify(strangerOne)})`,
+      !/the claim’s author/.test(strangerOne ?? '')
+      && !/the claim’s author/.test(strangerPara ?? ''));
+
+    // ---- 1b. Is this one person or several? (open-work 6.23) -------------
+    //
+    // THE FIXTURE IS ALREADY SHAPED FOR THIS and was not changed to suit it:
+    // agent2 wrote the FIRST and THIRD critiques, agent1 the second. So the
+    // repeat is deliberately NON-ADJACENT, which is the case an "above"-only
+    // marker would miss and the case a reader cannot answer from two
+    // twelve-character keys.
+    check('a critique by someone who already objected says so — which is the half of '
+      + '"you wouldnt know if you\'re speaking to the same or others" that a byline '
+      + `alone does not answer (${JSON.stringify(strangerOne)})`,
+      /same author as an earlier critique/.test(strangerOne ?? ''));
+    check("CONTROL: and their FIRST critique does NOT say it — the marker points "
+      + 'backwards at a repeat, so a client that marked every row would pass the '
+      + `check above (${JSON.stringify(strangerPara)})`,
+      !/same author as an earlier critique/.test(strangerPara ?? ''));
+    check('CONTROL: and the lone author\'s critique does not say it either, since '
+      + 'nobody else repeated — otherwise the marker is a constant',
+      !/same author as an earlier critique/.test((await relationFor(CRIT_AUTHOR)) ?? ''));
 
     // Invariant #1 at the view layer. The vacuity control comes FIRST.
     const byCountGrouped = [CRIT_PARA, CRIT_ONE, CRIT_AUTHOR];
