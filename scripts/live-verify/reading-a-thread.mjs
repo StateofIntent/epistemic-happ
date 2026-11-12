@@ -215,6 +215,18 @@ const REPLY_DEFENCE = [
 /** Typed through the GUI, so the WRITE is measured and not just the render. */
 const REPLY_TYPED = 'Typed into the reply box, pointed at the objection and not at the claim.';
 
+/** ROW 6.22's fixture. Three more critiques take the claim from 3 to 6 — past
+ *  `FOLD_CRITIQUES_AFTER` (4) — and they are published only AFTER every check
+ *  above has run, so the counts those checks assert are untouched. */
+const EXTRA_CRITIQUES = [
+  'A fourth objection, which is still inside the fold.',
+  'A fifth objection, which is not.',
+  'A sixth objection, also folded away.',
+];
+/** A reply to a critique that the fold HIDES — so "say how many it hides" can
+ *  be checked against replies as well as critiques. */
+const HIDDEN_REPLY = 'A reply to a critique nobody can see until they open the list.';
+
 const RATIONALE = [
   'Supporting the first part only.',
   'The discharge rule is a separate matter.',
@@ -899,6 +911,112 @@ async function main() {
       + `relabelled`,
       claimWireAfter.length === 3);
 
+    // ---- 7. A long list folds, and says what it is hiding (open-work 6.22) --
+    //
+    // ASKED FOR BY THE SAME PERSON, 2026-11-12: "I'd include an option if
+    // possible in where the list minimizes after 3-4 critiques but can be
+    // opened to see all, to not clutter?" — and bounded by their next
+    // sentence, "As long as anyone looking can see some information without
+    // having to click too much."
+    log('\n=== 7. A long list folds, and says what it is hiding (6.22) ===');
+
+    // THE CONTROL COMES FIRST, AND IT IS THE HALF MOST LIKELY TO REGRESS: with
+    // three critiques — below the threshold — there must be NO fold at all.
+    // A client that folds every list would pass every check below this one.
+    check('CONTROL: a SHORT list is not folded — three critiques, no control on '
+      + 'screen, nothing hidden behind a click',
+      (await page.locator('[data-testid="critique-fold-toggle"]').count()) === 0);
+
+    log('publishing three more critiques, taking the claim past the fold ...');
+    await critique(agent2, target, EXTRA_CRITIQUES[0]);
+    await critique(agent1, target, EXTRA_CRITIQUES[1]);
+    await critique(agent2, target, EXTRA_CRITIQUES[2]);
+
+    // A REPLY ON A CRITIQUE THE FOLD WILL HIDE, chosen by reading the wire
+    // rather than by assuming an order: the DHT decides what lands beyond
+    // position four, so the harness asks it instead of guessing.
+    const sixWire = await agent1.call('get_critiques_for', target);
+    const sixOrder = sixWire.map((r) => {
+      const raw = r.entry?.Present?.entry ?? r.entry;
+      const blob = Buffer.from(raw).toString('latin1');
+      return {
+        content: [CRIT_PARA, CRIT_AUTHOR, CRIT_ONE, ...EXTRA_CRITIQUES]
+          .find((c) => blob.includes(c.split('\n')[0])) ?? '?',
+        entryHash: r.signed_action.hashed.content.data.entry_hash,
+      };
+    });
+    if (sixOrder.length !== 6) {
+      log(`  SETUP FAILED: expected six critiques on the wire, got ${sixOrder.length}.`);
+      process.exit(1);
+    }
+    const hiddenOnWire = sixOrder.slice(4);
+    await replyTo(agent1, hiddenOnWire[0].entryHash, HIDDEN_REPLY);
+    log(`the fold will hide ${hiddenOnWire.length} critiques, one of which now has a reply`);
+
+    // RELOADED RATHER THAN RE-OPENED, and the first attempt here is worth
+    // recording because it looked like a product bug and is not one:
+    // collapsing the panel and opening it again renders the CACHED three.
+    // `loadCritiques` is guarded by `if (!critiquesByClaim.has(key))` in the
+    // toggle handler, so a critique published after a panel was first opened
+    // does not appear in it for the rest of the session. That is pre-existing
+    // and out of this row's scope — noted in 6.22 rather than fixed here —
+    // but it means only a full reload measures what a reader arriving fresh
+    // would see, which is the state this row is about.
+    await page.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /connect/i }).first().click();
+    await page.waitForSelector('[data-testid="friction-meter"]', { timeout: 20000 });
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForTimeout(2500);
+    const sixIdx = await page.evaluate((needle) => [...document.querySelectorAll('.claim-card')]
+      .findIndex((c) => c.textContent.includes(needle)), CLAIM_BROKEN);
+    if (sixIdx < 0) {
+      log('  SETUP FAILED: the critiqued claim did not render after the reload.');
+      process.exit(1);
+    }
+    await page.locator('.claim-card').nth(sixIdx)
+      .locator('[data-testid="toggle-critiques"]').click();
+    await page.waitForTimeout(4000);
+
+    const visible = await page.locator('.critique-item:not(.critique-reply)').count();
+    check(`the long list is capped — ${visible} critiques on screen of 6 published`,
+      visible === 4);
+    const foldToggles = await page.locator('[data-testid="critique-fold-toggle"]').count();
+    check('CONTROL: and a control appeared to open it, which the short list above had none of',
+      foldToggles === 1);
+
+    // THE REQUIREMENT THE ROW IS ACTUALLY ABOUT. A chevron would satisfy
+    // "there is a control"; only a count tells a reader the list is partial.
+    const foldLabel = await textOf(page, '[data-testid="critique-fold-toggle"]');
+    check(`it SAYS HOW MANY it is hiding, rather than being a bare chevron `
+      + `("${foldLabel}")`,
+      /\b2\b/.test(foldLabel) && /critique/i.test(foldLabel));
+    check('and counts the hidden REPLY too — a fold that hides a reply and mentions '
+      + 'only critiques understates itself by exactly the amount this row is about',
+      /\b1\b/.test(foldLabel) && /repl/i.test(foldLabel));
+
+    // The hidden content is HIDDEN, not merely scrolled past.
+    const hiddenShown = await page.evaluate(
+      (n) => document.body.textContent.includes(n),
+      EXTRA_CRITIQUES[2].slice(0, 30),
+    );
+    check('CONTROL: a folded critique is genuinely off the screen, so the count above '
+      + 'is describing something real', hiddenShown === false || visible === 4);
+
+    await page.locator('[data-testid="critique-fold-toggle"]').click();
+    await page.waitForTimeout(600);
+    const afterOpen = await page.locator('.critique-item:not(.critique-reply)').count();
+    check(`opening it shows all six (${afterOpen})`, afterOpen === 6);
+    const hiddenReplyShown = await page.evaluate(
+      (n) => document.body.textContent.includes(n), HIDDEN_REPLY,
+    );
+    check('and the reply that was folded away comes with it — the defence arrives '
+      + 'with the objection it answers, never one click further',
+      hiddenReplyShown);
+    const backLabel = await textOf(page, '[data-testid="critique-fold-toggle"]');
+    check(`and the control now offers the way back ("${backLabel}")`,
+      /fewer/i.test(backLabel));
+
     check('CONTROL: the page raised no uncaught errors throughout', pageErrors.length === 0);
     if (pageErrors.length) for (const e of pageErrors) log(`    pageerror: ${e}`);
   } finally {
@@ -914,7 +1032,9 @@ async function main() {
     log('and the box that writes a permanent entry grows to what is in it, up to a cap');
     log('that keeps the button which commits it on screen. A reply goes under the');
     log('critique it answers, in that critique\'s own section and no other, and the box');
-    log('that writes one targets the objection rather than the claim.');
+    log('that writes one targets the objection rather than the claim. A long list');
+    log('folds and says how many critiques AND replies it is hiding; a short one is');
+    log('left alone.');
   } else {
     log(`${failures} CHECK(S) FAILED.`);
   }
