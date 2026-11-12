@@ -540,6 +540,20 @@ const FOLD_CRITIQUES_AFTER = 4;
  * per-session choice that is never written anywhere. */
 const critiqueListExpanded = new Set<string>();
 
+/** ROW 6.24 — claims whose critique list is on screen from an EARLIER read
+ * because the most recent re-read failed, keyed by the claim's base64 entry
+ * hash.
+ *
+ * WHY THIS EXISTS AT ALL, and it is a direct consequence of 6.24's fix rather
+ * than an extra. Before that fix the list was read once and never again, so a
+ * failure could only ever happen on the FIRST open — where the panel has no
+ * list and says "Loading critiques…". Re-reading on every open introduces a
+ * case that did not exist: a read that fails while a previous answer is still
+ * on screen. Keeping that answer silently would be the exact defect 6.24 is
+ * about, one layer in — a surface that looks current and is not — so the
+ * panel says which it is. */
+const critiqueRefreshFailed = new Set<string>();
+
 /** Which critiques have their reply box open, keyed by the critique's base64
  * ACTION hash — the same per-row-open-state pattern as `unseenOpen`.
  *
@@ -2306,9 +2320,41 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
       // this gate exists to prevent, inverted. Opening the panel is the
       // moment the number matters, so it is the moment to refresh it.
       void loadFrictionStatus();
-      if (!critiquesByClaim.has(key)) {
-        await loadCritiques(claim);
-      }
+      // ROW 6.24 — RE-READ ON EVERY OPEN, NOT ONCE PER SESSION.
+      //
+      // This read was guarded by `if (!critiquesByClaim.has(key))`, which made
+      // the panel a snapshot taken the first time it was opened: a critique
+      // published by anybody else afterwards was invisible until a page
+      // reload, and collapsing and re-opening — the thing a reader would
+      // actually try — did nothing. Your OWN critique appeared, because the
+      // form's success path calls this directly and bypassed the guard, so the
+      // one case that worked was the case proving the surface could update.
+      //
+      // THE COMMENT ABOVE ALREADY KNEW. It says the budget must be re-read
+      // "not inside `loadCritiques`, which the cache check below skips on a
+      // re-open" — the skip was understood, reasoned about for the number
+      // beside the list, and the list left alone.
+      //
+      // WHY IT IS A CORRECTNESS FIX RATHER THAN A FRESHNESS NICETY: README
+      // §4.4 requires a claim's critiques to "render identically for every
+      // viewer", and argues it because a presentation that varies "breaks this
+      // silently — the cross-check degrades and nobody can see that it has".
+      // §4.4 reaches for per-user ADAPTATION as the cause; a session cache
+      // produced the same outcome with no adaptation anywhere.
+      //
+      // THE PRICE, WHICH IS REAL AND BOUNDED: this fans out to conductances,
+      // assessments, unseen counts and replies, so a claim with six critiques
+      // costs about seven reads per open rather than per session. The first
+      // open already paid it. The old list stays on screen while the re-read
+      // runs, so there is no flicker and no empty frame.
+      //
+      // WHAT THIS DOES NOT FIX, and 6.24 says so: a panel LEFT open still goes
+      // stale. The sibling `critiqueTreeByClaim` guard below is deliberately
+      // untouched — it is the same shape, but `loadCritiqueTree` is a
+      // recursive fan-out to depth 3, so re-reading it on every open is a
+      // different cost and deserves its own decision rather than this one's
+      // momentum.
+      await loadCritiques(claim);
     }
   };
   card.appendChild(toggleBtn);
@@ -3429,6 +3475,19 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   const panel = document.createElement('div');
   panel.className = 'critique-panel';
 
+  // ROW 6.24 — said on screen rather than left to be inferred. Placed ABOVE
+  // the list because it qualifies everything below it, and a reader who scrolls
+  // away before reaching a footnote has been told nothing.
+  if (critiqueRefreshFailed.has(key)) {
+    const stale = document.createElement('p');
+    stale.className = 'hint stale-notice';
+    stale.dataset.testid = 'critiques-stale';
+    stale.textContent =
+      'Could not re-read the critiques just now — this is what came back last '
+      + 'time, and there may be more since. Close and open this panel to try again.';
+    panel.appendChild(stale);
+  }
+
   const list = critiquesByClaim.get(key);
   if (list === undefined) {
     const loading = document.createElement('p');
@@ -4359,9 +4418,28 @@ async function loadCritiques(claim: DecodedRecord<Claim>) {
   if (!connection) return;
   const key = b64(claim.entryHash);
   markDone('read-critiques');
-  const records = await connection.callZome<any[]>('get_critiques_for', claim.entryHash);
+  let records: any[];
+  try {
+    records = await connection.callZome<any[]>('get_critiques_for', claim.entryHash);
+  } catch (err) {
+    // ROW 6.24. A FAILED RE-READ MUST NOT LOOK LIKE A SUCCESSFUL ONE.
+    //
+    // On a FIRST open there is nothing on screen to mislead anybody, so the
+    // rejection is rethrown and the panel goes on saying "Loading critiques…"
+    // — unchanged behaviour, and 6.13's gap on this panel, which is a
+    // different row from this one.
+    //
+    // On a RE-OPEN the previous answer is still rendered, and keeping it with
+    // no word would be this row's own defect committed by its own fix: a list
+    // that reads as current because nothing says otherwise.
+    if (!critiquesByClaim.has(key)) throw err;
+    critiqueRefreshFailed.add(key);
+    render();
+    return;
+  }
   const decoded = decodeRecords<Critique>(records);
   critiquesByClaim.set(key, decoded);
+  critiqueRefreshFailed.delete(key);
   render();
   void loadConductances(claim, decoded);
   void loadAssessments(claim);
