@@ -60,7 +60,26 @@ export interface Citations {
 // part of the identity; matching greedily and not asserting an exact length
 // keeps a pasted hash with a stray character from being silently dropped.
 const HASH = /\buhC(?:kk|Ek|Ak|0k)[A-Za-z0-9_-]{20,}/g;
-const NOTE_ID = /\bnte_[A-Za-z0-9_-]{8,}\b/g;
+// NO TRAILING `\b`, AND THAT IS THE WHOLE OF A REAL BUG — see the HASH
+// pattern above, which never had one.
+//
+// `\b` is a boundary between a word character and a non-word one, and `-` is
+// NOT a word character while `_` is. A note id is `nte_` plus 12 base64url
+// characters, whose alphabet includes BOTH — so an id ending in `-` followed
+// by ordinary punctuation ("Answering nte_abcdefghij-, and ...") has no word
+// boundary at its end, the greedy class backtracks, and the match comes back
+// one character SHORT. The citation then references an id that belongs to no
+// note, silently.
+//
+// One in sixty-four ids end in `-` (the last of 12 base64url characters is
+// uniform over 64), so this failed about 1.6% of the time and passed every
+// other run — which is exactly how it survived: it was found when CI drew it
+// on an unrelated PR, and the harness could not reproduce it locally.
+//
+// A negative lookahead would also work; dropping the boundary is what the
+// neighbouring HASH pattern already does, for the same reason, and matching it
+// keeps one rule in this file rather than two.
+const NOTE_ID = /\bnte_[A-Za-z0-9_-]{8,}/g;
 
 const KIND_FOR: Record<string, Citation['kind']> = {
   kk: 'action', Ek: 'entry', Ak: 'agent', '0k': 'dna',

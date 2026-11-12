@@ -655,6 +655,34 @@ async function main() {
     check('a note that references another note records that too',
       answering.body.note.citations.notes.includes(cited.body.note.id));
 
+    // A NOTE ID ENDING IN `-`, ASSERTED DETERMINISTICALLY RATHER THAN DRAWN.
+    //
+    // The check above uses whatever id the server happened to mint, and about
+    // one id in sixty-four ends in `-` — the last of 12 base64url characters,
+    // uniform over an alphabet of 64. `NOTE_ID` used to end in `\b`, which is
+    // a boundary between a word character and a non-word one, and `-` is not a
+    // word character: so those ids came back one character SHORT and cited a
+    // note that does not exist. **It failed on about 1.6% of runs and passed
+    // every other one**, which is why it reached CI on an unrelated PR and
+    // could not be reproduced locally.
+    //
+    // DRIVEN THROUGH THE PURE FUNCTION, because the id cannot be forced over
+    // HTTP — the server mints it. `citationsIn` is exported and documented
+    // pure, so this is the same code the route runs, called with the input the
+    // random case cannot be relied on to produce.
+    const { citationsIn } = await import('../../notes/dist/citations.js');
+    const DASH_ID = 'nte_AAAAAAAAAAA-';
+    const UNDER_ID = 'nte_AAAAAAAAAAA_';
+    check('a note id ending in "-" is cited WHOLE — the one in sixty-four that a '
+      + 'random id only occasionally exercises',
+      citationsIn(`Answering ${DASH_ID}, and also X.`).notes[0] === DASH_ID);
+    check('CONTROL: and one ending in "_" still is, which is the case that always '
+      + 'passed and therefore proved nothing',
+      citationsIn(`Answering ${UNDER_ID}, and also X.`).notes[0] === UNDER_ID);
+    check('CONTROL: a trailing "-" is not merely being swallowed — an id followed by '
+      + 'more id characters still matches them, so the fix widened nothing',
+      citationsIn(`see nte_AAAAAAAAAAA-BBB here`).notes[0] === 'nte_AAAAAAAAAAA-BBB');
+
     const cand = await call('GET', `/spaces/${space.id}/citations`, { token: ada });
     check('the room offers the THREAD\'s action hashes, not one note\'s',
       cand.body.candidate.actions.includes(ACT_A) && cand.body.candidate.actions.includes(ACT_B));
