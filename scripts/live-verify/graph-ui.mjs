@@ -6,9 +6,24 @@
 // The seed builds a genuinely THREE-LEVEL argument: a claim, a critique
 // of it, a critique of that critique, and a critique of THAT. Depth is
 // the entire justification for this view — a Critique is itself a valid
-// CritiqueTargetType, and the critique panel only ever fetches depth 1,
-// so anything deeper is invisible in the list. A seed that only went one
-// level would verify nothing the list could not already do.
+// CritiqueTargetType. A seed that only went one level would verify
+// nothing the list could not already do.
+//
+// THE SECOND HALF OF THAT SENTENCE USED TO READ "the critique panel only
+// ever fetches depth 1, so anything deeper is invisible in the list", AND
+// ROW 6.19 MADE IT FALSE. The panel now fetches one level of REPLIES, so
+// the depth-2 critique renders inside the list as a reply under the
+// critique it answers. Depth 3 is still invisible there, which is what
+// keeps this view justified — but the line is now one level further down
+// than this file assumed.
+//
+// AND THE ASSERTION BELOW WAS A RACE FROM THE MOMENT 6.19 LANDED, which
+// is worth recording because it passed three CI runs before it failed
+// one. It counted `.critique-item`, a class 6.19's replies also carry,
+// so the number depended on whether `loadReplies` had resolved before the
+// count was taken — green on a slow fetch, red on a fast one, with no
+// code change between. It is now scoped to non-replies and waits for the
+// reply to arrive rather than racing it, so both halves are asserted.
 //
 // The assertions that matter are the constraints, not the pixels:
 //
@@ -177,9 +192,17 @@ async function main() {
         return { readable: rows.length > 0, detail: `${rows.length} direct critiques on the seeded claim` };
       },
     });
-    const listed = await page.locator('.critique-item').count();
-    log(`  critique panel lists ${listed}`);
+    // Wait for 6.19's replies rather than racing them: the depth-2 critique
+    // is a reply to the depth-1 one, so it MUST appear. Racing this is what
+    // made the old assertion flaky.
+    await page.waitForSelector('[data-testid="critique-reply"]', { timeout: 20000 })
+      .catch(() => {});
+    const listed = await page.locator('.critique-item:not(.critique-reply)').count();
+    const nested = await page.locator('[data-testid="critique-reply"]').count();
+    log(`  critique panel lists ${listed} direct and ${nested} nested`);
     check('the flat list shows only the 2 direct critiques', listed === 2);
+    check('CONTROL: the depth-2 critique is in the list as a REPLY (row 6.19), so the '
+      + `count above is scoped rather than lucky (${nested})`, nested === 1);
 
     log('\n=== The spatial view shows the structure the list cannot ===');
     await page.getByRole('button', { name: 'View critique structure', exact: true }).click();

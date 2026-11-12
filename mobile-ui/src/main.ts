@@ -3520,6 +3520,47 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       if (b64(critique.entry.author) === b64(claim.entry.author)) {
         relations.push('the claim’s author');
       }
+      // ROW 6.23 — IS THIS ONE PERSON OR SEVERAL?
+      //
+      // Asked by the pilot's first publisher on 2026-11-12, on a build that
+      // already had 6.18's byline in it: "People writing critiques, still
+      // unclear if it is one person or the same. I can see the number a person
+      // gets when they sign up, but this remains unclear."
+      //
+      // 6.18 ANSWERED THE WRONG HALF OF THEIR FIRST REPORT, and this is the
+      // other half. A byline that is DISTINCT is not a byline that is
+      // DISTINGUISHABLE: `short()` renders twelve base64 characters, which is
+      // a string a person compares character by character or not at all.
+      //
+      // COMPUTED OVER `list`, THE WHOLE SET, RATHER THAN OVER 6.22's `shown`.
+      // Today those give the same answer and it is worth being exact about
+      // why, rather than claiming a bug that is not there: `shown` is a
+      // LEADING slice, and this search only ever looks BACKWARD, so for any
+      // row that is visible its author's first appearance is necessarily
+      // inside the slice too. The reason to read `list` anyway is that the
+      // equivalence is a property of the fold being a prefix — the day it
+      // becomes anything else (most-recent-first, say, or a filter), reading
+      // `shown` would make the marker depend on how much of the list a reader
+      // had opened. A statement about the artifact that changes with the
+      // viewer's own expansion state is what README §4.4 forbids, and no
+      // fixture shorter than the fold could catch it.
+      //
+      // IT SAYS "AN EARLIER ONE", NOT "THE ONE ABOVE", because the repeat is
+      // frequently not adjacent — the fixture this is gated against publishes
+      // stranger, author, stranger — and an adjacent-only marker would answer
+      // the question only when it was already easy.
+      //
+      // AND IT COUNTS NOTHING. "Also wrote 3 of these" would be a per-agent
+      // tally inside one panel, which is the Invariant #1 line the By Author
+      // tab already declines to cross. This is an identity statement about
+      // two rows a reader is looking at, and nothing is ordered, ranked or
+      // totalled by it.
+      const firstByThisAuthor = list.findIndex(
+        (c) => b64(c.entry.author) === b64(critique.entry.author),
+      );
+      if (firstByThisAuthor >= 0 && list[firstByThisAuthor] !== critique) {
+        relations.push('same author as an earlier critique');
+      }
       if (relations.length > 0) {
         const rel = document.createElement('span');
         rel.className = 'critique-relation';
