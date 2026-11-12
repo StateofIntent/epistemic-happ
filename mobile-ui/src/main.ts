@@ -526,6 +526,20 @@ const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
  * back with nothing, and `renderReplies` says different things about each. */
 const repliesByCritique = new Map<string, DecodedRecord<Critique>[]>();
 
+/** ROW 6.22 — how many critiques a claim shows before the rest are folded.
+ *
+ * FOUR, which is the top of the range the participant who asked for this named
+ * ("after 3-4 critiques"). Taking the top of their range rather than the bottom
+ * is deliberate: this is a CAP ON A LONG LIST and not a default that tidies a
+ * short one away, so the bias belongs on the side of showing more. A claim with
+ * exactly four critiques shows four and renders no control at all. */
+const FOLD_CRITIQUES_AFTER = 4;
+
+/** Which claims have had their full critique list asked for, keyed by the
+ * claim's base64 entry hash. Folded is the default; expanded is a per-reader,
+ * per-session choice that is never written anywhere. */
+const critiqueListExpanded = new Set<string>();
+
 /** Which critiques have their reply box open, keyed by the critique's base64
  * ACTION hash — the same per-row-open-state pattern as `unseenOpen`.
  *
@@ -3431,7 +3445,22 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     // whether an absence needs stating depends on its neighbours.
     // SAME DEFINITION AS THE PROTOCOL'S: recorded means NON-EMPTY.
     const anyConeRecorded = list.some((c) => (c.entry.past_cone?.length ?? 0) > 0);
-    for (const critique of list) {
+    // ROW 6.22 — FOLD A LONG LIST, NEVER A SHORT ONE.
+    //
+    // Asked for by the pilot's first publisher on 2026-11-12: "I'd include an
+    // option if possible in where the list minimizes after 3-4 critiques but
+    // can be opened to see all, to not clutter?" — and bounded by the sentence
+    // they sent next, which is why this hides so little: "As long as anyone
+    // looking can see some information without having to click too much."
+    //
+    // THE SLICE IS OF TOP-LEVEL CRITIQUES ONLY. A visible critique keeps every
+    // reply it has, because a reply behind a click is the defence being harder
+    // to find than the objection — which is the asymmetry 6.19 exists to
+    // remove, and it would be a poor trade to reintroduce it one row later.
+    const expanded = critiqueListExpanded.has(key);
+    const folds = list.length > FOLD_CRITIQUES_AFTER;
+    const shown = folds && !expanded ? list.slice(0, FOLD_CRITIQUES_AFTER) : list;
+    for (const critique of shown) {
       const item = document.createElement('div');
       item.className = 'critique-item';
       const modeLabel = document.createElement('span');
@@ -3632,6 +3661,55 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       thread.appendChild(item);
       thread.appendChild(renderReplies(critique));
       panel.appendChild(thread);
+    }
+
+    // AND IT SAYS WHAT IT IS HIDING, WHICH IS THE WHOLE REQUIREMENT.
+    //
+    // A chevron alone would make this the Worldline snapshot's defect (6.16)
+    // and the under-count's (0.3.3) for a third time: a surface that reads as
+    // complete while leaving something out. A reader who cannot see that four
+    // of six critiques are on screen has been told the claim is less contested
+    // than it is, by an interface decision they never made.
+    //
+    // THE NUMBER IS NOT A TALLY OF ANYTHING RANKED, which is the line
+    // Invariant 1 draws: it is the length of a list the reader is already
+    // looking at, nothing is ordered or scored by it, and the By Author tab
+    // declines to print a per-agent count for a reason that does not reach
+    // here.
+    if (folds) {
+      const hidden = list.length - FOLD_CRITIQUES_AFTER;
+      // REPLIES UNDER A HIDDEN CRITIQUE ARE HIDDEN TOO, and saying only
+      // "N more critiques" would understate that by exactly the amount this
+      // row is about. Counted only when every hidden critique has actually
+      // been read for replies: `undefined` is unasked, and 6.13's distinction
+      // applies here as it does everywhere else — an unknown count is left
+      // unsaid rather than reported as nothing.
+      const hiddenThreads = list.slice(FOLD_CRITIQUES_AFTER);
+      const replyCounts = hiddenThreads.map((c) => repliesByCritique.get(b64(c.entryHash)));
+      const allKnown = replyCounts.every((r) => r !== undefined);
+      const hiddenReplies = allKnown
+        ? replyCounts.reduce((n, r) => n + (r?.length ?? 0), 0)
+        : null;
+
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'link-button critique-fold-toggle';
+      more.dataset.testid = 'critique-fold-toggle';
+      if (expanded) {
+        more.textContent = 'Show fewer critiques';
+      } else {
+        const noun = hidden === 1 ? 'critique' : 'critiques';
+        const withReplies = hiddenReplies
+          ? ` and ${hiddenReplies} ${hiddenReplies === 1 ? 'reply' : 'replies'}`
+          : '';
+        more.textContent = `Show ${hidden} more ${noun}${withReplies}`;
+      }
+      more.onclick = () => {
+        if (expanded) critiqueListExpanded.delete(key);
+        else critiqueListExpanded.add(key);
+        render();
+      };
+      panel.appendChild(more);
     }
   }
 

@@ -433,6 +433,19 @@ button:disabled { opacity: 0.6; cursor: default; }
   margin-top: 0.2rem;
 }
 
+/* ROW 6.22 — the control that says what the fold is hiding. Full width and
+ * on its own line, because it is a statement about the list ("2 more
+ * critiques") before it is a button, and a reader skimming the panel should
+ * meet it rather than have to look for it. */
+.critique-fold-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0;
+  font-size: 0.8rem;
+}
+
 .critique-mode {
   font-size: 0.7rem;
   text-transform: uppercase;
