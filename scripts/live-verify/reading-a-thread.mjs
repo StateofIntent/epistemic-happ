@@ -207,9 +207,25 @@ const CRIT_ONE = 'One line, and deliberately so.';
 
 /** ROW 6.19's fixture. Paragraphs, because 6.20's `pre-wrap` has to reach a
  *  reply too — a surface built after the complaint is exactly the kind that
- *  gets missed, which is the lesson the stylesheet comment already records. */
+ *  gets missed, which is the lesson the stylesheet comment already records.
+ *
+ *  AND IT DELIBERATELY QUOTES ANOTHER CRITIQUE ON THE PAGE — `CRIT_ONE`, which
+ *  renders LATER than this reply does. That is not decoration, it is the
+ *  fixture earning its keep. Since 6.19 a reply carries `.critique-item` too,
+ *  so any helper that finds "the row whose text contains X" could return this
+ *  reply instead of the critique it quotes, and any helper that finds "the
+ *  thread whose text contains X" could return the wrong thread — a thread
+ *  CONTAINS its replies. Quoting a critique that appears later in document
+ *  order is what makes a reply win those searches, so the scoping those
+ *  helpers now carry is TESTED rather than merely asserted.
+ *
+ *  Both defects were real and were demonstrated by this fixture before being
+ *  fixed: the byline helper returned the reply's author, and the thread lookup
+ *  sent a GUI-typed reply to the wrong critique. People quote the thing they
+ *  are answering, so this is the realistic case rather than a contrived one. */
 const REPLY_DEFENCE = [
-  'Answering the first objection rather than the claim.',
+  'Answering the first objection rather than the claim. Another critique on this '
+    + 'page says "One line, and deliberately so." — that one I have no quarrel with.',
   'The sample was drawn after the cut-off, so the window it names is the wrong one.',
 ].join('\n\n');
 /** Typed through the GUI, so the WRITE is measured and not just the render. */
@@ -585,8 +601,16 @@ async function main() {
     // PER ROW, not merely present: the key beside a critique is the key of the
     // agent who wrote THAT critique. A byline taken from the logged-in agent,
     // or from the claim's author, satisfies every count above.
+    // SCOPED TO NON-REPLIES BY THE `.critique-item` AUDIT. These helpers mean
+    // "the critique row whose text contains this", and since row 6.19 a REPLY
+    // carries `.critique-item` too — so an unscoped search could return a reply
+    // that happened to quote the critique it answers. Today's fixture does not
+    // quote, which is precisely the problem: the search was correct by accident
+    // of how the fixture is worded rather than by construction, and that is the
+    // shape of the race `graph-ui` shipped for three green runs.
     const bylineFor = async (needle) => page.evaluate((n) => {
-      const item = [...document.querySelectorAll('.critique-item')].find((e) => e.textContent.includes(n));
+      const item = [...document.querySelectorAll('.critique-item:not(.critique-reply)')]
+        .find((e) => e.textContent.includes(n));
       if (!item) return 'no-such-item';
       const el = item.querySelector('[data-testid="critique-author"]');
       return el ? el.textContent.trim() : null;
@@ -598,7 +622,8 @@ async function main() {
       (await bylineFor(CRIT_AUTHOR)) === short(agent1.me));
 
     const relationFor = async (needle) => page.evaluate((n) => {
-      const item = [...document.querySelectorAll('.critique-item')].find((e) => e.textContent.includes(n));
+      const item = [...document.querySelectorAll('.critique-item:not(.critique-reply)')]
+        .find((e) => e.textContent.includes(n));
       if (!item) return 'no-such-item';
       const el = item.querySelector('[data-testid="critique-relation"]');
       return el ? el.textContent.trim() : null;
@@ -650,7 +675,10 @@ async function main() {
       JSON.stringify(wireOrder) !== JSON.stringify(byCountGrouped));
     const screenOrder = await page.evaluate((contents) => {
       const seen = [];
-      for (const item of document.querySelectorAll('.critique-item')) {
+      // Non-replies only: this asserts the order the DHT returned CRITIQUES in,
+      // and a reply has no place in that sequence (6.19 puts it under its
+      // target rather than in arrival order).
+      for (const item of document.querySelectorAll('.critique-item:not(.critique-reply)')) {
         const hit = contents.find((c) => item.textContent.includes(c.split('\n')[0]));
         if (hit && !seen.includes(hit)) seen.push(hit);
       }
@@ -759,7 +787,7 @@ async function main() {
     log('\n=== 4. A byline is the way to the rest of what somebody said ===');
     await page.getByRole('button', { name: 'Browse', exact: true }).click();
     await page.waitForTimeout(500);
-    const strangerByline = page.locator('.critique-item', { hasText: CRIT_ONE })
+    const strangerByline = page.locator('.critique-item:not(.critique-reply)', { hasText: CRIT_ONE })
       .locator('[data-testid="critique-author"]');
     const strangerBylines = await strangerByline.count();
     check('CONTROL: the stranger\'s byline is still on screen to be clicked',
@@ -905,9 +933,18 @@ async function main() {
 
     // THE WRITE, THROUGH THE REAL FORM. Everything above would pass against a
     // client that renders replies and cannot make one.
+    // MATCHED ON THE THREAD'S OWN CRITIQUE ROW, NOT ON THE WHOLE THREAD. A
+    // thread CONTAINS its replies, so `s.textContent` includes every reply
+    // under it — and a reply that quotes the critique it answers would make
+    // this select the wrong section, sending the typed reply to the wrong
+    // critique. Found by the `.critique-item` audit, which demonstrated it by
+    // making a reply quote its target: this went red while every selector the
+    // audit had already scoped stayed green. `headOf` is the same narrowing
+    // the placement check above uses.
     const oneIdx = await page.evaluate(
       (n) => [...document.querySelectorAll('[data-testid="critique-thread"]')]
-        .findIndex((s) => s.textContent.includes(n)),
+        .findIndex((s) => s.querySelector('.critique-item:not(.critique-reply)')
+          ?.textContent.includes(n)),
       CRIT_ONE,
     );
     check('CONTROL: the one-line critique\'s own section was found, so the reply below '
