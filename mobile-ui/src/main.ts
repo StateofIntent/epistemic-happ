@@ -509,6 +509,30 @@ let proposingSpecies = false;
  * per claim rather than for the whole domain at once. */
 const critiquesByClaim = new Map<string, DecodedRecord<Critique>[]>();
 
+/** ROW 6.19 — a critique's own base64 ENTRY-hash key -> the critiques that
+ * target IT rather than the claim.
+ *
+ * WHY A SECOND MAP INSTEAD OF `critiqueTreeByClaim`, WHICH ALREADY HAS THIS.
+ * That tree is a recursive fan-out to `MAX_TREE_DEPTH`, and the note above the
+ * "View critique structure" button records it as opt-in per claim for exactly
+ * that reason — most reading does not need depth. Replies are not depth: they
+ * are the thread, and a reply nobody sees without opening a spatial view is a
+ * reply that does not exist for readers. So this is ONE level, one
+ * `get_critiques_for` per critique already on screen, and the full tree stays
+ * opt-in with its reasoning intact.
+ *
+ * UNASKED IS NOT ZERO, the same distinction 6.13 drew for the Browse tab: a
+ * missing key means the read has not happened, an empty array means it came
+ * back with nothing, and `renderReplies` says different things about each. */
+const repliesByCritique = new Map<string, DecodedRecord<Critique>[]>();
+
+/** Which critiques have their reply box open, keyed by the critique's base64
+ * ACTION hash — the same per-row-open-state pattern as `unseenOpen`.
+ *
+ * Closed by default so a claim with six critiques is not six forms. The ask
+ * this row answers was about clutter as much as about structure. */
+const replyOpen = new Set<string>();
+
 /** ROW 6.15's PULL HALF — how many critiques came back on each of the
  * reader's OWN claims, keyed by the claim's entry hash in base64.
  *
@@ -3581,12 +3605,194 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       // recorded OUT OF, which the entry cannot know.
       const unseen = renderUnseenState(critique, list);
       if (unseen) item.appendChild(unseen);
-      panel.appendChild(item);
+
+      // ROW 6.19 — THE THREAD, IN THE SHAPE THE PILOT'S FIRST PUBLISHER ASKED
+      // FOR, 2026-11-12: "the reply comes under a critique, in where others
+      // agreeing or disagreeing with that particular critique to the claim
+      // can reply. A new critique gets its own section. It provides
+      // organisation."
+      //
+      // THAT SENTENCE IS THE DECISION, NOT A PREFERENCE THIS CLIENT HELPED
+      // ITSELF TO. The row stood open as a `[D]` on the grounds that
+      // indenting a reply is a client deciding a thread's shape for readers
+      // who never asked for it — an objection no amount of reasoning in this
+      // file could answer, because the missing thing was a reader asking. The
+      // one participant who has both published a claim and been critiqued on
+      // it asked, unprompted.
+      //
+      // A REPLY'S PLACE IS GIVEN BY ITS TARGET, NOT BY ITS ARRIVAL, which is
+      // the distinction that makes this safe: the DHT's return order still
+      // governs the order of the sections and never the nesting, so nothing
+      // here reorders, ranks or groups what the network handed back. That is
+      // also why this does NOT answer 6.14's `[D]`, where the entries have no
+      // target to hang from and arrival order is all there is.
+      const thread = document.createElement('section');
+      thread.className = 'critique-thread';
+      thread.dataset.testid = 'critique-thread';
+      thread.appendChild(item);
+      thread.appendChild(renderReplies(critique));
+      panel.appendChild(thread);
     }
   }
 
+  /** ROW 6.19 — one reply.
+   *
+   * DELIBERATELY NOT THE FULL CRITIQUE ROW, and the omissions are the
+   * reasoning rather than an economy. The cone line, the unseen denominator
+   * and the conductance are all computed against the CLAIM's critique set:
+   * `renderUnseenState` takes that list as its siblings, and
+   * `conductanceByCritique` is keyed off links loaded for it. A reply belongs
+   * to a different set, so printing those numbers here would attach a
+   * denominator to a reply that was never measured over replies — a figure
+   * that looks like the one above it and means something else. Depth beyond
+   * this one level remains the spatial view's job, with its own reasoning.
+   *
+   * WHAT IT DOES CARRY IS WHO IS SPEAKING, which is the half of 6.18 that
+   * matters most here. On a reply, "the claim's author" is the author
+   * DEFENDING — the thing this participant said they could not see: "It
+   * doesnt show if an author responded, who the other person is." */
+  function renderReplyItem(
+    reply: DecodedRecord<Critique>,
+    parent: DecodedRecord<Critique>,
+  ): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'critique-item critique-reply';
+    item.dataset.testid = 'critique-reply';
+
+    const modeLabel = document.createElement('span');
+    modeLabel.className = 'critique-mode';
+    modeLabel.textContent = reply.entry.critique_mode;
+    item.appendChild(modeLabel);
+
+    const by = document.createElement('button');
+    by.className = 'link-button critique-author';
+    by.dataset.testid = 'critique-author';
+    by.textContent = short(reply.entry.author);
+    by.title = 'Read this agent\u2019s other claims';
+    by.onclick = () => {
+      activeTab = 'by-author';
+      void loadClaimsByAuthor(b64(reply.entry.author));
+    };
+    item.appendChild(by);
+
+    // THREE RELATIONS HERE WHERE A CRITIQUE HAS TWO, because a reply sits
+    // between two authors rather than beside one. Stated only when true; an
+    // unmarked reply is a bystander's, which is what makes a marked one say
+    // anything. A tally of any of this would be the Invariant 1 line — these
+    // are attributions, nothing is counted or ordered by them.
+    const relations: string[] = [];
+    if (connection && b64(reply.entry.author) === b64(connection.myAgentPubKey)) {
+      relations.push('you');
+    }
+    if (b64(reply.entry.author) === b64(claim.entry.author)) {
+      relations.push('the claim\u2019s author');
+    }
+    if (b64(reply.entry.author) === b64(parent.entry.author)) {
+      relations.push('the critique\u2019s author');
+    }
+    if (relations.length > 0) {
+      const rel = document.createElement('span');
+      rel.className = 'critique-relation';
+      rel.dataset.testid = 'critique-relation';
+      rel.textContent = relations.join(', ');
+      item.appendChild(rel);
+    }
+
+    // `critique-content` CARRIES 6.20's `pre-wrap`, so a reply written as
+    // paragraphs reads as paragraphs on the same terms as everything else
+    // somebody wrote in their own words.
+    const text = document.createElement('p');
+    text.className = 'critique-content';
+    text.dataset.testid = 'critique-content';
+    text.textContent = reply.entry.content;
+    item.appendChild(text);
+
+    return item;
+  }
+
+  /** ROW 6.19 — the replies to one critique, and the box to write one.
+   *
+   * CLOSED BY DEFAULT, because the ask that produced this row was about
+   * clutter as much as structure: a claim with six critiques must not be six
+   * open forms. The folding of the SECTIONS themselves is 6.22 and is not
+   * this. */
+  function renderReplies(critique: DecodedRecord<Critique>): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'critique-replies';
+    const replyKey = b64(critique.actionHash);
+    const replies = repliesByCritique.get(b64(critique.entryHash));
+
+    if (replies === undefined) {
+      // UNASKED IS NOT UNANSWERED — 6.13's distinction, and it lands harder
+      // here than it did on the Browse tab. "No replies" said about
+      // somebody's objection is a claim about the discourse, and this client
+      // must not make it before it has looked.
+      const pending = document.createElement('p');
+      pending.className = 'hint';
+      pending.dataset.testid = 'replies-pending';
+      pending.textContent = 'Checking for replies\u2026';
+      wrap.appendChild(pending);
+    } else {
+      for (const reply of replies) wrap.appendChild(renderReplyItem(reply, critique));
+    }
+
+    // THE AFFORDANCE THE ROW IS ACTUALLY ABOUT, and the repair of something
+    // we told this participant in writing on 2026-11-08 that was not true of
+    // their build: asked whether authors can defend a claim, they were told
+    // yes, with the rate limit. True of the protocol — `CritiqueTargetType`
+    // has covered `Critique` all along and `validate_critique`'s author rule
+    // is anti-spoofing rather than anti-self — and false of this client,
+    // which hardcoded `target_type: 'Claim'` at every write. The defence
+    // existed everywhere except where they could reach it.
+    const open = replyOpen.has(replyKey);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'link-button reply-toggle';
+    toggle.dataset.testid = 'reply-toggle';
+    toggle.textContent = open ? 'Cancel reply' : 'Reply to this critique';
+    toggle.title = 'Answer this critique directly. Your reply is attached to it, not to the claim.';
+    toggle.onclick = () => {
+      if (open) replyOpen.delete(replyKey);
+      else replyOpen.add(replyKey);
+      render();
+    };
+    wrap.appendChild(toggle);
+
+    if (open) {
+      wrap.appendChild(buildCritiqueForm({
+        target: critique.entryHash,
+        targetType: 'Critique',
+        submitLabel: 'Add reply',
+        placeholder: 'Your reply \u2014 say what this critique gets wrong, or what it gets right.',
+        testid: 'reply-form',
+      }));
+    }
+    return wrap;
+  }
+
+  /** The form that signs a critique — for a CLAIM or, since row 6.19, for
+   * another CRITIQUE.
+   *
+   * EXTRACTED RATHER THAN COPIED, and the reason is the friction gate below
+   * rather than tidiness. A reply IS a critique: `create_critique` creates a
+   * SynapticLink either way, and that is the one coordinator path spending the
+   * SWO budget. A hand-rolled reply form would have been an affordance that
+   * bypassed a protocol limit the main form honours — offering an action this
+   * client already knows will be refused, which is the exact failure §4.5's
+   * surfacing rules exist to prevent. One form, one gate, both targets.
+   *
+   * Declared as a `function` so it is hoisted: the reply forms are built in
+   * the critique loop above, which runs before this point in the body. */
+  function buildCritiqueForm(opts: {
+    target: Uint8Array;
+    targetType: Critique['target_type'];
+    submitLabel: string;
+    placeholder: string;
+    testid: string;
+  }): HTMLFormElement {
   const form = document.createElement('form');
   form.className = 'critique-form';
+  form.dataset.testid = opts.testid;
   const modeSelect = document.createElement('select');
   const modeNote = renderConceptNote('typed-critiques');
   if (modeNote) form.appendChild(modeNote);
@@ -3598,11 +3804,11 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     modeSelect.appendChild(opt);
   }
   const textarea = document.createElement('textarea');
-  textarea.placeholder = 'Your critique — say why, not just that you disagree.';
+  textarea.placeholder = opts.placeholder;
   textarea.required = true;
   const submitBtn = document.createElement('button');
   submitBtn.type = 'submit';
-  submitBtn.textContent = 'Add critique';
+  submitBtn.textContent = opts.submitLabel;
   const errorBox = document.createElement('div');
   errorBox.className = 'error-box';
   errorBox.hidden = true;
@@ -3695,8 +3901,8 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     errorBox.hidden = true;
     submitBtn.disabled = true;
     const critique: Critique = {
-      target: claim.entryHash,
-      target_type: 'Claim',
+      target: opts.target,
+      target_type: opts.targetType,
       critique_mode: modeSelect.value as Critique['critique_mode'],
       content: textarea.value,
       author: connection.myAgentPubKey,
@@ -3724,7 +3930,19 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     }
   };
 
-  panel.appendChild(form);
+  return form;
+  }
+
+  // THE CLAIM-LEVEL FORM, unchanged in every respect a harness can see: same
+  // class, same labels, same ordering, same gate. Only its target is now
+  // named rather than assumed.
+  panel.appendChild(buildCritiqueForm({
+    target: claim.entryHash,
+    targetType: 'Claim',
+    submitLabel: 'Add critique',
+    placeholder: 'Your critique — say why, not just that you disagree.',
+    testid: 'critique-form',
+  }));
   return panel;
 }
 
@@ -4029,6 +4247,34 @@ async function loadCritiques(claim: DecodedRecord<Claim>) {
   void loadConductances(claim, decoded);
   void loadAssessments(claim);
   void loadUnseen(decoded);
+  void loadReplies(decoded);
+}
+
+/** ROW 6.19 — the replies to each critique already on screen.
+ *
+ * ONE `get_critiques_for` PER CRITIQUE AND NO NEW EXTERN. `get_critiques_for`
+ * takes an `AnyDhtHash` and has always accepted a critique's entry hash; what
+ * did not exist was anything in this client that asked it. The calls are
+ * independent, so they go out together.
+ *
+ * EACH CRITIQUE IS SETTLED ON ITS OWN, the same way `loadMyCritiqueCounts`
+ * does it: one rejected read leaves that critique with no entry in the map —
+ * which the screen can say — rather than failing the batch and leaving every
+ * critique looking unanswered. An unanswered critique is a claim about the
+ * discourse, and it is not one this client should make by accident. */
+async function loadReplies(critiques: DecodedRecord<Critique>[]) {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(critiques.map(async (critique) => {
+    try {
+      const records = await conn.callZome<any[]>('get_critiques_for', critique.entryHash);
+      repliesByCritique.set(b64(critique.entryHash), decodeRecords<Critique>(records));
+    } catch {
+      // Left absent on purpose — see the map's own comment. `renderReplies`
+      // distinguishes "not asked" from "asked, nothing came back".
+    }
+  }));
+  render();
 }
 
 /** The assessments filed against one claim.

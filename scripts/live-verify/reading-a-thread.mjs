@@ -205,6 +205,16 @@ const CRIT_PARA = [
 const CRIT_AUTHOR = 'Conceding the first and not the second.';
 const CRIT_ONE = 'One line, and deliberately so.';
 
+/** ROW 6.19's fixture. Paragraphs, because 6.20's `pre-wrap` has to reach a
+ *  reply too — a surface built after the complaint is exactly the kind that
+ *  gets missed, which is the lesson the stylesheet comment already records. */
+const REPLY_DEFENCE = [
+  'Answering the first objection rather than the claim.',
+  'The sample was drawn after the cut-off, so the window it names is the wrong one.',
+].join('\n\n');
+/** Typed through the GUI, so the WRITE is measured and not just the render. */
+const REPLY_TYPED = 'Typed into the reply box, pointed at the objection and not at the claim.';
+
 const RATIONALE = [
   'Supporting the first part only.',
   'The discharge rule is a separate matter.',
@@ -276,6 +286,36 @@ const critique = (agent, targetHash, content) => agent.call('create_critique', {
  *  claim they target), so the stricter match is free here and it is what makes
  *  an injection cheap to run: rebuild, re-run, read the reds. A harness that
  *  needs a four-minute conductor restart per injection gets injected less. */
+/** ROW 6.19 — a critique OF a critique. The only difference from the helper
+ *  above is `target_type`, and that one word is the whole row: the client
+ *  hardcoded `'Claim'` at every write, so this entry shape was unreachable
+ *  from the app while being perfectly legal on the DHT.
+ *
+ *  AND IT CANNOT BE FAKED BY A HALF-FIX, which is what makes the GUI write in
+ *  section 6 worth more than it looks. `validate_critique` reads the target
+ *  entry back and cross-checks its REAL type against the declared
+ *  `target_type` (dna/integrity/src/lib.rs:1719-1734), refusing a mismatch.
+ *  So a client that pointed `target` at a critique while still declaring
+ *  `'Claim'` would be REFUSED BY VALIDATION — a reply that commits at all is
+ *  proof the client sent the right type. */
+const replyTo = (agent, critiqueEntryHash, content) => agent.call('create_critique', {
+  target: critiqueEntryHash, target_type: 'Critique', critique_mode: 'Methodological',
+  content, author: agent.me, timestamp: nowMicros(),
+  replication_attempted: false, evidence_hashes: [], species: null,
+});
+
+/** The entry hash of one critique, off the wire — a reply targets an ENTRY
+ *  hash, the same way a critique targets a claim's. */
+function critiqueEntryHashOnWire(wireRecords, needle) {
+  for (const r of wireRecords) {
+    const raw = r.entry?.Present?.entry ?? r.entry;
+    if (Buffer.from(raw).toString('latin1').includes(needle)) {
+      return r.signed_action.hashed.content.data.entry_hash;
+    }
+  }
+  return null;
+}
+
 async function claimsOnTheWire(agent, who, contents) {
   const records = await agent.call('get_claims_by_agent', who);
   const out = [];
@@ -434,6 +474,28 @@ async function main() {
   });
   log(`get_critiques_for returns ${wire.length}; wire order: `
     + wireOrder.map((c) => (c === CRIT_PARA ? 'stranger-paras' : c === CRIT_AUTHOR ? 'author' : 'stranger-one')).join(', '));
+
+  // ROW 6.19 — THE AUTHOR DEFENDS, against the OBJECTION rather than beside it.
+  // This is the entry shape we told this participant was available on
+  // 2026-11-08 and which their build could not write.
+  const paraCritHash = critiqueEntryHashOnWire(wire, CRIT_PARA.split('\n')[0]);
+  const oneCritHash = critiqueEntryHashOnWire(wire, CRIT_ONE);
+  if (!paraCritHash || !oneCritHash) {
+    log('  SETUP FAILED: could not read back the entry hash of a critique to reply to.');
+    process.exit(1);
+  }
+  log("agent1 replies to agent2's FIRST objection — a critique of a critique ...");
+  await replyTo(agent1, paraCritHash, REPLY_DEFENCE);
+
+  const replyWire = await agent1.call('get_critiques_for', paraCritHash);
+  const otherReplyWire = await agent1.call('get_critiques_for', oneCritHash);
+  if (replyWire.length !== 1) {
+    log(`  SETUP FAILED: the reply did not commit (get_critiques_for on the critique `
+      + `returned ${replyWire.length}).`);
+    process.exit(1);
+  }
+  log(`the objection now has ${replyWire.length} reply; its neighbour has `
+    + `${otherReplyWire.length} — which is what makes "under the RIGHT one" measurable`);
   log('');
 
   log('Starting vite preview (production bundle) ...');
@@ -483,12 +545,24 @@ async function main() {
     await page.locator('.claim-card').nth(brokenIndex)
       .locator('[data-testid="toggle-critiques"]').click();
     await page.waitForTimeout(3000);
-    const items = await page.locator('.critique-item').count();
+    // SCOPED TO NON-REPLIES BY ROW 6.19, and the narrowing is the point rather
+    // than an accommodation: a reply is now a `.critique-item` too, so an
+    // unscoped count would read 4 here and this check would redden. That it
+    // WOULD redden is the evidence that the structural separation is real —
+    // if a reply were still rendered as one more row in the flat list, this
+    // selector could not tell them apart and the count would stay at 3.
+    const items = await page.locator('.critique-item:not(.critique-reply)').count();
     check(`CONTROL: all three critiques are in the panel (${items})`, items === 3);
+    const replyItems = await page.locator('[data-testid="critique-reply"]').count();
+    check(`CONTROL: and the one reply is NOT among them (${replyItems} reply rendered, `
+      + `${items} top-level) — otherwise every structural check below is vacuous`,
+      replyItems === 1 && items === 3);
 
     // ---- 1. Who wrote what (open-work 6.18) ------------------------------
     log('\n=== 1. Who wrote what ===');
-    const bylines = await page.locator('[data-testid="critique-author"]').allInnerTexts();
+    const bylines = await page
+      .locator('.critique-item:not(.critique-reply) [data-testid="critique-author"]')
+      .allInnerTexts();
     check(`every critique carries a byline (${bylines.length} of ${items})`,
       bylines.length === items && items > 0);
     const distinct = new Set(bylines.map((t) => t.trim()));
@@ -671,6 +745,160 @@ async function main() {
       (await valueOf(page, '[data-testid="author-key-input"]')) === b64(agent2.me)
       && (await textOf(page, '[data-testid="author-claim-list"]')).includes(CLAIM_THEIRS));
 
+    // ---- 6. A reply goes under the critique it answers (open-work 6.19) --
+    //
+    // THE SHAPE UNDER TEST IS THE PARTICIPANT'S OWN SENTENCE, 2026-11-12: "the
+    // reply comes under a critique ... A new critique gets its own section."
+    // Every check here is about PLACEMENT, because a reply that renders
+    // somewhere is the easy half — the row's `[D]` was about where.
+    log('\n=== 6. A reply goes under the critique it answers (6.19) ===');
+
+    // BACK TO THE TAB THAT HAS A CRITIQUE PANEL ON IT. Section 4 ends on By
+    // Author by design — it is testing that a byline ARRIVES there — and the
+    // first run of this section measured that screen instead, scoring zero
+    // sections against a page that renders no critiques at all. Every check
+    // below would have been a false red; the same mistake pointed the other
+    // way is a false green, which is why the panel is re-established and then
+    // asserted rather than assumed.
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.waitForTimeout(800);
+    if ((await page.locator('.critique-item:not(.critique-reply)').count()) === 0) {
+      const idx = await page.evaluate((needle) => [...document.querySelectorAll('.claim-card')]
+        .findIndex((c) => c.textContent.includes(needle)), CLAIM_BROKEN);
+      if (idx >= 0) {
+        await page.locator('.claim-card').nth(idx)
+          .locator('[data-testid="toggle-critiques"]').click();
+        await page.waitForTimeout(3000);
+      }
+    }
+    const panelBack = await page.locator('.critique-item:not(.critique-reply)').count();
+    check(`CONTROL: the critique panel is on screen again (${panelBack} critiques), so `
+      + 'every check below is measuring a panel rather than a tab that has none',
+      panelBack === 3);
+
+    const sections = await page.locator('[data-testid="critique-thread"]').count();
+    check(`each critique gets its own section (${sections} sections for ${items} critiques)`,
+      sections === items && sections > 1);
+
+    // THE CHECK THE ROW EXISTS FOR, and its two controls are the whole reason
+    // it means anything. A reply appended to the end of the panel satisfies
+    // "a reply is on screen"; a reply looked up by the wrong key and rendered
+    // under EVERY critique satisfies "a reply is in a section". Only
+    // `inOwner && !inOther && !atPanelLevel` distinguishes the shape asked for.
+    const placement = await page.evaluate(([needleCrit, needleReply, needleOther]) => {
+      const secs = [...document.querySelectorAll('[data-testid="critique-thread"]')];
+      const headOf = (s) => s.querySelector('.critique-item:not(.critique-reply)');
+      const owner = secs.find((s) => headOf(s)?.textContent.includes(needleCrit));
+      const other = secs.find((s) => headOf(s)?.textContent.includes(needleOther));
+      return {
+        sawOwner: !!owner,
+        sawOther: !!other,
+        inOwner: !!owner && owner.textContent.includes(needleReply),
+        inOther: !!other && other.textContent.includes(needleReply),
+        atPanelLevel: document.querySelectorAll(
+          '.critique-panel > [data-testid="critique-reply"]',
+        ).length,
+      };
+    }, [CRIT_PARA.split('\n')[0], REPLY_DEFENCE.split('\n')[0], CRIT_ONE]);
+    check('CONTROL: both the critiqued objection and its neighbour were located as '
+      + 'separate sections, so the two assertions below are about different elements',
+      placement.sawOwner && placement.sawOther);
+    check('the reply renders INSIDE the section of the critique it targets',
+      placement.inOwner);
+    // GUARDED ON `inOwner`, because "not in the neighbour" and "not at panel
+    // level" are both TRUE of a screen with no reply on it anywhere. The first
+    // run of this section proved that the hard way: these two passed while the
+    // reply was absent, which is this repository's standing lesson about any
+    // check of the form "X is NOT shown" — ask what makes it capable of
+    // failing. Anchoring them to the positive finding is what makes them
+    // controls rather than decoration.
+    check("CONTROL: and NOT inside its neighbour's section — a reply looked up by the "
+      + 'wrong key, or shown under every critique, would pass the check above',
+      placement.inOwner && placement.inOther === false);
+    check('CONTROL: and no reply sits loose at panel level, which is what "appended to '
+      + 'the list" would look like',
+      placement.inOwner && placement.atPanelLevel === 0);
+
+    const replyPart = async (testid) => page.evaluate(([n, id]) => {
+      const el = [...document.querySelectorAll('[data-testid="critique-reply"]')]
+        .find((e) => e.textContent.includes(n));
+      if (!el) return 'no-such-reply';
+      const part = el.querySelector(`[data-testid="${id}"]`);
+      return part ? part.textContent.trim() : null;
+    }, [REPLY_DEFENCE.split('\n')[0], testid]);
+
+    const replyByline = await replyPart('critique-author');
+    check(`the reply says who wrote it (${replyByline})`, replyByline === short(agent1.me));
+    const replyRel = await replyPart('critique-relation');
+    check(`and says it is the CLAIM'S AUTHOR answering the objection — which is the `
+      + `half of "It doesnt show if an author responded" that a byline alone does not `
+      + `answer (${replyRel})`,
+      typeof replyRel === 'string' && /the claim’s author/.test(replyRel));
+    // Same guard, same reason: `'no-such-reply'` is a string that contains no
+    // such phrase, so the bare negative passed when nothing had rendered.
+    check("CONTROL: and does NOT also call them the critique's author — the stranger "
+      + 'wrote that, so a relation line that lists everything would fail here',
+      typeof replyRel === 'string' && replyRel !== 'no-such-reply'
+      && !/the critique’s author/.test(replyRel));
+
+    // 6.20 ON A SURFACE BUILT AFTER THE COMPLAINT, which the stylesheet's own
+    // comment names as the way that fix drifts: the one surface written after
+    // the complaint got `pre-wrap`, the five older ones did not.
+    const replyProse = await page.evaluate(
+      (n) => window.__prose(n, '[data-testid="critique-content"]'),
+      REPLY_DEFENCE.split('\n')[0],
+    );
+    check(`the reply's own paragraphs survive to the screen too `
+      + `(${replyProse.lines} line boxes)`,
+      replyProse.lines >= 3 && replyProse.clipped === false);
+
+    const formsBefore = await page.locator('[data-testid="reply-form"]').count();
+    check('CONTROL: no reply box is open until one is asked for — the ask that produced '
+      + 'this row was about clutter as much as structure',
+      formsBefore === 0);
+    const toggles = await page.locator('[data-testid="reply-toggle"]').count();
+    check(`every critique offers a reply (${toggles} for ${items})`, toggles === items);
+
+    // THE WRITE, THROUGH THE REAL FORM. Everything above would pass against a
+    // client that renders replies and cannot make one.
+    const oneIdx = await page.evaluate(
+      (n) => [...document.querySelectorAll('[data-testid="critique-thread"]')]
+        .findIndex((s) => s.textContent.includes(n)),
+      CRIT_ONE,
+    );
+    check('CONTROL: the one-line critique\'s own section was found, so the reply below '
+      + 'is typed into a box belonging to a known critique',
+      oneIdx >= 0);
+    const oneSection = page.locator('[data-testid="critique-thread"]').nth(oneIdx);
+    await oneSection.locator('[data-testid="reply-toggle"]').click();
+    await page.waitForTimeout(400);
+    check('clicking it opens a box',
+      (await oneSection.locator('[data-testid="reply-form"]').count()) === 1);
+    await oneSection.locator('[data-testid="reply-form"] textarea').fill(REPLY_TYPED);
+    await oneSection.locator('[data-testid="reply-form"] button[type="submit"]').click();
+    await page.waitForTimeout(5000);
+
+    // READ BACK OFF THE DHT, not off the screen. And this is where
+    // `validate_critique` does the work for us: it reads the target entry back
+    // and refuses a declared `target_type` that does not match the target's
+    // real type (dna/integrity/src/lib.rs:1719-1734). The OLD client sent
+    // `target_type: 'Claim'` unconditionally — so if this entry committed at
+    // all, the client sent 'Critique'. The assertion is the commit.
+    const typedWire = await agent1.call('get_critiques_for', oneCritHash);
+    const typedLanded = typedWire.some((r) => {
+      const raw = r.entry?.Present?.entry ?? r.entry;
+      return Buffer.from(raw).toString('latin1').includes(REPLY_TYPED);
+    });
+    check('the reply typed into that box reaches the DHT attached to the CRITIQUE — '
+      + 'and since validation cross-checks the declared target_type against the '
+      + "target's real type, committing at all proves the client sent 'Critique'",
+      typedLanded);
+    const claimWireAfter = await agent1.call('get_critiques_for', target);
+    check(`CONTROL: and NOT to the claim — the claim still has its three critiques `
+      + `(${claimWireAfter.length}), so the write was retargeted rather than merely `
+      + `relabelled`,
+      claimWireAfter.length === 3);
+
     check('CONTROL: the page raised no uncaught errors throughout', pageErrors.length === 0);
     if (pageErrors.length) for (const e of pageErrors) log(`    pageerror: ${e}`);
   } finally {
@@ -684,7 +912,9 @@ async function main() {
     log("claim's own author answering from a stranger objecting; somebody's paragraphs");
     log('reach the screen as paragraphs on every surface that renders their own words;');
     log('and the box that writes a permanent entry grows to what is in it, up to a cap');
-    log('that keeps the button which commits it on screen.');
+    log('that keeps the button which commits it on screen. A reply goes under the');
+    log('critique it answers, in that critique\'s own section and no other, and the box');
+    log('that writes one targets the objection rather than the claim.');
   } else {
     log(`${failures} CHECK(S) FAILED.`);
   }
