@@ -389,6 +389,50 @@ button:disabled { opacity: 0.6; cursor: default; }
 
 .critique-item:last-of-type { border-bottom: none; }
 
+/* ROW 6.19 — A NEW CRITIQUE GETS ITS OWN SECTION, and a reply sits under the
+ * critique it answers. Both phrases are the pilot's first publisher's, and
+ * what they bought is that the boundary between two objections is now drawn
+ * by the section rather than guessed from a dashed line between rows.
+ *
+ * THE INDENT IS A BORDER, NOT A MARGIN, on purpose. A margin would push the
+ * reply's text toward the right edge, and `layout-fits.mjs` refuses sideways
+ * scroll at 390px; a left border plus a small pad says "attached to the
+ * thing above" in about 12px and costs the text almost nothing. Nesting is
+ * one level deep by construction here — deeper structure is the spatial
+ * view's job — so there is no accumulating indent to bound. */
+.critique-thread {
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 0.3rem;
+}
+
+.critique-thread:last-of-type { border-bottom: none; }
+
+/* The section now draws the boundary, so the row inside it must not draw a
+ * second one — otherwise a single-critique section gets two dashed lines. */
+.critique-thread > .critique-item { border-bottom: none; }
+
+.critique-replies {
+  margin-left: 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+}
+
+.critique-reply {
+  padding: 0.35rem 0;
+  border-bottom: none;
+}
+
+/* Dimmer than the critique it answers, and only slightly: a reply is not
+ * secondary content — it is the defence, which is the whole point of the row
+ * — but a reader scanning objections should be able to tell the two apart
+ * without reading either. */
+.critique-reply .critique-mode { color: var(--text-dim); }
+
+.reply-toggle {
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}
+
 .critique-mode {
   font-size: 0.7rem;
   text-transform: uppercase;

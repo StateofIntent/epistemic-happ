@@ -53,9 +53,25 @@ export interface CritiqueSpecies {
   created_at: number;
 }
 
+/** A critique's target type, widened to the protocol's own enum by row 6.19.
+ *
+ * It read `'Claim'` — a single literal — for as long as this client existed,
+ * while `CritiqueTargetType` in `dna/integrity/src/lib.rs` has carried all
+ * five variants from the start and `AntibodyPattern` below already spelled
+ * them out. So the restriction nobody could see was partly in this line: the
+ * type checker would have rejected a critique-of-critique before any
+ * reviewer had to, which is why "the app only ever targets a Claim" held for
+ * so long without anyone deciding it. */
+export type CritiqueTargetType =
+  | 'Claim'
+  | 'Critique'
+  | 'Constitution'
+  | 'Membrane'
+  | 'CritiqueSpecies';
+
 export interface Critique {
   target: Uint8Array;
-  target_type: 'Claim';
+  target_type: CritiqueTargetType;
   critique_mode: CritiqueMode;
   content: string;
   author: Uint8Array;
