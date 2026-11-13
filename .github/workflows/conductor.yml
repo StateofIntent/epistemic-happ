@@ -68,7 +68,19 @@
 # below installs into `~/.cargo/bin`: it reproduces the development machine's
 # own layout exactly, and needs no change to either script.
 #
-# WHAT RUNS. Four harnesses that need nothing but `@holochain/client`:
+# WHAT RUNS. The paragraph below is the ORIGINAL five and is kept as what this
+# job was built to do; the step list is the authority on what it runs now, and
+# it is far longer. Six harnesses joined on 2026-11-13 through row 1.29 —
+# `index-lens`, `standing`, `proprioception`, `secretion`, `microbiome` and
+# `superior-egg`, 159 assertions between them, every one of which needed
+# nothing this job did not already have and none of which carried a recorded
+# reason for being out. Two of the six could not have passed here before that
+# commit: they called `process.exit` only in their failure branch, and an open
+# `@holochain/client` websocket is a ref'd handle nothing closes, so each
+# printed ALL CHECKS PASSED and then hung until a `timeout` killed it. A
+# harness that can only report a failure reads in CI as a job timeout.
+#
+# Four harnesses that need nothing but `@holochain/client`:
 # `domain-index` (the by-domain index and validation refusing three separate
 # attempts to poison it), `read-scope` (two real agents — the harness that
 # proved the most consequential defect this project has recorded),
@@ -684,6 +696,66 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/linked-data-gateway.mjs
+
+      # =====================================================================
+      # ROW 1.29 — SIX HARNESSES THAT ASSERTED 159 THINGS AND RAN NOWHERE.
+      #
+      # Each of these existed, was documented in `scripts/live-verify/README.md`
+      # with its node count and its question, was counted by
+      # `check-harness-counts.mjs`, and was invoked by no workflow at all. Every
+      # one needs exactly what the steps above need — one clean sandbox — which
+      # is why none of them has a reason to be out, and none of them had one
+      # written down either.
+      #
+      # MEASURED BEFORE BEING REGISTERED, on a development machine, each on a
+      # freshly cleaned sandbox: index-lens 5s, microbiome 4s, proprioception
+      # 8s, secretion 6s, standing 5s, superior-egg 8s. Thirty-six seconds of
+      # harness time for 159 assertions, plus a conductor restart each.
+      #
+      # AND TWO OF THEM COULD NOT HAVE PASSED HERE UNTIL THIS COMMIT, which is
+      # the finding worth reading rather than the wiring. `index-lens` and
+      # `superior-egg` called `process.exit` ONLY in their failure branch, and
+      # an open `@holochain/client` websocket is a ref'd handle nothing closes
+      # — so on the happy path they printed ALL CHECKS PASSED and then hung for
+      # ever. Each was watched being killed by a 300-second `timeout` after
+      # passing every check. A harness that can only report a failure presents
+      # in CI as a job timeout rather than a red check, and that is a large part
+      # of why these were never switched on: the defect is visible the moment
+      # somebody runs one, and nobody had.
+      # =====================================================================
+      - name: index-lens — the read a sybil flood pollutes, with the lens on it
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/index-lens.mjs
+
+      - name: standing — a claim atrophies by causal distance, with no clock consulted
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/standing.mjs
+
+      - name: proprioception — an agent knows its own state and refuses to know anybody else's
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/proprioception.mjs
+
+      - name: secretion — uptake of a standard, told from a private vocabulary
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/secretion.mjs
+
+      - name: microbiome — a foreign critique cannot become a native one
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/microbiome.mjs
+
+      # Three agents and no currency, so the clean conductor matters as much
+      # here as it does for `settlement` above: the walkthrough writes evidence
+      # and critiques, and every critique carries a SynapticLink against §6's
+      # 20-per-hour ceiling.
+      - name: superior-egg — the walkthrough run rather than described
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/superior-egg.mjs
 
       # A harness failure and a conductor that never came up look identical from
       # the step's exit code, and they are diagnosed completely differently.

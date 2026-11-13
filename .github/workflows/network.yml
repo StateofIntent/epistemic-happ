@@ -56,7 +56,9 @@
 # is wrong and changing it: a step named "Cache the ..." that visibly rebuilds
 # looks exactly like a broken cache and usually is not one.
 #
-# WHAT RUNS — two harnesses, each asking a question with no other home here:
+# WHAT RUNS — three harnesses, each asking a question with no other home here.
+# It was two until 2026-11-13, when row 1.29 found `peer-signal` asserting
+# nineteen things and run by nothing:
 #
 #   - `real-gossip` — an entry written on nodeA reaches nodeB over a real iroh
 #     QUIC network. nodeC is the CONTROL and is the reason this is evidence
@@ -70,6 +72,21 @@
 #     "it simply had not gossiped yet". Here there is gossip, and it still
 #     does not carry them. 47s of harness time locally, 67s as a whole step
 #     with the network bring-up in front of it.
+#
+#   - `peer-signal` — two agents exchange signals and NEITHER CHAIN GROWS. One
+#     entry opens the channel (an unrestricted `CapGrant` on
+#     `recv_remote_signal`) and every signal after that costs zero, for ever,
+#     which is what makes disagreement free. The harness reads both chains'
+#     lengths across a burst of five rather than trusting the declaration, so a
+#     regression that started writing one entry per signal would red it. 18
+#     seconds locally against a freshly started network.
+#
+#     IT WAS NEVER EXCLUDED — IT WAS NEVER WIRED, and the two are impossible to
+#     tell apart from the outside, which is row 1.29. The two harnesses either
+#     side of it need exactly what it needs, and no file anywhere carried a
+#     reason for it being out. `scripts/check-harness-counts.mjs` now refuses
+#     that state: a harness with checks is either invoked by a workflow or says
+#     in its own README row that it is an experiment.
 #
 #   - `partition-rejoin` — two conductors each write history the other cannot
 #     see, and on rejoining converge on both, in both directions, while an
@@ -563,6 +580,28 @@ jobs:
       # real-gossip's: it ends by restarting what it stopped, and a harness that
       # inherits a network another harness was halfway through repairing is the
       # one-conductor-per-harness rule being broken in a subtler way than usual.
+      # ROW 1.29 — NINETEEN ASSERTIONS THAT RAN NOWHERE, on a two-node network
+      # this job already builds. `peer-signal` needs exactly what the two
+      # harnesses either side of it need and had no reason recorded for being
+      # out; it was simply never wired. Measured first, on a development
+      # machine against a freshly cleaned network: 18 seconds, exit 0.
+      #
+      # ITS CLAIM IS A ZERO, which is the kind that rots silently. One entry
+      # opens a channel and every signal after that writes NOTHING, for ever —
+      # and the harness proves it by reading both chains' lengths across a
+      # burst of five rather than by trusting the declaration. A regression
+      # that started writing one entry per signal would make disagreement cost
+      # chain space for ever, and nothing was watching.
+      - name: peer-signal — two agents speak without either chain growing
+        run: |
+          scripts/network.sh clean && scripts/network.sh start
+          rc=0
+          node scripts/live-verify/peer-signal.mjs || rc=$?
+          scripts/log-census.sh peer-signal
+          mkdir -p /tmp/epi-net-logs/peer-signal
+          cp /tmp/epi-net/*.log /tmp/epi-net-logs/peer-signal/ 2>/dev/null || true
+          exit $rc
+
       - name: partition-rejoin — a node offline while history was written catches up on rejoining
         run: |
           scripts/network.sh clean && scripts/network.sh start

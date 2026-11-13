@@ -104,6 +104,19 @@
 //   this repository exists: a gate whose subject can vanish silently is not a
 //   gate.
 //
+//   Injection (row 1.29): `node scripts/live-verify/own-critiques.mjs`
+//   commented out in `ui.yml`.
+//   Result: red — "own-critiques, 18 checks, run by no workflow, no manual
+//   declaration", AND the `ui.yml` header count drifts 27 -> 26 at the same
+//   time, which is the pair of answers a reader needs: one harness stopped
+//   running, and the workflow's own description of itself stopped being true.
+//
+//   Injection (row 1.29): the words "not a gate and not in CI" struck from
+//   `scale-dht`'s README row.
+//   Result: red — a declared experiment becomes an unaccounted gate. This is
+//   the direction that matters: the gate must not be satisfiable by a row that
+//   merely EXISTS, which is the mistake the four checks above all made.
+//
 //   Restored: green, exit 0, on all six checks.
 //
 //   AND THE FIRST RUN OF THIS GATE CAUGHT AN ERROR I HAD MADE BY HAND HOURS
@@ -116,6 +129,39 @@
 //   ad-hoc recount this file exists to retire, and nothing would have noticed.
 //   The gate excludes the resolver by name, which is why it reads 22.
 //
+// AND A FIFTH QUESTION, WHICH IS A DIFFERENT KIND FROM THE FOUR ABOVE AND IS
+// ROW 1.29: IS THE HARNESS RUN AT ALL?
+//
+// Every check in this file until 2026-11-13 compared the README's claims
+// against what EXISTS — rows, counts, importers. All of them were green while
+// **ten harnesses carrying 232 assertions were invoked by no workflow**, and
+// nothing here could have said so: the set of harnesses was never compared to
+// the set any workflow INVOKES, so a harness could be perfectly documented,
+// perfectly counted and never executed. **A gate that does not run is
+// indistinguishable from one that was never written, except that it reads like
+// coverage** — which is worse than an absence, because an absence is visible.
+//
+// THE RULE: a harness with at least one `check()` call site is either invoked
+// by a workflow step, or says in its own row in `scripts/live-verify/README.md`
+// that it is "an experiment, not a gate and not in CI". That phrasing is not
+// invented here — six harnesses wrote it before this check existed, each with
+// its real reason attached, and gating it turns a convention they happened to
+// share into something a seventh cannot quietly skip.
+//
+// A MENTION IS NOT AN INVOCATION. `network.yml`'s header explains at length
+// why two harnesses are NOT in it; `conductor.yml` names harnesses in prose
+// constantly. Commented lines are excluded, so a step that gets commented out
+// reads here as a harness that stopped running — the event most worth
+// catching, and the one that produced this row's own first finding: the row
+// said NINE harnesses and 210 assertions, and the sweep found TEN and 232.
+// `transitive-gossip` was missed because its reason for being out was real and
+// written down — in `network.yml`'s header, which is not where a reader of the
+// index looks. **Two of the ten were already explained; what they lacked was
+// the explanation where it would be found.**
+//
+// A harness with NO `check()` sites is out of scope and listed as such rather
+// than silently skipped: it asserts nothing, so running it would gate nothing.
+//
 // Run: node scripts/check-harness-counts.mjs
 // ============================================================================
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -125,6 +171,7 @@ const HARNESS = (name) => new URL(`../scripts/live-verify/${name}.mjs`, import.m
 const LV_DIR = new URL('../scripts/live-verify', import.meta.url).pathname;
 const LV_README = new URL('../scripts/live-verify/README.md', import.meta.url).pathname;
 const UI_WORKFLOW = new URL('../.github/workflows/ui.yml', import.meta.url).pathname;
+const WORKFLOW_DIR = new URL('../.github/workflows', import.meta.url).pathname;
 
 /** Files in `scripts/live-verify/` that are SHARED MODULES rather than
  *  harnesses: they export helpers, run no checks, and exit no status, so they
@@ -211,6 +258,85 @@ function checkSites(source) {
   return single + double + template;
 }
 
+/** ROW 1.29. Every harness that an actual WORKFLOW STEP invokes.
+ *
+ *  A MENTION IS NOT AN INVOCATION, and the distinction is the whole reason
+ *  this reads lines rather than grepping the file: `network.yml`'s header
+ *  explains at length why `transitive-gossip` and `network-partition` are NOT
+ *  in it, and `conductor.yml` names harnesses in prose constantly. Naming a
+ *  harness in a comment is the opposite of running it, so a commented line is
+ *  excluded — which also means a step that gets commented out shows up here as
+ *  a harness that stopped running, which is exactly the event worth catching.
+ */
+function invokedHarnesses() {
+  const names = new Set();
+  for (const f of readdirSync(WORKFLOW_DIR).filter((n) => n.endsWith('.yml'))) {
+    const src = readFileSync(`${WORKFLOW_DIR}/${f}`, 'utf8');
+    for (const line of src.split('\n')) {
+      if (/^\s*#/.test(line)) continue;
+      const m = line.match(/node\s+scripts\/live-verify\/([a-z0-9-]+)\.mjs/);
+      if (m) names.add(m[1]);
+    }
+  }
+  return names;
+}
+
+/** The sentence a harness's README row uses to declare that it is deliberately
+ *  not in CI.
+ *
+ *  THIS WORDING WAS NOT INVENTED FOR THE GATE. Six harnesses wrote it before
+ *  this check existed — `scale-dht`, `dht-isolation-probe`, `stall-bisect`,
+ *  `stall-threshold`, `strategy-compare`, `clock-skew-reveal` — each followed
+ *  by its real reason (twelve conductors would measure the runner; libfaketime
+ *  moves a clock and does not belong on a shared machine). Gating their
+ *  phrasing is what turns a convention six files happened to share into
+ *  something a seventh cannot quietly skip. */
+const MANUAL_DECLARATION = /not a gate and not in CI/i;
+
+/** Each harness's row in `scripts/live-verify/README.md`, by name. */
+function readmeRows() {
+  const lv = readFileSync(LV_README, 'utf8');
+  const rows = new Map();
+  for (const line of lv.split('\n')) {
+    const m = line.match(/^\| `([a-z0-9-]+)`/);
+    if (m) rows.set(m[1], line);
+  }
+  return rows;
+}
+
+/** ROW 1.29's assertion: a harness that asserts something is either RUN by a
+ *  workflow or SAYS it is not, in its own row, in the words the six existing
+ *  experiments use.
+ *
+ *  WHY THIS DID NOT FALL OUT OF THE CHECKS ABOVE. They compare the README's
+ *  claims against what EXISTS — rows, counts, importers — and every one of
+ *  them was green while nine harnesses carrying 210 assertions ran nowhere.
+ *  Nothing compared the set of harnesses to the set any workflow INVOKES, so a
+ *  harness could be perfectly documented, perfectly counted, and never
+ *  executed. **A gate that does not run is indistinguishable from one that was
+ *  never written, except that it reads like coverage.**
+ *
+ *  A harness with NO `check()` call sites is out of scope and not silently so:
+ *  it asserts nothing, so running it would gate nothing. Those are the probes
+ *  (`dht-isolation-probe`, `stall-bisect`, `stall-threshold`,
+ *  `strategy-compare`) and they print findings for a person to read. */
+function runStatus() {
+  const invoked = invokedHarnesses();
+  const rows = readmeRows();
+  return harnessNames().map((name) => {
+    const path = HARNESS(name);
+    const checks = existsSync(path) ? checkSites(readFileSync(path, 'utf8')) : 0;
+    const row = rows.get(name) ?? '';
+    return {
+      name,
+      checks,
+      runs: invoked.has(name),
+      declared: MANUAL_DECLARATION.test(row),
+      hasRow: rows.has(name),
+    };
+  });
+}
+
 /** Spelled-out numbers, reused for the index claims below. */
 const WORD_RE = '(' + Object.keys(WORDS).join('|') + '|\\d+)';
 
@@ -280,7 +406,15 @@ function indexClaims() {
 
   // 3. `ui.yml`'s header count against the harnesses that workflow actually
   //    runs. Counted from the invocations, which is what a reader is being told.
-  const invocations = [...uiYml.matchAll(/node scripts\/live-verify\/[a-z0-9-]+\.mjs/g)].length;
+  // COMMENTED LINES EXCLUDED, which this did not do until row 1.29's injection
+  // showed why it matters: commenting a harness out of the job left this count
+  // reading 27 of 27 while the workflow ran 26. The header is a claim about
+  // what RUNS, so a line that cannot run must not count towards it — and a
+  // commented-out step now drifts this number as well as reporting the harness
+  // as unrun, which is the pair of answers a reader needs.
+  const invocations = uiYml.split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .filter((line) => /node scripts\/live-verify\/[a-z0-9-]+\.mjs/.test(line)).length;
   const um = uiYml.match(new RegExp(`^# ${WORD_RE} browser harnesses`, 'im'));
   out.push({
     what: 'ui.yml header harness count',
@@ -387,13 +521,55 @@ if (idxBad.length > 0) {
   log('');
 }
 
-if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBad.length === 0) {
+// ---------------------------------------------------------------------------
+// ROW 1.29 — is each harness RUN, or does it say it is not?
+// ---------------------------------------------------------------------------
+const status = runStatus();
+const asserting = status.filter((h) => h.checks > 0);
+const unaccounted = asserting.filter((h) => !h.runs && !h.declared);
+const bothWays = asserting.filter((h) => h.runs && h.declared);
+
+const runCount = asserting.filter((h) => h.runs).length;
+const declCount = asserting.filter((h) => h.declared).length;
+const silent = status.filter((h) => h.checks === 0);
+log('  --- run or declared (row 1.29) ---');
+log(`  ${String(asserting.length).padStart(3)} harnesses assert something`);
+log(`  ${String(runCount).padStart(3)}   ...are invoked by a workflow`);
+log(`  ${String(declCount).padStart(3)}   ...declare themselves manual in their README row`);
+log(`  ${String(silent.length).padStart(3)} assert nothing and are out of scope: ${silent.map((h) => h.name).join(', ')}`);
+log('');
+
+if (unaccounted.length > 0) {
+  log('DRIFT — a harness asserts things and nothing runs it:');
+  for (const h of unaccounted) {
+    log(`  ${h.name.padEnd(24)} ${String(h.checks).padStart(3)} checks, run by no workflow, no manual declaration`);
+  }
+  log('  Each is a decision, and it is per harness rather than global: either');
+  log('  REGISTER it in the workflow whose setup it already needs, or SAY in');
+  log('  its row in scripts/live-verify/README.md that it is "an experiment,');
+  log('  not a gate and not in CI" — with the real reason, the way the six');
+  log('  that already do it say theirs. A gate that does not run is');
+  log('  indistinguishable from one that was never written, except that it');
+  log('  reads like coverage.');
+  log('');
+}
+if (bothWays.length > 0) {
+  log('DRIFT — a harness says it is not in CI and a workflow runs it:');
+  for (const h of bothWays) log(`  ${h.name}`);
+  log('  One of the two is wrong, and a reader of the index cannot tell which.');
+  log('');
+}
+
+if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBad.length === 0
+    && unaccounted.length === 0 && bothWays.length === 0) {
   log('NO DRIFT: every harness check count README.md states is the number of');
   log('checks that harness has, every harness has a row in the suite table, and');
   log('every suite-wide count matches what is actually there.');
   log('(Call sites, not executions — verified equal by real runs for every');
   log('harness it gates. The ones it cannot count are listed above, untested');
   log('here, with the reason they cannot be.)');
+  log('And every harness that asserts something is either run by a workflow or');
+  log('says in its own row that it is not.');
   process.exit(0);
 }
 process.exit(1);
