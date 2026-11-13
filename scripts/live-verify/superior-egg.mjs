@@ -461,6 +461,23 @@ async function main() {
     process.exit(1);
   }
   log('ALL CHECKS PASSED');
+
+  // EXITS EXPLICITLY, AND IT HAS TO — ROW 1.29.
+  //
+  // An open `@holochain/client` websocket is a REF'D handle and nothing here
+  // closes one, so falling off the end of `main()` does not end the process:
+  // it hangs for ever with every check passed. Measured rather than reasoned —
+  // a four-line probe that opens one admin and one app socket and does nothing
+  // else never exits either, and this harness was watched printing ALL CHECKS
+  // PASSED and then sitting there until a 300-second `timeout` killed it.
+  //
+  // THE CONSEQUENCE IS WHY THIS IS A ROW AND NOT A TIDY-UP: with only the
+  // failure branch calling `process.exit`, this harness COULD ONLY EVER REPORT
+  // A FAILURE. In CI it would present as a job timeout rather than a red
+  // check, and that is a large part of why it was never registered — the
+  // defect is visible the moment somebody runs it, and nobody had. Every
+  // harness this workflow already runs ends on the one-line form below.
+  process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

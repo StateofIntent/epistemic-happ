@@ -1,0 +1,126 @@
+# =============================================================================
+# WHAT A STRANGER INSTALLS TODAY — `scripts/live-verify/registry-install.mjs`,
+# on a schedule, which is what that harness has always asked for and never had.
+#
+# ROW 1.29 IS WHY THIS FILE EXISTS. The harness shipped with six checks, a
+# README row, and its own instruction in its header — "RUN IT ON A SCHEDULE,
+# NOT PER-PUSH ... That is also why it is NOT added to any required context" —
+# and then no workflow ran it at all. The decision had been taken and written
+# down; the wiring was simply never done, and nothing could tell the difference
+# between a gate that runs weekly and a gate that runs never.
+#
+# WHY NOT IN `conductor.yml`. Its sibling `published-packages` PACKS THE LOCAL
+# TREE and installs those tarballs, which is right for a per-push gate: during
+# a version bump the replacement SDK is by definition not on the registry yet.
+# This one resolves FROM THE REGISTRY, and the registry does not change when
+# this repository does — per-push it would burn a conductor job re-answering an
+# unchanged question, and would go red for reasons no diff caused. Those are
+# two different objects and this repository has been bitten by the difference:
+# the registry copy of 0.1.3 was broken from 2026-10-15 until 0.1.4 because
+# `mcp-server`'s dependency RANGE resolved to an `agent-sdk` that did not work,
+# while nothing in the tree was wrong at any point.
+#
+# WHAT A RED HERE MEANS, and it is not what a red on a pull request means:
+# something a stranger can install right now does not work. The tree may be
+# perfect. Fix it by publishing, not by patching this workflow.
+#
+# NOT A REQUIRED CONTEXT, deliberately — a scheduled run cannot gate a pull
+# request that did not cause it, and making it one would block merges on the
+# state of a third party's registry.
+#
+# WEEKLY, not daily: the question changes when somebody publishes, which is
+# rare here, and a daily run would mostly re-prove the same resolve. Monday
+# early UTC so a break found by the schedule is in front of somebody at the
+# start of a week rather than over a weekend.
+# =============================================================================
+name: registry-install
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to resolve for BOTH packages (`latest`, or `0.1.1` for the preserved known-broken pair)"
+        required: false
+        default: 'latest'
+
+# Its own group, and NOT cancel-in-progress: a dispatch while the schedule is
+# running is a second question about the registry, not a replacement for the
+# first.
+concurrency:
+  group: registry-install-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  registry-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which compiler this run used
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+
+      - name: Cache the cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('dna/integrity/Cargo.lock', 'dna/coordinator/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install the Holochain 0.7.0 binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci/install-holochain.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: federation/package-lock.json
+
+      # The harness itself installs the PUBLISHED packages into a throwaway
+      # project; this dependency is only what the harness's own code imports.
+      - name: Install the harnesses' one dependency
+        run: |
+          (cd federation && npm ci)
+          ln -sfn ../../federation/node_modules scripts/live-verify/node_modules
+          test -d scripts/live-verify/node_modules/@holochain/client \
+            || { echo "::error::@holochain/client is not reachable from scripts/live-verify/"; exit 1; }
+
+      # Build BEFORE packing: `hc dna pack` compiles nothing, so packing first
+      # wraps stale wasm in a fresh timestamp.
+      - name: Build the zomes and pack the hApp
+        run: |
+          ( cd dna/integrity   && cargo build --release --target wasm32-unknown-unknown )
+          ( cd dna/coordinator && cargo build --release --target wasm32-unknown-unknown )
+          hc dna pack dna/
+          hc app pack .
+          test -f epistemic-resonance-happ.happ \
+            || { echo "::error::no .happ bundle — sandbox.sh installs this into the conductor"; exit 1; }
+
+      # THE CONDUCTOR IS LOCAL AND THE PACKAGES ARE NOT, which is the whole
+      # point: the code under test came off the registry and is driven against
+      # a DNA built from this tree.
+      - name: registry-install — what a stranger installs today, against a real conductor
+        env:
+          EPI_REGISTRY_VERSION: ${{ inputs.version || 'latest' }}
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/registry-install.mjs
+
+      - name: The conductor's own log, if anything failed
+        if: failure()
+        run: |
+          scripts/sandbox.sh status || true
+          echo "--- .hc_sandbox.log (last 200 lines) ---"
+          tail -200 .hc_sandbox.log || echo "(no conductor log — it never started)"
