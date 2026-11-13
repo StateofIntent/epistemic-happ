@@ -53,6 +53,16 @@
 //   Regression injected: sizing nodes by depth instead of a uniform NODE_RADIUS.
 //   Result: one FAIL — 'every node has an identical radius', i.e. Invariant #1 asserted through geometry rather than through a number.
 //
+//   Regression injected (row 6.25): `get_critiques_for` forced to throw inside
+//   the structure walk.
+//   Result: the new `critique-graph-failed` notice renders and the summary
+//   checks go red. Before 6.25 this threw out of an `await` in an onclick —
+//   an unhandled rejection, with the panel left saying "Reading the critique
+//   structure…" and nothing reading. The run still stops further down, where
+//   the accessibility section needs nodes that are not there; the wait on the
+//   summary admits either outcome now, so the structure section reports
+//   rather than dying at a 20-second timeout with nothing said.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -206,8 +216,16 @@ async function main() {
 
     log('\n=== The spatial view shows the structure the list cannot ===');
     await page.getByRole('button', { name: 'View critique structure', exact: true }).click();
-    await page.waitForSelector('[data-testid="graph-summary"]', { timeout: 20000 });
-    const summary = await page.locator('[data-testid="graph-summary"]').innerText();
+    // EITHER OUTCOME — see the 6.25 control at the end of this file. The
+    // structure walk can now settle into a failure instead of a tree, and a
+    // wait that only admits the tree turns a conductor that will not answer
+    // into a harness that stops reporting rather than one that reports.
+    await page.waitForSelector(
+      '[data-testid="graph-summary"], [data-testid="critique-graph-failed"]',
+      { timeout: 20000 },
+    );
+    const summaryEl = page.locator('[data-testid="graph-summary"]');
+    const summary = (await summaryEl.count()) === 0 ? '' : await summaryEl.innerText();
     log(`  ${summary}`);
     check('all 4 critiques are found, not just the direct 2', /4 critiques/.test(summary));
     check('depth is reported as 3 levels', /3 levels deep/.test(summary));
@@ -260,6 +278,16 @@ async function main() {
     await page.waitForSelector('[data-testid="graph-summary"]', { timeout: 20000 });
     const second = await coordsOf();
     check('the same argument renders at identical coordinates', first === second);
+
+    // ROW 6.25. `loadCritiqueTree` had no catch and is `await`ed from an
+    // onclick, so a read that threw became an unhandled rejection AND left
+    // the panel saying "Reading the critique structure…" with nothing in
+    // flight. It now settles into `critiqueTreeFailed`, which this control
+    // keeps off a structure that demonstrably rendered — the node count above
+    // is the anchor, so this cannot pass against a panel that was never open.
+    check('CONTROL: a structure that rendered its nodes does not also report a failure',
+      nodeCount === 5
+      && (await page.locator('[data-testid="critique-graph-failed"]').count()) === 0);
 
     check('no uncaught page errors', errors.length === 0);
     if (errors.length) log(`  errors: ${errors.join(' | ')}`);

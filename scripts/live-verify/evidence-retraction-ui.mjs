@@ -48,6 +48,21 @@
 //   no harness here composed a claim slowly enough to be interrupted, which was
 //   a statement about the harnesses rather than about the form.
 //
+//   Regression injected (row 6.25): the two `chainByClaim` clears removed from
+//   `loadClaims`, so a resolved chain survives a re-read of its domain.
+//   Result: TWO red — the panel is still open, and the toggle still reads
+//   "Hide the chain" rather than offering the read.
+//
+//   Regression injected (row 6.25): only the OPEN-SET clear removed, the steps
+//   cleared.
+//   Result: THREE red, and this is the worse half: the panel stays open with
+//   nothing in it and renders "The walk returned no path" about a chain that
+//   had resolved to a real study seconds earlier. It also killed the run the
+//   first time — the re-open below clicked a toggle that was already open,
+//   HID the panel, and the wait died on a timeout with the reds already on
+//   screen. The click is guarded now, so the section reports FOUR red and
+//   finishes rather than stopping mid-way.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -289,6 +304,54 @@ async function main() {
     check('and is still not framed as a defect',
       /valid here and nothing gates on it/i.test(uPanel)
       && !/unverified|invalid|fails|must/i.test(uPanel));
+
+    // ROW 6.25. The audit 6.24 asked for found that `loadClaims` clears the
+    // critique panel's store and four others' not at all, so a reader who
+    // re-read a domain to see what had changed got one surface that updated
+    // and four that did not. The chain is the one this harness already drives.
+    //
+    // THE POSITIVE IS ASSERTED FIRST, and it is not decoration: the negative
+    // below is "no chain panel is on screen", which a harness that had never
+    // opened one would pass without the code being involved at all. That is
+    // the vacuous green this suite shipped once already.
+    log('\n=== Re-reading a domain drops the chain it resolved (6.25) ===');
+    check('two chain panels are open before the domain is re-read',
+      await page.locator('[data-testid="chain-panel"]').count() === 2);
+
+    await page.getByRole('button', { name: 'Load claims', exact: true }).click();
+    await page.waitForSelector('.claim-card', { timeout: 20000 });
+    await page.waitForSelector('[data-testid="grounding"]', { timeout: 20000 });
+
+    check('a re-read closes the chain panels rather than keeping their steps',
+      await page.locator('[data-testid="chain-panel"]').count() === 0);
+    // The specific lie the half-fix would tell. Clearing the steps while
+    // leaving the panel open renders this claim's absent state — "The walk
+    // returned no path" — about a claim whose path was just read successfully.
+    check('  ...and never says the walk returned no path about a chain it had',
+      await page.locator('[data-testid="chain-empty"]').count() === 0);
+    check('  ...and the toggle offers the read again',
+      /read the evidence chain/i.test(
+        await page.locator('.claim-card').filter({ hasText: 'Loaded carries' })
+          .locator('[data-testid="chain-toggle"]').innerText()));
+
+    // AND THE RE-READ ACTUALLY RESOLVES, which is the half that makes the
+    // clear honest rather than merely tidy: the evidence sentence comes back
+    // from a second walk, so what was dropped was a cache and not the ability
+    // to answer. Same assertion as the first open, deliberately.
+    const reGrounded = page.locator('.claim-card').filter({ hasText: 'Loaded carries' });
+    // The click is GUARDED rather than unconditional, and that is a lesson
+    // from watching this section fail: with the clears removed the panel is
+    // still open, so clicking the toggle HIDES it and the wait below dies on
+    // a timeout — a harness that stops reporting instead of reporting a
+    // failure. Three checks above have already gone red by then; this one
+    // should add its own answer rather than take the run down.
+    if ((await reGrounded.locator('[data-testid="chain-panel"]').count()) === 0) {
+      await reGrounded.locator('[data-testid="chain-toggle"]').click();
+      await reGrounded.locator('[data-testid="chain-step"]').first().waitFor({ timeout: 20000 });
+    }
+    check('and the chain still resolves to the evidence content after the re-read',
+      /Twelve-week randomised trial, n=180\./.test(
+        await reGrounded.locator('[data-testid="chain-panel"]').innerText()));
 
     log('\n=== Retracting your own claim ===');
     await ungrounded.getByRole('button', { name: 'Retract this claim', exact: true }).click();

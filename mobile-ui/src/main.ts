@@ -150,6 +150,12 @@ const unseenOpenAssessment = new Set<string>();
 // graph the user has actually opened.
 /** claim entryHash (b64) -> its full critique tree */
 const critiqueTreeByClaim = new Map<string, CritiqueNode[]>();
+/** claim key -> why the structure read did not come back.
+ *
+ *  `loadCritiqueTree` had no catch at all, and its one caller `await`s it from
+ *  an `onclick`: a read that threw became an unhandled rejection AND left the
+ *  panel saying "Reading the critique structure…" with nothing in flight. */
+const critiqueTreeFailed = new Map<string, string>();
 /** claim entryHash (b64) -> whether the spatial view is open */
 const graphOpenClaims = new Set<string>();
 
@@ -215,6 +221,18 @@ type GroundingStep =
 const chainOpen = new Set<string>();
 /** claim entryHash (b64) -> its path resolved node by node */
 const chainByClaim = new Map<string, GroundingStep[]>();
+/** Bumped by every `loadClaims`, and read by the four per-claim loaders that
+ *  resolve something on request.
+ *
+ *  THE HOLE IT CLOSES IS NARROW AND REAL. Clearing a store on a domain re-read
+ *  does nothing about a read that was ALREADY IN FLIGHT when the reader
+ *  clicked: it lands afterwards, writes its answer into the store the clear
+ *  just emptied, and the presence guard then declines to ask again — so the
+ *  panel holds a result resolved BEFORE the re-read while the badge above it
+ *  holds one from after. That is the disagreement row 6.25 exists to remove,
+ *  arriving through the one door clearing cannot cover. Each loader captures
+ *  this value before its first await and drops its result if it has moved. */
+let browseGeneration = 0;
 /** claim entryHash (b64) -> resolution in flight */
 const chainLoading = new Set<string>();
 /** claim entryHash (b64) -> whether its retract form is open */
@@ -281,6 +299,14 @@ const flaggingClaims = new Set<string>();
  * have published none. Absent means not asked or still in flight, which
  * is deliberately distinct from null. */
 const constitutionByAuthor = new Map<string, Constitution | null>();
+/** author pubkey (b64) -> why the read did not come back.
+ *
+ *  The load below was already right to leave a failed read ABSENT rather than
+ *  write null into the map — null is the real answer "this agent has published
+ *  no constitution" and a failed read is not it. What was missing was anywhere
+ *  for the failure to go, so the body went on saying "Loading…" after the
+ *  attempt had finished: 6.13's rule, in a fourth place. */
+const constitutionFailed = new Map<string, string>();
 /** author pubkey (b64) -> whether their promises are expanded */
 const constitutionOpen = new Set<string>();
 
@@ -629,6 +655,18 @@ const resonanceByClaim = new Map<string, NeighborRecall[]>();
 const resonanceOpen = new Set<string>();
 /** claim keys whose probe is in flight, so the panel can say so. */
 const resonanceLoading = new Set<string>();
+/** claim key -> why the probe did not come back.
+ *
+ *  A FAILED PROBE IS NOT AN EMPTY NEIGHBOURHOOD, and the version this replaces
+ *  could not tell them apart: the catch below wrote `[]` into the map above,
+ *  which the panel renders as "Nothing to probe against — load more claims in
+ *  this domain first" — an instruction derived from a read that never
+ *  answered, pointing the reader at work that cannot help. `loadConstitution`
+ *  states the rule this broke, twenty lines of its own: a failed read must not
+ *  be rendered as the answer nobody got. Kept in a second map rather than
+ *  widening `NeighborRecall[]`, which is the shape `replacementReadFailed`
+ *  already uses beside `replacementClaimByHash` for the same reason. */
+const resonanceFailed = new Map<string, string>();
 
 // --- By Author -----------------------------------------------------------
 // Kept in its own store rather than reusing `claims`, so that reading one
@@ -2430,6 +2468,8 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
       graphOpenClaims.add(key);
       render();
       if (!critiqueTreeByClaim.has(key)) await loadCritiqueTree(claim);
+      // `loadCritiqueTree` now settles its own failure into
+      // `critiqueTreeFailed`, so this await can no longer reject.
     }
   };
   card.appendChild(graphBtn);
@@ -2498,6 +2538,18 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
       p2.className = 'hint';
       p2.textContent = 'Probing…';
       panel.appendChild(p2);
+    } else if (resonanceFailed.has(key)) {
+      // BEFORE the empty branch, which is the whole repair: that branch's own
+      // comment ("a legitimate answer, not a failure") is true of the `[]` the
+      // success path writes and was false of the `[]` the catch used to write.
+      const failed = document.createElement('p');
+      failed.className = 'hint';
+      failed.dataset.testid = 'resonance-failed';
+      failed.textContent =
+        `The probe did not come back: ${resonanceFailed.get(key)}. `
+        + 'Nothing is known about this claim\'s neighborhood either way — '
+        + 'close this and open it again to ask again.';
+      panel.appendChild(failed);
     } else if (!recalls || recalls.length === 0) {
       // A legitimate answer, not a failure: nothing to resonate with is
       // exactly what a claim with no other claims loaded beside it means.
@@ -2699,14 +2751,17 @@ async function loadReplacementClaim(hash: Uint8Array): Promise<void> {
   if (!connection) return;
   const key = b64(hash);
   if (replacementClaimByHash.has(key) || replacementReading.has(key)) return;
+  const generation = browseGeneration;
   const conn = connection;
   replacementReading.add(key);
   replacementReadFailed.delete(key);
   try {
     const claim = await conn.callZome<Claim | null>('get_claim', hash);
-    replacementClaimByHash.set(key, claim ?? null);
+    if (generation === browseGeneration) replacementClaimByHash.set(key, claim ?? null);
   } catch (err) {
-    replacementReadFailed.set(key, err instanceof Error ? err.message : String(err));
+    if (generation === browseGeneration) {
+      replacementReadFailed.set(key, err instanceof Error ? err.message : String(err));
+    }
   } finally {
     replacementReading.delete(key);
     render();
@@ -4145,6 +4200,9 @@ async function loadClaims(domain: string, fromTheBox = false) {
   // domain's claims. A list that stays up while a different domain is being
   // read is the same lie as an empty one that cannot say it was asked.
   claims = [];
+  // Bumped BEFORE the clears, so every read already in flight is outside this
+  // generation by the time the stores are emptied.
+  browseGeneration += 1;
   critiquesByClaim.clear();
   assessmentsByClaim.clear();
   expandedClaims.clear();
@@ -4157,6 +4215,44 @@ async function loadClaims(domain: string, fromTheBox = false) {
   unseenOpen.clear();
   unseenByAssessment.clear();
   unseenOpenAssessment.clear();
+  // THE FOUR PER-CLAIM STORES THIS LIST WAS MISSING, found by the audit 6.24
+  // asked for. Each is read once per claim and then kept, and each sits on a
+  // card in the list this function is about to replace — so a reader who
+  // re-reads a domain to see what has changed was being handed one surface
+  // that updated and four that did not. Every one is cleared WITH the set
+  // that holds it open, because an open panel whose store has gone renders
+  // its absent state, and all four of those absent states are a lie after a
+  // deliberate clear: "The walk returned no path", "Nothing to probe
+  // against", "Reading the critique structure…", "Looking up what the author
+  // believes now…". `expandedClaims` above is the precedent — it is in this
+  // list for exactly that reason.
+  chainByClaim.clear();
+  chainOpen.clear();
+  resonanceByClaim.clear();
+  resonanceFailed.clear();
+  resonanceOpen.clear();
+  // The probe scores the candidates it is given, and the candidates are the
+  // other claims loaded in this domain — so a result held across a re-read is
+  // an answer to a question about a different candidate set.
+  critiqueTreeByClaim.clear();
+  critiqueTreeFailed.clear();
+  graphOpenClaims.clear();
+  // NOT a contradiction of 6.24's deferral on this map: that one is about
+  // re-reading a depth-3 fan-out every time a panel OPENS, which costs
+  // something. Dropping it when the whole claim list is replaced costs
+  // nothing and is the only thing stopping the structure panel from
+  // disagreeing with the critique panel one button above it.
+  replacementClaimByHash.clear();
+  replacementReadFailed.clear();
+  // AND THIS ONE IS THE WORST OF THE FOUR, because of what it renders. A
+  // replacement that returned nothing is the one answer on these cards that
+  // is explicitly not final — `renderReplacementLine` says so in its own
+  // words: "nobody reachable is holding it yet — not that it does not exist."
+  // Caching that for the session made the sentence untrue, and since this map
+  // was absent from this list, not even re-reading the domain retried it. A
+  // read that THREW already retried, because the guard checks the result map
+  // and the error goes elsewhere; a "not yet" never did. The asymmetry was
+  // backwards: the recoverable answer was the permanent one.
   render();
   try {
     const records = await connection.callZome<any[]>('get_claims_by_domain', domain);
@@ -4248,6 +4344,7 @@ async function loadClaimsByAuthor(agentB64: string) {
  * the step count this replaces. */
 async function loadGroundingChain(claim: DecodedRecord<Claim>) {
   if (!connection) return;
+  const generation = browseGeneration;
   const key = b64(claim.entryHash);
   const grounding = groundingByClaim.get(key);
   // No path means get_grounding_path has not answered yet. The toggle is only
@@ -4275,7 +4372,7 @@ async function loadGroundingChain(claim: DecodedRecord<Claim>) {
         steps.push({ kind: 'unresolved', hash });
       }
     }
-    chainByClaim.set(key, steps);
+    if (generation === browseGeneration) chainByClaim.set(key, steps);
   } finally {
     chainLoading.delete(key);
     render();
@@ -4284,8 +4381,12 @@ async function loadGroundingChain(claim: DecodedRecord<Claim>) {
 
 async function loadResonance(claim: DecodedRecord<Claim>) {
   if (!connection) return;
+  const generation = browseGeneration;
   const key = b64(claim.entryHash);
   resonanceLoading.add(key);
+  // Cleared on the way IN, so a retry says "probing" rather than going on
+  // showing why the last attempt failed while this one is in flight.
+  resonanceFailed.delete(key);
   render();
   try {
     const candidates: [Uint8Array, string][] = [];
@@ -4297,9 +4398,16 @@ async function loadResonance(claim: DecodedRecord<Claim>) {
     const recalls = candidates.length === 0 ? [] : await connection.callZome<NeighborRecall[]>(
       'query_neighborhood_resonance', { claim_hash: claim.entryHash, candidates },
     );
-    resonanceByClaim.set(key, recalls);
+    if (generation === browseGeneration) resonanceByClaim.set(key, recalls);
   } catch (e) {
-    resonanceByClaim.set(key, []);
+    // NOT `set(key, [])`. Writing the empty answer here made a failed read
+    // indistinguishable from a neighbourhood with nothing in it, and — because
+    // the toggle's guard is `if (!resonanceByClaim.has(key))` — permanent for
+    // the session: closing the panel and opening it again could never ask
+    // again. Leaving the result map absent is what makes the retry work.
+    if (generation === browseGeneration) {
+      resonanceFailed.set(key, e instanceof Error ? e.message : String(e));
+    }
     console.error('resonance probe failed', e);
   } finally {
     resonanceLoading.delete(key);
@@ -4662,15 +4770,20 @@ async function joinMembrane(membrane: DecodedRecord<Membrane>) {
 async function loadConstitution(author: Uint8Array) {
   if (!connection) return;
   const key = b64(author);
+  constitutionFailed.delete(key);
   try {
     const constitution = await connection.callZome<Constitution | null>(
       'get_agent_constitution', author,
     );
     constitutionByAuthor.set(key, constitution ?? null);
-  } catch {
+  } catch (err) {
     // Left ABSENT rather than set to null. null is a real answer — "this
     // agent has published no constitution" — and rendering a failed read
-    // as that answer would assert something nobody checked.
+    // as that answer would assert something nobody checked. Absent is also
+    // what makes re-opening retry, since the toggle's guard is `!has(key)`.
+    // The reason goes in its own map so the body can say what happened
+    // instead of going on saying "Loading…" after the attempt is over.
+    constitutionFailed.set(key, err instanceof Error ? err.message : String(err));
   }
   render();
 }
@@ -4713,6 +4826,23 @@ function renderAuthorConstitution(author: Uint8Array): HTMLElement {
 
   const body = document.createElement('div');
   body.dataset.testid = 'constitution-body';
+
+  const constitutionFailure = constitutionFailed.get(key);
+  if (constitutionFailure) {
+    // FOUR STATES, NOT THREE. Before this branch a read that threw left the
+    // map absent — correctly — and the absent case says "Loading…", so a
+    // failure rendered as a read that is still happening, forever.
+    const failed = document.createElement('p');
+    failed.className = 'hint';
+    failed.dataset.testid = 'constitution-failed';
+    failed.textContent =
+      `What this author promises could not be read: ${constitutionFailure}. `
+      + 'That is a failed read and not an absent constitution — close this and '
+      + 'open it again to ask again.';
+    body.appendChild(failed);
+    wrap.appendChild(body);
+    return wrap;
+  }
 
   if (!constitutionByAuthor.has(key)) {
     body.textContent = 'Loading…';
@@ -5282,7 +5412,15 @@ function renderWorldlineTab(): HTMLElement {
       open.onclick = () => {
         if (openPeriods.has(i)) { openPeriods.delete(i); render(); return; }
         openPeriods.add(i);
-        if (!sampledPeriods.has(i)) void samplePeriod(i);
+        // A FAILED SAMPLE RE-READS AND NOTHING ELSE DOES. Closing a window
+        // and opening it again is the only gesture this screen offers after a
+        // read that would not come back, and a plain presence guard made that
+        // gesture do nothing — the one state that asks to be retried was the
+        // one state that could not be. An `open` sample is deliberately left
+        // alone: whether a window already answered should re-read is 6.24's
+        // sub-question about a panel left open, and it is not this one's.
+        const priorSample = sampledPeriods.get(i);
+        if (!priorSample || priorSample.state === 'failed') void samplePeriod(i);
         else render();
       };
       li.appendChild(open);
@@ -6562,8 +6700,23 @@ async function loadCritiqueTree(claim: DecodedRecord<Claim>) {
     }));
   };
 
-  const tree = await fetchLevel(claim.entryHash, 1);
-  critiqueTreeByClaim.set(b64(claim.entryHash), tree);
+  const generation = browseGeneration;
+  const key = b64(claim.entryHash);
+  critiqueTreeFailed.delete(key);
+  try {
+    const tree = await fetchLevel(claim.entryHash, 1);
+    if (generation === browseGeneration) critiqueTreeByClaim.set(key, tree);
+  } catch (err) {
+    // The walk is three levels of `get_critiques_for` and this had no catch:
+    // a conductor that would not answer threw out of an `await` in an
+    // `onclick`, so the page took an unhandled rejection and the panel went
+    // on saying "Reading the critique structure…" with nothing reading it.
+    // The result map is left ABSENT on purpose — the toggle's guard is
+    // `!critiqueTreeByClaim.has(key)`, so that is what lets a re-open retry.
+    if (generation === browseGeneration) {
+      critiqueTreeFailed.set(key, err instanceof Error ? err.message : String(err));
+    }
+  }
   render();
 }
 
@@ -6579,6 +6732,18 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'critique-graph';
   wrap.dataset.testid = 'critique-graph';
+
+  const treeFailure = critiqueTreeFailed.get(key);
+  if (treeFailure) {
+    const failed = document.createElement('p');
+    failed.className = 'hint';
+    failed.dataset.testid = 'critique-graph-failed';
+    failed.textContent =
+      `The critique structure could not be read: ${treeFailure}. `
+      + 'Hide it and show it again to ask again.';
+    wrap.appendChild(failed);
+    return wrap;
+  }
 
   const tree = critiqueTreeByClaim.get(key);
   if (tree === undefined) {
