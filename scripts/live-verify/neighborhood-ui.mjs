@@ -51,7 +51,24 @@
 //   and it is why the harness checks that an UNRELATED claim is present rather
 //   than merely that some rows exist.
 //
-//   Restored and re-run: 14 checks green.
+//   Injection (row 6.25): all three resonance clears removed from
+//   `loadClaims`, so a probe survives a re-read of the domain it scored.
+//   Result: ONE red — the panel is still open with its old scores.
+//
+//   Injection (row 6.25): only the OPEN-SET clear removed, the stores cleared.
+//   Result: THREE red, which is the half-fix being worse than either whole:
+//   the panel stays open with nothing in it and renders "Nothing to probe
+//   against — load more claims in this domain first" about a neighborhood
+//   that had just returned four rows.
+//
+//   Injection (row 6.25): the probe read forced to throw.
+//   Result: SIX red, the new `resonance-failed` notice rendering its reason,
+//   and — the point of the row — NO uncaught page error and no empty answer
+//   standing in for a failed one. The version this replaced wrote `[]` into
+//   the result map here, which rendered as the legitimate empty state and
+//   could never be retried.
+//
+//   Restored and re-run: 19 checks green.
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
@@ -208,6 +225,65 @@ async function main() {
     check('so does the related one', panelText.includes('Progressive loading protocols'));
     check('CONTROL: the subject does not resonate with itself — it is excluded as a candidate',
       !panelText.includes('Loaded carries reduce recurrence'));
+
+    // ---- 5. A probe is not kept across a re-read of the domain ----------
+    //
+    // ROW 6.25, and the reason is specific to THIS surface rather than a
+    // general tidiness rule: the probe scores the candidates it is handed,
+    // and the candidates are *the other claims currently loaded in this
+    // domain*. A result kept across a re-read is therefore an answer to a
+    // question about a different candidate set, rendered as an answer to
+    // this one. The caveat two sections up promises the reader exactly that
+    // — "scores every claim currently loaded in this domain" — so keeping
+    // the old scores makes the panel's own sentence false.
+    //
+    // THE POSITIVE IS ASSERTED BEFORE THE NEGATIVE. "No panel is on screen"
+    // passes trivially on a harness that never opened one.
+    log('\n=== 5. Re-reading the domain drops the probe (6.25) ===');
+    check('the probe panel is open before the domain is re-read',
+      (await page.locator('[data-testid="resonance-panel"]').count()) === 1);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForSelector('.claim-card', { timeout: 20000 });
+    check('a re-read closes the probe rather than keeping its scores',
+      (await page.locator('[data-testid="resonance-panel"]').count()) === 0);
+    // The lie the half-fix tells: clear the scores, leave the panel open, and
+    // the empty branch renders "Nothing to probe against — load more claims
+    // in this domain first" about a neighborhood that just returned rows.
+    check('  ...and never tells the reader to load more claims in a domain it just loaded',
+      (await page.locator('[data-testid="resonance-empty"]').count()) === 0);
+
+    // GUARDED, for the same reason evidence-retraction-ui guards its re-open:
+    // with the clears removed the panel is still showing, so clicking the
+    // toggle HIDES it and the wait below dies on a timeout — the run stops
+    // reporting instead of reporting. The checks above have already answered
+    // by then; this one should add to them rather than replace them.
+    if ((await page.locator('[data-testid="resonance-panel"]').count()) === 0) {
+      await page.locator('.claim-card').filter({ hasText: 'Loaded carries reduce recurrence' })
+        .locator('[data-testid="resonance-toggle"]').click();
+      // EITHER OUTCOME, not just the good one: a probe that throws now has a
+      // surface of its own (`resonance-failed`), and waiting only for rows
+      // turns a conductor that will not answer into a dead harness instead of
+      // a reported failure. The checks below say which of the two happened.
+      await page.waitForSelector(
+        '[data-testid="resonance-row"], [data-testid="resonance-failed"]',
+        { timeout: 20000 },
+      );
+    }
+    log(`  after the re-read: ${(await page.locator('[data-testid="resonance-panel"]').innerText())
+      .replace(/\n+/g, ' | ').slice(-160)}`);
+    // `rows > 0` is carried into the comparison deliberately. Without it a
+    // first probe that returned nothing would make this `0 === 0` — the
+    // vacuous green this suite shipped once already, where a check scores a
+    // PASS against a screen that never had the thing on it.
+    check('asking again probes again and the scores come back',
+      rows > 0 && (await page.locator('[data-testid="resonance-row"]').count()) === rows);
+    // ANCHORED to the line above rather than standing alone: a failed-probe
+    // notice must be absent *on a probe that demonstrably succeeded*, which is
+    // what the row count establishes. `resonance-failed` is the surface added
+    // with this row for a read that throws, and a read that throws must be the
+    // only thing that renders it.
+    check('CONTROL: a probe that returned rows does not also report a failure',
+      (await page.locator('[data-testid="resonance-failed"]').count()) === 0);
 
     check('CONTROL: the page raised no uncaught errors', pageErrors.length === 0);
     if (pageErrors.length) for (const e of pageErrors) log(`    pageerror: ${e}`);

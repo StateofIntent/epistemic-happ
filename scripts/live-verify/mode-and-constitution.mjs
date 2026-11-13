@@ -35,6 +35,18 @@
 //   Regression injected: labelling the chain-local by-mode read as network-wide; separately, rendering a missing constitution as 'unverified'.
 //   Result: ten FAILs across the two.
 //
+//   Regression injected (row 6.25): `get_agent_constitution` forced to throw.
+//   Result: NINE red, including both of this file's 6.25 controls and the
+//   three positive assertions about the absence path — and NO uncaught page
+//   error, because the failure now settles into `constitutionFailed` and
+//   renders instead of leaving the body saying "Loading…" forever.
+//   Two things came out of watching it: the two waits in sections 2 and 3
+//   admitted only the GOOD outcome, so a conductor that would not answer made
+//   this file stop reporting rather than report; and the one negative check in
+//   section 3 ("uses no deficiency language") scored a PASS against an empty
+//   string once the waits were made tolerant, so it is anchored to the text
+//   existing.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -68,6 +80,16 @@ const check = (label, cond) => {
   if (cond) log(`  PASS: ${label}`);
   else { log(`  FAIL: ${label}`); failures++; }
 };
+
+/** The text of a locator that may legitimately not be there.
+ *
+ *  A missing element and an empty one are different things, and this collapses
+ *  them on purpose: every caller feeds the result to a regex that is asserting
+ *  what the element SAYS, so "" fails the assertion rather than throwing out
+ *  of the run. The distinction that matters — promises, absence, or a failed
+ *  read — is made by the checks, not by an exception. */
+const textOrEmpty = async (locator) =>
+  ((await locator.count()) === 0 ? '' : locator.innerText());
 
 const nowMicros = () => Date.now() * 1000;
 const nowSecs = () => Math.floor(Date.now() / 1000);
@@ -219,19 +241,29 @@ async function main() {
 
     const a2Card = page.locator('.claim-card', { hasText: a2Claim }).first();
     await a2Card.locator('[data-testid="constitution-toggle"]').click();
-    await page.waitForSelector('[data-testid="author-promises"]', { timeout: 20000 });
-    const promises = await a2Card.locator('[data-testid="author-promises"]').innerText();
+    // EITHER OUTCOME, not just the good one — see the 6.25 controls at the
+    // end of this section. A read that throws now renders
+    // `constitution-failed`, and waiting only for the promises turns a
+    // conductor that will not answer into a harness that stops reporting.
+    await page.waitForSelector(
+      '[data-testid="author-promises"], [data-testid="constitution-failed"]',
+      { timeout: 20000 },
+    );
+    const promises = await textOrEmpty(a2Card.locator('[data-testid="author-promises"]'));
     check('agent 1 can read agent 2\'s published promises — a real cross-agent DHT read',
       /distinguish observation from inference/i.test(promises));
-    const cMeta = await a2Card.locator('[data-testid="constitution-meta"]').innerText();
+    const cMeta = await textOrEmpty(a2Card.locator('[data-testid="constitution-meta"]'));
     check('and when the promise was made is stated, since a promise covers a window',
       /published \d{4}-\d{2}-\d{2}/i.test(cMeta));
 
     log('\n=== 3. Absence is reported, never scored ===');
     const a3Card = page.locator('.claim-card', { hasText: a3Claim }).first();
     await a3Card.locator('[data-testid="constitution-toggle"]').click();
-    await page.waitForSelector('[data-testid="constitution-none"]', { timeout: 20000 });
-    const noneText = await a3Card.locator('[data-testid="constitution-none"]').innerText();
+    await page.waitForSelector(
+      '[data-testid="constitution-none"], [data-testid="constitution-failed"]',
+      { timeout: 20000 },
+    );
+    const noneText = await textOrEmpty(a3Card.locator('[data-testid="constitution-none"]'));
     check('an author with no constitution is reported as exactly that',
       /has not published a constitution/i.test(noneText));
     // The whole point: nothing requires one, so nothing may be read into
@@ -241,8 +273,25 @@ async function main() {
       /nothing requires one/i.test(noneText));
     check('and that its absence says nothing about their claims',
       /says nothing about their claims/i.test(noneText));
+    // ANCHORED to the text existing. `textOrEmpty` above can return "" when
+    // the read failed, and every regex in this group is a POSITIVE assertion
+    // that reds on "" — except this one, which is a negative and would score
+    // a PASS against a screen with nothing on it.
     check('and uses no deficiency language',
-      !/missing|incomplete|unverified|fails|lacks|warning/i.test(noneText));
+      noneText.length > 0
+      && !/missing|incomplete|unverified|fails|lacks|warning/i.test(noneText));
+
+    // ROW 6.25. A failed `get_agent_constitution` used to be left absent —
+    // correctly, since null is the real answer "has published none" and a
+    // failed read is not it — with nowhere for the failure to go, so the body
+    // went on saying "Loading…" after the attempt had finished. The surface
+    // added for it must stay off a read that worked, and both anchors above
+    // are positive findings rather than mere absence: one author's promises
+    // rendered, another's absence rendered.
+    check('CONTROL: a constitution that rendered its promises does not also report a failure',
+      (await a2Card.locator('[data-testid="constitution-failed"]').count()) === 0);
+    check('CONTROL: nor does an author who has published none — that is an answer, not a failure',
+      (await a3Card.locator('[data-testid="constitution-failed"]').count()) === 0);
 
     check('no uncaught page errors', pageErrors.length === 0);
     if (pageErrors.length > 0) log('  ' + pageErrors.join('\n  '));
