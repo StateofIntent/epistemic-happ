@@ -117,6 +117,11 @@
 //   the direction that matters: the gate must not be satisfiable by a row that
 //   merely EXISTS, which is the mistake the four checks above all made.
 //
+//   Injection (row 6.23): `reading-a-thread`'s suite-table count edited from
+//   64 to 63 — off by one, the size of drift that actually happens.
+//   Result: red, naming both numbers. The same figure had been wrong by 34 for
+//   four sessions in that table because nothing read it.
+//
 //   Restored: green, exit 0, on all six checks.
 //
 //   AND THE FIRST RUN OF THIS GATE CAUGHT AN ERROR I HAD MADE BY HAND HOURS
@@ -128,6 +133,22 @@
 //   So a stale index was replaced with a wrong one, by the same kind of
 //   ad-hoc recount this file exists to retire, and nothing would have noticed.
 //   The gate excludes the resolver by name, which is why it reads 22.
+//
+// AND A SIXTH, WHICH IS THE SAME QUESTION ASKED OF A SECOND DOCUMENT — ROW
+// 6.23. The checks above gate `README.md`'s phrasing, "`<path>`, N checks",
+// path first. `scripts/live-verify/README.md`'s suite table writes it the
+// other way round — "**N checks**" — so none of the table was gated at all,
+// and `reading-a-thread`'s row said **30** while the harness ran **64**: stale
+// by more than a factor of two, through four sessions that each ran that
+// harness and read that row. Found only because row 6.23 grew it again.
+//
+// FOUR FIGURES WERE WRONG AND THREE WERE RIGHT WHILE THE MEASURE WAS WRONG,
+// which is the part worth keeping. `attachment-links` says 101 against 27 call
+// sites and `ordering-policy` 27 against 25 — both correct, because their
+// checks sit in loops, and both MEASURED on a real run (101 and 27 PASS lines)
+// rather than believed. `peer-signal` said 22, had 19 sites, and runs 21: the
+// document was wrong about a number that was never either of the two available
+// ones. All three are in EXEMPT with the measured run beside them.
 //
 // AND A FIFTH QUESTION, WHICH IS A DIFFERENT KIND FROM THE FOUR ABOVE AND IS
 // ROW 1.29: IS THE HARNESS RUN AT ALL?
@@ -231,6 +252,18 @@ const EXEMPT = {
   'domain-index': 'one call site is reused per poisoning attempt through a helper, '
     + 'and an if/else pair means only one of two fires — so call sites neither equal '
     + 'nor bound the checks that run (12 sites, 22 checks measured). Cite the run.',
+  // The three below were found by the suite-table assertion added for row 6.23,
+  // and each was MEASURED on a real run rather than taken from the document it
+  // was supposed to be gating. All three are loop-driven, which is the same
+  // shape as `domain-index` above.
+  'attachment-links': 'the eighteen link rules are asserted in a loop, so 27 call '
+    + 'sites run 101 checks — measured, ALL CHECKS PASSED with 101 PASS lines. '
+    + 'The figure in the suite table is the run and is correct.',
+  'ordering-policy': 'checks inside a loop over the ordering cases: 25 call sites '
+    + 'run 27 checks, measured. The suite table cites the run.',
+  'peer-signal': 'the four typed PeerSignal variants are round-tripped in a loop, '
+    + 'so 19 call sites run 21 checks — measured. The suite table said 22, which '
+    + 'was neither number, and is corrected to the measured 21.',
 };
 
 /** Every "`scripts/live-verify/<name>.mjs`, N checks" claim in README.md.
@@ -256,6 +289,46 @@ function checkSites(source) {
   const double = [...source.matchAll(/\bcheck\(\s*"(?:[^"\\]|\\.)*"/g)].length;
   const template = [...source.matchAll(/\bcheck\(\s*`(?:[^`\\]|\\.)*`/g)].length;
   return single + double + template;
+}
+
+/** ROW 6.23. The count each suite-table row states, which is a SECOND and
+ *  entirely ungated place the same claim is made.
+ *
+ *  THE CHECKS AT THE TOP OF THIS FILE GATE `README.md`'s form — "`<path>`,
+ *  N checks", path first — and `scripts/live-verify/README.md`'s table writes
+ *  it the other way round, "**N checks**", so none of it was gated at all.
+ *  Found because row 6.23 grew `reading-a-thread` from 59 to 64 and its table
+ *  row still said **30**: stale by more than a factor of two, through four
+ *  sessions that each ran the harness and read the row.
+ *
+ *  THE FIRST "N checks" IN THE ROW, and that rule is doing real work rather
+ *  than being the easy thing to write. These rows also cite SECTION counts
+ *  ("§5bb ADDED 2026-11-02, 16 checks") and HISTORICAL ones ("green on its
+ *  first run at 35 checks"), both of which are correct as written and must not
+ *  be gated. The headline total is the one that comes first, every time, in
+ *  all 29 rows that state one. Measured before being believed: 23 of the 29
+ *  agreed, and of the 6 that did not, **three were right and the document was
+ *  wrong, and three were right and the CALL SITES were the wrong measure** —
+ *  loop-driven harnesses whose run count legitimately exceeds their sites, now
+ *  in EXEMPT above with the measured run beside each.
+ */
+function tableCounts() {
+  const lv = readFileSync(LV_README, 'utf8');
+  const out = [];
+  for (const line of lv.split('\n')) {
+    const name = line.match(/^\| `([a-z0-9-]+)`/);
+    if (!name) continue;
+    const stated = line.match(/(\d+) checks/);
+    if (!stated) continue;
+    const path = HARNESS(name[1]);
+    if (!existsSync(path)) continue;
+    out.push({
+      harness: name[1],
+      claimed: Number(stated[1]),
+      actual: checkSites(readFileSync(path, 'utf8')),
+    });
+  }
+  return out;
 }
 
 /** ROW 1.29. Every harness that an actual WORKFLOW STEP invokes.
@@ -522,6 +595,28 @@ if (idxBad.length > 0) {
 }
 
 // ---------------------------------------------------------------------------
+// ROW 6.23 — the suite table's own headline counts, which nothing gated.
+// ---------------------------------------------------------------------------
+const table = tableCounts();
+const tableWrong = table.filter((c) => !EXEMPT[c.harness] && c.claimed !== c.actual);
+log('  --- suite table headline counts (row 6.23) ---');
+log(`  ${String(table.length).padStart(3)} rows state a count; `
+  + `${table.filter((c) => EXEMPT[c.harness]).length} are loop-driven and exempt, with the run cited`);
+for (const c of tableWrong) {
+  log(`  ${c.harness.padEnd(24)} says ${String(c.claimed).padStart(3)}   has ${String(c.actual).padStart(3)}   <-- DRIFT`);
+}
+log('');
+if (tableWrong.length > 0) {
+  log('DRIFT — scripts/live-verify/README.md states a count the harness does not have:');
+  for (const c of tableWrong) log(`  ${c.harness}: says ${c.claimed}, has ${c.actual} call sites`);
+  log('  This is the SECOND place each count is written, and until row 6.23 it was');
+  log('  the unwatched one. If the harness loops, the run legitimately exceeds the');
+  log('  sites — then MEASURE the run, cite it, and add the harness to EXEMPT with');
+  log('  the number beside it, rather than editing this figure to match a guess.');
+  log('');
+}
+
+// ---------------------------------------------------------------------------
 // ROW 1.29 — is each harness RUN, or does it say it is not?
 // ---------------------------------------------------------------------------
 const status = runStatus();
@@ -561,7 +656,7 @@ if (bothWays.length > 0) {
 }
 
 if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBad.length === 0
-    && unaccounted.length === 0 && bothWays.length === 0) {
+    && unaccounted.length === 0 && bothWays.length === 0 && tableWrong.length === 0) {
   log('NO DRIFT: every harness check count README.md states is the number of');
   log('checks that harness has, every harness has a row in the suite table, and');
   log('every suite-wide count matches what is actually there.');
@@ -569,7 +664,8 @@ if (wrong.length === 0 && unparsed.length === 0 && missing.length === 0 && idxBa
   log('harness it gates. The ones it cannot count are listed above, untested');
   log('here, with the reason they cannot be.)');
   log('And every harness that asserts something is either run by a workflow or');
-  log('says in its own row that it is not.');
+  log('says in its own row that it is not — and the suite table\'s own headline');
+  log('counts agree with the harnesses too, which nothing watched until 6.23.');
   process.exit(0);
 }
 process.exit(1);

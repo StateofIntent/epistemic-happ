@@ -269,8 +269,18 @@ const check = (label, cond) => {
 const nowMicros = () => Date.now() * 1000;
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 /** The same twelve characters the UI puts in a byline, so a check can compare
- *  what is on screen against the key of the agent that actually wrote it. */
-const short = (u8) => `${b64(u8).slice(0, 12)}…`;
+ *  what is on screen against the key of the agent that actually wrote it.
+ *
+ *  NOT FROM THE FRONT, SINCE ROW 6.23's MECHANICAL HALF. The first three bytes
+ *  of every Holochain hash are a multihash type tag, so every agent key's
+ *  base64 begins `hCAk` — measured on eight real keys from a live conductor,
+ *  identical leading characters exactly 4. `slice(0, 12)` spent a third of
+ *  every byline on a constant, at the front, where the eye lands. This mirror
+ *  moves with the UI deliberately: if the two disagree, every per-row byline
+ *  check below reds, which is what makes the offset tested rather than
+ *  declared. */
+const HASH_TAG_CHARS = 4;
+const short = (u8) => `${b64(u8).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12)}…`;
 
 async function connectApp(admin, appId) {
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
@@ -597,6 +607,42 @@ async function main() {
     check(`CONTROL: the bylines are not one repeated string — ${distinct.size} distinct `
       + 'over three rows, so this screen can tell a thread of one from a thread of two',
       distinct.size === 2);
+
+    // ---- 1a. None of those twelve characters is a constant (6.23) --------
+    //
+    // THE COMPLAINT WAS "STILL UNCLEAR IF IT IS ONE PERSON OR THE SAME", AND
+    // PART OF THE CAUSE IS MECHANICAL. Every Holochain hash begins with a
+    // multihash type tag — three bytes, four base64 characters — so every
+    // agent key on screen started `hCAk` and two different people's bylines
+    // were IDENTICAL for four characters before differing. A third of the
+    // string, spent on a constant, at the front.
+    //
+    // DETERMINISTIC ON PURPOSE, and this is the part worth reading. The
+    // tempting assertion is "two bylines differ in their first character",
+    // which is true of the fix and ALSO true of the old code one time in
+    // sixty-four by luck — this repository has just paid for one 1-in-64 check
+    // and will not ship another. Both checks below hold for every possible
+    // pair of keys: the tag is constant by construction, and the offset is a
+    // property of the slice rather than of the sample.
+    check('CONTROL: no byline begins with the four characters every agent key shares',
+      bylines.length > 0 && !bylines.some((t) => t.trim().startsWith('hCAk')));
+    const fullKeys = [b64(agent1.me), b64(agent2.me)];
+    const offsets = bylines.map((t) => {
+      const shown = t.trim().replace(/…$/, '');
+      const full = fullKeys.find((f) => f.includes(shown));
+      return full === undefined ? -1 : full.indexOf(shown);
+    });
+    check(`every byline is twelve characters taken from offset ${HASH_TAG_CHARS} of a real `
+      + `key, past the tag (offsets ${offsets.join(',')})`,
+      offsets.length === bylines.length && offsets.every((o) => o === HASH_TAG_CHARS));
+
+    // AND IT IS NOT THE ANSWER TO 6.23, which is asserted here so that a green
+    // run cannot be read as closing that row: twelve characters that all
+    // differ is still a string compared character by character or not at all.
+    // The `[D]` is whether anything glanceable gets minted from the key.
+    check('  ...and the byline is still twelve characters, so the [D] on minting '
+      + 'something glanceable is untouched by this',
+      bylines.every((t) => t.trim().replace(/…$/, '').length === 12));
 
     // PER ROW, not merely present: the key beside a critique is the key of the
     // agent who wrote THAT critique. A byline taken from the logged-in agent,

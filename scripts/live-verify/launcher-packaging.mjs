@@ -292,7 +292,15 @@ async function main() {
       check('the claim was authored by this conductor\'s own agent',
         !!author && b64(author) === b64(me));
     } else {
-      check('the UI reports this conductor\'s own agent', uiKey.includes(b64(me).slice(0, 12)));
+      // OFFSET 4, NOT 0, SINCE ROW 6.23's MECHANICAL HALF. `short()` in the
+      // UI now skips the multihash type tag — three bytes, four base64
+      // characters, identical on every agent key — so a byline no longer
+      // begins `hCAk` and comparing against the first twelve characters of
+      // the key would compare against four characters the screen has stopped
+      // showing. The slice has to move with it; `reading-a-thread.mjs`
+      // section 1a is where the offset itself is asserted.
+      check('the UI reports this conductor\'s own agent',
+        uiKey.includes(b64(me).slice(4, 16)));
     }
 
     check('no uncaught page errors', errors.length === 0);
