@@ -875,9 +875,47 @@ function b64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
+/** The base64 length of a multihash type tag: three bytes, four characters.
+ *
+ *  Named rather than written as `4` in the slice, because the number is a fact
+ *  about Holochain's hash encoding and not a display preference — somebody
+ *  tuning how much of a key to show should not have to wonder whether the 4 is
+ *  part of what they are tuning. */
+const HASH_TAG_CHARS = 4;
+
+/** A hash or key, shortened for a reader — AND NOT FROM THE FRONT, which is
+ *  row 6.23's mechanical half.
+ *
+ *  EVERY HOLOCHAIN HASH BEGINS WITH THE SAME FOUR BASE64 CHARACTERS, give or
+ *  take the third, because the first three bytes are a multihash type tag.
+ *  Measured on eight real agent keys from a live conductor: all eight start
+ *  `hCAk` and the identical-leading-character count is exactly 4. The DNA hash
+ *  this project has shipped since 0.3.0 starts `hC0k`, an entry hash `hCEk`,
+ *  an action hash `hCkk` — so three of those characters are constant across
+ *  EVERY hash this screen can show, and the fourth is constant per type.
+ *
+ *  `slice(0, 12)` therefore spent a THIRD of every byline on a constant, and
+ *  spent it at the front, where a reader's eye lands first. Two different
+ *  agents' bylines were identical for four characters before differing, which
+ *  is a large part of why the pilot's first publisher reported twice that they
+ *  could not tell two critiques' authors apart. The type is already given by
+ *  the sentence around it — "flagged by", "founded by", "on question" — so
+ *  nothing a reader uses is lost by dropping it.
+ *
+ *  THIS IS AN IMPROVEMENT AND IT IS NOT THE ANSWER, which is worth stating
+ *  here rather than letting the next reader assume 6.23 is closed. Twelve
+ *  characters that all differ is still a string compared character by
+ *  character or not at all; the `[D]` on minting something glanceable from the
+ *  key — a colour, a shape, a two-word mnemonic — is untouched by this.
+ *
+ *  Nothing parses this. The output is display-only and deliberately
+ *  uncopyable (see the `foresightPrefill` note: a field that could only be
+ *  satisfied by a hash this UI never offered was 6.8), so what it shows can
+ *  change without breaking a round trip. */
 function short(bytes: Uint8Array): string {
-  return b64(bytes).slice(0, 12) + '…';
+  return b64(bytes).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12) + '…';
 }
+
 
 /** Inverse of b64, for the one place a key arrives as text: an agent key
  * typed or pasted into the By Author tab. Throws on anything that is not
