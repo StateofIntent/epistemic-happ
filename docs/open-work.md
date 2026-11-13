@@ -22,70 +22,133 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-13 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
-IS OLDER, INCLUDING THE ONE THAT STILL SAYS "RESUME HERE"; where they disagree
-with this block, this block wins.**
+**CHECKPOINT, 2026-11-14 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
+IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree with
+this block, this block wins.**
 
-**THIS BLOCK EXISTS BECAUSE THE FILE'S OWN RESUME POINT WENT STALE BY ELEVEN
-PRs AND A RELEASE.** The 2026-11-11 block below names `main` at `a59f187` and
-`v0.3.4` as the release. Both were true when it was written and neither was
-true the next morning: the session of 2026-11-12/13 merged **happ #465–#473 and
-desktop #17 and #18**, and **`v0.3.5` was published 2026-11-12T16:51Z**. Every
-row in sections 1 and 6 was kept current through that session; this block was
-not. **A file whose stated purpose is "to be the thing that gets re-read"
-cannot have a resume point two days behind its own rows** — that is the exact
-rot the header describes, committed here rather than found elsewhere.
-
-**WHERE THINGS ACTUALLY STAND.** `main` is at `9f6da75`, desktop `release` at
-`f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0 so it is a
+**WHERE THINGS STAND.** `main` is at `f632961`. Desktop `release` is at
+`f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
 patch). **#350 stays HELD — DO NOT MERGE**, and it is the only open PR in
-either repository. **Nothing is owed to anybody outside this repository**: both
-replies to the pilot's first publisher are sent, and the release they were
-promised has shipped. Back to this file's usual rule — do not chase.
+either repository. The working tree is clean and nothing is in flight.
+**Nothing is owed to anybody outside this repository**: both replies to the
+pilot's first publisher are sent and the release they were promised has
+shipped, so this file's usual rule applies again — do not chase.
 
-**WHAT 2026-11-12/13 CLOSED, in one line each, with the rows carrying the
-detail: 6.19** (a reply goes under the critique it answers — **and its `[D]`
-was answered by a participant who had never seen the row**), **6.22** (a long
-critique list folds and says what it is hiding), **6.23's `[M]`** (*same author
-as an earlier critique*), **6.24** (opening a panel re-reads it), plus a
-`notes/` citation bug whose intermittent red was a real 1-in-64 defect and not
-a flake.
+**THREE ROWS CLOSED 2026-11-13/14, each merged on a full green run: #474
+(6.25), #475 (1.29), #476 (6.23).**
 
-**WHAT IS LEFT, AND IT IS SHORT.** Two decisions that are the human's —
-**6.23's `[D]`** (mint a key-derived identity; recommendation is *not yet*, and
-the question is already with the participant) and **6.15's `[D]`** (push
-notification, expensive in the protocol and free inside Moss, which is what
-1.30 says). **6.21 closes only when somebody takes an AUTOMATIC update**, which
-cannot happen before the release after 0.3.5. **1.29** — nine harnesses
-carrying 210 assertions that no workflow runs — is unblocked `[M]` work and the
-largest thing on the list. **1.30/1.31/1.32** are written and nothing is built;
-all three reach a reader only inside Moss, and every pilot participant runs the
-standalone build.
+| PR | row | what it was |
+|---|---|---|
+| **#474** `0d126c1` | **6.25** | the per-map audit 6.24 deferred — four per-claim stores missing from `loadClaims`'s clear block, and **four reads whose FAILURE rendered as an answer nobody got** |
+| **#475** `619dcb1` | **1.29 CLOSED** | ten harnesses — not the nine the row counted — carrying 232 assertions that no workflow ran; eight registered, two declared manual, and a gate that refuses any other state |
+| **#476** `64bfc72` | **6.23** | the `[D]` **TAKEN — hold**, plus the mechanical half: **a third of every byline was a constant, at the front** |
 
-**AND 1.29 IS CLOSED 2026-11-13.** Ten harnesses — not the nine the row
-counted — carrying 232 assertions were invoked by no workflow. Eight are
-registered (six in `conductor.yml`, `peer-signal` in `network.yml`,
-`registry-install` in a scheduled workflow of its own, which is what its own
-header had asked for since the day it shipped) and two declare themselves
-manual in their README rows, carrying the measured reasons out of
-`network.yml`'s header. The new assertion in `check-harness-counts.mjs`
-refuses any other state. **Two of the ten could not have reported success at
-all** — `process.exit` only in the failure branch, and an open
-`@holochain/client` websocket is a ref'd handle nothing closes — so they
-printed ALL CHECKS PASSED and hung until a `timeout` killed them. See the row.
+**WHAT IS LEFT, AND IT IS NOW ONE DECISION AND TWO THINGS WAITING ON OTHER
+PEOPLE.**
 
-**AND 6.25 WAS OPENED AND BUILT 2026-11-13**, which is the audit 6.24 wrote
-down and declined to do. Four more per-claim stores were missing from
-`loadClaims`'s clear block, and the family the audit actually found was not
-caching at all: **four surfaces where a read that FAILED rendered as an answer
-nobody got.** Its second finding is about the suite rather than the app —
-**three harnesses were waiting only for the good outcome**, so a conductor that
-would not answer made them stop reporting instead of report. See the row.
+- **6.15's `[D]` is the only open decision on this list.** Push notification:
+  expensive in the protocol — `send_peer_signal` writes a permanent CapGrant
+  **per call, on the SENDER's chain**, so disagreeing would cost chain space
+  for ever — and **free inside Moss**, which is what 1.30 establishes. The
+  catch is 1.30's own ceiling: every pilot participant runs the standalone
+  build, so the free version reaches nobody today.
+- **6.21 closes only when somebody takes an AUTOMATIC update**, which cannot
+  happen before the release after 0.3.5, because the repair travelled in the
+  build it repairs.
+- **6.23 reopens only if the person who reported it twice answers.** The
+  question went to them in the 2026-11-13 message and is not to be re-asked.
+- **1.30/1.31/1.32** are written and nothing is built. All three reach a reader
+  only inside Moss, so none of them answers the standalone decision it sits
+  beside.
+- Recorded as deliberately open inside 6.25: `critiqueTreeByClaim` re-read per
+  panel open (6.24's cost argument stands), 6.24's sub-`[D]` on a panel LEFT
+  open, and **`constitutionByAuthor`'s cached `null`** — keyed by AUTHOR rather
+  than by the domain being browsed, so no gesture on that card is obviously a
+  request to re-read it.
+
+**6.25 — WHAT THE AUDIT ACTUALLY FOUND WAS NOT CACHING.** Four per-claim
+stores were simply missing from a clear block that explains itself, and each is
+now cleared **with its open-set**, because an open panel whose store has gone
+renders its absent state — and after a deliberate clear all four of those are a
+lie. The family behind it was different: **four surfaces where a read that
+failed rendered as something else** (resonance wrote `[]`, which renders as a
+legitimate empty answer with an instruction that cannot help; a failed
+constitution read said *"Loading…"* for ever; `loadCritiqueTree` had **no catch
+at all** and is `await`ed from an `onclick`; and the period sample, the only one
+that already said it had failed, was the only one whose retry its own guard
+blocked). Its second finding is about the suite rather than the app: **three
+harnesses were waiting only for the good outcome**, so a conductor that would
+not answer made them stop reporting instead of report.
+
+**1.29 — THE TWO THINGS WORTH CARRYING FORWARD.** First, the row's own count
+was wrong, and instructively: `transitive-gossip`'s reason for being out was
+real, measured and written down — **in `network.yml`'s header, which is not
+where a reader of the index looks.** Two of the ten were already explained;
+what they lacked was the explanation in the row the index points at. Second,
+**`index-lens` and `superior-egg` called `process.exit` ONLY in their failure
+branch**, and an open `@holochain/client` websocket is a ref'd handle nothing
+in this suite closes — so each printed ALL CHECKS PASSED and then hung until a
+`timeout` killed it. **A harness that can only report a failure reads in CI as
+a job timeout rather than a red check**, which is much of why they were never
+switched on: the defect is visible the moment somebody runs one, and nobody
+had. `registry-install` now runs **weekly on a schedule and is never a required
+context** — the first alert here that will not correspond to any diff, so a red
+there means something a stranger can install today is broken while this tree is
+fine, and the fix is publishing.
+
+**6.23 — THE DECISION, AND WHY IT IS REVERSIBLE RATHER THAN SETTLED.** Hold:
+nothing is minted from the key yet. The same-author marker answers the question
+*within* a panel by a sentence; the reporter has the question; and a colour or
+identicon **needs a text alternative** for a screen reader and a colour-blind
+reader — a standard this repository already holds, since the critique graph is
+SVG precisely so every node carries an accessible label — **so the alternative
+would be doing the distinguishing work and the visual would be decoration on a
+mnemonic rather than a substitute for one.** A two-word mnemonic is the option
+to take if the hold is reversed. And the mechanical half found while deciding:
+**every agent key's base64 begins `hCAk`**, measured on eight real keys, so
+`slice(0, 12)` spent a third of every byline on a constant **at the front,
+where the eye lands** — two different people's bylines were identical for four
+characters before they differed.
+
+**THE STANDING LESSONS THIS SESSION ADDED, all of the same species: a check
+that passes for a reason nobody chose.**
+
+1. **A 1-in-64 assertion was available and was refused.** *"Two bylines differ
+   in their first character"* is true of 6.23's fix and also true of the old
+   code one time in sixty-four. Both shipped assertions hold for every possible
+   pair of keys instead. The session before this one spent real time on a
+   1-in-64 regex defect; the lesson took.
+2. **Making a wait tolerant can create a vacuous green on the spot.** Three
+   harnesses were changed to admit either the answer or a failure surface, and
+   a negative check immediately started passing against an empty string. Anchor
+   every negative to the text existing.
+3. **A shared FUNCTION couples like a shared class.** `short()` has 17 call
+   sites; changing it needed the same sweep `.critique-item` needed, and found
+   exactly one real coupling among a dozen look-alikes.
+4. **The second place a number is written is the one that rots.** The suite
+   table in `scripts/live-verify/README.md` was ungated because the gate
+   matches `README.md`'s phrasing — ``​`<path>`, N checks`` ``, **path
+   first** — and the table writes `**N checks**`. `reading-a-thread`'s own row
+   said **30 while it ran 64**, through four sessions that each ran that
+   harness and read that row. Now gated. **And of the six disagreements, four
+   were the document being wrong and three were the CALL-SITE MEASURE being
+   wrong** — loop-driven harnesses whose runs were confirmed by counting PASS
+   lines rather than believed.
+5. **Stacking a PR works and costs a second CI cycle.** #475 was opened with
+   `--base` the lower branch, so its diff was one row, and GitHub retargeted it
+   to `main` by itself when #474 merged — then branch protection required
+   `main` merged INTO it, which was content-neutral and restarted all five
+   workflows.
 
 ---
 
-**CHECKPOINT, 2026-11-11 — SUPERSEDED BY THE BLOCK ABOVE. Still the authority
-on rows 6.17/6.18/6.20 and on the v0.3.4 release.** `main` is at
+**CHECKPOINT, 2026-11-11 — SUPERSEDED, AND SUPERSEDED TWICE OVER. Still the
+authority on rows 6.17/6.18/6.20 and on the v0.3.4 release. It is left here
+BECAUSE it went stale, which is this file's own failure mode caught in its own
+pages: it said "RESUME HERE" for two days while eleven PRs and a release landed
+and every row in sections 1 and 6 moved past it. A file whose stated purpose is
+to be the thing that gets re-read cannot have a resume point behind its own
+rows.** `main` is at
 `a59f187`, the working tree is clean, nothing is in flight — no open PR of
 mine, no CI run in progress, nothing half-written. **#350 stays HELD — DO NOT
 MERGE.**
