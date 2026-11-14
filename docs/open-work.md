@@ -26,19 +26,46 @@ third-party.
 BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where
 they disagree with this block, this block wins.**
 
-**WHERE THINGS STAND.** `main` is at `25a5791`. Desktop `release` is at
+**WHERE THINGS STAND.** `main` is at `714aaec` as this block is written, which
+is the commit BEFORE this block's own merge — inherent to a checkpoint naming
+the hash it lands on, and not the staleness this block is about. Desktop `release` is at
 `f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
 patch). **#350 stays HELD — DO NOT MERGE**, and it is the only open PR in
 either repository. The working tree is clean and nothing is in flight.
 **Nothing is owed to anybody outside this repository** — do not chase.
 
-**TWO ROWS CLOSED, EACH MERGED ON A FULL GREEN RUN: #478 (1.21's resolver)
-and #479 (6.18, plus its own injections recorded).**
+**SIX PRs MERGED, EACH ON A FULL GREEN RUN: #478 (1.21's resolver), #479
+(6.18, plus its own injections recorded), #480 (the checkpoint), #481 (the
+CapGrant cost claim), #482 (the `partition-rejoin` rate) and #484 (ROW 6.15
+CLOSED — both halves of the notification).** This block was two PRs stale
+within the hour it was first written, which is this file's own named failure
+mode and the reason the 2026-11-11 block is kept below as a monument to it —
+caught the same day this time, rather than after eleven. It then went stale
+again while the fix sat open, and was refreshed rather than merged stale,
+which is the only honest way to land a correction about staleness.
+
+**ROW 6.15 IS CLOSED (#484).** A participant asked on 2026-11-09 how an author
+finds out somebody disagreed; the pull half shipped the next day and nothing
+told them until 2026-11-15. Both halves are built, the `[D]` was delegated and
+taken, and `being-told.mjs` gates it — **13 PASS lines read out of the `ui`
+job's own log rather than the tick being trusted**, which is 1.29's lesson
+applied to the commit that adds a harness. **The asymmetry half was smaller
+than the row thought: `SignalPayload::NewCritique` was already in the enum and
+had never been emitted.** Coordinator-only throughout, DNA hash identical
+before and after. **Three of that PR's defects were found by RUNNING rather
+than reading** — a signal read at the wrong level after the comment citing
+that very defect had been written, an injection that killed its own harness,
+and an Invariant 1 check that forbade more than Invariant 1 does — and its CI
+red was a gate no local sweep knew to run: **the validation corpus stores LINE
+NUMBERS, and comments in the COORDINATOR shifted three**, where the written
+rule named only the integrity zome.
 
 | PR | row | what it was |
 |---|---|---|
 | **#478** `eee93ca` | **1.21** | the ledger resolved a label by reading ONE quoted literal; this suite writes any label longer than a line as literals joined by `+` — **60 call sites truncated, each in the denominator under a label it does not have** |
 | **#479** `8c904bd`, `379d00f` | **6.18 CLOSED** | the critique TREE labelled nodes by mode alone — a byline on every node, the parent carried so the tree can say what the flat list cannot, **and the fixture was the real work** |
+| **#481** `9c8e228` | **6.15, 1.30, 6.24** | **the cost claim behind 6.15's `[D]` was `peer-signal.mjs`'s own INJECTION record read as a measurement** — one entry per agent once, zero per signal; 1.30's whole premise went with it |
+| **#482** `6edbad8`, `7a3a55d` | **the `partition-rejoin` rate** | *"roughly a quarter"* was borrowed from README's 48-trial gossip census: **measured 13.8%** over the job's complete history, and an assertion failure rather than a setup one in 56 of 63 — **then a bimodal distribution I had drafted on top was PULLED**, because the harness forbids inferring one from 5s lattice samples |
 
 **EVERY FINDING THIS SESSION IS THE SAME SPECIES: A TOOL OR A CHECK THAT WAS
 RIGHT BY COINCIDENCE.**
@@ -162,10 +189,33 @@ shipped, so this file's usual rule applies again — do not chase.
 | **#475** `619dcb1` | **1.29 CLOSED** | ten harnesses — not the nine the row counted — carrying 232 assertions that no workflow ran; eight registered, two declared manual, and a gate that refuses any other state |
 | **#476** `64bfc72` | **6.23** | the `[D]` **TAKEN — hold**, plus the mechanical half: **a third of every byline was a constant, at the front** |
 
-**WHAT IS LEFT, AND IT IS NOW ONE DECISION AND TWO THINGS WAITING ON OTHER
-PEOPLE.**
+**WHAT IS LEFT. NOT "ONE DECISION" — TWENTY-SEVEN ROWS CARRY A LIVE `[D]`,
+and the two that are actually at the front of the queue are BOTH KUPUKUPU'S,
+opened on the same day, in the same state: the `[M]` half built and the
+decision untouched.** The earlier wording *"6.15's `[D]` is the only open
+decision on this list"* meant *the only one in the active queue* and was
+written as a flat claim; it was then quoted as one, repeatedly, inside this
+session. Corrected here and below.
 
-- **6.15's `[D]` is the only open decision on this list.** ~~Push notification:
+| row | opened by | the question | state |
+|---|---|---|---|
+| ~~**6.15**~~ **CLOSED 2026-11-15 (#484)** | Kupukupu, 2026-11-09, hours after filing the pilot's first critique — *"how does the author of the claim find out?"* | **push notification**: is an attention ordering a merit ordering? | **BOTH HALVES BUILT, `[D]` DELEGATED AND TAKEN** — a plain line with no badge, count or ordering, and an opt-in that is a gesture rather than automatic, which **overturns a written position in `README.md` §9 in the open** |
+| **6.12** | Kupukupu, 2026-11-09, their second message after publishing — *"how do you search for what others wrote?"* | **the domain index**: does founding become the price of being findable? | breadcrumb half built; `[D]` untouched |
+
+**6.12 HAS THE BETTER EVIDENCE ON FILE AND IT IS UNUSUALLY GOOD.** The same
+participant published a claim arguing *"Asking people to found a domain before
+others can find it is worth the extra step"* — and filed it **into somebody
+else's existing domain** rather than founding one, because that was the one
+place guaranteed to be read. A stated preference for the step and a revealed
+preference against paying it, in one act. This row's own position is that the
+revealed one is what a design should be built against.
+
+- **6.15's `[D]`.** ~~It is the only open decision on this list~~ — **FALSE,
+  corrected 2026-11-14: TWENTY-SEVEN rows carry a live `[D]`, and 6.12's
+  index decision is in the same state as this one (its `[M]` half built, the
+  decision untouched, opened by the same participant on the same day). What
+  was meant was *the only decision in the active queue*; what was written was
+  a flat claim, and it was then quoted as one.** ~~Push notification:
   expensive in the protocol — `send_peer_signal` writes a permanent CapGrant
   **per call, on the SENDER's chain**, so disagreeing would cost chain space
   for ever~~ — **that cost claim was FALSE, a misread injection record;
