@@ -39,6 +39,23 @@
 //     identical coordinates, or two viewers see different shapes for the
 //     same argument and §4.4's second constraint is broken by geometry.
 //
+// AND WHO WROTE EACH NODE (row 6.18's second half). The list view got a
+// byline when that row opened and this view did not, so it labelled every
+// node by mode alone — five people's objections reading *Logical,
+// Evidential, …*, which is the complaint the row was opened with, intact in
+// the one view whose subject is who is answering whom. Asserting that needed
+// a SECOND AGENT in this fixture: see AGENT2_APP_ID below for why a
+// single-agent thread cannot tell the impostor defect from correct
+// behaviour, and the negative evidence below for the measurement.
+//
+// Two classes are shared with the list view's byline (`link-button
+// critique-author`) and the test ids deliberately are NOT —
+// `graph-node-author`, `graph-node-relation`. That is the `.critique-item`
+// lesson this very file taught the suite: a shared selector is how an
+// assertion silently starts counting somebody else's elements. Checked both
+// ways — nothing in `reading-a-thread.mjs` selects by those classes, and the
+// graph mounts on the claim card rather than inside a `.critique-item`.
+//
 // Prereqs: scripts/sandbox.sh start (clean), `npx vite build` in
 // mobile-ui/.
 // ============================================================================
@@ -63,6 +80,29 @@
 //   summary admits either outcome now, so the structure section reports
 //   rather than dying at a 20-second timeout with nothing said.
 //
+//   Regression injected (row 6.18, second half): the text-peer byline rendered
+//   from `connection.myAgentPubKey` — who is LOOKING — instead of
+//   `node.entry.author`, who WROTE. This is the exact impostor defect 6.18
+//   measured in the LIST view, where it turned only TWO checks red because
+//   that fixture had one agent and the viewer WAS the claim's author.
+//   Result: FIVE red — the distinct-byline control (1 distinct over four
+//   nodes), the level-1 objection's attribution, the control that agent2's
+//   nodes carry no marker (every node read "you"), the Invariant #1 check
+//   that nothing is grouped by author (1111 rather than 2112), and the key
+//   the By Author tab arrives carrying. The difference is the second agent,
+//   which is why this fixture now installs one.
+//
+//   Regression injected: `flattenPreOrder` passing `null` as the parent.
+//   Result: exactly ONE red — the level-3 node no longer says it is the
+//   critique's author. The relation that only exists below depth 1 is the
+//   only thing the parent is carried for, and nothing else moved.
+//
+//   Regression injected: the SVG `aria-label` reverted to mode and depth
+//   alone, leaving the byline only in the text peer.
+//   Result: TWO red. The accessible label is the whole reason this view is
+//   SVG rather than canvas, so a byline a screen-reader user cannot hear is
+//   not a byline this view has.
+//
 // Re-check it the same way if you change what this file asserts: inject,
 // watch it go red, restore, watch it go green.
 // ---------------------------------------------------------------------------
@@ -85,11 +125,30 @@ try {
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
+// A SECOND AGENT, AND ROW 6.18 IS WHY IT IS NOT OPTIONAL. This fixture wrote
+// every entry as `author: me`, so the impostor defect that row measured —
+// a byline rendered from `myAgentPubKey`, who is LOOKING, rather than from
+// `entry.author`, who WROTE — is indistinguishable from correct behaviour
+// here: every byline would be right by coincidence. The complaint that opened
+// the row is *"if 5 people would enter, you wouldnt know if you're speaking to
+// the same or others"*, and a single-agent thread cannot answer it.
+const AGENT2_APP_ID = 'epistemic-resonance-happ-graph2';
+const HAPP_PATH = new URL('../../epistemic-resonance-happ.happ', import.meta.url).pathname;
 const PREVIEW_PORT = 4176;
 const DOMAIN = `Graph${Date.now()}`;
 
 const nowMicros = () => Date.now() * 1000;
 const log = (...a) => console.log(...a);
+
+const b64 = (u8) => Buffer.from(u8).toString('base64');
+/** The same twelve characters the UI puts in a byline — NOT from the front.
+ *  Row 6.23's mechanical half: every Holochain agent key's base64 begins
+ *  `hCAk`, a multihash type tag, so `slice(0, 12)` spent a third of every
+ *  byline on a constant where the eye lands. This mirror moves with the UI
+ *  deliberately — if the two disagree, every per-node byline check below reds,
+ *  which is what makes the offset tested rather than declared. */
+const HASH_TAG_CHARS = 4;
+const short = (u8) => `${b64(u8).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12)}\u2026`;
 
 let failures = 0;
 const check = (label, cond) => {
@@ -97,9 +156,8 @@ const check = (label, cond) => {
   else { log(`  FAIL: ${label}`); failures++; }
 };
 
-async function seed() {
-  const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
-  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: APP_ID });
+async function connectApp(admin, appId) {
+  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
   const app = await AppWebsocket.connect({ url: new URL(APP_URL), token, wsClientOptions: { origin: 'live-verify' } });
   const info = await app.appInfo();
   const cellIds = [];
@@ -114,51 +172,131 @@ async function seed() {
       }
     }
   }
+  if (cellIds.length === 0) throw new Error(`App "${appId}" has no provisioned or cloned cells.`);
   for (const cellId of cellIds) await admin.authorizeSigningCredentials(cellId);
-  const me = cellIds[0][1];
-  const call = (fn, payload) =>
-    app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
+  return {
+    app,
+    me: cellIds[0][1],
+    call: (fn, payload) => app.callZome({
+      role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload,
+    }),
+  };
+}
 
-  log(`Seeding a three-level argument in ${DOMAIN} ...`);
-  await call('create_claim', {
+/** Refuse rather than run a fixture that is not the one the checks assume.
+ *  Two agents on one conductor still reach each other through the DHT, so a
+ *  cross-author critique has to wait for its target to be readable BY THE
+ *  AGENT ABOUT TO CRITIQUE IT. A timeout here is a setup failure and says so;
+ *  the alternative is a tree of the wrong shape quietly reddening six count
+ *  assertions that have nothing to do with what broke. */
+async function waitUntil(what, probe, timeoutMs = 20000) {
+  const start = Date.now();
+  for (;;) {
+    let ok = false;
+    try { ok = await probe(); } catch { ok = false; }
+    if (ok) return;
+    if (Date.now() - start > timeoutMs) {
+      log(`  SETUP FAILED: ${what} did not become readable within ${timeoutMs}ms.`);
+      log('  Refusing to run: the checks below assert a specific tree and a specific');
+      log('  byline on each node, and neither would mean anything against a partial seed.');
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
+async function seed() {
+  const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
+  const agent1 = await connectApp(admin, APP_ID);
+  log(`agent1 (the UI's own, and the claim's author) = ${short(agent1.me)}`);
+
+  const apps = await admin.listApps({});
+  if (!apps.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
+    const agent2Pub = await admin.generateAgentPubKey();
+    await admin.installApp({
+      source: { type: 'path', value: HAPP_PATH },
+      agent_key: agent2Pub,
+      installed_app_id: AGENT2_APP_ID,
+    });
+    await admin.enableApp({ installed_app_id: AGENT2_APP_ID });
+  }
+  const agent2 = await connectApp(admin, AGENT2_APP_ID);
+  log(`agent2 (the objector)                        = ${short(agent2.me)}`);
+
+  if (b64(agent1.me) === b64(agent2.me)) {
+    log('  SETUP FAILED: both slots resolved to the same agent key, so "this node\u2019s');
+    log('  byline names who wrote THIS node" could not fail. Refusing to run.');
+    process.exit(1);
+  }
+
+  log(`\nSeeding a three-level argument between two people in ${DOMAIN} ...`);
+  await agent1.call('create_claim', {
     content: 'Loaded carries reduce recurrence more than rest does.',
-    domain: DOMAIN, author: me, timestamp: nowMicros(),
+    domain: DOMAIN, author: agent1.me, timestamp: nowMicros(),
     evidence_hashes: [], confidence: 'Moderate', semantic_tags: [], source_mew: null,
   });
-  const claims = await call('get_claims_by_domain', DOMAIN);
+  const claims = await agent1.call('get_claims_by_domain', DOMAIN);
   const claimHash = claims[0].signed_action.hashed.content.data.entry_hash;
+
+  await waitUntil("agent1's claim, to agent2",
+    async () => (await agent2.call('get_claims_by_domain', DOMAIN)).length > 0);
 
   // A critique targets an entry hash (SPEC §5.4), so critiquing a
   // critique means reading back its entry hash and targeting that.
-  const critiqueOn = async (targetHash, targetType, mode, content) => {
-    await call('create_critique', {
+  const critiqueOn = async (agent, targetHash, targetType, mode, content) => {
+    await agent.call('create_critique', {
       target: targetHash, target_type: targetType, critique_mode: mode,
-      content, author: me, timestamp: nowMicros(),
+      content, author: agent.me, timestamp: nowMicros(),
       replication_attempted: false, evidence_hashes: [], species: null,
     });
-    const list = await call('get_critiques_for', targetHash);
+    const list = await agent.call('get_critiques_for', targetHash);
     return list[list.length - 1].signed_action.hashed.content.data.entry_hash;
   };
 
-  const l1 = await critiqueOn(claimHash, 'Claim', 'Methodological',
+  // WHO WROTE WHAT IS THE FIXTURE, not decoration on it. agent2 objects;
+  // agent1 — the claim's own author — DEFENDS, which is the exact thing the
+  // participant who opened 6.18 said they could not see; and then agent1
+  // concedes against their own defence, which is a critique whose author IS
+  // its parent's author, the one relation that cannot exist at depth 1 and so
+  // cannot be shown by the flat list at all.
+  const l1 = await critiqueOn(agent2, claimHash, 'Claim', 'Methodological',
     'Compared against what rest protocol, and over what follow-up window?');
-  const l2 = await critiqueOn(l1, 'Critique', 'Evidential',
-    'The cited trial does specify both — twelve weeks, standardised rest arm.');
-  await critiqueOn(l2, 'Critique', 'Logical',
+
+  await waitUntil("agent2's objection, to agent1",
+    async () => (await agent1.call('get_critiques_for', claimHash)).length > 0);
+
+  const l2 = await critiqueOn(agent1, l1, 'Critique', 'Evidential',
+    'The cited trial does specify both \u2014 twelve weeks, standardised rest arm.');
+  await critiqueOn(agent1, l2, 'Critique', 'Logical',
     'That trial reports adherence, not recurrence, so it cannot settle this.');
 
   // A second branch at depth 1, so the layout has real breadth as well
   // as depth and a single-child chain is not the only case exercised.
-  await critiqueOn(claimHash, 'Claim', 'Experiential',
+  await critiqueOn(agent2, claimHash, 'Claim', 'Experiential',
     'In my practice the effect held only where load was progressed slowly.');
 
-  log('  seeded: claim -> 2 critiques, one of them 3 levels deep.\n');
-  return { app, admin };
+  log('  seeded: claim (agent1) -> 2 critiques (agent2), one branch 3 levels deep');
+  log('  with agent1 defending at level 2 and conceding to itself at level 3.\n');
+  return { admin, agent1, agent2 };
 }
 
 async function main() {
-  const { app, admin } = await seed();
-  try { await app.client?.close?.(); } catch { /* best effort */ }
+  const { admin, agent1, agent2 } = await seed();
+  // THE APP SOCKET STAYS OPEN, AND THAT IS A FIX RATHER THAN A CHANGE OF MIND.
+  // The §7b.2 probe below — the whole point of which is to say whether the
+  // seeded critiques are readable when the selector times out — called a
+  // `call` that was declared `const` INSIDE `seed()`, and did it after this
+  // line had closed the only socket it could have used. So the diagnostic
+  // that exists to explain a failure would have thrown a ReferenceError and
+  // replaced the explanation with a stack trace, on the one path where it
+  // runs. Invisible on every green run, which is why it survived.
+  //
+  // Leaving it open is safe here for the reason row 1.29 measured: an open
+  // `@holochain/client` websocket is a REF'D handle nothing in this suite
+  // closes, so a harness that ends by falling off the bottom of `main` hangs
+  // for ever — and this one ends on `process.exit(failures === 0 ? 0 : 1)`,
+  // which is the form that cannot.
+  const call = agent1.call;
   try { await admin.client?.close?.(); } catch { /* best effort */ }
 
   log('Starting vite preview (production bundle) ...');
@@ -261,6 +399,89 @@ async function main() {
     check('the text peer reads top-down, parent before reply',
       JSON.stringify(depths) === JSON.stringify([1, 2, 3, 1]));
 
+    // ---- ROW 6.18, SECOND HALF: every node says who wrote it ------------
+    //
+    // The list view got a byline when 6.18 opened; this one kept labelling
+    // nodes by mode alone, so five people's objections read *Logical,
+    // Evidential, …* and a reader who opened the structure view was back
+    // where the row started. Every assertion here is anchored to the key of
+    // the agent that ACTUALLY WROTE that node, which is the only shape that
+    // can fail against the impostor defect 6.18 measured — a byline rendered
+    // from `myAgentPubKey`, who is looking, rather than from `entry.author`,
+    // who wrote.
+    log('\n=== Who wrote each node (6.18, second half) ===');
+    const rows = await page.locator('[data-testid="graph-node-list"] li')
+      .evaluateAll((els) => els.map((el) => ({
+        depth: Number(el.dataset.depth),
+        mode: el.querySelector('.critique-mode')?.textContent ?? '',
+        byline: el.querySelector('[data-testid="graph-node-author"]')?.textContent ?? '',
+        relation: el.querySelector('[data-testid="graph-node-relation"]')?.textContent ?? '',
+      })));
+    for (const r of rows) {
+      log(`  L${r.depth} ${r.mode.padEnd(15)} ${r.byline}  ${r.relation}`);
+    }
+    const withByline = rows.filter((r) => r.byline.length > 0).length;
+    check(`every node in the text peer carries a byline (${withByline} of ${rows.length})`,
+      withByline === 4 && rows.length === 4);
+    // THE CONTROL THAT MAKES THE LINE ABOVE MEAN ANYTHING, and it is the
+    // complaint itself: *"if 5 people would enter, you wouldnt know if you're
+    // speaking to the same or others."* Four bylines all reading the same
+    // string would satisfy "every node carries a byline" perfectly.
+    const distinct = new Set(rows.map((r) => r.byline));
+    check(`CONTROL: those are not one repeated string \u2014 ${distinct.size} distinct over four `
+      + 'nodes, so this view can tell a disagreement between two people from one person talking',
+      distinct.size === 2);
+
+    const atDepth = (d) => rows.filter((r) => r.depth === d);
+    const objection = atDepth(1).find((r) => r.mode === 'Methodological');
+    const defence = atDepth(2)[0];
+    const concession = atDepth(3)[0];
+    check('the level-1 objection is attributed to agent2, who wrote it \u2014 not to the '
+      + `viewer (${objection?.byline})`,
+      objection?.byline === short(agent2.me));
+    check(`the level-2 defence is attributed to agent1 (${defence?.byline})`,
+      defence?.byline === short(agent1.me));
+
+    // THE RELATIONS. 6.18's participant asked to see "if an author responded",
+    // so the author DEFENDING is the headline; the third relation is the one
+    // the flat list structurally cannot show, because a critique whose author
+    // is its PARENT's author cannot exist at depth 1.
+    check('the level-2 node says it is the CLAIM\u2019S AUTHOR answering \u2014 the thing the '
+      + `row was opened about (${defence?.relation})`,
+      /the claim\u2019s author/.test(defence?.relation ?? ''));
+    check('the level-3 node says it is the CRITIQUE\u2019S AUTHOR \u2014 somebody answering an '
+      + `objection to their own, which only exists below depth 1 (${concession?.relation})`,
+      /the critique\u2019s author/.test(concession?.relation ?? ''));
+    // AN UNMARKED NODE IS WHAT MAKES A MARKED ONE MEAN ANYTHING. Under the
+    // impostor defect every node would read "you", so this reds there too.
+    const strangers = rows.filter((r) => r.byline === short(agent2.me));
+    check(`CONTROL: agent2\u2019s ${strangers.length} nodes are marked with nothing at all, so a `
+      + 'marker is a statement rather than furniture',
+      strangers.length === 2 && strangers.every((r) => r.relation === ''));
+
+    // INVARIANT #1, WHICH 6.18's OWN BUILD DREW: a byline is attribution and
+    // a tally is a score. Nothing here is grouped, ordered or totalled by
+    // author — the seed interleaves the two authors deliberately, so a view
+    // that gathered a thread by person would read agent2, agent2, agent1,
+    // agent1 and go red.
+    const bylineOrder = rows.map((r) => (r.byline === short(agent1.me) ? '1' : '2')).join('');
+    log(`  byline order in reading order: ${bylineOrder}`);
+    check(`nothing is grouped by author \u2014 the order is the argument's (${bylineOrder})`,
+      bylineOrder === '2112');
+
+    // AND IN THE ACCESSIBLE LABEL, not only in the text peer. The accessible
+    // label is the entire reason this view is SVG rather than canvas, so a
+    // byline that lives only in the list below is a byline a screen-reader
+    // user does not get.
+    const ariaLabels = await nodes.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+    const named = ariaLabels.filter((l) => /\bby [^:]+:/.test(l ?? '')).length;
+    check(`every node's accessible label names who wrote it (${named} of ${ariaLabels.length})`,
+      named === 5 && ariaLabels.length === 5);
+    const claimLabel = await page.locator('.graph-node.claim').getAttribute('aria-label');
+    log(`  the claim node: ${claimLabel?.slice(0, 70)}\u2026`);
+    check('including the claim node, against its own author\u2019s key',
+      (claimLabel ?? '').includes(`by ${short(agent1.me)}`));
+
     log('\n=== Invariant #1: size encodes nothing ===');
     const radii = await nodes.evaluateAll((els) => els.map((el) => el.getAttribute('r')));
     log(`  radii: ${[...new Set(radii)].join(', ')}`);
@@ -288,6 +509,24 @@ async function main() {
     check('CONTROL: a structure that rendered its nodes does not also report a failure',
       nodeCount === 5
       && (await page.locator('[data-testid="critique-graph-failed"]').count()) === 0);
+
+    // LAST, BECAUSE IT NAVIGATES AWAY. The byline this was copied from was
+    // BROKEN in exactly this way: 6.18 found the assessor's button calling
+    // `loadClaimsByAuthor` without switching tabs, so it read an agent's
+    // claims into a screen the reader was not on and looked inert. A byline
+    // that leads nowhere is decoration.
+    log('\n=== A byline leads somewhere (6.18) ===');
+    await page.locator('[data-testid="graph-node-author"]').first().click();
+    await page.waitForSelector('[data-testid="author-key-input"]', { timeout: 20000 })
+      .catch(() => {});
+    const landed = await page.locator('[data-testid="author-key-input"]').count() === 1;
+    check('clicking a node\u2019s byline switches to the By Author tab', landed);
+    const keyShown = landed
+      ? await page.locator('[data-testid="author-key-input"]').inputValue()
+      : '';
+    check('and it arrives carrying the key of the agent whose node was clicked '
+      + `(${keyShown.slice(0, 16)}\u2026)`,
+      keyShown === b64(agent2.me));
 
     check('no uncaught page errors', errors.length === 0);
     if (errors.length) log(`  errors: ${errors.join(' | ')}`);

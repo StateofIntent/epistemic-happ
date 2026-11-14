@@ -44,6 +44,25 @@
 // Edge opacity does track conductance, which is the protocol's own
 // value, computed identically for every viewer, and shown as a visual
 // attribute exactly as the list already shows it — never as an ordering.
+//
+// AND EVERY NODE SAYS WHO WROTE IT (row 6.18, second half, 2026-11-14).
+// The list view got a byline when that row opened and this one did not, so
+// the spatial view labelled nodes by mode alone: five people's objections
+// read *Logical, Evidential, …*, which is the complaint that opened the row
+// — *"you wouldnt know if you're speaking to the same or others"* — intact
+// in the one view whose whole subject is who is answering whom.
+//
+// THE PARENT IS CARRIED TOO, and that is what the tree can say and the flat
+// list cannot. A reply's relations are three, not two: *you*, *the claim's
+// author* (the author DEFENDING), and *the critique's author* (somebody
+// answering an objection to their own objection). The flat list reaches
+// depth 1 and shows the third only inside its replies block; here it is the
+// structure itself. Stated only when true, because an unmarked node is what
+// makes a marked one mean anything.
+//
+// A BYLINE IS ATTRIBUTION AND A TALLY IS A SCORE. Nothing here is grouped,
+// ordered, sized or totalled by author — layout is still a pure function of
+// tree structure and protocol order, and nodes are still uniform.
 // ============================================================================
 
 import type { Critique, CritiqueMode } from './types';
@@ -64,6 +83,13 @@ export interface PlacedNode {
   kind: 'claim' | 'critique';
   label: string;
   mode: CritiqueMode | null;
+  /** WHO WROTE IT — row 6.18's remaining half. The list view got a byline on
+   * 2026-11-11 and this one kept labelling every node by mode alone, so five
+   * people's objections read *Logical, Evidential, …* and a reader who opened
+   * the structure view was back where the row started. The claim node carries
+   * its own author for the same reason, and because the relation that matters
+   * most in a tree — the author DEFENDING — can only be stated against it. */
+  author: Uint8Array;
   content: string;
   depth: number;
   x: number;
@@ -105,7 +131,8 @@ const MARGIN = 16;
  * viewer. No randomness, no simulation, no iteration count that could
  * differ between machines. */
 export function layoutTree(
-  claimId: string, claimContent: string, roots: CritiqueNode[],
+  claimId: string, claimContent: string, claimAuthor: Uint8Array,
+  roots: CritiqueNode[],
 ): Layout {
   const nodes: PlacedNode[] = [];
   const edges: PlacedEdge[] = [];
@@ -128,6 +155,7 @@ export function layoutTree(
       id, kind: 'critique',
       label: node.entry.critique_mode,
       mode: node.entry.critique_mode,
+      author: node.entry.author,
       content: node.entry.content,
       depth, x, y,
     });
@@ -156,7 +184,7 @@ export function layoutTree(
     : (rootPlacements[0].x + rootPlacements[rootPlacements.length - 1].x) / 2;
   nodes.push({
     id: claimId, kind: 'claim', label: 'Claim', mode: null,
-    content: claimContent, depth: 0, x: claimX, y: 0,
+    author: claimAuthor, content: claimContent, depth: 0, x: claimX, y: 0,
   });
   for (const root of rootPlacements) {
     edges.push({
@@ -210,12 +238,12 @@ export function maxDepth(roots: CritiqueNode[]): number {
  * primary view for anyone using a screen reader, and it was inverting
  * the thread it exists to make readable. */
 export function flattenPreOrder(
-  roots: CritiqueNode[], depth = 1,
-): Array<{ node: CritiqueNode; depth: number }> {
-  const out: Array<{ node: CritiqueNode; depth: number }> = [];
+  roots: CritiqueNode[], depth = 1, parent: CritiqueNode | null = null,
+): Array<{ node: CritiqueNode; depth: number; parent: CritiqueNode | null }> {
+  const out: Array<{ node: CritiqueNode; depth: number; parent: CritiqueNode | null }> = [];
   for (const node of roots) {
-    out.push({ node, depth });
-    out.push(...flattenPreOrder(node.children, depth + 1));
+    out.push({ node, depth, parent });
+    out.push(...flattenPreOrder(node.children, depth + 1, node));
   }
   return out;
 }
