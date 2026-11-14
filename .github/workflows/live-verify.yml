@@ -248,6 +248,21 @@ jobs:
       - name: injection-ledger — no recorded red names a check that has gone
         run: node scripts/injection-ledger/ledger.mjs verify
 
+      # AND THE RESOLVER ITSELF, AGAINST LABELLED SNIPPETS RATHER THAN AGAINST
+      # THE STORE. `verify` above can only exercise the label shapes some
+      # injection happened to redden, which is a coincidence of history and not
+      # a property of the gate — measured, not supposed: removing the guard that
+      # keeps a COMPUTED label from matching everything reds two selftest cases
+      # and leaves `verify` entirely green, because the suite's one computed
+      # label sits in a harness with no records. The resolver had been reading
+      # only the first quoted fragment of a concatenated label — 60 call sites
+      # in this suite, and 15 of this ledger's 16 unresolved reds — so the
+      # shapes it must handle are now asserted directly. Watched failing three
+      # ways; the case that carries the old defect is the NEGATIVE one, that a
+      # label equal to a concatenation's FIRST FRAGMENT resolves to nothing.
+      - name: injection-ledger selftest — the resolver reads a whole label
+        run: node scripts/injection-ledger/ledger.mjs selftest
+
       # The client turns an action's `entry_index` into a word a reader sees —
       # *Claim*, *Critique* — and that index is POSITION-INDEXED into the
       # integrity zome's `EntryTypes`. Insert a variant in the middle and every
