@@ -26,18 +26,39 @@ third-party.
 BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where
 they disagree with this block, this block wins.**
 
-**WHERE THINGS STAND.** `main` is at `d797dff`. Desktop `release` is at
+**WHERE THINGS STAND.** `main` is at `714aaec` as this block is written, which
+is the commit BEFORE this block's own merge — inherent to a checkpoint naming
+the hash it lands on, and not the staleness this block is about. Desktop `release` is at
 `f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
 patch). **#350 stays HELD — DO NOT MERGE**, and it is the only open PR in
 either repository. The working tree is clean and nothing is in flight.
 **Nothing is owed to anybody outside this repository** — do not chase.
 
-**FIVE PRs MERGED, EACH ON A FULL GREEN RUN: #478 (1.21's resolver), #479
+**SIX PRs MERGED, EACH ON A FULL GREEN RUN: #478 (1.21's resolver), #479
 (6.18, plus its own injections recorded), #480 (the checkpoint), #481 (the
-CapGrant cost claim) and #482 (the `partition-rejoin` rate).** This block was
-two PRs stale within the hour it was written, which is this file's own named
-failure mode and the reason the 2026-11-11 block is kept below as a monument
-to it — caught and fixed the same day this time, rather than after eleven.
+CapGrant cost claim), #482 (the `partition-rejoin` rate) and #484 (ROW 6.15
+CLOSED — both halves of the notification).** This block was two PRs stale
+within the hour it was first written, which is this file's own named failure
+mode and the reason the 2026-11-11 block is kept below as a monument to it —
+caught the same day this time, rather than after eleven. It then went stale
+again while the fix sat open, and was refreshed rather than merged stale,
+which is the only honest way to land a correction about staleness.
+
+**ROW 6.15 IS CLOSED (#484).** A participant asked on 2026-11-09 how an author
+finds out somebody disagreed; the pull half shipped the next day and nothing
+told them until 2026-11-15. Both halves are built, the `[D]` was delegated and
+taken, and `being-told.mjs` gates it — **13 PASS lines read out of the `ui`
+job's own log rather than the tick being trusted**, which is 1.29's lesson
+applied to the commit that adds a harness. **The asymmetry half was smaller
+than the row thought: `SignalPayload::NewCritique` was already in the enum and
+had never been emitted.** Coordinator-only throughout, DNA hash identical
+before and after. **Three of that PR's defects were found by RUNNING rather
+than reading** — a signal read at the wrong level after the comment citing
+that very defect had been written, an injection that killed its own harness,
+and an Invariant 1 check that forbade more than Invariant 1 does — and its CI
+red was a gate no local sweep knew to run: **the validation corpus stores LINE
+NUMBERS, and comments in the COORDINATOR shifted three**, where the written
+rule named only the integrity zome.
 
 | PR | row | what it was |
 |---|---|---|
@@ -178,7 +199,7 @@ session. Corrected here and below.
 
 | row | opened by | the question | state |
 |---|---|---|---|
-| **6.15** | Kupukupu, 2026-11-09, hours after filing the pilot's first critique — *"how does the author of the claim find out?"* | **push notification**: is an attention ordering a merit ordering? | pull half built; `[D]` **HELD 2026-11-14**, and its cost argument was false |
+| ~~**6.15**~~ **CLOSED 2026-11-15 (#484)** | Kupukupu, 2026-11-09, hours after filing the pilot's first critique — *"how does the author of the claim find out?"* | **push notification**: is an attention ordering a merit ordering? | **BOTH HALVES BUILT, `[D]` DELEGATED AND TAKEN** — a plain line with no badge, count or ordering, and an opt-in that is a gesture rather than automatic, which **overturns a written position in `README.md` §9 in the open** |
 | **6.12** | Kupukupu, 2026-11-09, their second message after publishing — *"how do you search for what others wrote?"* | **the domain index**: does founding become the price of being findable? | breadcrumb half built; `[D]` untouched |
 
 **6.12 HAS THE BETTER EVIDENCE ON FILE AND IT IS UNUSUALLY GOOD.** The same
