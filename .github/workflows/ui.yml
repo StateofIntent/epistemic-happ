@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-seven browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-eight browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -440,6 +440,18 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/reading-a-thread.mjs
+
+      # ROW 6.15's PUSH HALF, the question the pilot's first participant asked
+      # hours after filing the pilot's first critique: how does the author find
+      # out? The control is the half that matters — a critique written BEFORE
+      # the opt-in must produce no notice, because the host drops a remote
+      # signal to an agent holding no cap grant. If that ever passes a notice
+      # through, the opt-in is decorative and nothing else here measures what
+      # it claims.
+      - name: being-told — somebody critiqued your work and you were told
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/being-told.mjs
 
       # The pilot walked into this one: an author retracted a claim because
       # somebody changed their mind, republished it narrower, and had nowhere

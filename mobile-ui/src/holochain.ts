@@ -277,6 +277,44 @@ export class HolochainConnection {
       payload,
     }) as Promise<T>;
   }
+
+  /** ROW 6.15's PUSH HALF, RECEIVER SIDE. This client handled NO signals at
+   * all before 2026-11-15 — no `on('signal')` anywhere in the UI — so the
+   * coordinator could emit and send all it liked and nothing would ever
+   * arrive. A sender with no receiver is the built-but-unreachable shape this
+   * repository keeps finding (`notifyFrame` in 1.30, `profilesClient` in 1.31,
+   * and `SignalPayload::NewCritique` itself, declared and never emitted until
+   * the same day), so the two halves ship together or not at all.
+   *
+   * THE HANDLER IS GIVEN THE PAYLOAD AND THE HOST-VERIFIED SENDER, and
+   * nothing else. A remote signal arrives wrapped — `{ type, value: { ... } }`
+   * in @holochain/client 0.21 — and reading the wrong level is exactly what
+   * made the bridge discard every signal it received for months (READINESS
+   * item 21: the guard read `signal.zome_name` against a nested shape, so it
+   * compared `undefined` and dropped everything). Unwrapped once, here.
+   *
+   * Signals from another zome are ignored, which is the control that item 21's
+   * harness asserts for the bridge and the same reasoning applies.
+   *
+   * THERE IS NO PROVENANCE AT THIS LEVEL, and a first version of this method
+   * invented one. A client signal is whatever `emit_signal` was handed; for a
+   * REMOTE signal that is `SignalPayload::PeerSignal { from, signal }`, where
+   * `recv_remote_signal` has already put the host's verified `provenance` into
+   * the `from` field. So the sender is inside the payload, not beside it — and
+   * reading the wrong level is precisely the defect READINESS item 21 records
+   * for the bridge, which compared `undefined` and dropped every signal for
+   * months. Found here by running it, not by reading it.
+   */
+  onSignal(handler: (payload: Record<string, unknown>) => void): void {
+    this.client.on('signal', (signal: unknown) => {
+      const outer = signal as { type?: string; value?: Record<string, unknown> } | null;
+      const inner = (outer?.value ?? outer) as Record<string, unknown> | null;
+      if (!inner || inner.zome_name !== this.config.zomeName) return;
+      const payload = (inner.payload ?? inner.data) as Record<string, unknown> | undefined;
+      if (!payload || typeof payload !== 'object') return;
+      handler(payload);
+    });
+  }
 }
 
 /** A Record as the conductor hands it back, with the App entry decoded
