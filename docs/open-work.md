@@ -484,11 +484,34 @@ another row.
   `node scripts/validation-corpus/enumerate.mjs` re-run.** The full
   no-conductor node list is in the session memory note; it is fourteen scripts,
   not the `check-*` glob.
-- **`partition-rejoin` fails in CI roughly a quarter of the time**, and
-  presents as a **SETUP failure** rather than an assertion failure — phase 0 is
-  the baseline *before* any partition. README already records non-crossings at
-  **27%**. Confirm the diff cannot reach `partition-rejoin.mjs` or
-  `network.sh`, re-run once, and treat a second failure as signal. Note
+- **`partition-rejoin` fails in CI 13.8% of the time — MEASURED 2026-11-14,
+  and both halves of what stood here were wrong.** ~~It fails roughly a quarter
+  of the time and presents as a SETUP failure rather than an assertion
+  failure; README already records non-crossings at 27%.~~ **THE RATE WAS
+  BORROWED FROM A DIFFERENT MEASUREMENT.** README's 27% is a four-batch census
+  of 48 gossip trials with 13 non-crossings; it was never a figure about this
+  job, and the sentence that cited it said so in its own next clause. **MEASURED
+  OVER THE JOB'S COMPLETE LIFETIME** — every `partition-rejoin` attempt since
+  `7be3eeb` created it on 2026-10-13, through 2026-11-14: **592 job rows, of
+  which 95 were skipped (docs-only diffs never run it) and 39 cancelled by
+  concurrency. Of the 458 attempts that actually ran the harness, 63 failed =
+  13.8%**, about half the figure that was written down. **AND IT IS AN
+  ASSERTION FAILURE, NOT A SETUP FAILURE, IN 56 OF THE 63:** the precondition
+  `the baseline is fast enough to measure divergence inside the job budget
+  (<= 60s)` goes red and the harness **reports normally**. Only **7** are the
+  setup shape — the job dies with no `FAIL:` line and no baseline printed,
+  ending in orphan-process termination, which is the same cause at its
+  extreme. **THE MAGNITUDE IS THE REAL FINDING AND IT ANSWERS `network.yml`'s
+  OWN OPEN QUESTION.** That file says the harness *"does NOT tell you whether a
+  slow baseline is intermittent or routine"* and holds the retry-the-baseline
+  change until somebody measures it. Measured: **86% of attempts cross
+  inside 60s by definition of passing**, so propagation is **intermittently
+  slow, not routinely minutes-slow** — which is the condition that file names
+  as making a retry worth its job time rather than wasted. **THE MAGNITUDE, STATED AS THE INSTRUMENT PERMITS AND NO FURTHER.** `partition-rejoin.mjs:605-617` forbids inferring a distribution from these figures: the baseline is a **5s-lattice sample**, so two runs agreeing to 0.1s means two crossings landed in one window — and that comment exists because **READINESS §3 already made this error**, reading a cluster *"inside ±5s of ~420s"* as a finding about gossip when it is the sampler's own step size. So no median and no percentile is quoted here, and the 28-of-56 pile-up in the 420-479s bucket is **named as the documented artifact rather than a cluster**. **WHAT THE SAMPLES DO SHOW, as observed extremes rather than a shape: across all 458 attempts no baseline has ever been sampled between 35.1s and 75.2s.** The slowest passing sample is 35.1s (395 runs); the fastest failing one is 75.2s (56 runs). Quantised to the 5s step that is a true separation of roughly 30s to 75s. **The practical consequence is the only one claimed: the 60s bound has never come near a passing run** — it sits about 25s above the slowest pass ever sampled and 15s below the fastest failure, in a range nothing has occupied. It is not a tight threshold catching marginal runs. Confirm the diff cannot reach
+  `partition-rejoin.mjs` or `network.sh`, re-run once, and treat a second
+  failure as signal — **though two consecutive reds were observed on #481,
+  whose diff was documentation plus one comment, so a second red is not by
+  itself proof the diff is implicated.** Note
   `gh pr checks` reports a check's **last concluded** status, so it keeps
   showing `fail` while a re-run is in flight — trust
   `gh run view <id> --json status,conclusion`. The *never re-run `--failed`*
