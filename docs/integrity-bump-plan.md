@@ -53,10 +53,18 @@ sequential. One bump, one number.
 
 ---
 
-## 2. The candidate set — four, after 3.1 was decided
+## 2. The candidate set — six, after 3.1 was decided and two were found missing
 
 §4 lists three. This session added two more, and they belong in the same bump
 because they are the same kind of change.
+
+> **CORRECTED 2026-11-15, AND THIS FILE WAS THE ONE THAT WAS WRONG.** This
+> table carried four and this header said so, while `docs/open-work.md` §4 had
+> listed **five** since 2026-10-26 night: **4.6 was never entered here at
+> all** — opened the same night this count changed to four, and missed. That
+> matters more than a miscount because §4 names *this* file as "the authority
+> on the set", so the authority was the stale copy and the index was right.
+> Found by filing 4.7. Both are below.
 
 | # | change | integrity surface | status |
 |---|---|---|---|
@@ -65,12 +73,16 @@ because they are the same kind of change.
 | 4.3 | **Species provenance + metabolic policy fields** | fields on `CritiqueSpecies`; policy fields TBD | **blocked**: 3.4 (a budget at all), and 2.4 is now done |
 | ~~4.4~~ | ~~**Declared atrophy threshold N**~~ — a `Constitution` field | — | **DROPPED 2026-10-24.** 3.1 decided: the reader is the promiser, per-reader is enough. No declared-N field is being built. |
 | **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | ~~1 new entry type (appended), 1 validation rule~~ **CORRECTED by writing it: 1 entry type, 1 LINK type, and nine validation sites** — five on the entry, four on the link. The witness was discoverable for free because it WAS a `Claim` and rode the domain index; a `ForeignCritique` cannot, and an unconstrained link type is what §5.19 refuses. Inventory 233 → 242 | **WRITTEN AND HELD — PR #350**, draft, do not merge until the bump is cut |
+| 4.6 | **Per-field content mode — `public_permanent` or `withdrawable`, declared by the membrane** (opened 2026-10-26 night out of 7.16's advice; `docs/erasure-and-the-content-split.md` §3) | fields on `Membrane`, and a content split whose surface is not yet counted | **blocked**: the adoption decision. **NEVER ENTERED IN THIS TABLE UNTIL 2026-11-15** — see the correction above, and note its integrity surface is still a sketch rather than a measurement |
+| **4.7** | **A domain index — enumerating the SET of domains** (6.12's `[D]` half; filed 2026-11-15 by re-pricing on §3's *what indexes it?*) | **CONDITIONAL, and that is the finding: NONE if founding becomes the price of findability** — a founded domain is a `Membrane`, `MembraneRegistry` already indexes them and `get_membranes` already reads it, so there is nothing to bump. Otherwise **1 new link type, appended, plus the first TAG-VALIDATING branch in this zome** | **blocked**: 6.12's founding question *only*. Answer *require founding* and this candidate is **withdrawn, not scheduled** |
 
 **4.4 and 4.5 were both added by this session's work, and 4.4 has already been
 dropped again.** 4.4 came out of Stage 3 (#324): the threshold works as the
 caller's promise, and the *declared-per-membrane* variant was the thing 3.1
 decided. **3.1 was decided on 2026-10-24 — per-reader is enough — so 4.4 is
-off the list and the bump is four items**, which is a useful demonstration
+off the list** (the count has since moved twice more: 4.6 was found missing
+from this table and 4.7 filed, both on 2026-11-15, so the set is **six listed
+and at most five bumped**, since 4.7 may be withdrawn rather than scheduled), which is a useful demonstration
 that the blocked items here are blocked on real questions: answering one
 removed a candidate rather than scheduling it. 4.5 came out
 of Stage 5 (#321): the witness-as-tagged-`Claim` was chosen precisely to avoid
@@ -99,13 +111,33 @@ Ordered by what blocks what, not by preference.
 4. **3.4 must be settled** — whether a metabolic budget can exist at all
    without being Invariant 1's leaderboard. If not, 4.3 shrinks to species
    provenance alone.
+5. **6.12's founding question must be answered, and it is the only
+   precondition here that can REMOVE a candidate rather than specify one.**
+   Answer *require founding* and 4.7 is withdrawn: `MembraneRegistry` and
+   `get_membranes` already enumerate founded domains, with no integrity change
+   and no fork. Answer *do not require founding* and 4.7 joins the batch and
+   needs the first tag-validating link branch in this zome — which
+   `DomainToClaim`'s own SPEC §10.0 row declined for `DomainToClaim` itself,
+   and which carries the unbounded-single-anchor growth §10.0 sustained
+   against for `get_critiques_by_mode`.
+
+   **This is the second time answering a blocker here has removed an item
+   instead of scheduling one** — 3.1 did it to 4.4 — which is the argument
+   that these are real questions rather than a queue.
 
 ~~**4.5 needs nothing.** It can be written now and held.~~ **WRITTEN AND HELD
 2026-10-25 — PR #350, draft.** And it earned its keep before merging: writing
 it is what found that §2 had understated its surface by a link type and eight
 validation sites. **Re-price the other three on the same question — *what
 indexes it?*** — because the one candidate anybody actually built is the one
-whose cost was wrong.
+whose cost was wrong. **DONE ONCE, 2026-11-15, on 4.7 — and it changed the
+answer from a cost to a CONDITION**, found two things the estimate had wrong
+(the registry pattern cannot be copied, because a domain is not an entry and
+all three existing index types bind their author through a field on a real
+record; and the path-hierarchy route does not exist — no `ensure()`, no
+`TypedPath`, no `children()` anywhere, every anchor hash-only), and surfaced
+4.6's absence from §2. **4.1, 4.2 and 4.3 have still not been re-priced**, and
+4.6's surface is a sketch rather than a measurement.
 
 ---
 
