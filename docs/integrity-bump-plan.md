@@ -68,9 +68,9 @@ because they are the same kind of change.
 
 | # | change | integrity surface | status |
 |---|---|---|---|
-| 4.1 | **Foresight ordinal anchor** — `PreRegistration.reveal_deadline` becomes a position in a declared order; `Revelation` gains an association; `Membrane` gains a declared notary key; validation checks shape only | 3 entry structs, 1 validation rule | **blocked**: Andras's three answers (asked, 7.6) |
-| 4.2 | **Observers as entries** — prompts, heuristics and thresholds as signed entries, so selection acts on the agents | 1 new entry type (appended) | **blocked**: 3.5's cost, priced |
-| 4.3 | **Species provenance + metabolic policy fields** | fields on `CritiqueSpecies`; policy fields TBD | **blocked**: 3.4 (a budget at all), and 2.4 is now done |
+| 4.1 | **Foresight ordinal anchor** — `PreRegistration.reveal_deadline` becomes a position in a declared order; `Revelation` gains an association; `Membrane` gains a declared notary key; validation checks shape only | ~~3 entry structs, 1 validation rule~~ **RE-PRICED 2026-11-15: 3 entry structs, TWO validation rules, and both are DELETIONS rather than edits.** `reveal_deadline` has 5 sites in the integrity zome and 7 in the coordinator, and **two of the integrity sites compare it as a TIME**: `:1383` refuses a commitment born already expired, `:1443` refuses a late `Revelation`. An ordinal cannot be compared against `action.timestamp()`, so both rules go. **That is the point of 4.1 — it is the clock-skew repair (§5.22, the sixth security defect) — but this row said "validation checks shape only" without saying that two guarantees are surrendered to get there.** | **blocked**: Andras's three answers (asked, 7.6) |
+| 4.2 | **Observers as entries** — prompts, heuristics and thresholds as signed entries, so selection acts on the agents | ~~1 new entry type (appended)~~ **RE-PRICED 2026-11-15, AND THIS IS 4.5's DEFECT REPEATING: an entry type is never the cost, what INDEXES it is.** Measured: **16 of 19 entry types are resolved inside a `validate_create_link` branch.** Of the three that are not, `Evidence` IS linked — by `ClaimToEvidence` and `CritiqueToEvidence`, two of the four link types with **no validation branch at all** — while `SealedPrediction` is embedded at its construction site and `SettlementPolicy` is reachable only by a hash the caller already holds. **So an un-indexed entry type exists here only where nobody needs to FIND it**, and 4.2's whole purpose is selection acting on agents, which is discovery. Add **at least 1 link type and 1 validation branch** — by the measured pattern, 42-77 lines with 3 `Invalid` returns and a `must_get_valid_record` | **blocked**: 3.5's cost, priced |
+| 4.3 | **Species provenance + metabolic policy fields** | fields on `CritiqueSpecies`; policy fields TBD. **RE-PRICED 2026-11-15 AND THE INDEX HALF SURVIVES — the only one of the three that did.** `CritiqueSpecies` is already indexed three ways (`TaxonomyToSpecies`, `CritiqueToSpecies`, `SpeciesToParent`), so adding fields needs **no new index and no new link type**. **One thing the estimate missed:** a *provenance* field that points at anything is a **reference field**, and §5.3's gated rule is that reference fields resolve their target in validation — currently **8 of 9**, the exception being `Critique.evidence_hashes`. Provenance makes it 9 of 10 and adds one resolution site. **"Policy fields TBD" is not a measurement and cannot be made one until 3.4 settles** | **blocked**: 3.4 (a budget at all), and 2.4 is now done |
 | ~~4.4~~ | ~~**Declared atrophy threshold N**~~ — a `Constitution` field | — | **DROPPED 2026-10-24.** 3.1 decided: the reader is the promiser, per-reader is enough. No declared-N field is being built. |
 | **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | ~~1 new entry type (appended), 1 validation rule~~ **CORRECTED by writing it: 1 entry type, 1 LINK type, and nine validation sites** — five on the entry, four on the link. The witness was discoverable for free because it WAS a `Claim` and rode the domain index; a `ForeignCritique` cannot, and an unconstrained link type is what §5.19 refuses. Inventory 233 → 242 | **WRITTEN AND HELD — PR #350**, draft, do not merge until the bump is cut |
 | 4.6 | **Per-field content mode — `public_permanent` or `withdrawable`, declared by the membrane** (opened 2026-10-26 night out of 7.16's advice; `docs/erasure-and-the-content-split.md` §3) | fields on `Membrane`, and a content split whose surface is not yet counted | **blocked**: the adoption decision. **NEVER ENTERED IN THIS TABLE UNTIL 2026-11-15** — see the correction above, and note its integrity surface is still a sketch rather than a measurement |
@@ -130,14 +130,19 @@ Ordered by what blocks what, not by preference.
 it is what found that §2 had understated its surface by a link type and eight
 validation sites. **Re-price the other three on the same question — *what
 indexes it?*** — because the one candidate anybody actually built is the one
-whose cost was wrong. **DONE ONCE, 2026-11-15, on 4.7 — and it changed the
-answer from a cost to a CONDITION**, found two things the estimate had wrong
+whose cost was wrong. **DONE ON ALL FOUR, 2026-11-15 — AND TWO OF THE THREE OLDER ESTIMATES WERE
+UNDERSTATED, WHICH IS THE RESULT THIS INSTRUCTION PREDICTED.** 4.1 is two
+validation rules and not one, and both are surrenders rather than edits; 4.2
+understates by a link type and a validation branch, **which is 4.5's defect
+repeating exactly**; 4.3's index half is the only estimate that survived, and
+its other half still cannot be priced. The 4.7 re-price **changed the answer
+from a cost to a CONDITION**, found two things the estimate had wrong
 (the registry pattern cannot be copied, because a domain is not an entry and
 all three existing index types bind their author through a field on a real
 record; and the path-hierarchy route does not exist — no `ensure()`, no
 `TypedPath`, no `children()` anywhere, every anchor hash-only), and surfaced
-4.6's absence from §2. **4.1, 4.2 and 4.3 have still not been re-priced**, and
-4.6's surface is a sketch rather than a measurement.
+4.6's absence from §2. **4.6's surface is still a sketch rather than a
+measurement, and is now the only candidate that has not been re-priced.**
 
 ---
 
