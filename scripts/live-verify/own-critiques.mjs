@@ -18,10 +18,19 @@
 // channel has the side channel as a dependency.
 //
 // WHAT IS UNDER TEST IS THE PULL HALF ONLY. Push is 6.15's `[D]` and stays
-// undecided, because `send_peer_signal` writes a permanent CapGrant per call
-// on the SENDER's chain: notifying on every critique would grow a critic's own
-// chain in proportion to how much they disagree. Nothing here sends a signal
-// or subscribes to one.
+// undecided. Nothing here sends a signal or subscribes to one.
+//
+// THE REASON GIVEN HERE WAS FALSE AND IS CORRECTED (2026-11-14). It said
+// `send_peer_signal` writes a permanent CapGrant per call on the SENDER's
+// chain, so notifying on every critique would grow a critic's own chain in
+// proportion to how much they disagree. That is `peer-signal.mjs`'s NEGATIVE
+// EVIDENCE entry `CH` — a defect somebody INJECTED and watched go 2 red — read
+// as if it were the measurement. That harness asserts the opposite, and
+// `send_peer_signal` plainly writes nothing: one entry per agent to open a
+// channel, once, and zero per signal thereafter. **Push is not the expensive
+// branch.** What keeps the `[D]` open is the Invariant 1 question — whether an
+// attention ordering is a merit ordering — which is what this file's own
+// subject is, and it is untouched by the cost correction.
 //
 // THE TWO FAKES THIS FILE HAS TO DEFEAT, and neither is a blank screen.
 //
