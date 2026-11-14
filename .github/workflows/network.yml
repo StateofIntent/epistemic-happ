@@ -470,15 +470,33 @@ jobs:
   # borrowed from README's 48-trial non-crossing census, which was never a
   # measurement of this job.
   #
-  # THE ANSWER IS INTERMITTENT, NOT ROUTINE, AND THE MAGNITUDE IS EXTREME.
-  # Across the 56 failures where the precondition reds and the harness still
-  # reports, the baseline ran 75.2s minimum, 416.1s median, 426.1s maximum
-  # against the 60s bound — seven times over at the median, not marginally. The
-  # other 7 failures are the shape this comment was written about: the job dies
-  # with no `FAIL:` line and no baseline printed. But 86% of attempts cross
-  # inside 60s by definition of passing, so propagation is intermittently
-  # catastrophic rather than routinely minutes-slow — which is the condition
-  # this comment names as making the retry worth its job time. THE RETRY IS
+  # THE ANSWER IS INTERMITTENT, NOT ROUTINE. 86% of attempts cross inside 60s
+  # by definition of passing, so propagation is intermittently slow rather than
+  # routinely minutes-slow — the condition this comment names as making the
+  # retry worth its job time. 56 of the 63 failures are the precondition going
+  # red with the harness still reporting; the other 7 are the shape this
+  # comment was written about, the job dying with no `FAIL:` line and no
+  # baseline printed.
+  #
+  # AND NO DISTRIBUTION IS CLAIMED FROM THOSE FIGURES, because
+  # `partition-rejoin.mjs:605-617` forbids it: the baseline is a 5s-LATTICE
+  # SAMPLE, so two runs agreeing to 0.1s means two crossings landed in one
+  # window. That comment exists because READINESS §3 already made the error,
+  # reading a cluster "inside ±5s of ~420s" as a finding about gossip when it
+  # is the sampler's step size — and this measurement reproduced that pile-up
+  # (28 of 56 in the 420-479s bucket), which is named as the artifact it is
+  # rather than quoted as a cluster. No median and no percentile is recorded.
+  #
+  # WHAT THE SAMPLES SHOW, as observed extremes and not a shape: across all 458
+  # attempts NO BASELINE HAS EVER BEEN SAMPLED BETWEEN 35.1s AND 75.2s. The
+  # slowest passing sample is 35.1s over 395 runs; the fastest failing one is
+  # 75.2s over 56. Quantised to the 5s step that is a true separation of
+  # roughly 30s to 75s. So the only practical claim is this: the 60s bound has
+  # never come near a passing run — it sits ~25s above the slowest pass ever
+  # sampled and ~15s below the fastest failure, in a range nothing has
+  # occupied. It is not a tight threshold catching marginal runs, which is one
+  # more reason the "raise the 60s" dead end above is still a dead end: the
+  # bound is not what fails. THE RETRY IS
   # STILL NOT TAKEN HERE: it is a change to the harness, it is `[D]`, and the
   # measurement is recorded so the decision can be made on it rather than on
   # the borrowed number it was resting on.
