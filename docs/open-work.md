@@ -22,9 +22,115 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-14 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
-IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree with
-this block, this block wins.**
+**CHECKPOINT, 2026-11-14 (second session) — RESUME HERE. EVERY CHECKPOINT BLOCK
+BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where
+they disagree with this block, this block wins.**
+
+**WHERE THINGS STAND.** `main` is at `25a5791`. Desktop `release` is at
+`f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
+patch). **#350 stays HELD — DO NOT MERGE**, and it is the only open PR in
+either repository. The working tree is clean and nothing is in flight.
+**Nothing is owed to anybody outside this repository** — do not chase.
+
+**TWO ROWS CLOSED, EACH MERGED ON A FULL GREEN RUN: #478 (1.21's resolver)
+and #479 (6.18, plus its own injections recorded).**
+
+| PR | row | what it was |
+|---|---|---|
+| **#478** `eee93ca` | **1.21** | the ledger resolved a label by reading ONE quoted literal; this suite writes any label longer than a line as literals joined by `+` — **60 call sites truncated, each in the denominator under a label it does not have** |
+| **#479** `8c904bd`, `379d00f` | **6.18 CLOSED** | the critique TREE labelled nodes by mode alone — a byline on every node, the parent carried so the tree can say what the flat list cannot, **and the fixture was the real work** |
+
+**EVERY FINDING THIS SESSION IS THE SAME SPECIES: A TOOL OR A CHECK THAT WAS
+RIGHT BY COINCIDENCE.**
+
+1. **A label is an EXPRESSION, not a literal.** Taken whole now, to the comma
+   found by bracket depth. All 15 of the ledger's unresolved reds resolved:
+   **51 → 63 distinct call sites**, `reading-a-thread` 7 → 19. The store
+   changed by **0 labels and 15 kinds** — a label is the evidence, a resolution
+   is derived from current source, which is why line numbers were already
+   repaired there. And `verify` had only ever re-resolved reds ALREADY counted
+   as coverage, so a record could never move TOWARDS coverage however much the
+   resolver improved.
+2. **`\bcheck\(` MATCHES PLAYWRIGHT'S `.check()`** — a word boundary matches
+   after a dot, so ticking a checkbox counted as an assertion. The suite's
+   figure is **1,761, not 1,763**, and the arithmetic closes exactly.
+3. **AN INJECTION PASSED FIRST TIME AND THE CHECK WAS THE PROBLEM.** Restoring
+   `\bcheck\(` reddened nothing, because `labelExpr` rejects a no-argument
+   `.check()` before the lookbehind is ever consulted. Rewritten around a
+   DOTTED call with label-shaped arguments — what the lookbehind actually does
+   — it reds 2. **A guard whose removal costs nothing is the same as no guard.**
+4. **THE DETERMINISTIC GATE EARNED ITSELF ON THE SPOT, MEASURED.** `verify`
+   can only exercise the label shapes some injection happened to redden, which
+   is a coincidence of history. Removing the computed-label guard reds two
+   `selftest` cases and leaves **`verify` entirely green**, because the suite's
+   one computed label sits in a harness with no records.
+5. **THEN THE TOOL FOUND ITS OWN HOLE BY BEING USED: the first injection
+   recorded after the fix resolved ZERO of its five reds.** `graph-ui`'s new
+   labels spell their dashes as `—`, and `unescape` decoded only
+   `\' \" \` \\ \n \t`, so the pattern demanded six characters where the run
+   printed one. **9 of 1,773 sites carry such an escape and all but two are in
+   that one harness** — a hole as old as the file, invisible until the tool was
+   pointed at new data. Full JS-string decoder now, four `selftest` cases
+   watched failing. **The harness was NOT restyled to suit the tool**, so the
+   path stays exercised by real records.
+6. **AND THE COUNTS #478 WROTE INTO ITS OWN HEADER WENT STALE INSIDE THE SAME
+   BRANCH**, because `graph-ui` gained 12 checks three commits later. The
+   second-place-a-number-is-written defect, committed inside the session that
+   names it — re-measured, and **nothing downstream is keyed to those figures
+   deliberately**: `selftest` asserts the SHAPES and `verify` re-resolves
+   against the source as it is.
+
+**6.18 — THE FIXTURE WAS THE WORK, AND THE ROW HAD ALREADY MEASURED WHY.**
+`graph-ui.mjs` wrote every entry as `author: me`, so the impostor defect the
+row names — a byline from `myAgentPubKey`, who is LOOKING, rather than
+`entry.author`, who WROTE — was **indistinguishable from correct behaviour**:
+every byline right by coincidence, exactly as in the list view, where the row
+records the same injection turning *only 2 red*. With a second agent installed
+(setup refusal if both slots resolve to one key; cross-author readiness waits
+that refuse rather than seed a wrong-shaped tree) **the same injection turns
+5**. `flattenPreOrder` carries each node's parent, so the tree marks *the
+critique's author* — a relation that cannot exist at depth 1, the only depth
+the flat list reaches. The byline is in the SVG `aria-label` as well as the
+text peer, the accessible label being the whole reason this view is SVG.
+
+**AND A SECOND FINDING IN THE HARNESS: `graph-ui`'s §7b.2 DECLARING-WAIT PROBE
+COULD NEVER HAVE RUN.** The diagnostic that turns a bare timeout into an answer
+called a `call` declared `const` INSIDE `seed()`, from `main()`, **after `main`
+had closed the only socket it could have used** — a `ReferenceError` in place
+of the explanation, on the one path where it runs. Invisible on every green
+run; the same species as 1.29's harnesses that could only report a failure.
+Keeping the socket open is safe for 1.29's own measured reason: this file ends
+on `process.exit(failures === 0 ? 0 : 1)`.
+
+**THE LEDGER NOW READS 71 of 1,773 call sites (4.0%), four harnesses, 19 runs**
+— 92 resolved reds reaching 71 distinct sites, so a sum would overstate by 30%.
+Coverage grows only as injections are run and recorded, which is the answer
+1.21 asked for rather than a shortcut around it.
+
+**WHAT IS LEFT, AND IT IS ONE DECISION AND THREE THINGS WAITING ON OTHER
+PEOPLE.**
+
+- **6.15's `[D]` is the only open decision on this list.** Push notification:
+  expensive in the protocol — `send_peer_signal` writes a permanent CapGrant
+  **per call, on the SENDER's chain** — and **free inside Moss**, which is what
+  1.30 establishes. The catch is 1.30's own ceiling: every pilot participant
+  runs the standalone build, so the free version reaches nobody today.
+- **6.21 closes only when somebody takes an AUTOMATIC update**, which cannot
+  happen before the release after 0.3.5.
+- **6.23 reopens only if the person who reported it twice answers.** Not to be
+  re-asked.
+- **1.30/1.31/1.32** are written and nothing is built; all three reach a reader
+  only inside Moss, so none answers the standalone decision beside it.
+- Recorded as deliberately open inside 6.25: `critiqueTreeByClaim` re-read per
+  panel open, 6.24's sub-`[D]` on a panel LEFT open, and
+  **`constitutionByAuthor`'s cached `null`**.
+- **`check-prose-claims.mjs` is advisory and in NO workflow** — by design, and
+  it never exits non-zero. Checked while editing it, so it is not a 1.29 case.
+
+---
+
+**CHECKPOINT, 2026-11-14 (first session) — SUPERSEDED by the block above. Still
+the authority on rows 6.25, 1.29 and 6.23, and on PRs #474-#477.**
 
 **WHERE THINGS STAND.** `main` is at `f632961`. Desktop `release` is at
 `f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
