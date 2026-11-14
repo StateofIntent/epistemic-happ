@@ -58,7 +58,11 @@ const num = (t) => (/^\d+$/.test(t) ? Number(t) : WORDS[t.toLowerCase()] ?? null
 
 function analyse(file) {
   const src = readFileSync(join(DIR, file), 'utf8');
-  const checks = (src.match(/\bcheck\(/g) || []).length;
+  // NOT `\bcheck\(`: a word boundary matches after a dot, so that form counts
+  // Playwright's `.check()` — ticking a checkbox — as an assertion. Two in the
+  // suite (`notes-ui`, `trust-lenses`), found 2026-11-14 while fixing the
+  // injection ledger's resolver, which arrives at the same total independently.
+  const checks = (src.match(/(?<![.\w$])check\(/g) || []).length;
 
   // RETIRED BEFORE EVIDENCE, and the order matters. A retirement block starts
   // with the same two words as a real one, so testing for NEGATIVE EVIDENCE

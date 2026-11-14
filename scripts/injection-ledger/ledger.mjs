@@ -24,12 +24,21 @@
 //
 //     FAIL: <the check's own label>
 //
-// and that label is a LITERAL (or a template) in the harness source. So
-// resolving a run's red checks back to call sites is STRING EQUALITY, not
-// inference — which is precisely the step `injection-coverage.mjs` refuses to
-// take from prose, and the reason it is safe to take from output. The judgment
-// 1.20 found unreliable was *"which check does this English phrase mean"*. No
-// judgment is involved in *"which call site has this exact label"*.
+// and that label is an EXPRESSION in the harness source — a literal, a
+// template, or literals concatenated with `+`. So resolving a run's red checks
+// back to call sites is STRING EQUALITY, not inference — which is precisely
+// the step `injection-coverage.mjs` refuses to take from prose, and the reason
+// it is safe to take from output. The judgment 1.20 found unreliable was
+// *"which check does this English phrase mean"*. No judgment is involved in
+// *"which call site has this exact label"*.
+//
+// THE WORD "EXPRESSION" IS A CORRECTION OF 2026-11-14 AND IT COST 15 OF THIS
+// FILE'S 16 UNRESOLVED REDS. The first version read one quoted literal, so a
+// label assembled with `+` — this suite's style for any label longer than a
+// line, which is to say the labels that say the most — was recorded truncated
+// to its first fragment. See the resolver's own header for the measurement;
+// the shape is now asserted directly by `selftest`, because `verify` can only
+// ever exercise the shapes some injection happened to redden.
 //
 // WHAT IT CANNOT DO, ENFORCED RATHER THAN NOTED. Three resolutions are
 // possible for a red label and only the first counts as coverage:
@@ -37,8 +46,8 @@
 //   exact      — one call site carries that label. Counted.
 //   ambiguous  — two or more do (a duplicated literal, or a template whose
 //                pattern matches several). NOT counted, listed by name.
-//   unresolved — none does. The harness has been edited since the run, or the
-//                label is built in a way this cannot match. NOT counted.
+//   unresolved — none does. The check was deleted, or its label is computed at
+//                run time and no source text can ever equal it. NOT counted.
 //
 // So the ledger's coverage figure can only ever UNDERSTATE. That direction is
 // deliberate: the failure mode this is built against is a check believed
@@ -63,6 +72,7 @@
 //   Read it back:
 //     node scripts/injection-ledger/ledger.mjs report
 //     node scripts/injection-ledger/ledger.mjs verify     # exits 1 on rot
+//     node scripts/injection-ledger/ledger.mjs selftest   # the resolver itself
 //
 // The store is NDJSON — one record per line, append-only — so two people
 // recording different injections conflict on adjacent lines at worst, and a
@@ -79,49 +89,220 @@ const STORE = join(ROOT, 'scripts/injection-ledger/records.ndjson');
 
 // --- Resolving a printed label back to a call site --------------------------
 //
-// A `check()` label is one of two things in the source: a quoted literal, or a
-// template. A literal compares by equality. A template is turned into a
-// pattern by replacing every `${...}` with `.*` — mechanical, with no reading
-// of what the expression inside might produce — so
-// `the chain holds exactly one claim (${n})` matches the printed
-// `the chain holds exactly one claim (1)`.
+// A `check()` label is an EXPRESSION, and reading only its first quoted
+// literal is what this file did until 2026-11-14. Three shapes occur in this
+// suite, measured rather than guessed:
 //
-// TEMPLATES ARE NOT A CORNER CASE: this repository's harnesses use them for
-// exactly the labels that carry a measured figure, which are the labels most
-// worth having coverage on.
+//   1,700  a single literal or a single template
+//      60  a CONCATENATION — literals joined by `+`, usually across lines
+//       1  a computed label, `check(label, true)`, with no literal at all
+//
+// THE 60 WERE THE BUG, AND IT WAS A 65% UNDERSTATEMENT ON THE FIRST HARNESS
+// RECORDED AFTER THIS FILE SHIPPED. `reading-a-thread.mjs` was entered from
+// eight real runs: 23 reds, of which 8 resolved and 15 did not, and every one
+// of the 15 is a label assembled with `+` because it is longer than a line —
+// which is this repository's prevailing style for exactly the labels that say
+// the most. The old scanner matched `check(` followed by one quoted string, so
+// a concatenated label entered the site table TRUNCATED to its first fragment
+// and could never equal what the run printed. Worse than invisible: the site
+// was in the DENOMINATOR with a label it does not have.
+//
+// SO THE LABEL EXPRESSION IS NOW TAKEN WHOLE, to the comma that separates
+// label from condition — and that comma is found by DEPTH, not by the first
+// comma seen, because a label may call a function (`check(fmt(a, b), cond)`)
+// and a template may hold an expression holding a comma. Within the
+// expression, every string literal contributes its own text and everything
+// else — a `${...}`, a bare variable between two `+` — contributes `.*`.
+// Mechanical throughout: nothing here reads what a substitution might produce,
+// which is the line `injection-coverage.mjs` refuses to cross from prose and
+// the reason it is safe to cross from output.
+//
+// TWO FURTHER CORRECTIONS FELL OUT OF LOOKING, both small and both in the
+// denominator, where this file had been counting things that are not checks:
+//
+//   `\bcheck\(` MATCHES PLAYWRIGHT'S `.check()`. A word boundary matches after
+//   a dot, so `locator('[data-testid="notes-create-listed"]').check()` — which
+//   ticks a checkbox — reads as an assertion to that grep. Two of them, in
+//   `notes-ui.mjs` and `trust-lenses.mjs`. THIS FILE WAS NEVER WRONG BY THEM
+//   AND ONLY BY ACCIDENT: the old regex demanded a quote immediately after the
+//   paren, so a no-argument `.check()` fell out for the wrong reason. The
+//   lookbehind makes the exclusion the one that was meant. It is recorded
+//   because the suite's own prose quotes that grep as its assertion count, and
+//   the arithmetic now closes exactly: 1,763 raw = 1,760 with a leading quote
+//   + 1 computed label + 2 of Playwright's. A number is either what it says it
+//   is or it is not.
+//
+//   A COMPUTED LABEL CAN NEVER BE CREDITED, AND IS STILL A CALL SITE.
+//   `attachment-links.mjs` builds its label in a variable and passes it in, so
+//   no source text can ever equal what it printed. It stays in the denominator
+//   — it is a real assertion — and is excluded from MATCHING, because a site
+//   whose pattern is pure wildcard would match every label ever printed and
+//   turn all of this file's existing coverage ambiguous in one line. Named in
+//   `report` rather than dropped, so the one site this cannot see says so.
+
+/** Skip a `'…'` or `"…"` literal; returns the index just past the closer. */
+function skipQuoted(src, i) {
+  const q = src[i];
+  i += 1;
+  while (i < src.length) {
+    if (src[i] === '\\') { i += 2; continue; }
+    if (src[i] === q) return i + 1;
+    i += 1;
+  }
+  return i;
+}
+
+/** Skip a `${…}` substitution body; `i` is just past the `{`. Nests, because
+ *  a substitution may hold an object, a call, or another template. */
+function skipBraced(src, i) {
+  let depth = 1;
+  while (i < src.length && depth > 0) {
+    const c = src[i];
+    if (c === "'" || c === '"') { i = skipQuoted(src, i); continue; }
+    if (c === '`') { i = skipTemplate(src, i); continue; }
+    if (c === '{') depth += 1;
+    else if (c === '}') depth -= 1;
+    i += 1;
+  }
+  return i;
+}
+
+/** Skip a `` `…` `` template, substitutions and all. */
+function skipTemplate(src, i) {
+  i += 1;
+  while (i < src.length) {
+    if (src[i] === '\\') { i += 2; continue; }
+    if (src[i] === '`') return i + 1;
+    if (src[i] === '$' && src[i + 1] === '{') { i = skipBraced(src, i + 2); continue; }
+    i += 1;
+  }
+  return i;
+}
+
+/** The label expression of a `check(` call: the text up to the top-level
+ *  comma. `null` when there is no such comma — a `check(` with one argument is
+ *  not a labelled assertion this file can speak about. */
+function labelExpr(src, from) {
+  let i = from;
+  let depth = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "'" || c === '"') { i = skipQuoted(src, i); continue; }
+    if (c === '`') { i = skipTemplate(src, i); continue; }
+    if (c === '(' || c === '[' || c === '{') { depth += 1; i += 1; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      if (depth === 0) return null;
+      depth -= 1; i += 1; continue;
+    }
+    if (c === ',' && depth === 0) return src.slice(from, i);
+    i += 1;
+  }
+  return null;
+}
+
+/** The printed label is the RESOLVED string, so source escapes have to be
+ *  undone before comparing: `\'` prints as `'`. */
+const unescape = (raw) => raw.replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A template body as alternating literal text and wildcards. */
+function templateParts(body) {
+  const parts = [];
+  let lit = '';
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] === '\\') { lit += body[i] + (body[i + 1] ?? ''); i += 2; continue; }
+    if (body[i] === '$' && body[i + 1] === '{') {
+      if (lit) { parts.push({ lit: unescape(lit) }); lit = ''; }
+      i = skipBraced(body, i + 2);
+      parts.push({ wild: true });
+      continue;
+    }
+    lit += body[i];
+    i += 1;
+  }
+  if (lit) parts.push({ lit: unescape(lit) });
+  return parts;
+}
+
+/** A label expression as alternating literal text and wildcards. Whitespace
+ *  and `+` BETWEEN two literals is concatenation and contributes nothing;
+ *  anything else between them is a runtime value and contributes a wildcard. */
+function exprParts(expr) {
+  const parts = [];
+  let gap = '';
+  let i = 0;
+  const flushGap = () => {
+    if (/[^\s+]/.test(gap)) parts.push({ wild: true });
+    gap = '';
+  };
+  while (i < expr.length) {
+    const c = expr[i];
+    if (c === "'" || c === '"') {
+      flushGap();
+      const end = skipQuoted(expr, i);
+      parts.push({ lit: unescape(expr.slice(i + 1, end - 1)) });
+      i = end;
+      continue;
+    }
+    if (c === '`') {
+      flushGap();
+      const end = skipTemplate(expr, i);
+      parts.push(...templateParts(expr.slice(i + 1, end - 1)));
+      i = end;
+      continue;
+    }
+    gap += c;
+    i += 1;
+  }
+  flushGap();
+  return parts;
+}
 
 /** Every labelled `check()` call site in a harness, with its line and the
  *  pattern its label makes. Written to find call sites and NOT to parse
- *  JavaScript: a quote inside a label is handled, a `check(` inside a string
- *  is not, and the `verify` subcommand is what catches the difference. */
+ *  JavaScript: it tracks strings, templates and bracket depth because the
+ *  label expression cannot be delimited without them, and it knows nothing
+ *  about comments, so a `check('…',` inside a block comment is a site to this
+ *  file. The `verify` subcommand is what catches the difference. */
 function callSites(src) {
   const sites = [];
-  const re = /\bcheck\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+  // NOT `\bcheck\(`: a word boundary matches after a dot, so that form counts
+  // Playwright's `.check()` — which ticks a checkbox — as an assertion.
+  const re = /(?<![.\w$])check\(/g;
   let m;
   while ((m = re.exec(src)) !== null) {
-    const [, quote, raw] = m;
+    const expr = labelExpr(src, m.index + m[0].length);
+    if (expr === null) continue;
+    const parts = exprParts(expr);
     const line = src.slice(0, m.index).split('\n').length;
-    // The printed label is the RESOLVED string, so source escapes have to be
-    // undone before comparing: `\'` prints as `'`.
-    const unescaped = raw.replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, '\n');
+    const lits = parts.filter((p) => p.lit !== undefined).map((p) => p.lit);
+    const anchored = lits.some((l) => /\S/.test(l));
+    const wild = parts.some((p) => p.wild);
     sites.push({
       line,
-      raw: unescaped,
-      // A template with no substitution is just a literal.
-      isTemplate: quote === '`' && /\$\{/.test(raw),
-      pattern: quote === '`' && /\$\{/.test(raw)
-        ? new RegExp(`^${unescaped.split(/\$\{[\s\S]*?\}/).map(escapeRe).join('[\\s\\S]*')}$`)
+      raw: lits.join(''),
+      // A site with no literal text of its own: the label is computed, so no
+      // source text can ever equal what it printed. In the denominator,
+      // excluded from matching — a `^[\s\S]*$` pattern would match every label
+      // and make all coverage ambiguous.
+      computed: !anchored,
+      isTemplate: wild,
+      pattern: anchored && wild
+        ? new RegExp(`^${parts.map((p) => (p.wild ? '[\\s\\S]*' : escapeRe(p.lit))).join('')}$`)
         : null,
     });
   }
   return sites;
 }
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /** exact | ambiguous | unresolved, and never a guess. */
 function resolve(label, sites) {
-  const hits = sites.filter((s) => (s.pattern ? s.pattern.test(label) : s.raw === label));
+  const hits = sites.filter((s) => {
+    if (s.computed) return false;
+    return s.pattern ? s.pattern.test(label) : s.raw === label;
+  });
   if (hits.length === 1) return { kind: 'exact', line: hits[0].line };
   if (hits.length > 1) return { kind: 'ambiguous', lines: hits.map((h) => h.line) };
   return { kind: 'unresolved' };
@@ -246,8 +427,14 @@ function cmdRecord(args) {
 function cmdReport() {
   const records = load();
   const harnesses = readdirSync(HARNESS_DIR).filter((f) => f.endsWith('.mjs'));
-  const totalSites = harnesses.reduce(
-    (n, f) => n + callSites(readFileSync(join(HARNESS_DIR, f), 'utf8')).length, 0);
+  let totalSites = 0;
+  const computed = [];
+  for (const f of harnesses) {
+    for (const site of callSites(readFileSync(join(HARNESS_DIR, f), 'utf8'))) {
+      totalSites += 1;
+      if (site.computed) computed.push(`${f}:${site.line}`);
+    }
+  }
 
   console.log(`injection ledger: ${records.length} recorded run(s)`);
   if (records.length === 0) {
@@ -312,6 +499,17 @@ function cmdReport() {
     console.log('   none. Neither is promoted to coverage, so this figure understates by exactly');
     console.log('   these, which is the safe direction.');
   }
+  if (computed.length > 0) {
+    console.log('');
+    console.log(`== CANNOT EVER BE CREDITED: ${computed.length} call site(s) with a computed label ==`);
+    for (const c of computed) console.log(`   ${c}`);
+    console.log('   The label is built at run time, so no source text can equal what it printed');
+    console.log('   and no injection can ever move it into the figure above. Counted in the');
+    console.log('   denominator because it is a real assertion, excluded from matching because a');
+    console.log('   site with no literal text of its own would match every label ever printed.');
+    console.log('   Named here rather than dropped: the one thing this cannot see should say so.');
+  }
+
   console.log('');
   console.log('== WHAT THIS DOES NOT REPLACE ==');
   console.log('   `injection-coverage.mjs` still reports the prose-derived ceiling for every');
@@ -327,7 +525,9 @@ function cmdVerify() {
   if (records.length === 0) { console.log('Ledger is empty — nothing to verify.'); return; }
   const stale = [];
   const neverExact = [];
+  const promoted = [];
   let repaired = 0;
+  let reclassified = 0;
   const cache = new Map();
   for (const [i, r] of records.entries()) {
     if (!cache.has(r.harness)) {
@@ -337,7 +537,32 @@ function cmdVerify() {
     const sites = cache.get(r.harness);
     if (sites === null) { stale.push({ i, r, why: 'the harness no longer exists' }); continue; }
     for (const red of r.red) {
+      // EVERY RED IS RE-RESOLVED, including the ones that never resolved, and
+      // that is a change of 2026-11-14 rather than the original design. The
+      // first version re-resolved only the reds already counted as coverage,
+      // so a record could never move TOWARDS being coverage however much the
+      // resolver improved — and the resolver did improve: it had been reading
+      // only the first quoted fragment of a concatenated label, which is 60
+      // call sites in this suite and was 15 of this ledger's 16 unresolved
+      // reds. A stored resolution is a derived fact about the current source,
+      // which is exactly why line numbers are already repaired here; the
+      // LABEL is the evidence and it is never rewritten.
+      const now = resolve(red.label, sites);
       if (red.kind !== 'exact') {
+        if (now.kind === 'exact') {
+          promoted.push({ r, red, line: now.line, was: red.kind });
+          red.kind = 'exact';
+          red.line = now.line;
+          delete red.lines;
+          continue;
+        }
+        if (now.kind !== red.kind) {
+          // Still not coverage either way, but say which it is now, so the
+          // report's two tallies are about the current source.
+          red.kind = now.kind;
+          if (now.kind === 'ambiguous') red.lines = now.lines; else delete red.lines;
+          reclassified += 1;
+        }
         // NOT silently skipped, and the distinction is the whole point of
         // separating these two lists. A red that was NEVER exact was never
         // counted as coverage, so it is not a claim that has gone bad — but it
@@ -346,7 +571,6 @@ function cmdVerify() {
         neverExact.push({ r, red });
         continue;
       }
-      const now = resolve(red.label, sites);
       if (now.kind !== 'exact') {
         stale.push({ i, r, why: `the label is now ${now.kind}`, label: red.label });
       } else if (now.line !== red.line) {
@@ -364,8 +588,21 @@ function cmdVerify() {
   // Written back ONLY when something moved. A tool that rewrites its own store
   // on every read makes `git status` dirty for no reason, and a dirty tree is
   // how an unrelated change gets committed by accident.
-  if (repaired > 0) {
+  if (repaired > 0 || promoted.length > 0 || reclassified > 0) {
     writeFileSync(STORE, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  }
+
+  if (promoted.length > 0) {
+    console.log(`PROMOTED — ${promoted.length} red(s) that had never resolved now resolve to a`);
+    console.log('single call site. This is the resolver reading the source better than it did,');
+    console.log('not a new injection and not a new measurement: each of these labels was printed');
+    console.log('by a run that was recorded at the time, and the ledger simply could not say');
+    console.log('which check had printed it.');
+    for (const p of promoted) {
+      console.log(`  ${p.r.harness}${p.r.id ? ` [${p.r.id}]` : ''}  line ${p.line}  (was ${p.was})`);
+      console.log(`    ${p.red.label}`);
+    }
+    console.log('');
   }
 
   if (neverExact.length > 0) {
@@ -385,6 +622,9 @@ function cmdVerify() {
     } else {
       console.log('No line numbers had moved.');
     }
+    if (reclassified > 0) {
+      console.log(`${reclassified} red(s) that are still not coverage changed which kind they are.`);
+    }
     return;
   }
   console.log(`STALE — ${stale.length} recorded red(s) no longer resolve:`);
@@ -396,6 +636,123 @@ function cmdVerify() {
   console.log('A coverage claim about a check that no longer exists is worse than no claim,');
   console.log('because it reads like one. Either the check was renamed — re-run the injection');
   console.log('and record it again — or it was deleted, in which case delete the record.');
+  process.exit(1);
+}
+
+// --- selftest ---------------------------------------------------------------
+//
+// A DETERMINISTIC TEST OF THE RESOLVER, AGAINST LABELLED SOURCE SNIPPETS, AND
+// THE PRECEDENT IS THIS ROW'S OWN. 1.21's injection-proposal safeguard is
+// "verified against five labelled strings rather than against a live run,
+// because the model's output varies between runs and a non-deterministic test
+// of a detector proves nothing". The same argument applies here and more
+// strongly: `verify` can only exercise the label shapes that some injection
+// happened to redden, so it covers concatenation today because fifteen
+// `reading-a-thread` reds happen to be concatenated — a coincidence of history
+// rather than a property of the gate.
+//
+// THE CASE THAT CARRIES THE BUG IS #5, AND IT IS THE NEGATIVE ONE. A printed
+// label equal to the FIRST FRAGMENT of a concatenation must resolve to
+// NOTHING. Under the old scanner that string was the site's whole recorded
+// label, so it matched — which is the shape of the defect: not merely a missed
+// match, but a site sitting in the denominator under a label it does not have.
+// Asserting only that the full label resolves would pass against a scanner
+// that recorded both.
+
+const SELFTEST = [
+  { what: 'a plain literal',
+    src: "check('a plain label', x);",
+    label: 'a plain label', want: 'exact' },
+
+  { what: 'a template, substitution wildcarded',
+    src: 'check(`the chain holds exactly one claim (${n})`, x);',
+    label: 'the chain holds exactly one claim (1)', want: 'exact' },
+
+  { what: 'literals concatenated across lines',
+    src: "check('first half '\n      + 'second half', x);",
+    label: 'first half second half', want: 'exact' },
+
+  { what: 'a template concatenated with a literal — the shape 15 reds had',
+    src: "check(`CONTROL: the bylines are not one repeated string — ${d} distinct `\n      + 'over three rows', x);",
+    label: 'CONTROL: the bylines are not one repeated string — 2 distinct over three rows',
+    want: 'exact' },
+
+  { what: 'THE NEGATIVE: the first fragment alone resolves to nothing',
+    src: "check('first half '\n      + 'second half', x);",
+    label: 'first half ', want: 'unresolved' },
+
+  { what: 'a bare variable between two literals',
+    src: "check('n is ' + n + ' now', x);",
+    label: 'n is 7 now', want: 'exact' },
+
+  { what: 'a comma inside the label expression does not end it',
+    src: "check('total ' + arr.join(', ') + ' end', x);",
+    label: 'total a, b end', want: 'exact' },
+
+  { what: 'a source escape prints as the character it escapes',
+    src: "check('it\\'s there', x);",
+    label: "it's there", want: 'exact' },
+
+  { what: 'two call sites carrying one literal are ambiguous, not exact',
+    src: "check('the same words', x);\ncheck('the same words', y);",
+    label: 'the same words', want: 'ambiguous' },
+
+  { what: 'a computed label resolves to nothing',
+    src: 'check(label, true);',
+    label: 'whatever it printed', want: 'unresolved' },
+
+  // THE LOAD-BEARING ONE. A computed site has no literal text, so its pattern
+  // would be `^[\s\S]*$` — which matches every label ever printed and would
+  // turn all of this ledger's coverage ambiguous in a single line. It is
+  // excluded from matching and counted in the denominator, so a real label
+  // beside it must still resolve exactly.
+  { what: 'a computed label does not make its neighbour ambiguous',
+    src: "check(label, true);\ncheck('a real label', x);",
+    label: 'a real label', want: 'exact' },
+
+  { what: "Playwright's .check() is not an assertion and not a call site",
+    src: "await page.locator('[data-testid=\"notes-create-listed\"]').check();",
+    label: 'irrelevant', want: 'unresolved', sites: 0 },
+
+  // THIS CASE EXISTS BECAUSE THE OBVIOUS ONE ABOVE IS INSENSITIVE, which was
+  // found by injecting `\bcheck\(` back and watching NOTHING go red. The
+  // lookbehind is not what excludes the suite's two real `.check()` calls:
+  // they take no arguments, so `labelExpr` finds no top-level comma and
+  // returns null first. A dotted call WITH a label-shaped first argument is
+  // what the lookbehind actually does, so that is what is asserted — the
+  // alternative being a guard whose removal costs nothing, which is the same
+  // as no guard.
+  { what: 'a DOTTED call with label-shaped arguments is still not a call site',
+    src: "await page.locator('x').check('a label', true);",
+    label: 'a label', want: 'unresolved', sites: 0 },
+
+  { what: 'a one-argument check() is not a labelled site',
+    src: 'check(somethingWithNoLabel);',
+    label: 'irrelevant', want: 'unresolved', sites: 0 },
+];
+
+function cmdSelftest() {
+  let failures = 0;
+  const check = (label, cond) => {
+    console.log(`  ${cond ? 'PASS' : 'FAIL'}: ${label}`);
+    if (!cond) failures += 1;
+  };
+  console.log('ledger.mjs selftest — the resolver against labelled source snippets\n');
+  for (const c of SELFTEST) {
+    const sites = callSites(c.src);
+    const got = resolve(c.label, sites).kind;
+    check(`${c.what} → ${c.want} (got ${got})`, got === c.want);
+    if (c.sites !== undefined) {
+      check(`  ...and that snippet carries ${c.sites} call site(s) (got ${sites.length})`,
+        sites.length === c.sites);
+    }
+  }
+  console.log('');
+  if (failures === 0) {
+    console.log(`ALL ${SELFTEST.length} CASE(S) PASSED.`);
+    process.exit(0);
+  }
+  console.log(`${failures} CHECK(S) FAILED.`);
   process.exit(1);
 }
 
@@ -416,8 +773,9 @@ const args = parseArgs(rest);
 if (cmd === 'record') cmdRecord(args);
 else if (cmd === 'report') cmdReport();
 else if (cmd === 'verify') cmdVerify();
+else if (cmd === 'selftest') cmdSelftest();
 else {
-  console.error('usage: ledger.mjs <record|report|verify> ...');
+  console.error('usage: ledger.mjs <record|report|verify|selftest> ...');
   console.error('  record <harness> --note "<what was injected>" [--id A] [--file <run output>]');
   process.exit(2);
 }
