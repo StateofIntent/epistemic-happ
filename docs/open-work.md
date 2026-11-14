@@ -26,19 +26,25 @@ third-party.
 BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where
 they disagree with this block, this block wins.**
 
-**WHERE THINGS STAND.** `main` is at `25a5791`. Desktop `release` is at
+**WHERE THINGS STAND.** `main` is at `d797dff`. Desktop `release` is at
 `f9e6689` (tag `v0.3.5`, 15 assets, DNA hash unchanged since 0.3.0, so a
 patch). **#350 stays HELD — DO NOT MERGE**, and it is the only open PR in
 either repository. The working tree is clean and nothing is in flight.
 **Nothing is owed to anybody outside this repository** — do not chase.
 
-**TWO ROWS CLOSED, EACH MERGED ON A FULL GREEN RUN: #478 (1.21's resolver)
-and #479 (6.18, plus its own injections recorded).**
+**FIVE PRs MERGED, EACH ON A FULL GREEN RUN: #478 (1.21's resolver), #479
+(6.18, plus its own injections recorded), #480 (the checkpoint), #481 (the
+CapGrant cost claim) and #482 (the `partition-rejoin` rate).** This block was
+two PRs stale within the hour it was written, which is this file's own named
+failure mode and the reason the 2026-11-11 block is kept below as a monument
+to it — caught and fixed the same day this time, rather than after eleven.
 
 | PR | row | what it was |
 |---|---|---|
 | **#478** `eee93ca` | **1.21** | the ledger resolved a label by reading ONE quoted literal; this suite writes any label longer than a line as literals joined by `+` — **60 call sites truncated, each in the denominator under a label it does not have** |
 | **#479** `8c904bd`, `379d00f` | **6.18 CLOSED** | the critique TREE labelled nodes by mode alone — a byline on every node, the parent carried so the tree can say what the flat list cannot, **and the fixture was the real work** |
+| **#481** `9c8e228` | **6.15, 1.30, 6.24** | **the cost claim behind 6.15's `[D]` was `peer-signal.mjs`'s own INJECTION record read as a measurement** — one entry per agent once, zero per signal; 1.30's whole premise went with it |
+| **#482** `6edbad8`, `7a3a55d` | **the `partition-rejoin` rate** | *"roughly a quarter"* was borrowed from README's 48-trial gossip census: **measured 13.8%** over the job's complete history, and an assertion failure rather than a setup one in 56 of 63 — **then a bimodal distribution I had drafted on top was PULLED**, because the harness forbids inferring one from 5s lattice samples |
 
 **EVERY FINDING THIS SESSION IS THE SAME SPECIES: A TOOL OR A CHECK THAT WAS
 RIGHT BY COINCIDENCE.**
@@ -162,10 +168,33 @@ shipped, so this file's usual rule applies again — do not chase.
 | **#475** `619dcb1` | **1.29 CLOSED** | ten harnesses — not the nine the row counted — carrying 232 assertions that no workflow ran; eight registered, two declared manual, and a gate that refuses any other state |
 | **#476** `64bfc72` | **6.23** | the `[D]` **TAKEN — hold**, plus the mechanical half: **a third of every byline was a constant, at the front** |
 
-**WHAT IS LEFT, AND IT IS NOW ONE DECISION AND TWO THINGS WAITING ON OTHER
-PEOPLE.**
+**WHAT IS LEFT. NOT "ONE DECISION" — TWENTY-SEVEN ROWS CARRY A LIVE `[D]`,
+and the two that are actually at the front of the queue are BOTH KUPUKUPU'S,
+opened on the same day, in the same state: the `[M]` half built and the
+decision untouched.** The earlier wording *"6.15's `[D]` is the only open
+decision on this list"* meant *the only one in the active queue* and was
+written as a flat claim; it was then quoted as one, repeatedly, inside this
+session. Corrected here and below.
 
-- **6.15's `[D]` is the only open decision on this list.** ~~Push notification:
+| row | opened by | the question | state |
+|---|---|---|---|
+| **6.15** | Kupukupu, 2026-11-09, hours after filing the pilot's first critique — *"how does the author of the claim find out?"* | **push notification**: is an attention ordering a merit ordering? | pull half built; `[D]` **HELD 2026-11-14**, and its cost argument was false |
+| **6.12** | Kupukupu, 2026-11-09, their second message after publishing — *"how do you search for what others wrote?"* | **the domain index**: does founding become the price of being findable? | breadcrumb half built; `[D]` untouched |
+
+**6.12 HAS THE BETTER EVIDENCE ON FILE AND IT IS UNUSUALLY GOOD.** The same
+participant published a claim arguing *"Asking people to found a domain before
+others can find it is worth the extra step"* — and filed it **into somebody
+else's existing domain** rather than founding one, because that was the one
+place guaranteed to be read. A stated preference for the step and a revealed
+preference against paying it, in one act. This row's own position is that the
+revealed one is what a design should be built against.
+
+- **6.15's `[D]`.** ~~It is the only open decision on this list~~ — **FALSE,
+  corrected 2026-11-14: TWENTY-SEVEN rows carry a live `[D]`, and 6.12's
+  index decision is in the same state as this one (its `[M]` half built, the
+  decision untouched, opened by the same participant on the same day). What
+  was meant was *the only decision in the active queue*; what was written was
+  a flat claim, and it was then quoted as one.** ~~Push notification:
   expensive in the protocol — `send_peer_signal` writes a permanent CapGrant
   **per call, on the SENDER's chain**, so disagreeing would cost chain space
   for ever~~ — **that cost claim was FALSE, a misread injection record;
