@@ -146,9 +146,22 @@ const countHdkExterns = () =>
 // COUNTS CALL SITES, NOT EXECUTIONS, and says so where it prints: a check
 // inside a loop runs more often than it is written. The word is not spelled
 // out anywhere in prose in this repository for the reason 1.21 records — the
-// expression matches its own name wherever it appears, comments included.
+// expression matches its own name wherever it appears, comments included. THAT
+// WORRY WAS MEASURED ON 2026-11-14 AND IS UNREALISED: zero of the matches in
+// `scripts/live-verify` fall inside a comment, so the prophylaxis is working
+// rather than merely stated.
+//
+// WHAT THE MEASURE DID GET WRONG, found the same day: `\b` MATCHES AFTER A
+// DOT, so Playwright's `.check()` — which ticks a checkbox and asserts nothing
+// — was counted as an assertion. Two of them, in `notes-ui.mjs` and
+// `trust-lenses.mjs`. The figure was 1,763 and is 1,761. Two is not a
+// headline; it is fixed because this file's whole subject is a number that
+// does not mean what it says, and because the injection ledger's denominator
+// is the same count arrived at independently — three measures that disagree by
+// two are the second-place-a-number-is-written defect in the tool built to
+// catch it.
 const countCheckSites = (dir) => {
-  const re = /\bcheck\(/g;
+  const re = /(?<![.\w$])check\(/g;
   let n = 0;
   const walk = (rel) => {
     for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
