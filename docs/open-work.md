@@ -22,9 +22,124 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-14 (second session) — RESUME HERE. EVERY CHECKPOINT BLOCK
-BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where
-they disagree with this block, this block wins.**
+**CHECKPOINT, 2026-11-15 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
+IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
+with this block, this block wins.**
+
+**WHERE THINGS STAND.** `main` is at `4d98fd9` as this is written — the commit
+before this block's own merge, which is inherent to a checkpoint naming the
+hash it lands on. Desktop `release` is at `f9e6689` (tag `v0.3.5`, 15 assets,
+DNA hash unchanged since 0.3.0, so a patch). **#350 stays HELD — DO NOT
+MERGE**, and it is the only open PR in either repository. Tree clean, nothing
+in flight, **nothing owed to anybody outside this repository** — do not chase.
+
+**ELEVEN PRs MERGED ACROSS 2026-11-14/15: #478 (1.21's resolver), #479 (ROW
+6.18 CLOSED), #480, #481 (the CapGrant cost claim), #482 (the
+`partition-rejoin` rate), #483 (§0 + the "only open decision" claim), #484
+(ROW 6.15 CLOSED), #485 (6.12 filed as bump candidate 4.7), #486 (4.1/4.2/4.3
+re-priced), #487 (4.6 re-priced).**
+
+**TWO ROWS CLOSED, AND BOTH ARE THE SAME PERSON'S QUESTIONS, ASKED THE SAME
+DAY.** 6.18 — *who is speaking* — and 6.15 — *how does the author find out
+somebody disagreed* — were both opened by the pilot's first publisher on
+2026-11-09, within hours of filing the protocol's first critique. Both are now
+built and gated.
+
+**6.15 IN PARTICULAR SHIPPED BOTH HALVES AT ONCE, AND HAD TO.** The asymmetry
+half was smaller than the row thought — **`SignalPayload::NewCritique` was
+already in the enum and had never been emitted**, declared-and-unwired like
+`notifyFrame` in 1.30 and `profilesClient` in 1.31, but found in this
+repository's own enum. The push half needed a receiver that **did not exist**:
+this client handled no signals at all, so a sender alone would have been one
+more built-and-unreachable surface — the defect the same PR had just repaired.
+**The `[D]` was delegated and taken: a plain line with no badge, count or
+ordering; and an opt-in that is a GESTURE, which overturns a written position
+in `README.md` §9 in the open.** Coordinator-only throughout, DNA hash
+identical before and after.
+
+**THE BUMP PLAN IS NOW FULLY MEASURED, AND THAT IS THE SESSION'S MOST REUSABLE
+RESULT.** §3 has always said to re-price every candidate on **"what indexes
+it?"**, because 4.5 — the only one anybody built — is the one whose cost was
+wrong. All six are done. **Of the five estimates that existed, THREE WERE
+WRONG (4.1, 4.2, 4.6), ONE HELD (4.3), AND ONE TURNED OUT CONDITIONAL (4.7) —
+and every miss was in the same place.**
+
+| candidate | outcome of the re-price |
+|---|---|
+| **4.1** | **two validation rules, not one, and both DELETIONS.** `reveal_deadline` is compared as a TIME at `:1383` and `:1443`; an ordinal cannot be. **It is the §5.22 clock-skew repair buying itself by surrendering two guarantees** — a trade, not an addition, and the row did not say so |
+| **4.2** | **4.5's defect verbatim.** 16 of 19 entry types are resolved inside a `validate_create_link` branch; the three that are not are each unfindable by design. **An un-indexed entry type exists here only where nobody needs to FIND it** — and 4.2 is discovery. Add ≥1 link type and a branch |
+| **4.3** | **held.** `CritiqueSpecies` is already indexed three ways. One miss: a *provenance* field is a REFERENCE field, and §5.3's gated rule makes those resolve their target (8 of 9 → 9 of 10) |
+| **4.6** | **"per-field" is not expressible by the mechanism it cites.** Visibility is per ENTRY TYPE, and `SealedPrediction` — the only private entry type — is private wholesale. Split the entry (and the binding can only be STRUCTURAL, since validation cannot see a private body) or encrypt in place, **which makes 4.6 DEPEND on 4.1** |
+| **4.7** | **conditional, not a number.** *Require founding* and nothing is bumped — `get_membranes` already enumerates founded domains. *Do not* and it needs the zome's first tag-validating branch, **because A DOMAIN IS NOT AN ENTRY** |
+
+**AND RE-PRICING FOUND THE PLAN WRONG ABOUT ITSELF:** `docs/open-work.md` §4
+had listed five candidates since 2026-10-26 night while
+`docs/integrity-bump-plan.md` §2 — *which §4 names as "the authority on the
+set"* — carried four and had never entered **4.6** at all. The authority was
+the stale copy.
+
+**THE SESSION'S THROUGHLINE, AND IT IS WORTH MORE THAN ANY ROW: SIX INSTANCES
+OF ONE ERROR — A FIGURE QUOTED FROM A SUMMARY, A HEADER, OR AN INSTRUMENT
+RATHER THAN FROM THE THING IT DESCRIBES.** Three were inherited and three were
+the model's own.
+
+1. **An injection record read as a measurement.** 6.15's entire cost argument
+   — *"`send_peer_signal` writes a permanent CapGrant per call"* — is
+   `peer-signal.mjs`'s NEGATIVE EVIDENCE entry `CH`, a defect somebody
+   *injected* and watched go 2 red. The harness asserts the opposite. It had
+   propagated into nine places, and **`scripts/live-verify/README.md` had it
+   right the whole time** — one file away.
+2. **A gossip census read as a job failure rate.** `partition-rejoin`'s "~27%"
+   was README's 48-trial non-crossing count; measured over the job's complete
+   history it is **13.8%**, and it is an ASSERTION failure in 56 of 63, not a
+   setup failure.
+3. **A summary line quoted as a fact.** *"6.15's `[D]` is the only open
+   decision"* — **27 rows carry a live `[D]`**, and the second one at the front
+   was the same participant's.
+4. **Lattice samples read as a distribution** (the model's own). A "bimodal"
+   median and percentiles were drafted and **pulled**, because
+   `partition-rejoin.mjs` says the baseline is a 5s lattice sample and
+   *"whatever uses this must not infer a distribution from these values"* —
+   a comment that exists because READINESS §3 already made that error.
+5. **A stale authority trusted over a correct index** — the bump plan missing
+   4.6.
+6. **A signal read at the wrong level** (the model's own), after the comment
+   citing that very defect had been written.
+
+**WHAT CAUGHT EVERY ONE WAS READING THE THING BEING CITED — the harness, the
+source, the instrument's own comment — OR RUNNING IT.** Three further defects
+in #484 were found by running rather than reading: the signal level, an
+injection that killed its own harness, and an Invariant 1 check that forbade
+more than Invariant 1 does.
+
+**ONE MECHANICAL LESSON THAT COST A RED CI RUN: `scripts/check-*.mjs` IS NOT
+THE GATE SET, AND THE LOCAL SWEEP IS SIXTEEN.** The validation corpus stores
+**line numbers**, and comments in the COORDINATOR shifted three of them, where
+the written rule named only the integrity zome. The sweep is: the 12
+`check-*.mjs`, `scripts/swarm/check-dispositions-mechanical.mjs`,
+`ledger verify`, `ledger selftest`, **and `scripts/validation-corpus/enumerate.mjs`
+whenever either zome's source moves, comments included.**
+
+**WHAT IS LEFT, AND NONE OF IT IS MODEL WORK WITH AN AVAILABLE PATH.**
+
+- **6.12's founding question** is the live decision, and 4.7 measured what each
+  answer costs. Its evidence — a participant arguing the founding step is
+  worth it and filing that very claim into somebody else's domain — points at
+  the **expensive** branch.
+- **4.1, 4.2, 4.3** wait on Andras, on 3.5's cost, and on 3.4. **The bump
+  sequencing is already decided (2026-10-25): invite first, bump second**, and
+  **a bump is a RELAUNCH, not an upgrade** — different hash, different network,
+  no migration, and Invariant 6 forbids even deleting the orphans.
+- **6.21** closes only on an automatic update; **6.23** only if the reporter
+  answers; **1.30/1.31/1.32** reach a reader only inside Moss.
+- Recorded as deliberately open inside 6.25: `critiqueTreeByClaim` re-read per
+  panel open, 6.24's sub-`[D]`, and `constitutionByAuthor`'s cached `null`.
+
+---
+
+**CHECKPOINT, 2026-11-14 (second session) — SUPERSEDED by the block above.
+Still the authority on the 1.21 resolver, row 6.18, the `partition-rejoin`
+measurement and the CapGrant correction.**
 
 **WHERE THINGS STAND.** `main` is at `714aaec` as this block is written, which
 is the commit BEFORE this block's own merge — inherent to a checkpoint naming
