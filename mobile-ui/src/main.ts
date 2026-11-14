@@ -6806,7 +6806,8 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
 
   if (total === 0) return wrap;
 
-  const { nodes, edges, width, height } = layoutTree(key, claim.entry.content, tree);
+  const { nodes, edges, width, height } = layoutTree(
+    key, claim.entry.content, claim.entry.author, tree);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
@@ -6842,9 +6843,15 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
     circle.setAttribute('class', `graph-node ${node.kind}`);
     circle.setAttribute('tabindex', '0');
     circle.setAttribute('role', 'button');
+    // THE ACCESSIBLE LABEL IS THE WHOLE REASON THIS IS SVG, so the byline
+    // belongs in it and not only in the text peer below. A screen-reader user
+    // moving between nodes hears who wrote each one, which is the same
+    // information the sighted reader gets from the list — not a lesser
+    // version of it.
+    const by = `by ${short(node.author)}`;
     const label = node.kind === 'claim'
-      ? `Claim: ${node.content}`
-      : `${node.mode} critique at level ${node.depth}: ${node.content}`;
+      ? `Claim ${by}: ${node.content}`
+      : `${node.mode} critique at level ${node.depth} ${by}: ${node.content}`;
     circle.setAttribute('aria-label', label);
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     title.textContent = label;
@@ -6863,7 +6870,7 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
   // Built from the tree in reading order, NOT from the placed nodes —
   // layout emits those post-order, which reads the argument backwards.
   // See flattenPreOrder's own comment.
-  for (const { node, depth } of flattenPreOrder(tree)) {
+  for (const { node, depth, parent } of flattenPreOrder(tree)) {
     const li = document.createElement('li');
     li.style.marginLeft = `${(depth - 1) * 0.9}rem`;
     li.dataset.depth = String(depth);
@@ -6871,6 +6878,48 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
     mode.className = 'critique-mode';
     mode.textContent = node.entry.critique_mode;
     li.appendChild(mode);
+
+    // THE BYLINE, ON THE SAME TERMS AS THE LIST VIEW'S — row 6.18's second
+    // half. Same class, same title, same destination: an agent's other
+    // claims, in the By Author tab, with the tab switched. That last part is
+    // not incidental — the assessor's byline this was copied from called
+    // `loadClaimsByAuthor` WITHOUT switching tabs, so it read an agent's
+    // claims into a screen the reader was not on and looked inert.
+    const by = document.createElement('button');
+    by.className = 'link-button critique-author';
+    by.dataset.testid = 'graph-node-author';
+    by.textContent = short(node.entry.author);
+    by.title = 'Read this agent\u2019s other claims';
+    by.onclick = () => {
+      activeTab = 'by-author';
+      void loadClaimsByAuthor(b64(node.entry.author));
+    };
+    li.appendChild(by);
+
+    // THREE RELATIONS, AND THE THIRD IS WHY THE TREE CAN SAY SOMETHING THE
+    // FLAT LIST CANNOT: a node whose author is its PARENT's author is
+    // somebody answering an objection to their own objection, which only
+    // exists below depth 1 — the depth the list view structurally cannot
+    // show. Stated only when true. Nothing is counted or ordered by any of
+    // it; these are attributions, which is the Invariant 1 line 6.18 drew.
+    const relations: string[] = [];
+    if (connection && b64(node.entry.author) === b64(connection.myAgentPubKey)) {
+      relations.push('you');
+    }
+    if (b64(node.entry.author) === b64(claim.entry.author)) {
+      relations.push('the claim\u2019s author');
+    }
+    if (parent && b64(node.entry.author) === b64(parent.entry.author)) {
+      relations.push('the critique\u2019s author');
+    }
+    if (relations.length > 0) {
+      const rel = document.createElement('span');
+      rel.className = 'critique-relation';
+      rel.dataset.testid = 'graph-node-relation';
+      rel.textContent = relations.join(', ');
+      li.appendChild(rel);
+    }
+
     const text = document.createElement('span');
     text.textContent = ` ${node.entry.content}`;
     li.appendChild(text);
