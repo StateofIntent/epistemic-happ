@@ -454,11 +454,34 @@ jobs:
   #     green-tick-that-cannot-go-red this repository keeps refusing.
   #
   # So the harness is untouched: it still goes red, in its own job, where a red
-  # is information rather than a merge block. What it does NOT do is tell you
+  # is information rather than a merge block. ~~What it does NOT do is tell you
   # whether a slow baseline is intermittent or routine — that needs a
   # consumer-network measurement (READINESS §3), and the retry-the-baseline
   # change is held until there is one, because retrying is wasted job time if
-  # propagation is routinely minutes-slow.
+  # propagation is routinely minutes-slow.~~
+  #
+  # MEASURED 2026-11-14, FROM THIS JOB'S OWN CI HISTORY RATHER THAN FROM A
+  # CONSUMER NETWORK — the question above did not need a new substrate, only a
+  # count of what had already happened here. Every attempt since `7be3eeb`
+  # created this job on 2026-10-13, through 2026-11-14: 592 job rows, 95
+  # skipped (docs-only diffs never run it), 39 cancelled by concurrency, and
+  # **63 failures in the 458 attempts that actually ran the harness = 13.8%.**
+  # The figure written in `docs/open-work.md` had been "roughly a quarter",
+  # borrowed from README's 48-trial non-crossing census, which was never a
+  # measurement of this job.
+  #
+  # THE ANSWER IS INTERMITTENT, NOT ROUTINE, AND THE MAGNITUDE IS EXTREME.
+  # Across the 56 failures where the precondition reds and the harness still
+  # reports, the baseline ran 75.2s minimum, 416.1s median, 426.1s maximum
+  # against the 60s bound — seven times over at the median, not marginally. The
+  # other 7 failures are the shape this comment was written about: the job dies
+  # with no `FAIL:` line and no baseline printed. But 86% of attempts cross
+  # inside 60s by definition of passing, so propagation is intermittently
+  # catastrophic rather than routinely minutes-slow — which is the condition
+  # this comment names as making the retry worth its job time. THE RETRY IS
+  # STILL NOT TAKEN HERE: it is a change to the harness, it is `[D]`, and the
+  # measurement is recorded so the decision can be made on it rather than on
+  # the borrowed number it was resting on.
   #
   # THE SETUP STEPS BELOW ARE A COPY of `network`'s, mechanically. GitHub
   # Actions has no YAML anchors, so the choices are duplication or a composite
