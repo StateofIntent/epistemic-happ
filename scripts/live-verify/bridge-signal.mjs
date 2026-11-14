@@ -24,6 +24,26 @@
 // emitted by the coordinator zome because this harness called `create_claim`
 // and `create_mew`. Nothing here is a fixture.
 //
+// WATCHED FAILING, 2026-11-15, for section 3b (row 6.15's asymmetry half):
+//
+//   Injection: the `emit_signal` removed from `create_critique` — i.e. the
+//   state this repository shipped in until 2026-11-15.
+//   Result: ALL SIX of 3b red, the CONTROL included. That control is anchored
+//   on `critPayload?.NewCritique` existing precisely so it reds here:
+//   `parseCoordinatorSignal(null)` also returns null, so `=== null` alone
+//   would have scored PASS against no critique signal at all — the vacuous
+//   green row 6.25 found four ways in one session. The anchor was added
+//   BECAUSE of that row and verified by this injection, not assumed.
+//
+//   Injection: `NewCritique` returned to the TUPLE variant it was declared as,
+//   emitting `NewCritique(critique)`.
+//   Result: FOUR red, two PASS — and the split is the point. "A NewCritique
+//   signal arrives at all" still passes, because one does; so does the
+//   bridge's refusal to claim it. What reds is everything that needs the
+//   signal to be ADDRESSABLE: the content path, both hashes, and the DHT
+//   resolution. The two injections therefore separate *emitted* from
+//   *emitted usefully*, which a single injection could not.
+//
 // WHAT IT FOUND, and only the first was known going in:
 //
 //   1. THE SIGNAL SHAPE (item 21 as filed). The guard read `signal.zome_name`
@@ -282,6 +302,79 @@ async function main() {
   const mewTweet = parsedMew ? buildMewTweet(parsedMew.mew, parsedMew.entryHash) : { text: '', excerpt: '' };
   check("the Mew's tweet carries its hash in base64 too",
     parsedMew?.entryHash ? mewTweet.text.includes(encodeHashToBase64(parsedMew.entryHash)) : false);
+
+  // === 3b. The critique, which emitted NOTHING until 2026-11-15 ==========
+  //
+  // ROW 6.15 MEASURED THE ASYMMETRY: `create_claim` has emitted `NewClaim`
+  // since it was written and `promote_mew_to_claim` emits `NewMew`, while
+  // `create_critique` emitted nothing at all — the one act this protocol
+  // exists to carry was the one act that announced itself to nobody. The
+  // variant `SignalPayload::NewCritique` was in the enum the whole time,
+  // declared and never wired, which is the same shape as `notifyFrame` in
+  // 1.30 and `profilesClient` in 1.31.
+  //
+  // WHAT THIS SECTION DOES NOT CLAIM. `emit_signal` reaches the emitting
+  // agent's own client and nobody else's, so none of this tells the CLAIM's
+  // author anything — that is `send_remote_signal`, 6.15's `[D]`, and it is
+  // not built. What is asserted here is that the three writes are now
+  // uniform, and that the bridge's refusal to mirror a critique is still a
+  // decision rather than an accident of nothing being emitted.
+  log('\n--- 3b. A critique, and the signal that did not exist before ---');
+  const critBefore = raw.length;
+  const critContent = 'The sample excludes everyone who stopped attending.';
+  await call('create_critique', {
+    target: parsedClaim.entryHash, target_type: 'Claim',
+    critique_mode: 'Methodological', content: critContent,
+    author: me, timestamp: Date.now() * 1000,
+    replication_attempted: false, evidence_hashes: [], species: null,
+  });
+  const critSignal = await waitForSignal(critBefore);
+  const critPayload = critSignal?.value?.payload ?? critSignal?.value?.data ?? null;
+
+  // ANCHORED ON THE VARIANT, NOT ON "a signal arrived". Section 2 already
+  // proved signals reach this process, so a bare arrival check would pass
+  // here on the strength of that and say nothing about critiques.
+  check('a NewCritique signal arrives at all — before 2026-11-15 nothing emitted one',
+    !!critPayload?.NewCritique);
+  check('and it carries the critique this harness just wrote, not a neighbour',
+    critPayload?.NewCritique?.critique?.content === critContent);
+
+  // THE STRUCT-VARIANT HALF. It was a tuple variant, so a consumer got an
+  // entry with no hash field — the exact defect the enum's own comment
+  // records for Mew/Claim, where the bridge read a nonexistent
+  // `claim.action_hash`.
+  const critEntryHash = critPayload?.NewCritique?.entry_hash;
+  const critActionHash = critPayload?.NewCritique?.action_hash;
+  check(`it carries an entry_hash of 39 bytes, not undefined (${critEntryHash?.length ?? 'absent'})`,
+    critEntryHash?.length === 39);
+  check(`and an action_hash of 39 bytes as well (${critActionHash?.length ?? 'absent'})`,
+    critActionHash?.length === 39);
+
+  // AND THE HASH RESOLVES, which is what makes it a pointer rather than 39
+  // bytes that happen to be the right length.
+  let critResolved = false;
+  if (critEntryHash) {
+    const onTarget = await call('get_critiques_for', parsedClaim.entryHash);
+    const wanted = encodeHashToBase64(critEntryHash);
+    critResolved = onTarget.some((r) => {
+      const eh = r?.signed_action?.hashed?.content?.data?.entry_hash;
+      return eh && encodeHashToBase64(eh) === wanted;
+    });
+  }
+  check('THE SIGNAL\u2019S ENTRY HASH RESOLVES ON THE DHT to a critique of that claim',
+    critResolved);
+
+  // CONTROL, AND IT GATES A DECISION RATHER THAN A FIX. `bridge/src/signal.ts`
+  // returns null for NewCritique deliberately — a critique is not something
+  // this bridge puts on a public timeline. That cost nothing while the variant
+  // was never emitted; now it is live, so it is asserted.
+  // ANCHORED ON THE SIGNAL EXISTING. `parseCoordinatorSignal(null)` returns
+  // null too, so `=== null` alone would score PASS against no critique signal
+  // at all — a negative check passing because the thing it negates never
+  // happened, which is the vacuous green row 6.25 found four ways in one
+  // session. Verified by injection: with the emit removed this reds.
+  check('CONTROL: the bridge still refuses to claim a critique — not mirroring is a decision',
+    !!critPayload?.NewCritique && parseCoordinatorSignal(critSignal) === null);
 
   // === 4. The binding read back from the other end ======================
   // The check this file most wants to keep: the bridge WRITES a reference

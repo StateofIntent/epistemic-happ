@@ -1174,6 +1174,30 @@ pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
     // so the already-AnyLinkableHash target passes straight through.
     create_synaptic_link(critique.target.clone(), action_hash.clone(), 1.0)?;
 
+    // THE ONE ACT THIS PROTOCOL EXISTS TO CARRY WAS THE ONE ACT THAT
+    // ANNOUNCED ITSELF TO NOBODY. `create_claim` has emitted
+    // `SignalPayload::NewClaim` since it was written and `promote_mew_to_claim`
+    // emits `NewMew`; `create_critique` emitted nothing, while
+    // `SignalPayload::NewCritique` sat in the enum unused. Row 6.15 measured
+    // that asymmetry when a participant asked how an author finds out somebody
+    // disagreed.
+    //
+    // WHAT THIS DOES AND DOES NOT DO, said plainly because the row's value is
+    // the split. `emit_signal` reaches THIS agent's own client and nobody
+    // else's — so this tells the critique's own author that their write
+    // landed, and tells the claim's author nothing at all. Reaching another
+    // agent is `send_remote_signal`, which is 6.15's `[D]` and is deliberately
+    // not here. What this closes is the inconsistency: a client can now hook
+    // the three writes uniformly instead of two of three.
+    //
+    // Zero entries, exactly like its siblings: a signal is not a write.
+    let entry_hash = hash_entry(&critique)?;
+    emit_signal(&SignalPayload::NewCritique {
+        critique,
+        entry_hash,
+        action_hash: action_hash.clone(),
+    })?;
+
     Ok(action_hash)
 }
 
@@ -5231,7 +5255,13 @@ pub enum SignalPayload {
     // create_claim, which compute and attach these hashes.
     NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash },
     NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash },
-    NewCritique(Critique),
+    /// WAS A TUPLE VARIANT AND WAS NEVER EMITTED — both fixed 2026-11-15.
+    /// A bare `Critique` has no hash field of its own, exactly as the comment
+    /// above says of `Mew`/`Claim`, so a tuple variant would hand the bridge an
+    /// entry it cannot address. Declared-and-never-wired is the same shape as
+    /// `notifyFrame` in 1.30 and `profilesClient` in 1.31: received,
+    /// documented, dropped.
+    NewCritique { critique: Critique, entry_hash: EntryHash, action_hash: ActionHash },
     NewRetraction(Retraction),
     NewBridgeRecord(BridgeRecord),
     /// A typed ephemeral signal from another agent — Stage 1, the medium.

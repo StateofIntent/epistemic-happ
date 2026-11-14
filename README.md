@@ -985,7 +985,7 @@ because a polling fallback kept the feature working with latency instead of
 breaking it. **Closed 2026-10-21, and the one line was a third of it** — the
 instrument built to watch it fail found two more defects behind it, one of them
 in the polling path that still worked. See READINESS item 21 and
-`scripts/live-verify/bridge-signal.mjs`, 19 checks.
+`scripts/live-verify/bridge-signal.mjs`, 25 checks.
 
 **And an injection found a weakness in an assertion rather than confirming it,
 which is the whole reason for injecting.** Injection AO added an autonomous
@@ -1419,7 +1419,7 @@ decision lived inside a method of a class whose module calls `main()` at
 import, so reaching the parse meant connecting a conductor *and* holding four
 Twitter secrets. `bridge/src/signal.ts` now holds the parse, the hash encoding
 and both tweet builders as pure functions, and
-[`scripts/live-verify/bridge-signal.mjs`](scripts/live-verify/bridge-signal.mjs), 19 checks,
+[`scripts/live-verify/bridge-signal.mjs`](scripts/live-verify/bridge-signal.mjs), 25 checks,
 drives **those** against signals a real coordinator emits — not copies of them.
 A harness carrying its own parse would have gone green while the bridge stayed
 broken, which is this file's *a prober proves the rule it probes* in its purest
