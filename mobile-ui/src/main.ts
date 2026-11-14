@@ -614,6 +614,68 @@ const replyOpen = new Set<string>();
  * moment the screen opens, before any read has returned — the most
  * expensive false statement this surface could make. */
 const myCritiqueCounts = new Map<string, number>();
+
+// ---- ROW 6.15's PUSH HALF, RECEIVER SIDE (2026-11-15) ---------------------
+//
+// ARRIVAL ORDER, NOT ANY OTHER ORDER, and nothing is totalled. 6.15's pull
+// half shipped with no badge, no dot, no total across claims and no ordering
+// by count, on the reasoning that an attention ordering is not a merit
+// ordering but is easily mistaken for one. These are individual events in the
+// order they arrived — a record, exactly as the By Author tab's own note says
+// of itself — so there is no aggregate anywhere and no claim about which one
+// matters more.
+interface CritiqueNotice { critiqueHash: string; mode: string; from: string | null }
+const critiqueNotices: CritiqueNotice[] = [];
+// The opt-in writes ONE CapGrant entry to this agent's own chain, once, and
+// zero per signal after it — so it is a gesture and never automatic. See
+// `open_signal_channel`.
+let signalChannelOpen = false;
+let signalChannelError = '';
+let signalsWired = false;
+
+/** Subscribed once, from every place a connection is established — there are
+ *  three, and wiring each by hand is how two of them drift apart. Idempotent
+ *  because `connection` is reassigned on reconnect and a second subscription
+ *  would double every notice. */
+/** The opt-in. Refuses nothing and hides nothing: a failure is shown, because
+ *  an opt-in that silently did not happen is worse than one that failed
+ *  loudly — the user would believe they are reachable and they would not be. */
+async function openSignalChannel(): Promise<void> {
+  if (!connection) return;
+  signalChannelError = '';
+  try {
+    await connection.callZome('open_signal_channel', null);
+    signalChannelOpen = true;
+  } catch (err) {
+    signalChannelError = err instanceof Error ? err.message : String(err);
+  }
+  render();
+}
+
+function wireSignals(): void {
+  if (!connection || signalsWired) return;
+  signalsWired = true;
+  connection.onSignal((payload) => {
+    // A REMOTE signal arrives WRAPPED: `recv_remote_signal` re-emits it as
+    // `SignalPayload::PeerSignal { from, signal }`, having put the host's
+    // verified provenance into `from`. So the sender is INSIDE the payload and
+    // the variant is one level down — `payload.Critiqued` is the wrong level
+    // and was what the first version of this read, which is READINESS item
+    // 21's defect reproduced here and caught by running it.
+    const envelope = payload.PeerSignal as
+      { from?: Uint8Array; signal?: Record<string, unknown> } | undefined;
+    const critiqued = envelope?.signal?.Critiqued as
+      { critique?: Uint8Array; mode?: string } | undefined;
+    if (!critiqued?.critique) return;
+    critiqueNotices.push({
+      critiqueHash: b64(critiqued.critique),
+      mode: String(critiqued.mode ?? 'unknown'),
+      // The host verified this; it is not a field the sender supplied.
+      from: envelope?.from ? b64(envelope.from) : null,
+    });
+    render();
+  });
+}
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
 
@@ -1482,6 +1544,7 @@ function renderConnectScreen(): HTMLElement {
     };
     try {
       connection = await HolochainConnection.connect(newConfig);
+      wireSignals();
       saveConfig(newConfig);
       markDone('connected');
       render();
@@ -1848,8 +1911,59 @@ function renderByAuthorTab(): HTMLElement {
     mineBtn.title = 'Your own claims, and how many critiques came back on each';
     mineBtn.onclick = () => void loadClaimsByAuthor(b64(connection!.myAgentPubKey));
     searchRow.appendChild(mineBtn);
+
+    // ROW 6.15's PUSH HALF, THE OPT-IN. A GESTURE AND NEVER AUTOMATIC,
+    // because `open_signal_channel` writes a CapGrant — one permanent entry
+    // on this agent's own chain — and this protocol does not put permanent
+    // things on somebody's chain without their act. One entry, once; zero per
+    // signal thereafter, measured by `peer-signal.mjs`.
+    //
+    // IT IS ALSO WHAT MAKES THE OPT-IN REAL RATHER THAN NOMINAL: the host
+    // refuses a remote signal to an agent holding no grant, so until this is
+    // pressed nobody can reach this agent at all, whatever any sender does.
+    const notifyBtn = document.createElement('button');
+    notifyBtn.setAttribute('data-testid', 'notify-optin');
+    notifyBtn.textContent = signalChannelOpen
+      ? 'Others can tell you \u2713'
+      : 'Let others tell you';
+    notifyBtn.disabled = signalChannelOpen;
+    notifyBtn.title = signalChannelOpen
+      ? 'Open. Somebody critiquing your work can reach this app while it is running.'
+      : 'Writes one permanent entry to your own chain, once, so others can tell '
+        + 'you when they critique your work. Nothing is written per message.';
+    notifyBtn.onclick = () => void openSignalChannel();
+    searchRow.appendChild(notifyBtn);
   }
   section.appendChild(searchRow);
+
+  if (signalChannelError) {
+    const err = document.createElement('p');
+    err.className = 'hint';
+    err.setAttribute('data-testid', 'notify-error');
+    err.textContent = `The channel could not be opened: ${signalChannelError}`;
+    section.appendChild(err);
+  }
+
+  // WHAT ARRIVED, IN ARRIVAL ORDER, WITH NOTHING TOTALLED. Each line is one
+  // event. There is no number here, no badge, no dot and no ordering by
+  // anything but when it came — which is the Invariant 1 line 6.15's pull
+  // half drew and this half had to keep.
+  if (critiqueNotices.length > 0) {
+    const noticeBox = document.createElement('div');
+    noticeBox.setAttribute('data-testid', 'critique-notices');
+    for (const notice of critiqueNotices) {
+      const line = document.createElement('p');
+      line.className = 'hint';
+      line.setAttribute('data-testid', 'critique-notice');
+      line.setAttribute('data-critique', notice.critiqueHash);
+      const who = notice.from ? short(bytesFromB64(notice.from)) : 'somebody';
+      line.textContent =
+        `${who} critiqued something you wrote \u2014 ${notice.mode}. `
+        + 'Open the claim to read it.';
+      noticeBox.appendChild(line);
+    }
+    section.appendChild(noticeBox);
+  }
 
   const note = document.createElement('p');
   note.className = 'hint';
@@ -7601,6 +7715,7 @@ async function bootApplet(): Promise<void> {
   // here and no token is issued, because Moss installed and authenticated
   // this Tool's own happ before it rendered anything.
   connection = HolochainConnection.fromAppClient(got.appClient, config);
+  wireSignals();
   markDone('connected');
   if (appletSurfaceNow === 'creatable') activeTab = 'new-claim';
   render();
@@ -7654,6 +7769,7 @@ if (HolochainConnection.isHosted()) {
   void (async () => {
     try {
       connection = await HolochainConnection.connect(loadConfig());
+      wireSignals();
       markDone('connected');
       render();
       void loadFrictionStatus();
