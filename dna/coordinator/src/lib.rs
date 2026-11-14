@@ -1174,6 +1174,102 @@ pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
     // so the already-AnyLinkableHash target passes straight through.
     create_synaptic_link(critique.target.clone(), action_hash.clone(), 1.0)?;
 
+    // THE ONE ACT THIS PROTOCOL EXISTS TO CARRY WAS THE ONE ACT THAT
+    // ANNOUNCED ITSELF TO NOBODY. `create_claim` has emitted
+    // `SignalPayload::NewClaim` since it was written and `promote_mew_to_claim`
+    // emits `NewMew`; `create_critique` emitted nothing, while
+    // `SignalPayload::NewCritique` sat in the enum unused. Row 6.15 measured
+    // that asymmetry when a participant asked how an author finds out somebody
+    // disagreed.
+    //
+    // WHAT THIS DOES AND DOES NOT DO, said plainly because the row's value is
+    // the split. `emit_signal` reaches THIS agent's own client and nobody
+    // else's — so this tells the critique's own author that their write
+    // landed, and tells the claim's author nothing at all. Reaching another
+    // agent is `send_remote_signal`, which is 6.15's `[D]` and is deliberately
+    // not here. What this closes is the inconsistency: a client can now hook
+    // the three writes uniformly instead of two of three.
+    //
+    // Zero entries, exactly like its siblings: a signal is not a write.
+    // ROW 6.15's PUSH HALF. The local emit above tells THIS agent its write
+    // landed; this tells the agent whose work was critiqued. That is the
+    // question the row was opened with — *"how does the author of the claim
+    // find out?"* — and it is the half that needed a decision.
+    //
+    // THE OPT-IN IS ENFORCED BY THE HOST, NOT BY A CHECK HERE, which is why
+    // there is no "has this agent opened a channel?" branch. `send_remote_
+    // signal` requires the recipient to hold an unrestricted cap grant on
+    // `recv_remote_signal`, and `open_signal_channel` is the only thing that
+    // creates one. So a signal to somebody who never opted in is dropped by
+    // the host and reaches nobody. Nothing is written on either chain: the
+    // grant is one entry, once, on the RECIPIENT's chain when they opt in, and
+    // zero per signal thereafter — measured by `peer-signal.mjs` and gated in
+    // `network.yml`. (The claim that this costs a CapGrant per call was an
+    // injection record read as a measurement; see 6.15.)
+    //
+    // CLAIM AND CRITIQUE ONLY. A Critique's target is scale-invariant across
+    // five kinds, but the other three — Constitution, Membrane,
+    // CritiqueSpecies — are not pushed, and that is a bound rather than an
+    // oversight: the row is about somebody's assertion being answered, and
+    // those three are not assertions in that sense. The pull half still covers
+    // them.
+    //
+    // READ LOCALLY, DELIBERATELY. `GetOptions::local()` and not a network get:
+    // this runs inside a write, and 6.15's own neighbourhood is a network whose
+    // baseline is intermittently minutes-slow (see `partition-rejoin`'s
+    // measured separation). A write must not wait on gossip to deliver a
+    // courtesy. If the target is not local, no push happens and the pull half
+    // is what the author has — which is the state everybody is in today.
+    //
+    // AND A FAILED PUSH MUST NOT FAIL THE WRITE. The entry is already
+    // committed by this point, so returning Err here would report failure for
+    // an act that succeeded. The result is discarded on purpose; the host
+    // cannot report delivery anyway, which is why `send_peer_signal`'s
+    // `delivery_confirmed` is false by construction.
+    let push_to: Option<AgentPubKey> = match critique.target_type {
+        CritiqueTargetType::Claim | CritiqueTargetType::Critique => {
+            AnyDhtHash::try_from(critique.target.clone())
+                .ok()
+                .and_then(|h| get(h, GetOptions::local()).ok().flatten())
+                .and_then(|record| match critique.target_type {
+                    CritiqueTargetType::Claim => record
+                        .entry()
+                        .to_app_option::<Claim>()
+                        .ok()
+                        .flatten()
+                        .map(|c| c.author),
+                    _ => record
+                        .entry()
+                        .to_app_option::<Critique>()
+                        .ok()
+                        .flatten()
+                        .map(|c| c.author),
+                })
+        }
+        _ => None,
+    };
+    if let Some(recipient) = push_to {
+        // NOT TO YOURSELF. Critiquing your own claim — which this protocol
+        // allows and 6.18 renders as *the claim's author* — must not notify
+        // you about your own act. The local emit above is what tells you that.
+        if recipient != critique.author {
+            let _ = send_remote_signal(
+                PeerSignal::Critiqued {
+                    critique: action_hash.clone(),
+                    mode: critique.critique_mode.clone(),
+                },
+                vec![recipient],
+            );
+        }
+    }
+
+    let entry_hash = hash_entry(&critique)?;
+    emit_signal(&SignalPayload::NewCritique {
+        critique,
+        entry_hash,
+        action_hash: action_hash.clone(),
+    })?;
+
     Ok(action_hash)
 }
 
@@ -5231,7 +5327,13 @@ pub enum SignalPayload {
     // create_claim, which compute and attach these hashes.
     NewMew { mew: Mew, entry_hash: EntryHash, action_hash: ActionHash },
     NewClaim { claim: Claim, entry_hash: EntryHash, action_hash: ActionHash },
-    NewCritique(Critique),
+    /// WAS A TUPLE VARIANT AND WAS NEVER EMITTED — both fixed 2026-11-15.
+    /// A bare `Critique` has no hash field of its own, exactly as the comment
+    /// above says of `Mew`/`Claim`, so a tuple variant would hand the bridge an
+    /// entry it cannot address. Declared-and-never-wired is the same shape as
+    /// `notifyFrame` in 1.30 and `profilesClient` in 1.31: received,
+    /// documented, dropped.
+    NewCritique { critique: Critique, entry_hash: EntryHash, action_hash: ActionHash },
     NewRetraction(Retraction),
     NewBridgeRecord(BridgeRecord),
     /// A typed ephemeral signal from another agent — Stage 1, the medium.
@@ -8076,6 +8178,28 @@ pub enum PeerSignal {
     /// Not a verdict and not a score — one agent's stance on its own
     /// attention, which is why it is a signal and not an `Assessment`.
     Settled { target: ActionHash },
+    /// "Somebody critiqued something you wrote." ROW 6.15's PUSH HALF, built
+    /// 2026-11-15 after the `[D]` was delegated.
+    ///
+    /// IT CARRIES NO COUNT, NO TOTAL AND NO ORDERING, and that is the whole of
+    /// the Invariant 1 answer rather than an omission. 6.15's pull half shipped
+    /// deliberately without a badge, a dot, a total across claims or an
+    /// ordering by count, on the reasoning that an attention ordering is not a
+    /// merit ordering but is easily mistaken for one. A push that arrived as a
+    /// number would reintroduce exactly what that half refused, so this says
+    /// one thing happened and stops.
+    ///
+    /// IT ALSO CARRIES NO SENDER FIELD, deliberately. `recv_remote_signal`
+    /// attaches the provenance the HOST verified; a `from` the sender supplied
+    /// would be a claim about identity rather than a fact about it, which is
+    /// the distinction `send_peer_signal`'s own comment already draws.
+    ///
+    /// `critique` is the new critique's ActionHash and is enough to fetch it,
+    /// read its `target` and render it. The target is deliberately NOT
+    /// duplicated here: `Critique.target` is an `AnyLinkableHash` and
+    /// narrowing it for the wire would be a lossy conversion of a field the
+    /// recipient can read from the entry itself.
+    Critiqued { critique: ActionHash, mode: CritiqueMode },
     /// "I am about to propose this critique species." Stage 4's hook: it lets
     /// a second agent adopt or contest a species before it is written, so
     /// speciation can be discussed in the medium rather than only in the bone.

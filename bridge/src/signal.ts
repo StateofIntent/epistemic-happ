@@ -64,6 +64,15 @@ export function parseCoordinatorSignal(signal: any): CoordinatorSignal | null {
   // variants this bridge does not mirror. Returning null for them is a
   // decision, not an oversight: the tick in particular fires every 60s with
   // nothing to tweet.
+  //
+  // NewCritique BECAME ACTUALLY REACHABLE ON 2026-11-15 and the decision is
+  // unchanged. Until then it was declared in the coordinator's enum and never
+  // emitted, so "does not mirror" cost nothing; now `create_critique` emits it
+  // and this is a live choice about what belongs on a public timeline. It also
+  // changed shape — a struct variant carrying `entry_hash` and `action_hash`,
+  // like NewMew/NewClaim above — so if this bridge ever does mirror critiques,
+  // the hash is there to address and must be rendered as base64 rather than
+  // interpolated raw, which is the defect documented below this function.
   return null;
 }
 
