@@ -93,9 +93,15 @@ const STORE = join(ROOT, 'scripts/injection-ledger/records.ndjson');
 // literal is what this file did until 2026-11-14. Three shapes occur in this
 // suite, measured rather than guessed:
 //
-//   1,700  a single literal or a single template
-//      60  a CONCATENATION — literals joined by `+`, usually across lines
+//   1,706  a single literal or a single template
+//      66  a CONCATENATION — literals joined by `+`, usually across lines
 //       1  a computed label, `check(label, true)`, with no literal at all
+//
+// (Measured on this tree, 1,773 sites in total, of which 9 carry a `\uXXXX`
+// or `\xXX` escape — see `unescape` for why that number is worth knowing.
+// The figures move whenever a harness gains a check, which is why nothing
+// downstream is keyed to them: the gate is `selftest`, which asserts the
+// SHAPES, and `verify`, which re-resolves against the source as it is.)
 //
 // THE 60 WERE THE BUG, AND IT WAS A 65% UNDERSTATEMENT ON THE FIRST HARNESS
 // RECORDED AFTER THIS FILE SHIPPED. `reading-a-thread.mjs` was entered from
@@ -128,9 +134,9 @@ const STORE = join(ROOT, 'scripts/injection-ledger/records.ndjson');
 //   paren, so a no-argument `.check()` fell out for the wrong reason. The
 //   lookbehind makes the exclusion the one that was meant. It is recorded
 //   because the suite's own prose quotes that grep as its assertion count, and
-//   the arithmetic now closes exactly: 1,763 raw = 1,760 with a leading quote
-//   + 1 computed label + 2 of Playwright's. A number is either what it says it
-//   is or it is not.
+//   the arithmetic closes exactly: on the tree where this was found, 1,763 raw
+//   = 1,760 with a leading quote + 1 computed label + 2 of Playwright's. A
+//   number is either what it says it is or it is not.
 //
 //   A COMPUTED LABEL CAN NEVER BE CREDITED, AND IS STILL A CALL SITE.
 //   `attachment-links.mjs` builds its label in a variable and passes it in, so
@@ -201,8 +207,31 @@ function labelExpr(src, from) {
 }
 
 /** The printed label is the RESOLVED string, so source escapes have to be
- *  undone before comparing: `\'` prints as `'`. */
-const unescape = (raw) => raw.replace(/\\(['"`\\])/g, '$1').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+ *  undone before comparing: `\'` prints as `'`.
+ *
+ *  AND `\u2014` PRINTS AS AN EM DASH, which this did not handle until the
+ *  first injection recorded after the resolver fix resolved ZERO of its five
+ *  reds. The labels were `graph-ui`'s new ones and they spell their dashes and
+ *  apostrophes as `\u2014` and `\u2019`, so the pattern demanded six literal
+ *  characters where the run had printed one. Measured: 7 such escapes in the
+ *  suite, all in that one harness — the rest write the character itself, which
+ *  is why a hole this old had never shown. It understated, which is the safe
+ *  direction, and it was still wrong.
+ *
+ *  THE HARNESS WAS NOT RESTYLED TO SUIT THE TOOL. Leaving those escapes in
+ *  place is what keeps this path exercised by real records rather than only by
+ *  a selftest snippet. */
+const unescape = (raw) => raw.replace(
+  /\\(?:u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|\r\n|([\s\S]))/g,
+  (_, brace, four, hex, ch) => {
+    if (brace !== undefined) return String.fromCodePoint(parseInt(brace, 16));
+    if (four !== undefined) return String.fromCharCode(parseInt(four, 16));
+    if (hex !== undefined) return String.fromCharCode(parseInt(hex, 16));
+    // A backslash before a line break is a continuation and prints nothing.
+    if (ch === undefined || ch === '\n') return '';
+    return { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' }[ch] ?? ch;
+  },
+);
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -692,6 +721,26 @@ const SELFTEST = [
   { what: 'a source escape prints as the character it escapes',
     src: "check('it\\'s there', x);",
     label: "it's there", want: 'exact' },
+
+  // THE CASES THE FIRST graph-ui RECORDING NEEDED, and it needed them having
+  // resolved 0 of 5 reds. A label is compared against what the run PRINTED, so
+  // every escape a JS string can carry has to be decoded first.
+  { what: 'a \\u escape prints as its character (em dash)',
+    src: "check('a control \\u2014 and its reason', x);",
+    label: 'a control \u2014 and its reason', want: 'exact' },
+
+  { what: 'a \\u escape inside a concatenated template, which is the real shape',
+    src: "check(`CONTROL: not one repeated string \\u2014 ${n} distinct `\n      + 'over four nodes', x);",
+    label: 'CONTROL: not one repeated string \u2014 2 distinct over four nodes',
+    want: 'exact' },
+
+  { what: 'a \\u2019 apostrophe prints as one character, not six',
+    src: "check('the claim\\u2019s author answered', x);",
+    label: 'the claim\u2019s author answered', want: 'exact' },
+
+  { what: 'a \\x escape decodes too',
+    src: "check('caf\\xe9 and nothing else', x);",
+    label: 'caf\xe9 and nothing else', want: 'exact' },
 
   { what: 'two call sites carrying one literal are ambiguous, not exact',
     src: "check('the same words', x);\ncheck('the same words', y);",
