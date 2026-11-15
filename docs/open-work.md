@@ -22,6 +22,109 @@ third-party.
 
 ## 0. In flight right now
 
+**CHECKPOINT, 2026-11-15 (second session) — RESUME HERE. EVERY CHECKPOINT
+BLOCK BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE";
+where they disagree with this block, this block wins.**
+
+**WHERE THINGS STAND.** happ `main` is at `eaba897`. Desktop `main` is
+`81d46ef` and `release` is `319f0f4` — **tag `v0.3.6`, published
+2026-11-15T12:27:41Z, 15 assets, `prerelease=false`, and it IS `/latest`.**
+**#350 stays HELD — DO NOT MERGE**, and it is again the only open PR in either
+repository. Tree clean, no sandbox running, nothing in flight.
+
+**SIX PRs MERGED: #489 (6.12's `[D]`), #490 (6.12's three surfaces), #491
+(`applet-view`'s loop-closing coverage), #492 (6.15's status column), #493
+(1.30 built, 1.32's premise corrected).**
+
+**THE ONE THING THAT MAY BE OWED: A MESSAGE TO KUPUKUPU WAS DRAFTED AND HANDED
+OVER, AND WHETHER IT WAS SENT IS NOT RECORDED HERE.** Ask before re-drafting
+and do not send a second one. It says everything they reported is built and
+released, that the founding decision was theirs in both directions, and asks
+them to **let the app update itself** — because **6.21 closes only when a
+participant takes an AUTOMATIC update, and v0.3.6 is the first release that can
+be taken that way.** 0.3.5 carried the repair to the very updater that was
+broken, so it had to be installed by hand; its own `kangaroo.config.ts` note
+said the earliest close was *the release after this one*, and this is it.
+Everything else: nothing owed, back to do-not-chase.
+
+**ROW 6.12 WAS TAKEN AND BUILT IN ONE SESSION, AND THE DECISION WENT AGAINST
+THE BRANCH BOTH 6.12 AND 4.7 POINTED AT.** The `[D]` is **require founding**:
+the index is `get_membranes`, which already ships, and **4.7 is WITHDRAWN** —
+the second candidate a decision has removed rather than scheduled, after 4.4.
+Those rows rested on a participant's *revealed preference* — they argued the
+founding step was worth it, then filed that claim into somebody else's domain —
+and **the choice had never been priced for them**: `findable`, `be found` and
+`discoverable` had **zero** user-facing occurrences in `mobile-ui/src/main.ts`,
+and the *"one more click away"* they quoted was this app's own Domains screen
+saying founding **"costs nothing"**. The real price is four fields plus a
+permanent `Constitution` under their key. **A revealed preference is evidence
+about a trade the chooser could see, and this one was invisible on both sides.**
+The three honesty surfaces are built and gated by `founding-is-findable.mjs`
+(34 checks), and **what is left on 6.12 is not work but EVIDENCE** — whether
+somebody declines founding now that the app says what declining costs, which is
+the measurement the row itself names as the thing that would reverse it.
+
+**1.30 IS DECIDED AND BUILT, AND ITS BLOCKER HAD GONE.** That column said to
+settle 6.15's `[D]` first *because building one arm may quietly answer the other
+by precedent* — and it did. **Three things the row had wrong, every one found
+by building rather than reading:** its call site would have notified the
+**critic** about their own act (`notifyFrame` is local to its caller, so the
+only seam reaching the person critiqued is 6.15's inbound handler, which did not
+exist when the row was written); `FrameNotification` is **not** the four fields
+it lists (`urgency` and `timestamp` are mandatory, caught by the typechecker
+after the row's summary was repeated instead of the type being read); and
+**`urgency` is a three-level ranking whose middle level is documented as a dot
+in the system tray** — the thing 6.15 refused by name — so `'low'` was taken.
+**1.32 cited 1.30 as authority for a claim 1.30 had already refuted**, and that
+clause is struck.
+
+**THE SESSION'S REUSABLE RESULT IS ABOUT FIXTURES. `applet-view.mjs`'s fake
+Moss host had `on: () => () => {}`** — a no-op returning a no-op — so **no
+signal could ever reach a page under it**, and that was invisible to all 42
+earlier checks because nothing had ever asked the host for one. **A FIXTURE
+THAT CANNOT DELIVER AN EVENT PROVES THE ABSENCE OF EVERY FEATURE BUILT ON ONE.**
+Two more bridge defects followed, both silent: pushing with `page.evaluate`
+does not carry a `Uint8Array`, and the shim took `on(cb)` where `holochain.ts`
+subscribes `client.on('signal', cb)` — **two arguments** — so it stored the
+string `'signal'` as its handler, which is READINESS item 21's defect one
+argument over. **What made the third findable was the harness reporting its OWN
+socket's signal count**, because from the screen a conductor that never emitted
+and a bridge that never delivered are the same empty page. **And separately:
+strengthening a check resets its coverage to ZERO** — coverage is keyed by
+label, correctly, so the rewritten check in `applet-view` had inherited nothing
+and `ledger verify` had been saying so.
+
+**OPERATIONAL TRAPS PAID FOR, so they are not paid for twice.** **One clean
+conductor per harness is not advice:** several runs were lost to overlapping
+local runs fighting over `vite preview --strictPort`, and to a dirty conductor
+carrying an **open signal channel** between runs — `open_signal_channel` writes
+a grant that PERSISTS, so an opt-in control passes once and then fails for ever.
+CI gets this right by construction (`ui.yml` cleans per step). **`critique_mode`
+is an ENUM** — Experiential, Methodological, Logical, Evidential,
+Phenomenological — and anything else is a `Deserialize` error, not a default.
+**Read a CI log by its STEP-NAME column, not by content**: a grep for
+`applet-view` matched a neighbouring step's label and over-counted by one.
+**Read a release's assets only AFTER the run completes** — read mid-build they
+showed no Intel mac artifacts and looked exactly like a regression.
+
+**WHAT IS LEFT, AND NONE OF IT IS MODEL WORK WITH AN AVAILABLE PATH.**
+
+- **Watch for 6.21 to close.** It needs a participant to take an automatic
+  update and v0.3.6 is the first that can be. Nothing to build.
+- **Moss: 1.31 and 1.32 are both `[D]`.** 1.31's read is a handful of lines and
+  **must not be built alone** — it would be one more built-and-unreachable
+  surface, which is the defect 6.15 refused to repeat by shipping both halves.
+- **`[D]`s waiting only on a human:** 6.14 (entry order), 6.17 (`sample_period`
+  and `domain_tag`), 6.23 (the reporter), 5.2, 6.5, 1.26.
+- **4.1, 4.2, 4.3** wait on Andras, on 3.5's cost, and on 3.4. **Sequencing is
+  settled: invite first, bump second**, and **a bump is a RELAUNCH, not an
+  upgrade.**
+- Recorded as deliberately open inside 6.25: `critiqueTreeByClaim` re-read per
+  panel open, 6.24's sub-`[D]`, `constitutionByAuthor`'s cached `null` — all
+  three decision-shaped rather than work.
+
+---
+
 **CHECKPOINT, 2026-11-15 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
 IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
 with this block, this block wins.**
