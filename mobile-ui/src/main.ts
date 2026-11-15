@@ -686,13 +686,49 @@ function wireSignals(): void {
     const critiqued = envelope?.signal?.Critiqued as
       { critique?: Uint8Array; mode?: string } | undefined;
     if (!critiqued?.critique) return;
+    const from = envelope?.from ? b64(envelope.from) : null;
     critiqueNotices.push({
       critiqueHash: b64(critiqued.critique),
       mode: String(critiqued.mode ?? 'unknown'),
       // The host verified this; it is not a field the sender supplied.
-      from: envelope?.from ? b64(envelope.from) : null,
+      from,
     });
     render();
+    // OPEN-WORK 1.30, AND THIS IS THE RIGHT SEAM RATHER THAN THE ONE THAT ROW
+    // NAMED. It said to call the host where `create_critique` succeeds; that
+    // would raise a notice in the CRITIC's own frame, telling them about their
+    // own act and telling the author nothing. `notifyFrame` is local to
+    // whoever calls it, so the only place it reaches the person who was
+    // critiqued is HERE — the moment this client learns of it.
+    //
+    // AFTER `render()`, deliberately. The in-app line from 6.15 is the thing
+    // we promise; the host frame is an extra reach for a window that is not in
+    // front. Putting the host first would let a slow or declining host delay
+    // the surface that does not depend on it.
+    //
+    // NO SECOND OPT-IN, which is the property that makes this cheap rather
+    // than another decision: this handler only ever fires for an agent who
+    // opened the signal channel, so 6.15's gesture gates the host notice too.
+    //
+    // The agent is named in the BODY rather than passed as `fromAgent`, even
+    // though the envelope carries a verified key. `fromAgent` wants raw bytes
+    // and this scope holds base64 — and `applet.ts`'s interface comment is
+    // explicit that this project's `b64()` is plain base64 while a Holochain
+    // hash in text is base64url with a `u` prefix, that the two are not
+    // interchangeable, and that both conversions stay in `applet-host.ts`.
+    // Crossing them yields the right byte count and the wrong value.
+    if (appletHost) {
+      void appletHost.notify({
+        title: 'Somebody critiqued your claim',
+        // `short(bytesFromB64(...))` is what the 6.15 line itself renders
+        // (see renderCritiqueNotices), copied rather than re-derived so the
+        // host notice and the in-app line cannot drift into naming the same
+        // person two ways.
+        body: from
+          ? `${short(bytesFromB64(from))} filed a ${String(critiqued.mode ?? 'critique')}.`
+          : `A ${String(critiqued.mode ?? 'critique')} was filed.`,
+      });
+    }
   });
 }
 /** which claims currently have their critique panel expanded. */

@@ -144,6 +144,21 @@
 //   never resolved. **The general lesson: strengthening a check resets its
 //   coverage to zero, and the ledger will say so if anybody reads it.**
 //
+//   G. PASS 8's WHOLE SUBJECT REMOVED — the host notify call dropped at the
+//   signal receiver, so the Moss arm goes silent while 6.15's in-app line
+//   still works. **5 red of 51.** The two CONTROLS stayed green, correctly,
+//   since they assert an absence that is still true — and so did *no count in
+//   it*, VACUOUSLY: with nothing raised there is no text to search, which is
+//   why the presence check is asserted first and this one is listed second.
+//
+//   H. `urgency` RAISED FROM 'low' TO 'medium', which is the plausible "make
+//   it more visible" change somebody will reach for. **Exactly 1 red**, and
+//   that is the point: 'medium' is documented as A DOT IN THE SYSTEM TRAY
+//   (types.d.ts:62-66), which is the thing 6.15's decision refused by name,
+//   arriving from the other side of the host boundary where no in-app check
+//   can see it. Every other assertion in the pass stayed green, because the
+//   notice is otherwise identical.
+//
 // This directory's rule is that a harness which has only ever been green has
 // not been shown to test anything.
 //
@@ -172,6 +187,12 @@ try {
 const ADMIN_URL = 'ws://localhost:8889';
 const APP_URL = 'ws://localhost:8888';
 const APP_ID = 'epistemic-resonance-happ';
+// Open-work 1.30's pass needs somebody ELSE to do the critiquing, and until
+// that pass existed this file ran on one agent throughout — its seed claim is
+// published by the harness's own key over a second socket, which is a
+// different CLIENT and not a different author.
+const AGENT2_APP_ID = 'epistemic-resonance-happ-moss2';
+const HAPP_PATH = new URL('../../epistemic-resonance-happ.happ', import.meta.url).pathname;
 const ROLE = 'epistemic';
 const ZOME = 'epistemic_coordinator';
 const PREVIEW_PORT = 4186;
@@ -254,6 +275,48 @@ function unpackBytes(value) {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unpackBytes(v)]));
   }
   return value;
+}
+
+// The byline the UI itself renders, copied from `main.ts` rather than
+// approximated: `HASH_TAG_CHARS = 4` is skipped because EVERY agent key's
+// base64 begins `hCAk`, so a naive first-12 would make two people's bylines
+// identical for four characters before differing (open-work 6.23, measured
+// over 8 real keys). A check that re-derived this differently would compare
+// the screen against a rule the screen does not use.
+const HASH_TAG_CHARS = 4;
+const short = (bytes) => b64(bytes).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12) + '…';
+
+/** A second agent's own app socket. Separate from `adminSession` because that
+ *  one also authorizes signing credentials for the cell the PAGE drives, and
+ *  this agent never touches the page — it only critiques. */
+async function connectSecond(admin, appId) {
+  const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId, single_use: false });
+  const app = await AppWebsocket.connect({ url: new URL(APP_URL), token, wsClientOptions: { origin: 'live-verify' } });
+  const info = await app.appInfo();
+  let cellId = null;
+  for (const roleCells of Object.values(info.cell_info)) {
+    for (const cell of roleCells) {
+      if (cell?.type === CellType.Provisioned || cell?.type === CellType.Cloned) cellId = cell.value.cell_id;
+    }
+  }
+  if (!cellId) throw new Error(`App "${appId}" has no provisioned cell.`);
+  await admin.authorizeSigningCredentials(cellId);
+  const call = (fn, payload) =>
+    app.callZome({ role_name: 'epistemic', zome_name: 'epistemic_coordinator', fn_name: fn, payload });
+  return { app, me: cellId[1], call };
+}
+
+/** Poll until a predicate holds, so gossip between two agents on one
+ *  conductor is waited FOR rather than slept through — a fixed sleep is the
+ *  thing that makes a two-agent fixture flake. */
+async function waitFor(what, predicate, timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try { if (await predicate()) return true; } catch { /* not yet */ }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  log(`  SETUP FAILED: timed out waiting for ${what}.`);
+  process.exit(1);
 }
 
 async function adminSession() {
@@ -345,11 +408,52 @@ function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdm
   // bridge to one in the harness process. Faithful in the respect that
   // matters: it comes from outside the page, and the page cannot make a zome
   // call any other way.
+  // SIGNALS CROSS THE BRIDGE NOW, AND THEY DID NOT UNTIL 2026-11-15.
+  // `on` was `() => () => {}` — a no-op that returned a no-op — so a page
+  // registering a signal handler through the host's client got a dead one and
+  // nothing could ever arrive. That is invisible to every check in this file
+  // that predates pass 8, because nothing had asked the host for a signal
+  // before; pass 8's first run is what found it, by asserting an inbound
+  // notice and watching the 6.15 line fail to appear alongside the new one.
+  //
+  // A FIXTURE THAT CANNOT DELIVER AN EVENT IS A FIXTURE THAT PROVES THE
+  // ABSENCE OF EVERY FEATURE BUILT ON ONE. Worth fixing rather than working
+  // around: 1.32 wants `onRemoteSignal` next, and it would have met the same
+  // wall.
+  window.__signalHandlers = [];
+  // Drained on a timer, started by the first `on()` and not before: a page
+  // that never asks for signals never talks to the host about them, which is
+  // also how the real client behaves.
+  let signalPump = null;
+  const startSignalPump = () => {
+    if (signalPump) return;
+    signalPump = setInterval(async () => {
+      try {
+        const batch = unpackB(await window.__hostTakeSignals());
+        for (const sig of (batch || [])) {
+          for (const h of window.__signalHandlers) { try { h(sig); } catch (e) { void e; } }
+        }
+      } catch (e) { void e; }
+    }, 250);
+  };
   const appletClient = {
     myPubKey: fromB64(myPubKeyB64),
     callZome: async (req) => unpackB(await window.__hostCallZome(packB(req))),
     appInfo: async () => unpackB(await window.__hostAppInfo()),
-    on: () => () => {},
+    // `(event, cb)`, NOT `(cb)`, and the first version of this shim got it
+    // wrong: `holochain.ts` subscribes with `client.on('signal', handler)`, so
+    // a one-argument shim stored the STRING 'signal' as its handler and threw
+    // the real one away. The harness's own socket saw the signals and the page
+    // never did — indistinguishable, from the screen, from a conductor that
+    // never emitted. That is READINESS item 21's defect (reading a signal at
+    // the wrong LEVEL, which dropped every signal for months) arriving one
+    // argument over, and the comment recording it sits directly above the
+    // subscription this gets wrong.
+    on: (event, cb) => {
+      if (event === 'signal' && typeof cb === 'function') window.__signalHandlers.push(cb);
+      startSignalPump();
+      return () => {};
+    },
   };
 
   window.__WEAVE_PROTOCOL_VERSION__ = '0.12';
@@ -431,6 +535,47 @@ async function main() {
     author: me, timestamp: Date.now() * 1000, evidence_hashes: [], attestation_policy: null,
   });
 
+  // A SECOND AGENT, for pass 8 only, and this file had none until 1.30 needed
+  // one. Its seed claim above is published by the harness's own key over a
+  // second socket — a different CLIENT, not a different author — which is
+  // enough for a cross-client READ and not enough for somebody to be
+  // critiqued BY SOMEBODY ELSE. `graph-ui` shipped the same shape and its
+  // impostor defect was indistinguishable from correct behaviour until a
+  // second agent existed (6.18).
+  const apps = await admin.listApps({});
+  if (!apps.some((a) => a.installed_app_id === AGENT2_APP_ID)) {
+    const pub = await admin.generateAgentPubKey();
+    await admin.installApp({ source: { type: 'path', value: HAPP_PATH }, agent_key: pub, installed_app_id: AGENT2_APP_ID });
+    await admin.enableApp({ installed_app_id: AGENT2_APP_ID });
+  }
+  const agent2 = await connectSecond(admin, AGENT2_APP_ID);
+  const agent2Key = async () => agent2.me;
+
+  // `create_critique` targets a Claim by ENTRY hash, not by the ActionHash
+  // `create_claim` returned — the same distinction `being-told.mjs` resolves
+  // by reading the hash back off the index rather than reusing what it held.
+  const seedEntryHash = (await call('get_claims_by_domain', DOMAIN))
+    .map((r) => r?.signed_action?.hashed?.content?.data?.entry_hash)
+    .filter(Boolean)[0];
+  if (!seedEntryHash) {
+    log('  SETUP FAILED: the seed claim is not readable by entry hash.');
+    process.exit(1);
+  }
+  await waitFor("the seed claim to reach agent 2", async () =>
+    (await agent2.call('get_claims_by_domain', DOMAIN)).length > 0);
+  // `critique_mode` IS AN ENUM VARIANT, and the five are Experiential,
+  // Methodological, Logical, Evidential and Phenomenological — nothing else
+  // deserializes. The first draft of pass 8 passed 'Empirical', which is not
+  // one of them, and the conductor answered with a `Deserialize` error rather
+  // than a default. That is the same trap this file's own `create_claim`
+  // comment records for `confidence`, met a second time one field over.
+  const critiqueAs = (agent, _unusedActionHash, mode) => agent.call('create_critique', {
+    target: seedEntryHash, target_type: 'Claim', critique_mode: mode,
+    content: `A ${mode} objection filed so the host has something to raise.`,
+    author: agent.me, timestamp: Date.now() * 1000,
+    replication_attempted: false, evidence_hashes: [], species: null,
+  });
+
   log('Starting vite preview (the same bundle pack-webhapp.sh zips) ...');
   const preview = spawn('npx', ['vite', 'preview', '--port', String(PREVIEW_PORT), '--strictPort'], {
     cwd: new URL('../../mobile-ui/', import.meta.url).pathname, stdio: 'ignore',
@@ -456,6 +601,24 @@ async function main() {
       await page.exposeFunction('__hostCreatable', async (which, payload) => {
         hostCalls.push({ kind: which, detail: which === 'resolve' ? unpackBytes(payload) : payload });
       });
+      // The harness holds the only real socket, so it is the only thing that
+      // RECEIVES a signal — and the page is where the handler lives.
+      //
+      // QUEUED AND DRAINED BY THE PAGE, rather than pushed with
+      // `page.evaluate`, and the first version did push. A signal payload is
+      // full of `Uint8Array`s; `page.evaluate` does not carry one across
+      // intact, so the page's unpack threw and the rejection went into a
+      // `.catch` that existed for a closed page — a silent failure that looked
+      // exactly like a conductor that never emitted. The direction that
+      // demonstrably works in this file is page -> node through
+      // `exposeFunction`, which already carries packed bytes BOTH ways for
+      // every zome call, so the page asks for its own signals.
+      const pendingSignals = [];
+      let signalsSeen = 0;
+      app.on('signal', (sig) => { signalsSeen++; pendingSignals.push(sig); });
+      await page.exposeFunction('__hostTakeSignals', async () =>
+        packBytes(pendingSignals.splice(0, pendingSignals.length)));
+      await page.exposeFunction('__hostSignalsSeen', async () => signalsSeen);
       await page.addInitScript(hostScript, {
         view: opts.view,
         walB64: opts.wal ? b64(opts.wal) : null,
@@ -724,6 +887,92 @@ async function main() {
     }
 
     // =====================================================================
+    // =====================================================================
+    // OPEN-WORK 1.30 — the host raises a notice, and only for somebody who
+    // asked to be reachable.
+    //
+    // THE ONE THING THE MOSS ARM CAN DO THAT THE PROTOCOL ARM CANNOT: reach a
+    // reader whose Tool is not in front. 6.15 built the in-app line; this is
+    // the same event handed to the host as well.
+    //
+    // THE CALL SITE IS WHY THIS PASS LOOKS LIKE 6.15's AND NOT LIKE A PUBLISH
+    // TEST. The row said to call the host where `create_critique` succeeds,
+    // which would have raised a notice in the CRITIC's own frame — telling
+    // them about their own act. `notifyFrame` is local to its caller, so the
+    // only seam that reaches the person critiqued is the inbound signal
+    // handler. A test written against the row's description would have passed
+    // while notifying the wrong person.
+    log('\n=== Pass 8: 1.30 — the host is told, and only after the opt-in ===');
+    {
+      const { page, hostCalls } = await openSurface({ view: 'main' });
+      await page.waitForSelector('[data-testid="applet-frame"]', { timeout: 25000 });
+      await page.getByRole('button', { name: 'By Author', exact: true }).click();
+      await page.waitForSelector('[data-testid="notify-optin"]', { timeout: 20000 });
+
+      // THE CONTROL FIRST, and it is the one that makes the rest mean
+      // anything. A critique filed BEFORE the opt-in must reach neither
+      // surface: the host drops a remote signal to an agent holding no cap
+      // grant, so if a notice appears here then the opt-in is decorative and
+      // every assertion below is measuring something else. Same control
+      // `being-told.mjs` opens with, re-made here because this is the arm
+      // where a second notifier was added.
+      await critiqueAs(agent2, seedAction, 'Methodological');
+      await page.waitForTimeout(3000);
+      check('CONTROL: before the opt-in the HOST is not notified either',
+        hostCalls.filter((c) => c.kind === 'notifyFrame').length === 0);
+      check('CONTROL: ...and neither is the in-app line, so the gate is the '
+        + 'channel and not this pass',
+        (await page.locator('[data-testid="critique-notice"]').count()) === 0);
+
+      log('    (opting in ...)');
+      await page.locator('[data-testid="notify-optin"]').click({ timeout: 15000 });
+      await page.waitForTimeout(2500);
+      log('    (opted in; agent 2 critiquing ...)');
+      await critiqueAs(agent2, seedAction, 'Logical');
+      log('    (critique filed; waiting for the notice ...)');
+      // SAYS WHICH SIDE FAILED, because two runs were spent not knowing. A
+      // conductor that never emitted and a bridge that never delivered
+      // produce the same empty screen, and the harness is the only place that
+      // can see both ends at once.
+      await page.waitForTimeout(4000);
+      log(`    (the harness's own socket has seen ${await page.evaluate(() => window.__hostSignalsSeen())} signal(s))`);
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="critique-notice"]').length > 0,
+        { timeout: 25000 },
+      ).catch(() => {});
+
+      const notices = hostCalls.filter((c) => c.kind === 'notifyFrame');
+      check(`the host is notified once the channel is open (${notices.length} call(s))`,
+        notices.length >= 1);
+      const raised = notices.length ? JSON.parse(notices[notices.length - 1].detail) : null;
+      check('and it is an ARRAY of one — a batch is the shape that invites a digest',
+        Array.isArray(raised) && raised.length === 1);
+      const n = raised && raised[0] ? raised[0] : {};
+      check('URGENCY IS "low": 6.15 refused a dot by name, and "medium" IS the '
+        + 'system-tray dot arriving from the host side',
+        n.urgency === 'low');
+      check('it names the agent who wrote the critique, as the in-app line does',
+        typeof n.body === 'string' && n.body.includes(short(await agent2Key())));
+      // A STANDALONE number, not ANY digit, and the first version of this
+      // check said any digit. It failed on a correct notice: the byline is 12
+      // BASE64 characters and base64 includes 0-9, so forbidding every digit
+      // forbids the byline the check two lines up requires. What 6.15 refused
+      // was a COUNT — "3 critiques", "(2)" — and a count is a number standing
+      // on its own, which `\b\d+\b` catches while a digit inside an
+      // alphanumeric key run has no word boundary to match on.
+      check('NO COUNT in it — a push arriving as a number reintroduces '
+        + 'everything the pull half refused',
+        !/\b\d+\b/.test(String(n.title)) && !/\b\d+\b/.test(String(n.body)));
+      check('its timestamp is MILLISECONDS, which is what Moss reads it as — '
+        + 'not the protocol\'s micros',
+        typeof n.timestamp === 'number'
+        && n.timestamp > 1e12 && n.timestamp < 1e13);
+      check('CONTROL: the in-app line from 6.15 is there too, so the host '
+        + 'notice is an ADDITION and not a replacement',
+        (await page.locator('[data-testid="critique-notice"]').count()) >= 1);
+      await page.close();
+    }
+
     log('\n=== Pass 7: constraint (1) — the standalone app is unaffected ===');
     {
       const page = await browser.newPage({ viewport: { width: 420, height: 900 } });

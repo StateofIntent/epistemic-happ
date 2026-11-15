@@ -239,6 +239,63 @@ function buildHost(client: WeaveClient, surface: AppletSurface): WeaveHost {
       return hrlFromHostWal(wal, encodeHashToBase64);
     },
 
+    // OPEN-WORK 1.30. `notifyFrame` takes an ARRAY and a free-form
+    // `notification_type`; both are narrowed here rather than passed through.
+    // The array is narrowed because a batch invites a digest and a digest is a
+    // count with extra steps, which 6.15's decision refused. The type is fixed
+    // at 'critique' because it is the only kind of notice this Tool raises,
+    // and a caller choosing the string is a caller who can drift from it.
+    //
+    // CAUGHT RATHER THAN AWAITED-AND-TRUSTED. A host that declines
+    // notifications is the ordinary case — Moss makes them configurable per
+    // Tool — so a rejection here must not surface as an error in a UI that has
+    // already told the user in its own frame. The 6.15 line is rendered before
+    // this is reached, so the worst outcome of a throw is that the host frame
+    // stays quiet, which is exactly what the user asked for if they turned it
+    // off.
+    notify: async (notice) => {
+      try {
+        await client.notifyFrame([{
+          title: notice.title,
+          body: notice.body,
+          notification_type: 'critique',
+          icon_src: undefined,
+          // 'low', AND THIS IS THE SUB-DECISION THE ROW DID NOT ANTICIPATE.
+          // `urgency` is mandatory and is a three-level ranking whose levels
+          // are delivery channels (types.d.ts:62-66): 'low' reaches Moss's
+          // Activity Feed, 'medium' ADDS A DOT TO THE SYSTEM TRAY, and 'high'
+          // additionally fires an OS notification.
+          //
+          // 6.15's decision refused a badge, a count, a dot and an ordering by
+          // name. 'medium' is that dot, arriving from the other side of the
+          // host boundary, and 'high' is the dot plus an interruption — so the
+          // precedent rules out two of the three levels, and the one left is
+          // the one that was going to be chosen on its own merits anyway.
+          //
+          // IT STILL DOES THIS ROW'S ONE JOB. 1.30 survives only as the
+          // app-closed difference, and the Activity Feed is persistent: a
+          // reader whose Tool was not in front still finds the notice when
+          // they next look. What 'low' gives up is the INTERRUPTION, which is
+          // the part a disagreement has not earned — claiming OS-level urgency
+          // for somebody disagreeing with you is an attention ordering
+          // asserting itself as importance, which is what that decision was
+          // about. If an interruption is ever wanted it is a separate
+          // decision, and it is one character here.
+          urgency: 'low',
+          // RECEIPT TIME, and the field wants the ACTION's time — Moss uses it
+          // to decide whether an event is fresh or happened while the user was
+          // offline. The signal payload carries the critique's hash and mode
+          // and no timestamp, so the action's own time is not in hand here
+          // without a second read. These are close by construction: a remote
+          // signal is ephemeral and arrives only while this client is
+          // connected and listening, so it cannot deliver a stale event. The
+          // field is MILLISECONDS, which `Date.now()` already is — unlike the
+          // protocol's own timestamps, which are micros.
+          timestamp: Date.now(),
+        }]);
+      } catch { /* a host that declines is not a failure — see above */ }
+    },
+
     // THE MANDATORY ONE. `resolve`, `reject` and `cancel` are passed INTO the
     // creatable view by the host (`types.d.ts:122-136`) and its dialog stays
     // open until one of them is called. A view that forgets does not fail —
