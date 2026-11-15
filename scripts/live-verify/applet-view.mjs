@@ -124,6 +124,26 @@
 //   that survives a host which starts supplying a client on that arm, and the
 //   second is the one that survives a view type nobody has shipped yet.
 //
+//   F. THE LOOP-CLOSING CHECK, WHICH HAD NO COVERAGE UNTIL 2026-11-15 AND IS
+//   WHY THIS ENTRY EXISTS AT ALL. `finishCreatable` made to resolve
+//   `{ hrl: [result.dnaHash, result.dnaHash] }` — the DNA hash where the
+//   claim's target hash belongs, so Moss is handed a WELL-FORMED WAL pointing
+//   at the wrong thing. **Exactly 1 red**, pass 4's independent resolution,
+//   and the two checks beside it STAYED GREEN: the WAL is still a two-element
+//   hrl of two `Uint8Array`s, and its DNA hash is still this cell's real one.
+//   Only reading the target back through a separate client can see it.
+//
+//   WHY IT HAD NO RECORD. The check was REWRITTEN rather than added — its
+//   predecessor passed on `includes(published) || back.length >= 2`, and the
+//   second disjunct is true the moment the seed claim and this one both
+//   exist, so it would have gone green for a resolve carrying any hash at
+//   all. Rewriting it retired the old label, and the injection ledger keys
+//   coverage BY LABEL — correctly, since a label is the evidence — so the
+//   stronger check inherited nothing from the weaker one it replaced and sat
+//   unprobed while `ledger verify` reported the retired label as a red that
+//   never resolved. **The general lesson: strengthening a check resets its
+//   coverage to zero, and the ledger will say so if anybody reads it.**
+//
 // This directory's rule is that a harness which has only ever been green has
 // not been shown to test anything.
 //
