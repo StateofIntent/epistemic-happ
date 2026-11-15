@@ -375,6 +375,23 @@ export interface WeaveHost {
     | { ok: false; reason: 'cancel' }
     | { ok: false; reason: 'error'; error: unknown }
   ): Promise<void>;
+  /** Raise a notice in the HOST's frame, which can reach somebody whose app
+   *  window is not in front — open-work 1.30, and the only thing the Moss arm
+   *  can do here that the protocol arm cannot.
+   *
+   *  DELIBERATELY NARROWER THAN `notifyFrame`, in the same spirit as the rest
+   *  of this interface: the host method takes an ARRAY and a free-form
+   *  `notification_type`, and this takes one notice with the type fixed by the
+   *  adapter. A batch is the shape that invites a digest, and a digest is a
+   *  count with extra steps — which 6.15's `[D]` refused on the ground that an
+   *  attention ordering is not a merit ordering but is easily mistaken for one.
+   *  There is no field here for a number because there is no number to carry.
+   *
+   *  BEST-EFFORT BY CONTRACT. Moss notifications are user-configurable per
+   *  Tool, so a host that declines is the ordinary case and not a failure:
+   *  the in-app line from 6.15 has already been rendered by the time this is
+   *  called, and this never becomes the only way somebody is told. */
+  notify(notice: { title: string; body: string }): Promise<void>;
 }
 
 /** What an `asset` render was opened on, in both forms the two callers need.
