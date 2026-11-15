@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-eight browser harnesses, against a real conductor and a real DHT. This is
+# Twenty-nine browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -452,6 +452,31 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/being-told.mjs
+
+      # ROW 6.12's `[D]`, TAKEN 2026-11-15: founding is the price of being
+      # findable, `get_membranes` is the index, and bump candidate 4.7 was
+      # withdrawn. What this gates is the half that makes the decision
+      # REVERSIBLE — 6.12 says the measurement that would overturn it is a
+      # participant who declines founding AFTER being told what declining
+      # costs, and until these surfaces shipped nobody had ever been told:
+      # `findable`, `be found` and `discoverable` had zero user-facing
+      # occurrences in main.ts, and the "one more click away" a participant
+      # quoted back was the Domains tab's own `it costs nothing`.
+      #
+      # The fakes are two, and the second is the one to read. A notice that
+      # answers from `membranes.length` cannot tell an unasked read from a
+      # failed one, so a conductor that will not answer reports the reader's
+      # claim as unfindable — 6.13, in the surface built to answer 6.12. And
+      # the New Claim form performs the same read the Domains tab does, so a
+      # shared function would record a tab visit the reader never made. The
+      # in-flight state is DRIVEN here rather than sampled, because the read
+      # is kicked off at form build and a reader takes seconds to type: the
+      # first version of this harness asserted it on the main page and saw
+      # only `empty`.
+      - name: founding-is-findable — the app says what declining to found costs, where it is declined
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/founding-is-findable.mjs
 
       # The pilot walked into this one: an author retracted a claim because
       # somebody changed their mind, republished it narrower, and had nowhere
