@@ -174,6 +174,25 @@ const healthByMembrane = new Map<string, DiscourseHealth>();
 const crossDomainByMembrane = new Map<string, CrossDomainCritique[]>();
 /** whether the founding form is open */
 let foundingOpen = false;
+/** Whether `get_membranes` has actually ANSWERED, and `membranes.length === 0`
+ * is ambiguous without it — "never asked" and "nobody has founded anything"
+ * are different answers. The same distinction `browseLoaded` exists for, and
+ * here it carries more weight than a listing does: the findability notice on
+ * the New Claim form turns this read into a statement about whether strangers
+ * can find the reader's claim, and that statement must never be made from a
+ * read nobody performed. An unasked read rendering as an answer is 6.13, and
+ * it is the defect 6.25 then found four more of. */
+let membranesLoaded = false;
+/** A failed `get_membranes`, so the notice can say it could not CHECK rather
+ * than that the domain is unfounded. `loadMembranes` had no catch at all
+ * until this was added: every caller reaches it through `void` or an onclick,
+ * so the rejection went nowhere and the empty list stood as the answer. */
+let membranesError = '';
+/** The domain string the New Claim form hands to the founding form when a
+ * reader acts on the notice. 6.12's third surface is that founding has to be
+ * reachable from where the cost is disclosed; carrying the string means they
+ * do not retype it, which is the typo this row already paid for once. */
+let foundingDomainSeed = '';
 /** claim entryHash (b64) -> whether its evidence chain reaches Evidence */
 const groundingByClaim = new Map<string, GroundingPath>();
 
@@ -874,12 +893,19 @@ let browseError = '';
  * refresh is a permanent write. A navigation aid that omits your most recent
  * work is worse than none, because it reads as complete.
  *
- * WHY THIS IS NOT 6.12'S BLOCKED HALF, which is the reason it could be built
- * today. 6.12 is blocked on whether to index domains nobody founded — a
- * LOOKUP surface, which SECURITY.md's "containment holds for what you traverse
- * to and nothing for what you look up" is precisely about. This enumerates
- * nothing the reader has not already seen: it is their own history, it leaks
- * to nobody, and there is no lens for it to need.
+ * WHY THIS IS NOT 6.12'S OTHER HALF, which is the reason it could be built
+ * before that half was decided. 6.12 asked whether to index domains nobody
+ * founded — a LOOKUP surface, which SECURITY.md's "containment holds for what
+ * you traverse to and nothing for what you look up" is precisely about. This
+ * enumerates nothing the reader has not already seen: it is their own
+ * history, it leaks to nobody, and there is no lens for it to need.
+ *
+ * THAT QUESTION WAS ANSWERED ON 2026-11-15 AND THE ANSWER WAS *REQUIRE
+ * FOUNDING*: `get_membranes` is the domain index, no uncontained index gets
+ * built, and bump candidate 4.7 was withdrawn. So this list is no longer the
+ * only domain surface that could be built — but it is still the only one that
+ * needs no founding, which is exactly why it keeps earning its place: a
+ * reader who never founds anything can still get back to where they were.
  *
  * There is no `loaded` flag beside it, unlike `browseLoaded` three lines up,
  * and the asymmetry is deliberate rather than an omission: Browse has to tell
@@ -4862,14 +4888,73 @@ async function loadUnseen(critiques: DecodedRecord<Critique>[]) {
 
 async function loadMembranes() {
   if (!connection) return;
+  // The MILESTONE lives here and not in `readMembranes` below, which is the
+  // whole reason the two are separate. `viewed-domains` is written to
+  // persistent onboarding state, and the New Claim form performs the same
+  // read to answer its findability notice — so sharing one function would
+  // have recorded that the reader visited this tab when they never opened
+  // it. A client asserting what its user did is 6.5's objection in
+  // miniature, and it would have been recorded under their own key's
+  // onboarding rather than inferred.
   markDone('viewed-domains');
-  const records = await connection.callZome<any[]>('get_membranes', null);
-  membranes = decodeRecords<Membrane>(records);
+  await readMembranes();
+}
+
+/** `get_membranes`, with no milestone and no claim about what the reader did.
+ *
+ * Called both by the Domains tab (through `loadMembranes`) and by the New
+ * Claim form, which needs the answer in order to say whether the domain being
+ * typed is findable, and which must be able to ask without pretending the
+ * reader went looking. */
+async function readMembranes() {
+  if (!connection) return;
+  membranesError = '';
+  try {
+    const records = await connection.callZome<any[]>('get_membranes', null);
+    membranes = decodeRecords<Membrane>(records);
+    membranesLoaded = true;
+  } catch (err) {
+    // NOT swallowed into an empty list, and not left to reject into nothing.
+    // `membranesLoaded` stays false on purpose: a failed read must not be
+    // able to answer the findability question on the New Claim form, because
+    // the wrong answer there tells somebody their claim is unfindable when
+    // the truth is that the app could not look.
+    membranesError = err instanceof Error ? err.message : String(err);
+    render();
+    return;
+  }
   membersByMembrane.clear();
   healthByMembrane.clear();
   crossDomainByMembrane.clear();
   render();
   void loadMembraneState();
+}
+
+/** Does a FOUNDED domain exist under exactly this string?
+ *
+ * EXACT, and that is the protocol's own rule rather than a strictness choice
+ * here: `get_claims_by_domain` hashes `Path::from(format!("domain_{}", domain))`
+ * (coordinator `:5136`), so `mental health reform` and `Mental Health Reform`
+ * are two different domains that cannot see each other. A case-insensitive
+ * match would therefore be a LIE on this screen — it would report a domain as
+ * findable under a string that reaches nothing. */
+function foundedDomain(domain: string): DecodedRecord<Membrane> | null {
+  return membranes.find((m) => m.entry.domain === domain) ?? null;
+}
+
+/** A founded domain differing from `domain` only in case or spacing.
+ *
+ * Reported as a DISTINCT thing from a match, never folded into one. 6.12
+ * records a wrong domain string already sent to a participant by hand and
+ * corrected after the fact, and a typo makes a second domain with one claim
+ * in it, no rename and no way to find either. Saying "no domain is founded
+ * under exactly this, but one is founded under that" is the whole of the
+ * help; saying "founded" would be the defect. */
+function nearFoundedDomain(domain: string): DecodedRecord<Membrane> | null {
+  const fold = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+  const target = fold(domain);
+  if (!target) return null;
+  return membranes.find((m) => m.entry.domain !== domain && fold(m.entry.domain) === target) ?? null;
 }
 
 /** Members, discourse health and cross-domain critiques for every listed
@@ -6204,6 +6289,35 @@ function renderMembranesTab(): HTMLElement {
   row.appendChild(foundBtn);
   section.appendChild(row);
 
+  // SURFACE 1 OF 6.12's DECISION: THIS SCREEN SAYS WHAT IT IS.
+  //
+  // The decision taken 2026-11-15 is that founding is the price of being
+  // findable — `get_membranes` IS the domain index, and no uncontained index
+  // of every string anybody ever typed gets built. That answer is only honest
+  // if the screen holding the index stops implying it holds everything.
+  //
+  // As shipped it did imply that. The tab is labelled "Domains", the button
+  // says "Load domains", and nothing anywhere said these are the FOUNDED
+  // ones — so a reader is left to infer this is the index when it is a
+  // registry, which 6.12 named as the real defect in the require-founding
+  // branch a week before that branch was taken.
+  //
+  // AND THE DECISION WAS TAKEN PARTLY BECAUSE THIS SENTENCE WAS MISSING:
+  // measured on 2026-11-15, `findable`, `be found` and `discoverable` had
+  // ZERO user-facing occurrences in this file. The participant who argued the
+  // founding step was worth it, and then filed their claim into somebody
+  // else's domain, was never told by the app that a step existed.
+  const registryNote = document.createElement('p');
+  registryNote.className = 'hint';
+  registryNote.dataset.testid = 'domains-registry-note';
+  registryNote.textContent =
+    'These are the domains somebody FOUNDED. It is not a list of every domain '
+    + 'in use: publishing does not require founding, and a domain nobody '
+    + 'founded appears nowhere on this screen, in no search, and for anyone '
+    + 'who was not told its exact name it does not exist. Founding is what '
+    + 'makes a domain findable.';
+  section.appendChild(registryNote);
+
   if (foundingOpen) section.appendChild(renderFoundingForm());
   section.appendChild(renderMyPromisesForm());
 
@@ -6212,10 +6326,20 @@ function renderMembranesTab(): HTMLElement {
   if (membranes.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'hint';
+    // "IT COSTS NOTHING" WAS THIS APP'S OWN MISQUOTED PRICE, AND IT IS WHY
+    // THE WORDING CHANGED RATHER THAN BEING EXTENDED. Founding charges no
+    // fee, which is all the old sentence meant, but what a newcomer pays is
+    // four fields and a PERMANENT `Constitution` under their own key, written
+    // before `create_membrane` is reached. The pilot participant who called
+    // founding "just one more click away" was repeating the app's own
+    // summary of its cost back to it — and 6.12's `[D]` had rested on their
+    // declining to pay a price nobody had stated correctly. Saying the real
+    // price is the precondition for reading a refusal to pay it as evidence.
     empty.textContent =
-      'No domains loaded. Load them, or found one — it costs nothing, but you ' +
-      'state what you promise and what the domain asks of others. ' +
-      '(domains/bootstrap.mjs founds them from templates in bulk.)';
+      'No domains loaded. Load them, or found one — there is no fee, but it '
+      + 'is four fields and a promise published permanently under your key, '
+      + 'and it is what makes a domain findable by people you have not told. '
+      + '(domains/bootstrap.mjs founds them from templates in bulk.)';
     list.appendChild(empty);
   }
   for (const membrane of membranes) list.appendChild(renderMembraneCard(membrane));
@@ -6427,6 +6551,12 @@ function renderFoundingForm(): HTMLElement {
   domainInput.type = 'text';
   domainInput.placeholder = 'Domain name, e.g. LumbarRehab';
   domainInput.dataset.testid = 'founding-domain';
+  // SURFACE 3 OF 6.12's DECISION, RECEIVING END. Pre-filled when a reader
+  // arrived here from the New Claim form's findability notice, so the string
+  // they were about to publish under is the string they found — retyping it
+  // is how a domain becomes two domains, which is the cost 6.12 records
+  // being paid once already by hand in Telegram.
+  domainInput.value = foundingDomainSeed;
   theirs.appendChild(domainInput);
 
   const descInput = document.createElement('textarea');
@@ -7076,8 +7206,117 @@ function renderNewClaimTab(): HTMLElement {
   // the affordance this line always provided; once it has been typed into, the
   // draft wins and a rebuild no longer overwrites the edit.
   domainInput.value = newClaimDraft.domain || currentDomain;
-  domainInput.oninput = () => { newClaimDraft.domain = domainInput.value; };
   domainLabel.appendChild(domainInput);
+
+  // ===================================================================
+  // SURFACE 2 OF 6.12's DECISION: THE COST IS DISCLOSED WHERE IT IS PAID.
+  //
+  // The decision of 2026-11-15 is that founding is the price of being
+  // findable. A price is only a price if the person paying it is told, and
+  // the measurement that settled the `[D]` was that nobody ever was: on that
+  // date `findable`, `be found` and `discoverable` had ZERO user-facing
+  // occurrences in this file. A pilot participant published a claim arguing
+  // the founding step was worth it and filed that very claim into somebody
+  // else's domain, and 6.12 read the second act as pricing the step. It
+  // could not have been: the app never said a step existed, and the "one
+  // more click away" they quoted was this screen's own `it costs nothing`.
+  //
+  // SO THIS NOTICE IS ALSO THE INSTRUMENT THAT COULD REVERSE THE DECISION.
+  // A reader who declines founding AFTER being told what declining costs is
+  // the measurement the build could not take, and 6.12 records it as the
+  // thing that would overturn the answer. Until this shipped, a refusal to
+  // found meant nothing either way.
+  //
+  // FOUR STATES, AND THE POINT IS THAT THEY ARE FOUR RATHER THAN TWO.
+  // `membranes.length === 0` cannot distinguish "nobody founded anything"
+  // from "nobody asked", and a failed read cannot be allowed to report a
+  // domain as unfindable — that is 6.13 exactly, and the four more instances
+  // 6.25 then found. `membranesLoaded` and `membranesError` are what make
+  // the difference sayable, and the harness drives all four.
+  const findability = document.createElement('p');
+  findability.className = 'hint';
+  findability.dataset.testid = 'domain-findability';
+  domainLabel.appendChild(findability);
+
+  const foundFromHere = document.createElement('button');
+  foundFromHere.type = 'button';
+  foundFromHere.className = 'link-button';
+  foundFromHere.dataset.testid = 'found-from-claim';
+  foundFromHere.textContent = 'Found this domain';
+  foundFromHere.onclick = () => {
+    // SURFACE 3: FOUNDING IS REACHABLE FROM WHERE THE COST IS DISCLOSED.
+    // Telling somebody the price and leaving them to find the till in
+    // another tab is most of the friction this row is about, and the string
+    // travels with them because retyping it is how one domain becomes two.
+    foundingDomainSeed = (newClaimDraft.domain || domainInput.value).trim();
+    foundingOpen = true;
+    activeTab = 'membranes';
+    render();
+  };
+  domainLabel.appendChild(foundFromHere);
+
+  /** Repaint the notice WITHOUT a full render.
+   *
+   * `render()` does restore focus and field values, so a rebuild mid-typing
+   * would not lose the caret — but a render per keystroke is not what that
+   * machinery is for, and mutating one paragraph is the honest cost of a
+   * live answer. */
+  const paintFindability = () => {
+    const typed = domainInput.value.trim();
+    foundFromHere.hidden = true;
+    if (!typed) {
+      // Nothing typed is not a finding. Saying "unfindable" for an empty box
+      // would make the notice shout before it has been asked anything.
+      findability.textContent = '';
+      findability.dataset.state = 'empty';
+      return;
+    }
+    if (membranesError) {
+      findability.dataset.state = 'unknown';
+      findability.textContent =
+        'Could not check whether this domain is founded, so this says nothing '
+        + 'about whether others can find it: ' + membranesError;
+      return;
+    }
+    if (!membranesLoaded) {
+      findability.dataset.state = 'checking';
+      findability.textContent = 'Checking whether this domain is founded…';
+      return;
+    }
+    if (foundedDomain(typed)) {
+      findability.dataset.state = 'founded';
+      findability.textContent =
+        `"${typed}" is a founded domain, so it is listed under Domains and `
+        + 'somebody who was never told its name can still find it.';
+      return;
+    }
+    const near = nearFoundedDomain(typed);
+    findability.dataset.state = near ? 'near' : 'unfounded';
+    findability.textContent =
+      (near
+        ? `No domain is founded under exactly "${typed}" — but "${near.entry.domain}" is. `
+          + 'A domain is an exact match, capitals and spaces included, so those '
+          + 'are two different domains and a claim here will not appear there. '
+        : `"${typed}" is not a founded domain. `)
+      + 'You can publish here, and nobody who was not sent this exact string '
+      + 'will ever find it — it is in no list and there is no search for it.';
+    foundFromHere.hidden = false;
+  };
+
+  domainInput.oninput = () => {
+    newClaimDraft.domain = domainInput.value;
+    paintFindability();
+  };
+  paintFindability();
+
+  // Asked once per form build, and never from `loadMembranes` — see the
+  // milestone comment there. Not asked again on a failure: a notice that
+  // re-fires a failing read on every keystroke would turn a dead conductor
+  // into a flood, and the reader has already been told the check could not
+  // be made.
+  if (!membranesLoaded && !membranesError && connection) {
+    void readMembranes().then(paintFindability);
+  }
 
   const confidenceLabel = document.createElement('label');
   confidenceLabel.textContent = 'Confidence';
