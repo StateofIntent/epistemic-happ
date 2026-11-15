@@ -74,17 +74,20 @@ because they are the same kind of change.
 | ~~4.4~~ | ~~**Declared atrophy threshold N**~~ — a `Constitution` field | — | **DROPPED 2026-10-24.** 3.1 decided: the reader is the promiser, per-reader is enough. No declared-N field is being built. |
 | **4.5** | **`ForeignCritique` as a real entry type** — the honest home for an imported critique, instead of the tagged-`Claim` witness Stage 5 ships | ~~1 new entry type (appended), 1 validation rule~~ **CORRECTED by writing it: 1 entry type, 1 LINK type, and nine validation sites** — five on the entry, four on the link. The witness was discoverable for free because it WAS a `Claim` and rode the domain index; a `ForeignCritique` cannot, and an unconstrained link type is what §5.19 refuses. Inventory 233 → 242 | **WRITTEN AND HELD — PR #350**, draft, do not merge until the bump is cut |
 | 4.6 | **Per-field content mode — `public_permanent` or `withdrawable`, declared by the membrane** (opened 2026-10-26 night out of 7.16's advice; `docs/erasure-and-the-content-split.md` §3) | **RE-PRICED 2026-11-15, AND LIKE 4.7 IT IS A FORK IN THE ROAD RATHER THAN A NUMBER.** Its content-rule inventory **verifies exactly** — all four line numbers still land on the rules the row names (`:1331`, `:1309`, `:1513`/`:1516`, `:2119`), so that half was honest. **BUT "PER-FIELD" IS NOT EXPRESSIBLE BY THE MECHANISM THE ROW CITES: Holochain visibility is declared PER ENTRY TYPE** (`#[entry_type(visibility = "private")]`), and `SealedPrediction` — **the only private entry type in the zome** — is private wholesale. So: **(a) SPLIT THE ENTRY** — a public `Claim` plus a private companion — costs **1 new entry type + 1 new link type + 1 validation branch** (42-77 lines, 3 `Invalid`, one `must_get_valid_record` by the measured pattern), **and the binding can only be STRUCTURAL**, because validation cannot see a private body at all: hdi delivers `None` and `Some(_)` is an outright error (`:798-810`). Or **(b) ENCRYPT IN PLACE** (§3.2) — no new entry type, but withdrawal becomes key destruction, which **makes 4.6 DEPENDENT ON 4.1's ordinal anchor** for *erased as of version N*. The row half-says this; the re-price makes it a dependency rather than an aside. **Note the precedent cuts both ways: `SealedPrediction` is cheap because it is BOTH private AND one of the three un-indexed entry types** (embedded at its construction site). A private companion to a `Claim` is the opposite — it must be findable from the public half, so it cannot inherit that cheapness | **blocked**: the adoption decision — **and now also on route (a) vs (b), which 4.1 partly decides** |
-| **4.7** | **A domain index — enumerating the SET of domains** (6.12's `[D]` half; filed 2026-11-15 by re-pricing on §3's *what indexes it?*) | **CONDITIONAL, and that is the finding: NONE if founding becomes the price of findability** — a founded domain is a `Membrane`, `MembraneRegistry` already indexes them and `get_membranes` already reads it, so there is nothing to bump. Otherwise **1 new link type, appended, plus the first TAG-VALIDATING branch in this zome** | **blocked**: 6.12's founding question *only*. Answer *require founding* and this candidate is **withdrawn, not scheduled** |
+| **4.7** | **A domain index — enumerating the SET of domains** (6.12's `[D]` half; filed 2026-11-15 by re-pricing on §3's *what indexes it?*) | ~~**CONDITIONAL**~~ **RESOLVED TO NONE, AND THE CANDIDATE IS WITHDRAWN — 2026-11-15, the day it was filed.** 6.12's `[D]` was taken and the answer is *require founding*, so there is nothing to bump: a founded domain is a `Membrane`, `MembraneRegistry` already indexes them, and `get_membranes` already reads it (`dna/coordinator/src/lib.rs:2815-2836`, link-only, one global anchor, `GetStrategy::Network`). The alternative — 1 new link type plus the first TAG-VALIDATING branch in this zome — is **not scheduled** | ~~**blocked**~~ **WITHDRAWN**: 6.12's founding question was answered, and it removed this candidate rather than specifying it |
 
 **4.4 and 4.5 were both added by this session's work, and 4.4 has already been
 dropped again.** 4.4 came out of Stage 3 (#324): the threshold works as the
 caller's promise, and the *declared-per-membrane* variant was the thing 3.1
 decided. **3.1 was decided on 2026-10-24 — per-reader is enough — so 4.4 is
-off the list** (the count has since moved twice more: 4.6 was found missing
-from this table and 4.7 filed, both on 2026-11-15, so the set is **six listed
-and at most five bumped**, since 4.7 may be withdrawn rather than scheduled), which is a useful demonstration
+off the list** (the count has since moved three times more, all on
+2026-11-15: 4.6 was found missing from this table, 4.7 was filed, and **4.7
+was then WITHDRAWN the same day when 6.12's founding question was answered**,
+so the set is **six listed and five bumped**), which is a useful demonstration
 that the blocked items here are blocked on real questions: answering one
-removed a candidate rather than scheduling it. 4.5 came out
+removed a candidate rather than scheduling it — **and that has now happened
+twice, 4.4 and 4.7, which is the strongest single argument for pricing a
+candidate before scheduling it.** 4.5 came out
 of Stage 5 (#321): the witness-as-tagged-`Claim` was chosen precisely to avoid
 forking, and it is a workaround with a real cost — a reader must filter by tag,
 and `get_discourse_health` needed `imported_claims` to keep its own count
@@ -111,15 +114,19 @@ Ordered by what blocks what, not by preference.
 4. **3.4 must be settled** — whether a metabolic budget can exist at all
    without being Invariant 1's leaderboard. If not, 4.3 shrinks to species
    provenance alone.
-5. **6.12's founding question must be answered, and it is the only
-   precondition here that can REMOVE a candidate rather than specify one.**
-   Answer *require founding* and 4.7 is withdrawn: `MembraneRegistry` and
-   `get_membranes` already enumerate founded domains, with no integrity change
-   and no fork. Answer *do not require founding* and 4.7 joins the batch and
-   needs the first tag-validating link branch in this zome — which
-   `DomainToClaim`'s own SPEC §10.0 row declined for `DomainToClaim` itself,
-   and which carries the unbounded-single-anchor growth §10.0 sustained
-   against for `get_critiques_by_mode`.
+5. ~~**6.12's founding question must be answered**~~ **ANSWERED 2026-11-15:
+   *require founding*. This was the only precondition here that could REMOVE a
+   candidate rather than specify one, and it did — 4.7 is withdrawn.**
+   `MembraneRegistry` and `get_membranes` already enumerate founded domains,
+   with no integrity change and no fork. The branch not taken would have needed
+   the first tag-validating link branch in this zome — which `DomainToClaim`'s
+   own SPEC §10.0 row declined for `DomainToClaim` itself, and which carries
+   the unbounded-single-anchor growth §10.0 sustained against for
+   `get_critiques_by_mode`. **So this item is closed and no longer gates the
+   batch.** The reasoning, including what would reverse it, is in 6.12; the
+   short version is that the revealed preference pointing the other way was
+   measured and found unpriced — the app never told anybody founding was what
+   made a domain findable.
 
    **This is the second time answering a blocker here has removed an item
    instead of scheduling one** — 3.1 did it to 4.4 — which is the argument
