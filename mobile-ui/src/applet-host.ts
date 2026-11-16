@@ -106,15 +106,28 @@ export interface AppletHostConnection {
  *  cannot resolve — a stranger's bad WAL should cost one tooltip, not the
  *  host's render.
  *
- *  `search` IS DELIBERATELY LEFT AS THE LIBRARY'S DEFAULT, which returns `[]`
- *  (`api.js:113`). There is no search zome function in this DNA; the reads are
- *  `get_claims_by_domain` and `get_claims_by_agent`, both of which need a key
- *  the searcher does not have. Searching by scanning every domain would need a
- *  domain enumeration, and whether this protocol should offer one AT ALL is an
- *  open decision — open-work 6.12's `[D]` — not something to settle by
- *  implementing it here for a host's search box. An empty result is honest;
- *  a partial one scraped from whatever this device happens to have loaded
- *  would be the "looks wired and is not" shape this row exists to remove. */
+ *  `search` IS STILL THE LIBRARY'S DEFAULT, which returns `[]`
+ *  (`api.js:113`) — but READ OPEN-WORK 1.33 BEFORE TRUSTING THE REASON THIS
+ *  COMMENT USED TO GIVE.
+ *
+ *  WHAT IT SAID, AND WHY IT IS NO LONGER TRUE. It said searching would need a
+ *  domain enumeration and that whether this protocol should offer one at all
+ *  was an open decision — 6.12's `[D]`. **6.12 was DECIDED on 2026-11-15, and
+ *  its decision names the index: `get_membranes`**, which resolves a
+ *  network-wide registry anchor and already ships. So the enumeration exists,
+ *  and that justification expired. It survived here for a day while 1.31 and
+ *  1.32 were built one function below it, which is the ordinary way a comment
+ *  goes stale: nothing re-reads the paragraph next to the code being changed.
+ *
+ *  WHAT IS ACTUALLY LEFT IS A COST DECISION. The naive implementation is one
+ *  `get_membranes` plus one `get_claims_by_domain` per domain, per query — an
+ *  N+1 network read on every keystroke in another program's search box. That
+ *  is 1.33's `[D]` and it is not settled by writing code here first.
+ *
+ *  AND ONE PART OF THE OLD COMMENT SURVIVES AS A CONSTRAINT RATHER THAN AS A
+ *  REASON: a result scraped from whatever this device happens to have loaded
+ *  would be the "looks wired and is not" shape. A partial search is worse than
+ *  none, so the honest failure is an error and never a short list. */
 function appletServices(config: { roleName: string; zomeName: string }): AppletServices {
   const services = new AppletServices();
   services.creatables = { ...CREATABLE_TYPES };
