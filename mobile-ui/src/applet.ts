@@ -392,6 +392,100 @@ export interface WeaveHost {
    *  the in-app line from 6.15 has already been rendered by the time this is
    *  called, and this never becomes the only way somebody is told. */
   notify(notice: { title: string; body: string }): Promise<void>;
+  /** The group-vouched display name for an agent, or `null` — open-work 1.31.
+   *
+   *  WHY THIS IS THE ONE PLACE A NAME MAY COME FROM. 6.23 rules out a display
+   *  name on the ground that nothing in the protocol binds one to a key, and
+   *  that is still true. Moss binds one: inside a group the nickname is the
+   *  GROUP's, vouched for by the host rather than asserted by this client, so
+   *  the Moss arm does not invent anything — it asks. There is no equivalent
+   *  anywhere else, and the standalone build every pilot participant runs has
+   *  no profiles client, no group and nobody to ask.
+   *
+   *  `null` IS THE ORDINARY ANSWER AND NEVER AN ERROR, for three distinct
+   *  reasons that the caller must not tell apart: the agent has created no
+   *  profile, the host is an older Moss without one, or — the easy one to
+   *  miss — `getAgentProfile` defaults to `GetStrategy::Local`, so a profile
+   *  that exists but has not reached this conductor reads as absent. A caller
+   *  that rendered "no name" differently from "name not here yet" would be
+   *  making a claim about a person out of a cache miss.
+   *
+   *  THE NAME NEVER STANDS WHERE THE KEY STANDS, which is the decision this
+   *  row carried and the reason this returns a name rather than a byline. A
+   *  nickname is chosen and changeable, so a byline that said only a name
+   *  would make a WEAKER claim than one that said a key while looking like a
+   *  stronger one. The key stays on screen and is what a critique is held to;
+   *  the name is an aid to reading it. See `agentLabel` in `main.ts`. */
+  participantName(agent: Uint8Array): Promise<string | null>;
+  /** Say, fire-and-forget, that a critique landed on a claim — open-work 1.32.
+   *
+   *  EPHEMERAL BY CONSTRUCTION. `sendRemoteSignal` writes to no chain and
+   *  reaches only group members who are online right now, so this is not and
+   *  must not become a delivery mechanism: anything that must arrive goes
+   *  through the protocol, and this only ever saves a reader from looking at
+   *  a panel that has quietly gone stale.
+   *
+   *  CARRIES A CLAIM REFERENCE AND NOTHING ELSE. Not the critique, not its
+   *  author, not a count. A recipient re-reads from the DHT if they want it,
+   *  which keeps the authority on the chain rather than in a packet anybody
+   *  on the group can send — and a count would be the tally Invariant #1
+   *  refuses, arriving by the back door. */
+  announceCritique(claimRef: string): Promise<void>;
+  /** Register for those announcements; returns an unsubscribe function.
+   *
+   *  THE CALLBACK MUST NOT RE-RENDER THE PANEL UNDERNEATH A READER, which is
+   *  1.32's `[D]` and is enforced at the call site rather than here: a
+   *  surface changing while somebody decides what to say about it is the one
+   *  thing §4.4 cares about most, and arriving critiques appearing silently
+   *  mid-read is a DIFFERENT defect from stale ones rather than a fix for
+   *  them. What the caller does with this is mark that something arrived. */
+  onCritiqueAnnounced(cb: (claimRef: string) => void): () => void;
+}
+
+// --- The announcement payload ------------------------------------------------
+//
+// PURE, AND IN THIS FILE, FOR THE REASON EVERYTHING ELSE HERE IS: `applet.ts`
+// imports nothing, so these two functions are exercisable in node without a
+// host, a browser or a conductor. The bytes themselves are made and read in
+// `applet-host.ts`, which already imports an encoder.
+//
+// THE INPUT IS ANOTHER PROGRAM'S BYTES AND IS TREATED AS SUCH. A remote signal
+// can be sent by any member of the Moss group, including a Tool that is not
+// this one — `sendRemoteSignal` is group-wide, not applet-scoped — so a
+// payload that is not ours is the ORDINARY case and not an attack. Everything
+// unrecognised answers `null` and is dropped in silence, which is the same
+// rule `appletSurface` applies to an unrecognised `RenderInfo`.
+
+/** Tag on the wire. Namespaced because the signal channel is shared with
+ *  every other Tool in the group. */
+export const CRITIQUE_ARRIVED = 'epistemic-resonance/critique-arrived' as const;
+
+/** The announcement, as the text `applet-host.ts` will encode to bytes. */
+export function encodeCritiqueArrived(claimRef: string): string {
+  return JSON.stringify({ t: CRITIQUE_ARRIVED, claim: claimRef });
+}
+
+/** The claim reference carried by an announcement, or `null` for anything
+ *  else — a malformed packet, another Tool's signal, a future version of
+ *  ours. Takes the already-decoded TEXT rather than bytes, so the one thing
+ *  this cannot do is depend on a decoder. */
+export function decodeCritiqueArrived(text: unknown): string | null {
+  if (typeof text !== 'string') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const msg = parsed as { t?: unknown; claim?: unknown };
+  if (msg.t !== CRITIQUE_ARRIVED) return null;
+  // A claim reference is this project's own base64 of an entry hash. Nothing
+  // downstream parses it — it is compared to keys this UI already holds — so
+  // the only property required is that it is a non-empty string, and the only
+  // thing worth refusing is a shape that would land in a Map as a non-key.
+  if (typeof msg.claim !== 'string' || msg.claim.length === 0) return null;
+  return msg.claim;
 }
 
 /** What an `asset` render was opened on, in both forms the two callers need.
