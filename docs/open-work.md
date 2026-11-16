@@ -22,9 +22,41 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-15 (second session) — RESUME HERE. EVERY CHECKPOINT
-BLOCK BELOW THIS ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE";
-where they disagree with this block, this block wins.**
+**CHECKPOINT, 2026-11-16/17 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS
+ONE IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
+with this block, this block wins.** The 2026-11-15 header immediately below is
+kept because its findings stand, but **its "where things stand" paragraph is
+superseded by this one.**
+
+**WHERE THINGS STAND, 2026-11-17.** happ `main` is at **`2b892b2`**; **EIGHT
+PRs merged this session — #496 to #503** — and `#350` is again the only open PR
+in either repository. Desktop untouched: `release` `319f0f4`, tag `v0.3.6`,
+still `/latest`. Tree clean, no conductor running but the pilot node, nothing
+in flight.
+
+**THIS WAS A MEASURING SESSION, AND ITS ONE REUSABLE RESULT IS ABOUT STALE
+BLOCKERS.** Four separate records said *waiting on somebody else* or *blocked on
+a decision* when the thing had already been answered — **7.29's unanswered node
+offer (6 days), 1.33's `search` stub citing a `[D]` taken the day before,
+Eric's accepted depth sweep (a week), and the `[M]` half of 7.29 that nobody had
+re-read.** **Every one was found the same way: by reading the thing NEXT TO the
+work instead of the summary of it.** `open-work.md`'s own header says a line
+whose blocker has gone is a line to act on; **nothing enforces it, and that is
+now the most valuable unbuilt gate in this file.**
+
+**AND THE SECOND RESULT: FOUR OF THE SESSION'S MEASUREMENTS CONTRADICTED A
+RECORD RATHER THAN FILLING A GAP.** 6.21's "does nothing" reading, 7.29's
+"stores everything continuously", the pilot node's "3 records, genesis only",
+and two of this session's own new checks. **A claim nobody has measured since
+writing it is not evidence, however carefully it was written** — and three of
+those four had already been copied into text meant for a participant.
+
+**WHAT IS NOW OWED, AND ALL OF IT IS `[X]`/`[H]`:** three drafted, unsent
+messages in `docs/funding/…DRAFTS.md` (local-only, never `git add`) — **§5 is
+the one that decays**, a correction to both participants that the always-on node
+does NOT capture a publish-and-close; **§6** is Eric's depth-sweep results, a
+week late; **§4** answers Luck Light's second-node offer. **The model does not
+send any of them.**
 
 **WHERE THINGS STAND.** happ `main` is at `eaba897`. Desktop `main` is
 `81d46ef` and `release` is `319f0f4` — **tag `v0.3.6`, published
@@ -254,6 +286,27 @@ showed no Intel mac artifacts and looked exactly like a regression.
   answer is a refusal** — an identity says WHICH identity, not that it is not
   one of several, so *"the root set still gets its strength from readers naming
   people they actually know."*
+- **THE DEPTH SWEEP IS MEASURED, 2026-11-17 — ERIC'S ACCEPTED ASK, A WEEK
+  LATE, AND THE ANSWER IS "NO CLIFF".** Run through his own decision path: Your
+  Own AI `6935069` (unchanged since October), `LFM2.5-8B-A1B-Q4_K_M.gguf` pinned
+  to the SHA in his own catalog, and **the arm `live_matrix_tune_bench` itself
+  chose — ctx 32768, `--n-cpu-moe 19` of 24.** Depth is the engine's own
+  `timings.prompt_n`. **Gen tok/s: ~36.5 near-empty, 35.9 at 7k, 35.2 f16 /
+  34.6 q8 at ~11k, 34.1 at 20k, 32.7 at 31k** — about **4% from empty to 11k
+  and 10% out to 31k**, with prompt processing holding 150-169 throughout.
+  **Two findings he did not ask for:** his compact-cache *within 5%* rule
+  **holds at depth** (gap 1.8% at 11k, 1.4% at 19k, where his own verdict was
+  measured near-empty), and **`--n-cpu-moe` came out 19 against October's 18**,
+  because the arm is computed from free VRAM — so the number a timeout anchors
+  to is not a constant of the machine. Raw logs `~/depth-sweep/results/`.
+- **AND THE SWEEP'S FIRST PASS WAS WRONG IN THE DIRECTION THAT LOOKS RIGHT**,
+  which is the trap worth carrying: filler built as `item 0 … item N` made each
+  depth a PREFIX of the next, so llama-server's prompt cache served most of it
+  and **`timings.prompt_n` counts tokens PROCESSED, not context depth.** The 9k
+  row came back at **4,236 — LOWER than the 8k row's 15,396** — and a curve read
+  off that column would have said *more context, less work*. Fixed with a
+  per-depth nonce leading the prompt plus `cache_prompt: false`. **The first
+  table was discarded.**
 - **`[D]`s waiting only on a human:** 6.14 (entry order), 6.17 (`sample_period`
   and `domain_tag`), 6.23 (the reporter), 5.2, 6.5, 1.26.
 - **4.1, 4.2, 4.3** wait on Andras, on 3.5's cost, and on 3.4. **Sequencing is
