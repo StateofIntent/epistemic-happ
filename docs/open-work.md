@@ -323,7 +323,42 @@ showed no Intel mac artifacts and looked exactly like a regression.
   off that column would have said *more context, less work*. Fixed with a
   per-depth nonce leading the prompt plus `cache_prompt: false`. **The first
   table was discarded.**
-- **`[D]`s waiting only on a human:** 6.14 (entry order), 6.17 (`sample_period`
+**THE RESUME LIST, ORGANISED BY WHO CAN ACT — and the first line of it is a
+habit rather than a task: BEFORE TRUSTING ANY LINE THAT SAYS "WAITING ON THEM",
+CHECK WHETHER IT WAS ALREADY ANSWERED.** Four such lines were wrong this
+session and the check costs nothing.
+
+**A. OWED TO PEOPLE — `[X]`/`[H]`, and the model never sends.** Four drafted
+messages in the local-only drafts file, which opens with its own table of what
+is unsent; **the text is the block quote in each section and needs no editing.**
+**§5 is the ONLY item that decays** — both participants still believe the
+always-on node captures a publish-and-close, and it does not; the repo half is
+fixed (#501) and the message is not. **§6** is Eric's depth-sweep results, a
+week late. **§4** answers Luck Light's second-node offer, and is careful NOT to
+imply his node fixes the dwell-time gap, because #500 showed it cannot. **§1**
+is the Kupukupu recruitment ask, unsent since 2026-11-08.
+
+**B. MODEL WORK, UNBLOCKED, AVAILABLE NOW — `[M]`.** **Build 1.35's
+stale-blocker report** — the prototype runs, the design is settled by
+measurement, and it ships as a REPORT that exits zero rather than a failing
+gate; read the row before writing it, because it carries the one named
+false-positive class and the normalise-before-matching requirement that a
+broken-matcher run paid for. **And a gate for the NETWORK-SEED TRAP is not yet
+a row and should be:** the seed carries the desktop's MINOR version, so a
+`0.4.0` release strands an always-on node on an abandoned DHT **in perfect
+health**; `verify.mjs` warns and nothing enforces, and it is worth more now
+that a second operator may exist — the person it protects is the one who does
+not know.
+
+**C. WATCH, nothing to build.** **6.21's download counts** (re-read from
+2026-11-17; watch the mac zip rise above the floor of 1 — **do not nudge**,
+Kupukupu said they would check), and **6.12's reversal evidence**, collectable
+for the first time.
+
+- **`[D]`s waiting only on a human:** **1.33** (Moss search's cost — its
+  blocker is gone), **1.34** (whether to integrate Flowsta at all, bound by the
+  not-the-default-resolver constraint Eric named himself), 6.14 (entry order),
+  6.17 (`sample_period`
   and `domain_tag`), 6.23 (the reporter), 5.2, 6.5, 1.26.
 - **4.1, 4.2, 4.3** wait on Andras, on 3.5's cost, and on 3.4. **Sequencing is
   settled: invite first, bump second**, and **a bump is a RELAUNCH, not an
