@@ -98,10 +98,20 @@ written to be sent as-is, or edited for tone but not for content.
 > offline.** There is no server here — but that also means the network only
 > exists while people are actually running the app, and with a handful of us
 > that turned out to be almost never. So I keep a machine connected that holds
-> a copy of everything anyone publishes. It is what lets you publish on a
+> a copy of what it hears. It is what lets you publish on a
 > Tuesday and have me read it on a Thursday without us arranging to be awake
 > at the same time. It publishes nothing itself and takes no part: it only
 > listens and stores.
+>
+> **"What it hears" is doing real work in that sentence, and I'd rather
+> correct myself than let it slide.** I first told you that machine holds
+> everything anyone publishes. I have since actually measured it, and that was
+> over-stated: finding you on the network takes it a little while, and in my
+> tests a publisher who closed the app within ten seconds was never found at
+> all. Nothing is lost when that happens — your claim is on your own chain
+> permanently — but it is readable by nobody else until you are next online.
+> **So after you publish, leave the app open for a minute.** That is the whole
+> fix, and it is the only thing I'd ask you to remember from this paragraph.
 >
 > Two things follow, and I'd rather you heard them from me. Every
 > participant's computer already keeps copies of other people's entries —
@@ -141,7 +151,9 @@ written to be sent as-is, or edited for tone but not for content.
 >
 > - When we are both online, things appear in **seconds**. Because of the
 >   always-on machine above, you no longer have to wait for me to be at my
->   desk for anything to reach me — publish whenever suits you.
+>   desk for anything to reach me — publish whenever suits you, **and then
+>   leave the app open for a minute** so that machine has time to find you.
+>   Publishing and closing straight away is the one case it cannot cover.
 > - If you close your laptop and come back, expect to wait **five to twelve
 >   minutes** to catch up — and longer the longer you were away. The app
 >   looks stale during that time. It is not; it is syncing.
