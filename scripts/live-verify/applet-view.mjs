@@ -33,6 +33,16 @@
 //      page. See below — this is the measured defect the timeout exists for.
 //   6. The standalone app is unaffected, measured by loading it with no Weave
 //      globals at all in the same run.
+//   7. OPEN-WORK 1.31: a critique byline carries the HOST's name for its
+//      author AND the author's key, with a control on the same screen — an
+//      agent the host has no name for still renders bare, so a name being
+//      shown is a name that was fetched rather than a constant being painted.
+//   8. OPEN-WORK 1.32: an announcement that a critique landed MARKS an open
+//      panel without bringing the critique into it, and publishing one sends
+//      an announcement carrying a claim reference and nothing else. Three
+//      controls, because this is a feature whose whole risk is firing when it
+//      should not: another claim's announcement, another Tool's signal, and a
+//      malformed payload must each mark nothing.
 //
 // WHAT THIS IS NOT. It is not a real Moss install; none is installed here. It
 // injects what the installed library actually reads — `__WEAVE_API__`,
@@ -347,7 +357,7 @@ async function adminSession() {
 // host built from the docs would have been a fake host the real library never
 // looks at — a harness that proves its own fixture self-consistent, which is
 // exactly how that error survived.
-function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdmin, appId, omitRenderInfo, malformedWal }) {
+function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdmin, appId, omitRenderInfo, malformedWal, nicknames }) {
   // --- Recording what the screen was EVER showing -------------------------
   //
   // A MutationObserver, not a sampled read, and the reason is this
@@ -436,6 +446,25 @@ function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdm
       } catch (e) { void e; }
     }, 250);
   };
+  // ROW 1.32's inbound pump. Separate from the conductor signal pump above
+  // because it carries a different thing from a different place — a group
+  // member's announcement, not this conductor's own emission — and merging
+  // them would let a check pass on the wrong one.
+  window.__remoteSignalHandlers = [];
+  let remotePump = null;
+  const startRemotePump = () => {
+    if (remotePump) return;
+    remotePump = setInterval(async () => {
+      try {
+        const texts = await window.__hostTakeRemoteSignals();
+        for (const text of (texts || [])) {
+          const bytes = new TextEncoder().encode(text);
+          for (const h of window.__remoteSignalHandlers) { try { h(bytes); } catch (e) { void e; } }
+        }
+      } catch (e) { void e; }
+    }, 250);
+  };
+
   const appletClient = {
     myPubKey: fromB64(myPubKeyB64),
     callZome: async (req) => unpackB(await window.__hostCallZome(packB(req))),
@@ -473,6 +502,31 @@ function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdm
     onPeerStatusUpdate: () => () => {},
     onNetworkStatsUpdate: () => () => {},
     onBeforeUnload: () => () => {},
+
+    // ROW 1.32. Both halves are real, for the reason the whole block above
+    // exists: a fixture that cannot deliver an event proves the absence of
+    // every feature built on one.
+    //
+    // OUTBOUND is recorded in the harness so a check can assert that
+    // publishing a critique ANNOUNCED it — the payload is handed over as
+    // text, because that is what the adapter encoded and decoding it here
+    // would hide a wrong encoding rather than expose it.
+    sendRemoteSignal: async (payload) => {
+      await window.__hostRemoteSignalSent(new TextDecoder().decode(payload));
+    },
+    // INBOUND uses the same page-pulls-from-node direction the signal pump
+    // does, and for the identical measured reason: `page.evaluate` does not
+    // carry a `Uint8Array` across intact, and a payload that arrives
+    // corrupted looks exactly like a host that never sent one. The page asks
+    // for its own announcements and encodes the text itself.
+    onRemoteSignal: (cb) => {
+      window.__remoteSignalHandlers.push(cb);
+      startRemotePump();
+      return () => {
+        const at = window.__remoteSignalHandlers.indexOf(cb);
+        if (at >= 0) window.__remoteSignalHandlers.splice(at, 1);
+      };
+    },
   };
 
   if (omitRenderInfo) return; // Pass 5: the hang. Context true, render info absent.
@@ -513,7 +567,30 @@ function hostScript({ view, walB64, dnaB64, myPubKeyB64, groupName, tag, deadAdm
     type: 'applet-view',
     view: renderView,
     appletClient,
-    profilesClient: {},
+    // ROW 1.31's FIXTURE, AND IT WAS `{}` UNTIL 2026-11-16 — which is the
+    // same defect as the dead `on()` above, one object over. An empty
+    // profiles client makes `participantName` throw on its first property
+    // access, the adapter catches and answers `null`, and EVERY check about
+    // a name on screen then passes by the feature being absent. The fixture
+    // has to be able to answer for "no name is shown" to mean anything.
+    //
+    // SHAPED LIKE THE REAL RETURN, which is an `EntryRecord<Profile>` and
+    // not a `Profile`: the nickname lives at `.entry.nickname`. A fixture
+    // that returned `{ nickname }` directly would pass a client that read
+    // `.nickname` — the exact wrong path the adapter comment warns about —
+    // and so would certify the bug.
+    //
+    // ANSWERS `undefined` FOR AN AGENT IT DOES NOT KNOW, because that is the
+    // ordinary case the interface is built around (no profile, older host,
+    // or a local-only read that missed) and a fixture that named everybody
+    // could not exercise the fallback to a bare key.
+    profilesClient: {
+      getAgentProfile: async (agent) => {
+        const nickname = (nicknames || {})[btoa(String.fromCharCode(...agent))];
+        if (!nickname) return undefined;
+        return { entry: { nickname, fields: {} } };
+      },
+    },
     peerStatusStore: { subscribe: () => () => {} },
     appletHash: fromB64(dnaB64),
     groupProfiles: [{ name: groupName, icon_src: '' }],
@@ -619,6 +696,15 @@ async function main() {
       await page.exposeFunction('__hostTakeSignals', async () =>
         packBytes(pendingSignals.splice(0, pendingSignals.length)));
       await page.exposeFunction('__hostSignalsSeen', async () => signalsSeen);
+      // ROW 1.32's two bridges. The inbound queue is a plain array of TEXT —
+      // the adapter's own encoding, carried as a string on purpose, so the
+      // page does the `TextEncoder` work and a wrong encoding fails here
+      // rather than being papered over by the harness doing it correctly.
+      const remoteSent = [];
+      const pendingRemote = [];
+      await page.exposeFunction('__hostRemoteSignalSent', async (text) => { remoteSent.push(text); });
+      await page.exposeFunction('__hostTakeRemoteSignals', async () =>
+        pendingRemote.splice(0, pendingRemote.length));
       await page.addInitScript(hostScript, {
         view: opts.view,
         walB64: opts.wal ? b64(opts.wal) : null,
@@ -630,9 +716,18 @@ async function main() {
         appId: APP_ID,
         omitRenderInfo: Boolean(opts.omitRenderInfo),
         malformedWal: Boolean(opts.malformedWal),
+        // ROW 1.31. Keyed by the agent's base64 key, and by default the ONLY
+        // agent named is the independent publisher whose claim this harness
+        // seeds — so a byline that shows a name proves the host was asked
+        // about that specific agent, and the reader's own byline staying
+        // bare proves the fallback still works on the same screen.
+        nicknames: opts.nicknames ?? {},
       });
       await page.goto(`http://localhost:${PREVIEW_PORT}/`, { waitUntil: 'domcontentloaded' });
-      return { page, wire, hostCalls };
+      // `remoteSent` and `pendingRemote` are handed back so a check can read
+      // what the page announced and push what it should hear — the two
+      // directions 1.32 needs, neither of which existed before.
+      return { page, wire, hostCalls, remoteSent, pendingRemote };
     };
     const everSeen = (page) => page.evaluate(() => window.__everSeen);
 
@@ -973,6 +1068,203 @@ async function main() {
       await page.close();
     }
 
+    log('\n=== Pass 9: 1.31 — the host names the people, and the key still binds ===');
+    {
+      // ONLY AGENT 2 IS NAMED, and that asymmetry is the pass. A fixture that
+      // named everybody could not tell "the name was fetched for this agent"
+      // from "a name is painted on every byline", and a fixture that named
+      // nobody would make every check below vacuous.
+      const nickname = 'Kaimana';
+      const { page, wire } = await openSurface({
+        view: 'main',
+        nicknames: { [b64(await agent2Key())]: nickname },
+      });
+      await page.waitForSelector('[data-testid="applet-frame"]', { timeout: 25000 });
+      await critiqueAs(agent2, seedAction, 'Evidential');
+      await fillIfThere(page, '[data-testid="browse-domain-input"]', DOMAIN);
+      await clickByName(page, 'Load claims');
+      await page.waitForFunction(
+        (c) => document.body.innerText.includes(c), seedContent, { timeout: 30000 },
+      ).catch(() => {});
+      await page.locator('[data-testid="toggle-critiques"]').first().click({ timeout: 15000 });
+      await page.waitForSelector('[data-testid="critique-author"]', { timeout: 25000 });
+      // Names resolve through the host and then re-render, so the byline is
+      // waited FOR rather than sampled the instant the panel paints.
+      await page.waitForFunction(
+        (n) => document.body.innerText.includes(n), nickname, { timeout: 15000 },
+      ).catch(() => {});
+
+      const byline = await textIfThere(page, '[data-testid="critique-author"]');
+      check(`the critique byline carries the host's name for its author (${nickname})`,
+        byline.includes(nickname));
+      // THE DECISION, AS A CHECK. A name that REPLACED the key would pass the
+      // line above and would be the thing 1.31 refused: a nickname is chosen
+      // and changeable, so a byline showing only a name makes a weaker claim
+      // than one showing a key while looking stronger. Both must be there.
+      check('AND THE KEY IS STILL THERE — the name is an aid to reading the '
+        + 'byline, never the thing the critique is held to',
+        byline.includes(short(await agent2Key())));
+      // BOTH PRESENT AND THEN ORDERED, which the first version of this check
+      // did not require — it compared two `indexOf` results, and a missing
+      // name yields -1, which is less than any real index. So the check
+      // passed on a byline with NO NAME IN IT AT ALL, the exact state it
+      // exists to distinguish. Found by arming the inert fixture and watching
+      // this line stay green while the one above it went red.
+      const nameAt = byline.indexOf(nickname);
+      const keyAt = byline.indexOf(short(await agent2Key()));
+      check('with the name first, which is the half a reader scans',
+        nameAt >= 0 && keyAt >= 0 && nameAt < keyAt);
+
+      // THE ANTI-VACUITY CONTROL. Every check above would also pass if this
+      // UI simply printed a constant, or painted the same name on every
+      // byline it drew. The reader's OWN key is on screen in the status line
+      // and the fixture does not know a name for it, so it must still render
+      // bare — which is the fallback path every standalone build takes for
+      // every byline, exercised here on the same screen.
+      const status = await textIfThere(page, '.status, [data-testid="status"]');
+      const statusOrBody = status || (await page.evaluate(() => document.body.innerText));
+      check('CONTROL: an agent the host has NO name for still renders as a bare '
+        + 'key, so a name on screen is a name that was fetched',
+        statusOrBody.includes(short(me)) && !statusOrBody.includes(`${nickname} · ${short(me)}`));
+      check('CONTROL: the names came from the HOST and not from a zome call — '
+        + 'no profile read appears on the bridge',
+        !wire.some((fn) => String(fn).includes('profile')));
+      await page.close();
+    }
+
+    // =====================================================================
+    log('\n=== Pass 10: 1.32 — a critique that lands is MARKED, not swapped in ===');
+    {
+      const { page, remoteSent, pendingRemote } = await openSurface({ view: 'main' });
+      await page.waitForSelector('[data-testid="applet-frame"]', { timeout: 25000 });
+      await fillIfThere(page, '[data-testid="browse-domain-input"]', DOMAIN);
+      await clickByName(page, 'Load claims');
+      await page.waitForFunction(
+        (c) => document.body.innerText.includes(c), seedContent, { timeout: 30000 },
+      ).catch(() => {});
+      await page.locator('[data-testid="toggle-critiques"]').first().click({ timeout: 15000 });
+      await page.waitForSelector('[data-testid="critique-form"]', { timeout: 25000 });
+
+      // THE CONTROL BEFORE ANYTHING ARRIVES. Without it, "the marker is shown"
+      // cannot be told from "the marker is always shown".
+      check('CONTROL: no arrival marker before anything has arrived',
+        (await page.locator('[data-testid="critiques-arrived"]').count()) === 0);
+
+      // A SIGNAL FOR A DIFFERENT CLAIM, and this is the check that would have
+      // caught a handler that marked every open panel. It is pushed through
+      // the same bridge as the real one, so it also proves the bridge is live
+      // before the negative result below is trusted.
+      pendingRemote.push(JSON.stringify({
+        t: 'epistemic-resonance/critique-arrived', claim: 'a-claim-nobody-here-is-reading',
+      }));
+      await page.waitForTimeout(2000);
+      check('CONTROL: an announcement about ANOTHER claim marks nothing',
+        (await page.locator('[data-testid="critiques-arrived"]').count()) === 0);
+
+      // AND A PAYLOAD THAT IS NOT OURS AT ALL. The remote-signal channel is
+      // GROUP-wide, not applet-scoped, so another Tool's traffic is the
+      // ordinary case and must be dropped in silence rather than throwing.
+      pendingRemote.push('{"t":"some-other-tool/hello"}');
+      pendingRemote.push('not json at all');
+      await page.waitForTimeout(1500);
+      check('CONTROL: another Tool\'s signal and a malformed one are both '
+        + 'dropped without a page error',
+        (await page.locator('[data-testid="critiques-arrived"]').count()) === 0);
+
+      // THE REAL ONE. The claim key the panel is keyed by is this project's
+      // own base64 of the claim's ENTRY hash, which is what the page itself
+      // announces — so it is read off the page rather than recomputed here,
+      // because recomputing it is how a check certifies its own arithmetic.
+      const claimRef = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="toggle-critiques"]');
+        return el ? el.closest('[data-claim-key]')?.dataset.claimKey ?? null : null;
+      });
+      // COUNTED, NOT COMPARED AS TEXT, and the first version of this check
+      // compared text — which was vacuous by the time it ran. It asked
+      // whether "No critiques yet." survived the announcement, and by Pass 10
+      // this claim has critiques from Passes 8 and 9, so the panel was never
+      // empty and the check's own condition made it `true` without looking at
+      // anything. A count of the rendered critique items can fail whether the
+      // list holds none or nine, which is the property the text version
+      // lacked. Found by arming the defect it exists to catch and watching it
+      // stay green.
+      const itemsBefore = await page.locator('.critique-panel .critique-item').count();
+      // A REAL CRITIQUE BEHIND THE REAL ANNOUNCEMENT, and this is what makes
+      // the count check able to fail at all. Announcing something that does
+      // not exist would leave a live re-render finding the same list it
+      // already had — so a UI that re-read underneath the reader would score
+      // identically to one that marked, and the check measuring the
+      // difference would be measuring nothing. Agent 2 files first; the
+      // announcement then says something true.
+      await critiqueAs(agent2, seedAction, 'Phenomenological');
+      await page.waitForTimeout(2500);
+      pendingRemote.push(JSON.stringify({
+        t: 'epistemic-resonance/critique-arrived', claim: claimRef,
+      }));
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="critiques-arrived"]').length > 0,
+        { timeout: 20000 },
+      ).catch(() => {});
+      check(`an announcement about the OPEN panel's claim is marked (${claimRef ? 'key read off the page' : 'KEY NOT FOUND'})`,
+        (await page.locator('[data-testid="critiques-arrived"]').count()) === 1);
+
+      // 1.32's DECISION, AND THE ONLY CHECK IN THIS PASS THAT IS ABOUT IT.
+      // The marker must not have brought the critique in with it: a surface
+      // that rewrites itself while somebody is deciding what to say about it
+      // is what §4.4 cares about most, and a live re-render would pass every
+      // check above while committing exactly that.
+      const itemsAfter = await page.locator('.critique-panel .critique-item').count();
+      check('THE LIST ITSELF DID NOT CHANGE UNDERNEATH THE READER — the marker '
+        + `says something arrived, it does not bring it in (${itemsBefore} item(s) before, ${itemsAfter} after)`,
+        itemsAfter === itemsBefore);
+      check('and the marker carries NO COUNT, which would be the tally the '
+        + 'pull half refused arriving by the back door',
+        !/\b\d+\b/.test(await textIfThere(page, '[data-testid="critiques-arrived"]')));
+      check('it offers a re-read the READER chooses to take',
+        (await page.locator('[data-testid="critiques-reread"]').count()) === 1);
+      // AND THE RE-READ ACTUALLY RE-READS. Without this the two checks above
+      // are satisfied by a marker that is decorative: a line that appears and
+      // a button that does nothing would pass both. Taking it must produce
+      // the critique the announcement was about, and must clear the marker —
+      // which is the whole shape of the decision, the reader choosing when
+      // the text under them changes.
+      // GUARDED, because a run that FAILS must still report. Armed against
+      // its own defect (a live re-render leaves no marker to click), this
+      // click threw and took the rest of the pass with it — so the two
+      // checks below never ran and the log ended in a stack trace instead of
+      // a list of reds. A harness that cannot survive the bug it is testing
+      // for reports less the moment it matters most.
+      await tryAct(() => page.locator('[data-testid="critiques-reread"]')
+        .click({ timeout: 15000 }));
+      await page.waitForFunction(
+        (n) => document.querySelectorAll('.critique-panel .critique-item').length > n,
+        itemsBefore, { timeout: 20000 },
+      ).catch(() => {});
+      const itemsReread = await page.locator('.critique-panel .critique-item').count();
+      check(`taking the re-read brings the critique in (${itemsBefore} -> ${itemsReread})`,
+        itemsReread > itemsBefore);
+      check('and clears the marker, so it is dismissed by being ACTED ON '
+        + 'rather than by being closed',
+        (await page.locator('[data-testid="critiques-arrived"]').count()) === 0);
+
+      // THE SENDING HALF, on the same page: publishing a critique announces
+      // it. Checked last because it changes the panel this pass was reading.
+      await page.locator('[data-testid="critique-form"] textarea').first()
+        .fill('A critique filed from inside the Moss arm, to prove it announces.');
+      await clickByName(page, 'Add critique');
+      await page.waitForTimeout(4000);
+      check(`publishing a critique ANNOUNCES it to the group (${remoteSent.length} sent)`,
+        remoteSent.length >= 1);
+      const announced = remoteSent.length
+        ? JSON.parse(remoteSent[remoteSent.length - 1]) : {};
+      check('and the announcement carries a claim reference and nothing else — '
+        + 'no critique, no author, no count',
+        announced.claim === claimRef
+        && Object.keys(announced).sort().join(',') === 'claim,t');
+      await page.close();
+    }
+
+    // =====================================================================
     log('\n=== Pass 7: constraint (1) — the standalone app is unaffected ===');
     {
       const page = await browser.newPage({ viewport: { width: 420, height: 900 } });

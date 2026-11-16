@@ -725,7 +725,7 @@ function wireSignals(): void {
         // host notice and the in-app line cannot drift into naming the same
         // person two ways.
         body: from
-          ? `${short(bytesFromB64(from))} filed a ${String(critiqued.mode ?? 'critique')}.`
+          ? `${agentLabel(bytesFromB64(from))} filed a ${String(critiqued.mode ?? 'critique')}.`
           : `A ${String(critiqued.mode ?? 'critique')} was filed.`,
       });
     }
@@ -733,6 +733,31 @@ function wireSignals(): void {
 }
 /** which claims currently have their critique panel expanded. */
 const expandedClaims = new Set<string>();
+
+/** claims a Moss group member has told us gained a critique while we were
+ *  looking at them — OPEN-WORK 1.32, and this set IS the decision that row
+ *  carried.
+ *
+ *  A MARKER, NOT A REFRESH. 6.24 left open the one case opening a panel does
+ *  not cover: a panel somebody is ALREADY reading when a critique lands. The
+ *  two options it named were polling — a continuous read nobody asked for —
+ *  and saying nothing. Moss's remote signal offers a third, an event instead
+ *  of a timer, but taking it as a live re-render would trade a stale surface
+ *  for a moving one, and a surface that changes while somebody decides what
+ *  to say about it is what §4.4 cares about most. Arriving critiques
+ *  appearing silently mid-read is a DIFFERENT defect from stale ones, not an
+ *  improvement on them.
+ *
+ *  So the signal sets a flag, the flag draws a line the reader can act on,
+ *  and the re-read happens when THEY ask for it. The same shape 1.30 settled
+ *  on one row earlier: reach somebody without taking an interruption a
+ *  disagreement has not earned.
+ *
+ *  MOSS ARM ONLY, and that ceiling is why 1.32 is its own row rather than a
+ *  fix to 6.24. Every pilot participant runs the standalone build, which has
+ *  no group, no remote signal and nobody to hear from — 6.24's sub-decision
+ *  is NOT closed by this and must not be recorded as closed by it. */
+const critiqueArrived = new Set<string>();
 
 /** claim's own base64 entry-hash key -> the assessments filed against
  * it, loaded alongside its critiques.
@@ -1038,6 +1063,84 @@ const HASH_TAG_CHARS = 4;
  *  change without breaking a round trip. */
 function short(bytes: Uint8Array): string {
   return b64(bytes).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12) + '…';
+}
+
+
+/** base64 agent key -> the group-vouched name the host gave for it, or `null`
+ *  for "asked, nothing came back". OPEN-WORK 1.31.
+ *
+ *  `null` AND ABSENT ARE DIFFERENT AND BOTH MEAN "SHOW THE KEY". Absent is
+ *  "not asked yet", `null` is "asked and the host had nothing" — the
+ *  distinction exists so `primeNames` does not ask again on every render, and
+ *  it is deliberately invisible on screen, because a reader must not be shown
+ *  a difference between a person with no profile and a profile that has not
+ *  reached this conductor. See `WeaveHost.participantName`.
+ *
+ *  CLEARED WITH THE REST OF THE CACHES on disconnect, because a name is the
+ *  host's claim about an agent in ONE group and carrying it across a
+ *  reconnection would outlive the thing that vouched for it. */
+const agentNames = new Map<string, string | null>();
+
+/** Resolve names for a set of agents, once each, then re-render.
+ *
+ *  BEFORE THE BYLINES ARE READ, NOT UNDERNEATH THEM. Every caller is an
+ *  already-async load that fills a cache and then renders, so names are in
+ *  hand by the time anything paints — which is the same rule 1.32's marker
+ *  follows one function below, and for the same reason: a surface that
+ *  rewrites itself while somebody reads it is the defect §4.4 cares about
+ *  most, and it would be a poor joke to commit it with the byline while
+ *  carefully avoiding it with the critique.
+ *
+ *  A SINGLE RE-RENDER AT THE END, not one per name. Ten bylines resolving
+ *  independently is ten repaints of the same list.
+ *
+ *  NO-OP OFF THE MOSS ARM, which is most of the time and by design: the
+ *  standalone build every pilot participant runs has no host to ask, so this
+ *  returns immediately and `agentLabel` keeps rendering exactly what it
+ *  rendered before 1.31 existed. */
+async function primeNames(agents: Uint8Array[]): Promise<void> {
+  const host = appletHost;
+  if (!host) return;
+  const wanted = new Map<string, Uint8Array>();
+  for (const agent of agents) {
+    const key = b64(agent);
+    if (!agentNames.has(key) && !wanted.has(key)) wanted.set(key, agent);
+  }
+  if (wanted.size === 0) return;
+  // Marked BEFORE the awaits, so a second load overlapping this one does not
+  // ask the host again for the same agents. A name that fails to resolve stays
+  // `null` until the caches are cleared, which is the right duration: the
+  // thing that would change the answer is a reconnection.
+  for (const key of wanted.keys()) agentNames.set(key, null);
+  await Promise.all([...wanted].map(async ([key, agent]) => {
+    const name = await host.participantName(agent);
+    if (name !== null) agentNames.set(key, name);
+  }));
+  render();
+}
+
+/** How an AGENT is written on screen: the key, and the host's name for it
+ *  when there is one. OPEN-WORK 1.31's decision, in one function.
+ *
+ *  THE KEY IS ALWAYS THERE AND IS WHAT THE CRITIQUE IS HELD TO. A nickname is
+ *  something a person chooses and can change, so a byline that said only a
+ *  name would make a WEAKER claim than one that said a key while looking to a
+ *  reader like a stronger one. Both on screen needs a rule about which one is
+ *  binding, and the rule is: the key binds, the name helps you read it. That
+ *  is why the name comes FIRST and the key is not abbreviated further — the
+ *  name is the thing a reader scans, the key is the thing they can check.
+ *
+ *  NOT USED FOR HASHES. `short()` still renders claims, questions and
+ *  entries; only an agent has a name, and routing a hash through here would
+ *  be a lookup that can only ever miss.
+ *
+ *  THE SEPARATOR IS A MIDDLE DOT and not parentheses or "aka", because this
+ *  string is read inside sentences that already carry their own punctuation
+ *  ("flagged by", "founded by") and a bracket inside those reads as an
+ *  aside — which a byline is not. */
+function agentLabel(bytes: Uint8Array): string {
+  const name = agentNames.get(b64(bytes));
+  return name ? `${name} · ${short(bytes)}` : short(bytes);
 }
 
 
@@ -1417,12 +1520,23 @@ function renderHeader(): HTMLElement {
     meta.className = 'header-meta';
     const status = document.createElement('div');
     status.className = 'status connected';
-    status.textContent = `Connected · ${short(connection.myAgentPubKey)}`;
+    status.textContent = `Connected · ${agentLabel(connection.myAgentPubKey)}`;
     meta.appendChild(status);
     const disconnectBtn = document.createElement('button');
     disconnectBtn.className = 'link-button';
     disconnectBtn.textContent = 'Disconnect';
-    disconnectBtn.onclick = () => { connection = null; claims = []; frictionStatus = null; render(); };
+    disconnectBtn.onclick = () => {
+      connection = null;
+      claims = [];
+      frictionStatus = null;
+      // ROW 1.31 — a name is the HOST's claim about an agent inside one
+      // group, vouched for by the Moss instance this connection belongs to,
+      // so it must not outlive it. Every other agent-keyed cache in this
+      // module is cleared by `loadClaims`; this one is not, because it is the
+      // only one whose authority is the host rather than the DHT.
+      agentNames.clear();
+      render();
+    };
     meta.appendChild(disconnectBtn);
     header.appendChild(meta);
     if (frictionStatus) header.appendChild(renderFrictionMeter(frictionStatus));
@@ -2018,7 +2132,7 @@ function renderByAuthorTab(): HTMLElement {
       line.className = 'hint';
       line.setAttribute('data-testid', 'critique-notice');
       line.setAttribute('data-critique', notice.critiqueHash);
-      const who = notice.from ? short(bytesFromB64(notice.from)) : 'somebody';
+      const who = notice.from ? agentLabel(bytesFromB64(notice.from)) : 'somebody';
       line.textContent =
         `${who} critiqued something you wrote \u2014 ${notice.mode}. `
         + 'Open the claim to read it.';
@@ -2233,6 +2347,12 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   const key = b64(claim.entryHash);
   const card = document.createElement('article');
   card.className = 'claim-card';
+  // The key this claim's panels, caches and 1.32 announcements are all keyed
+  // by, put on the card so a harness can READ it rather than recompute it.
+  // A check that derives the key itself is a check that can agree with a bug
+  // by making the same mistake twice — `applet-view.mjs` Pass 10 reads this
+  // one and announces against it.
+  card.dataset.claimKey = key;
 
   const content = document.createElement('p');
   content.className = 'claim-content';
@@ -2250,7 +2370,7 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   // is a shortcut rather than the only route.
   const authorBtn = document.createElement('button');
   authorBtn.className = 'author-link';
-  authorBtn.textContent = short(claim.entry.author);
+  authorBtn.textContent = agentLabel(claim.entry.author);
   authorBtn.title = 'See what else this agent has claimed';
   authorBtn.onclick = () => {
     activeTab = 'by-author';
@@ -2512,7 +2632,7 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     kind.textContent = pattern.entry.kind;
     flag.appendChild(kind);
     const detail = document.createElement('span');
-    detail.textContent = ` flagged by ${short(pattern.entry.author)} — ${pattern.entry.rationale}`;
+    detail.textContent = ` flagged by ${agentLabel(pattern.entry.author)} — ${pattern.entry.rationale}`;
     flag.appendChild(detail);
     card.appendChild(flag);
   }
@@ -3680,7 +3800,7 @@ function renderAssessmentPanel(claim: DecodedRecord<Claim>): HTMLElement | null 
     const by = document.createElement('button');
     by.className = 'link-button assessment-assessor';
     by.dataset.testid = 'assessment-assessor';
-    by.textContent = short(assessment.entry.assessor);
+    by.textContent = agentLabel(assessment.entry.assessor);
     by.title = 'Read this agent’s other claims';
     // THE TAB SWITCH WAS MISSING HERE, found 2026-11-11 while giving the
     // critique beside it the same byline (6.18). This read the assessor's
@@ -3757,6 +3877,32 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     panel.appendChild(stale);
   }
 
+  // ROW 1.32 — something landed while this panel was open. Placed beside the
+  // stale notice above because the two are the same kind of sentence (this
+  // list is not what is on the DHT right now) arriving by different routes,
+  // and a reader who has both should read them together.
+  //
+  // THE RE-READ IS A BUTTON, which is the whole decision: the reader chooses
+  // when the text under them changes. `loadCritiques` already clears the flag
+  // on success, so the line disappears by being acted on rather than by being
+  // dismissed.
+  if (critiqueArrived.has(key)) {
+    const arrived = document.createElement('p');
+    arrived.className = 'hint arrived-notice';
+    arrived.dataset.testid = 'critiques-arrived';
+    // No count. A number here would be a tally of who is objecting most,
+    // which is the ordering Invariant #1 refuses — and the signal carries no
+    // count to show even if one were wanted.
+    arrived.textContent = 'A new critique arrived while you were reading. ';
+    const reread = document.createElement('button');
+    reread.className = 'link-button';
+    reread.dataset.testid = 'critiques-reread';
+    reread.textContent = 'Read it';
+    reread.onclick = () => { void loadCritiques(claim); };
+    arrived.appendChild(reread);
+    panel.appendChild(arrived);
+  }
+
   const list = critiquesByClaim.get(key);
   if (list === undefined) {
     const loading = document.createElement('p');
@@ -3818,7 +3964,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       const by = document.createElement('button');
       by.className = 'link-button critique-author';
       by.dataset.testid = 'critique-author';
-      by.textContent = short(critique.entry.author);
+      by.textContent = agentLabel(critique.entry.author);
       by.title = 'Read this agent’s other claims';
       by.onclick = () => {
         // The tab switch is part of the affordance rather than a nicety: a
@@ -4114,7 +4260,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
     const by = document.createElement('button');
     by.className = 'link-button critique-author';
     by.dataset.testid = 'critique-author';
-    by.textContent = short(reply.entry.author);
+    by.textContent = agentLabel(reply.entry.author);
     by.title = 'Read this agent\u2019s other claims';
     by.onclick = () => {
       activeTab = 'by-author';
@@ -4365,6 +4511,13 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
       markDone('wrote-critique');
       textarea.value = '';
       await loadCritiques(claim);
+      // ROW 1.32, the sending half. AFTER the write and after our own
+      // re-read, so nobody is told to look at something that is not there
+      // yet — and fire-and-forget, so a group with nobody online costs this
+      // path nothing. The claim's key is the one the recipient's panel is
+      // keyed by; a reply targets a critique but belongs to the same claim's
+      // panel, which is why `claim` is read here rather than `opts.target`.
+      void appletHost?.announceCritique(b64(claim.entryHash));
       // Every critique spends a unit of the SWO budget (create_critique
       // creates a SynapticLink), so the meter is re-read rather than
       // decremented locally — the conductor's own count is authoritative.
@@ -4418,6 +4571,16 @@ async function loadClaims(domain: string, fromTheBox = false) {
   // generation by the time the stores are emptied.
   browseGeneration += 1;
   critiquesByClaim.clear();
+  // ROW 1.32 — a marker says "the list you are reading has moved on", and
+  // this clear is the moment every list on screen is rebuilt anyway, so a
+  // flag surviving it would point at a panel that no longer exists.
+  //
+  // `agentNames` IS DELIBERATELY NOT CLEARED HERE. A name is keyed by agent
+  // and says nothing about which domain is being browsed, so emptying it on
+  // every domain read would re-ask the host for the same people on the way
+  // back to a domain just left. It is cleared where the thing that vouched
+  // for it goes away — the disconnect handler.
+  critiqueArrived.clear();
   assessmentsByClaim.clear();
   expandedClaims.clear();
   antibodiesByClaim.clear();
@@ -4477,6 +4640,10 @@ async function loadClaims(domain: string, fromTheBox = false) {
     // — it used to advance the tour on a conductor that was down.
     markDone('browsed-domain');
     rememberVisited(domain);
+    // ROW 1.31 — the claim cards' own bylines, resolved alongside the
+    // critique bylines rather than only inside a panel somebody opens. A
+    // reader deciding WHICH claim to open is reading authors too.
+    void primeNames(claims.map((c) => c.entry.author));
   } catch (e) {
     browseError = `Could not read claims for "${domain}": `
       + (e instanceof Error ? e.message : String(e));
@@ -4762,6 +4929,16 @@ async function loadCritiques(claim: DecodedRecord<Claim>) {
   const decoded = decodeRecords<Critique>(records);
   critiquesByClaim.set(key, decoded);
   critiqueRefreshFailed.delete(key);
+  // ROW 1.32. The marker is cleared by the re-read it asks for, and ONLY on
+  // success — the failure path above returns before this, so a reader whose
+  // re-read failed keeps both the stale notice and the knowledge that
+  // something is missing, rather than losing the second to the first.
+  critiqueArrived.delete(key);
+  // ROW 1.31. Before the render, so the bylines below paint with names
+  // already in them rather than growing one a moment later. `primeNames`
+  // re-renders itself when the host answers; off the Moss arm it returns
+  // immediately and nothing here changes.
+  void primeNames(decoded.map((c) => c.entry.author));
   render();
   void loadConductances(claim, decoded);
   void loadAssessments(claim);
@@ -5315,7 +5492,7 @@ function renderLensBuilder(membrane: DecodedRecord<Membrane>): HTMLElement {
     label.appendChild(cb);
     const name = document.createElement('span');
     name.textContent = connection && b64(member) === b64(connection.myAgentPubKey)
-      ? `${short(member)} (you)` : short(member);
+      ? `${agentLabel(member)} (you)` : agentLabel(member);
     label.appendChild(name);
     rootBox.appendChild(label);
     checkboxes.push([cb, member]);
@@ -6230,7 +6407,7 @@ function renderSpeciesCard(species: DecodedRecord<CritiqueSpecies>, depth: numbe
 
   const proposer = document.createElement('p');
   proposer.className = 'species-proposer';
-  proposer.textContent = `proposed by ${short(species.entry.proposer)}`;
+  proposer.textContent = `proposed by ${agentLabel(species.entry.proposer)}`;
   card.appendChild(proposer);
 
   return card;
@@ -6701,7 +6878,7 @@ function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
 
   const meta = document.createElement('div');
   meta.className = 'claim-meta';
-  meta.textContent = `founded by ${short(membrane.entry.creator)}`;
+  meta.textContent = `founded by ${agentLabel(membrane.entry.creator)}`;
   card.appendChild(meta);
 
   // What this domain demands of anyone working in it. This is the
@@ -6782,7 +6959,7 @@ function renderMembraneCard(membrane: DecodedRecord<Membrane>): HTMLElement {
         li.className = 'member-row';
         li.dataset.agent = b64(member);
         const who = document.createElement('span');
-        who.textContent = b64(member) === me ? `${short(member)} (you)` : short(member);
+        who.textContent = b64(member) === me ? `${agentLabel(member)} (you)` : agentLabel(member);
         li.appendChild(who);
 
         if (activeLens) {
@@ -7128,7 +7305,7 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
     // moving between nodes hears who wrote each one, which is the same
     // information the sighted reader gets from the list — not a lesser
     // version of it.
-    const by = `by ${short(node.author)}`;
+    const by = `by ${agentLabel(node.author)}`;
     const label = node.kind === 'claim'
       ? `Claim ${by}: ${node.content}`
       : `${node.mode} critique at level ${node.depth} ${by}: ${node.content}`;
@@ -7168,7 +7345,7 @@ function renderCritiqueGraph(claim: DecodedRecord<Claim>): HTMLElement {
     const by = document.createElement('button');
     by.className = 'link-button critique-author';
     by.dataset.testid = 'graph-node-author';
-    by.textContent = short(node.entry.author);
+    by.textContent = agentLabel(node.entry.author);
     by.title = 'Read this agent\u2019s other claims';
     by.onclick = () => {
       activeTab = 'by-author';
@@ -7991,6 +8168,22 @@ async function bootApplet(): Promise<void> {
   // this Tool's own happ before it rendered anything.
   connection = HolochainConnection.fromAppClient(got.appClient, config);
   wireSignals();
+  // ROW 1.32, the receiving half. Registered once, for the life of the
+  // applet — the unsubscribe is dropped on purpose, because this listener
+  // outlives every panel and there is no teardown path in a view the host
+  // destroys wholesale.
+  //
+  // A SIGNAL FOR A PANEL NOBODY HAS OPEN IS DROPPED, which is deliberate and
+  // is what keeps this from becoming a notification channel by accident:
+  // 6.15 and 1.30 are how somebody is TOLD about a critique, and they are
+  // gated by a decision this must not route around. This only ever answers
+  // the narrower question 6.24 left open — is the list I am looking at
+  // still current — so it speaks only about panels that are being looked at.
+  got.host.onCritiqueAnnounced((claimRef) => {
+    if (!expandedClaims.has(claimRef)) return;
+    critiqueArrived.add(claimRef);
+    render();
+  });
   markDone('connected');
   if (appletSurfaceNow === 'creatable') activeTab = 'new-claim';
   render();

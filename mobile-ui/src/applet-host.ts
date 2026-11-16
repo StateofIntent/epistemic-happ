@@ -37,6 +37,7 @@ import { WeaveClient, AppletServices, isWeaveContext } from '@theweave/api';
 import { encodeHashToBase64, decodeHashFromBase64, type AppClient } from '@holochain/client';
 import {
   CONNECT_TIMEOUT_MS, CREATABLE_TYPES, appletSurface, hrlFromHostWal,
+  encodeCritiqueArrived, decodeCritiqueArrived,
   type AppletSurface, type AppletTarget, type HostContext, type Hrl, type WeaveHost,
 } from './applet';
 
@@ -294,6 +295,92 @@ function buildHost(client: WeaveClient, surface: AppletSurface): WeaveHost {
           timestamp: Date.now(),
         }]);
       } catch { /* a host that declines is not a failure — see above */ }
+    },
+
+    // OPEN-WORK 1.31. `profilesClient` is on `RenderInfo` itself, not behind a
+    // call, and sits on the SAME object `groupProfiles` is read from eleven
+    // lines above — which is the contrast that made this a gap rather than a
+    // tidy-up: the group had a name on screen and the people in it did not.
+    //
+    // `getAgentProfile` RETURNS AN `EntryRecord<Profile>`, not a `Profile`.
+    // The nickname is `.entry.nickname`, and reading `.nickname` off the
+    // record yields `undefined` — a silent wrong answer that renders as a
+    // missing name rather than as an error, which is this repository's
+    // recurring failure shape and is why the path is written out here.
+    //
+    // LOCAL-ONLY ON PURPOSE, which is the library's own default and is stated
+    // rather than inherited. A byline resolves per agent on a screen that can
+    // hold many, and a network `get` each would put a round trip between a
+    // reader and a list they are already looking at. Inside a Moss group a
+    // member's profile is gossiped within the group DNA and is very likely
+    // present; when it is not, the byline shows the key, which is what it
+    // showed before this existed. The cost of being wrong is a missing aid,
+    // never a missing attribution.
+    //
+    // EVERY FAILURE IS `null`. The cross-group arm carries no profiles client
+    // at all (`applet.ts` documents that union), an older host may not have
+    // one, and the call itself can reject. None of those is distinguishable
+    // to a caller and none of them should be — see the interface comment on
+    // why telling them apart would mean making a claim about a person out of
+    // a cache miss.
+    participantName: async (agent) => {
+      const profiles = appletView?.profilesClient;
+      if (!profiles) return null;
+      try {
+        const record = await profiles.getAgentProfile(agent, true);
+        const nickname = record?.entry?.nickname;
+        return typeof nickname === 'string' && nickname.length > 0 ? nickname : null;
+      } catch {
+        return null;
+      }
+    },
+
+    // OPEN-WORK 1.32. `sendRemoteSignal` is fire-and-forget to group members
+    // who are ONLINE, writes to no chain, and is a different mechanism from
+    // the protocol's `emit_signal` — which 6.24 established reaches only the
+    // LOCAL conductor's websocket clients and so can never carry a remote
+    // agent's publication across.
+    //
+    // THE ENCODING IS UTF-8 JSON RATHER THAN MSGPACK, and the doc comment
+    // suggesting msgpack is a suggestion: the parameter is `Uint8Array` and
+    // nothing in the host inspects it. JSON keeps the codec in `applet.ts`
+    // where it is pure and exercisable off a host, and the payload is two
+    // short strings — the size argument msgpack would win does not arise.
+    //
+    // SWALLOWED ON FAILURE, same contract as `notify`. An announcement that
+    // does not go out costs a reader a marker they would have got; the
+    // critique itself is already on the chain by the time this is called, so
+    // nothing is lost that a re-read does not recover.
+    announceCritique: async (claimRef) => {
+      try {
+        await client.sendRemoteSignal(new TextEncoder().encode(encodeCritiqueArrived(claimRef)));
+      } catch { /* ephemeral by contract — see above */ }
+    },
+
+    // THE RECEIVING HALF. Returns the host's own `UnsubscribeFunction`.
+    //
+    // THE CHANNEL IS SHARED WITH EVERY OTHER TOOL IN THE GROUP, so a payload
+    // that is not ours is the ORDINARY case. Anything that does not decode is
+    // dropped in silence by `decodeCritiqueArrived` — not logged, because a
+    // console line per signal from a neighbouring Tool is a log that teaches
+    // its reader to stop reading it.
+    //
+    // DECODING BYTES CANNOT THROW PAST THIS. `TextDecoder` with the default
+    // (non-fatal) setting substitutes replacement characters rather than
+    // raising, so malformed UTF-8 arrives as a string that fails `JSON.parse`
+    // inside the codec, which already answers `null`. The try/catch is kept
+    // anyway for the one thing outside that: a host handing a payload that is
+    // not a `Uint8Array` at all.
+    onCritiqueAnnounced: (cb) => {
+      return client.onRemoteSignal((payload) => {
+        let claimRef: string | null = null;
+        try {
+          claimRef = decodeCritiqueArrived(new TextDecoder().decode(payload));
+        } catch {
+          return;
+        }
+        if (claimRef !== null) cb(claimRef);
+      });
     },
 
     // THE MANDATORY ONE. `resolve`, `reject` and `cancel` are passed INTO the
