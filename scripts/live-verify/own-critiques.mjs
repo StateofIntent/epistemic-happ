@@ -10,15 +10,24 @@
 // notification, discussions might fade simply because the author doesn't know
 // someone responded, nor does the one who wrote the critique."
 //
-// MEASURED, AND IT IS AN ASYMMETRY RATHER THAN A MISSING FEATURE.
-// `create_claim` emits a signal; `create_critique` emits nothing at all. So
-// the one act this protocol exists to carry is the one act that announces
-// itself to nobody. The first two critiques in the pilot were both delivered
-// over Telegram — a disagreement protocol whose disagreements arrive by side
-// channel has the side channel as a dependency.
+// WHAT THE ROW WAS OPENED ON, AND IT WAS AN ASYMMETRY RATHER THAN A MISSING
+// FEATURE. `create_claim` emitted a signal; `create_critique` emitted nothing
+// at all — so the one act this protocol exists to carry was the one act that
+// announced itself to nobody. The first two critiques in the pilot were both
+// delivered over Telegram, and a disagreement protocol whose disagreements
+// arrive by side channel has the side channel as a dependency.
 //
-// WHAT IS UNDER TEST IS THE PULL HALF ONLY. Push is 6.15's `[D]` and stays
-// undecided. Nothing here sends a signal or subscribes to one.
+// AND THAT ASYMMETRY IS GONE — BOTH HALVES, 2026-11-15. `create_critique`
+// emits `SignalPayload::NewCritique` locally (`06340c9`) and pushes
+// `PeerSignal::Critiqued` to the critiqued author (`43f7eac`), which is the
+// `[D]` TAKEN. The paragraph above is kept in the past tense as the row's
+// starting state, because this file's subject only makes sense beside it.
+//
+// WHAT IS UNDER TEST IS STILL THE PULL HALF ONLY, and that scope is unchanged:
+// nothing here sends a signal or subscribes to one. This used to say *"Push is
+// 6.15's `[D]` and stays undecided"*, which was still here two days after the
+// `[D]` was taken and the push built — a scope note that had quietly become a
+// claim about the protocol. Row 1.35's report found it on its first run.
 //
 // THE REASON GIVEN HERE WAS FALSE AND IS CORRECTED (2026-11-14). It said
 // `send_peer_signal` writes a permanent CapGrant per call on the SENDER's
@@ -28,9 +37,11 @@
 // as if it were the measurement. That harness asserts the opposite, and
 // `send_peer_signal` plainly writes nothing: one entry per agent to open a
 // channel, once, and zero per signal thereafter. **Push is not the expensive
-// branch.** What keeps the `[D]` open is the Invariant 1 question — whether an
-// attention ordering is a merit ordering — which is what this file's own
-// subject is, and it is untouched by the cost correction.
+// branch.** What kept the `[D]` open after that correction was the Invariant 1
+// question — whether an attention ordering is a merit ordering — which is this
+// file's own subject, and which the cost correction did not touch. It was
+// answered on 2026-11-15 by building the push with no ordering in it: a
+// `PeerSignal::Critiqued` carries a hash and a mode and ranks nothing.
 //
 // THE TWO FAKES THIS FILE HAS TO DEFEAT, and neither is a blank screen.
 //

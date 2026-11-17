@@ -315,10 +315,19 @@ async function main() {
   //
   // WHAT THIS SECTION DOES NOT CLAIM. `emit_signal` reaches the emitting
   // agent's own client and nobody else's, so none of this tells the CLAIM's
-  // author anything — that is `send_remote_signal`, 6.15's `[D]`, and it is
-  // not built. What is asserted here is that the three writes are now
-  // uniform, and that the bridge's refusal to mirror a critique is still a
-  // decision rather than an accident of nothing being emitted.
+  // author anything — that is `send_remote_signal`, and reaching it is not
+  // what this section tests. What is asserted here is that the three writes
+  // are now uniform, and that the bridge's refusal to mirror a critique is
+  // still a decision rather than an accident of nothing being emitted.
+  //
+  // THE SCOPE ABOVE STANDS; ITS OLD REASON DOES NOT. This used to say
+  // `send_remote_signal` was "6.15's `[D]`, and it is not built". The `[D]`
+  // was TAKEN and the push BUILT on 2026-11-15 (`43f7eac`), in the same
+  // `create_critique` this section watches — so the push is not absent, it is
+  // merely not what is under test HERE. Found by row 1.35's report on its
+  // first run, 2026-11-17, and the hit is honest: a harness that says a built
+  // thing does not exist is a harness a reader will trust about the thing it
+  // does cover.
   log('\n--- 3b. A critique, and the signal that did not exist before ---');
   const critBefore = raw.length;
   const critContent = 'The sample excludes everyone who stopped attending.';
