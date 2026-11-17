@@ -613,18 +613,39 @@ const replyOpen = new Set<string>();
  * filing the pilot's first critique: "when someone posts a critique, how does
  * the author of the claim find out? If there's no notification, discussions
  * might fade simply because the author doesn't know someone responded."
- * `create_claim` emits a signal and `create_critique` emits NOTHING, so the
- * one act this protocol exists to carry is the one act that announces itself
- * to nobody. The first two critiques in its history were both delivered over
- * Telegram.
+ * `create_claim` emitted a signal and `create_critique` emitted NOTHING, so
+ * the one act this protocol exists to carry was the one act that announced
+ * itself to nobody. The first two critiques in its history were both
+ * delivered over Telegram.
  *
- * WHY A COUNT AND NOT A NOTIFICATION. Push is the row's `[D]` half and stays
- * undecided, for a reason that is a cost rather than a taste:
+ * BOTH OF THOSE ARE PAST TENSE NOW, AND THIS PARAGRAPH WAS THE LAST PLACE
+ * STILL SAYING OTHERWISE (corrected 2026-11-17, found by row 1.35's report
+ * being extended after it could not see this one). `create_critique` emits
+ * `SignalPayload::NewCritique` locally (`06340c9`, 2026-11-15) and pushes
+ * `PeerSignal::Critiqued` to the critiqued author (`43f7eac`, the same day,
+ * which is 6.15's `[D]` TAKEN). This count is no longer the only way an
+ * author finds out; it is the durable way, and it is still the only one that
+ * works for an author who was not running when the critique landed.
+ *
+ * AND THE REASON THIS PARAGRAPH USED TO GIVE WAS A CLAIM THIS REPOSITORY HAD
+ * ALREADY MEASURED FALSE — THREE DAYS BEFORE THIS COMMENT WAS CORRECTED, AND
+ * IN THE ONE PLACE WHERE A DESIGN'S STATED REASON IS READ. It said
  * `send_peer_signal` writes a permanent CapGrant per call on the SENDER's
  * chain, so notifying on every critique would grow a critic's own chain in
- * proportion to how much they disagree — a per-act permanent cost on exactly
- * the behaviour the protocol wants more of. A read on the author's side
- * writes nothing and is the opposite trade.
+ * proportion to how much they disagree. **That was `peer-signal.mjs`'s
+ * NEGATIVE EVIDENCE entry read as if it were the measurement** — a defect
+ * somebody injected and watched go red — and it was corrected on 2026-11-14.
+ * `send_peer_signal` writes one entry per agent to open a channel, once, and
+ * zero per signal thereafter; `peer-signal.mjs` asserts that and `network.yml`
+ * gates it. **The sweep that corrected the harness did not reach the client**,
+ * which is [[sweep-adjacent-claims-not-just-the-one-you-came-for]] with the
+ * client as the adjacent claim.
+ *
+ * WHY A COUNT AS WELL AS A NOTIFICATION. A read on the author's side writes
+ * nothing and survives being offline, which a signal does not: `emit_signal`
+ * and `send_remote_signal` both reach a client that is running and nobody
+ * else. So the two halves are not competitors and never were — the cost
+ * argument that framed them as a trade was the false one.
  *
  * THE ABSENCE OF AN ENTRY IS NOT A ZERO, which is 6.13's lesson arriving in a
  * second costume. A claim with no entry here has not been asked about; a
@@ -2421,8 +2442,14 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
     line.setAttribute('data-testid', 'critique-count');
     line.dataset.count = String(n);
     // Says what happened, and does not say what to do about it. An
-    // instruction here would be the attention ordering the row's `[D]` half
-    // is still undecided about; a fact is not.
+    // instruction here would be an attention ordering — the Invariant 1
+    // question of whether ranking by how much a thing is disputed ranks it by
+    // merit — and a fact is not. This used to attribute that restraint to
+    // 6.15's `[D]` being undecided; the `[D]` was TAKEN on 2026-11-15 and the
+    // restraint outlived its reason, which is the better state for it to be
+    // in: it is a standing property of this screen now and not a placeholder.
+    // The push was built the same way, with no ordering in it — a
+    // `PeerSignal::Critiqued` carries a hash and a mode and ranks nothing.
     line.textContent = n === 0
       ? 'No critiques on this yet.'
       : n === 1
