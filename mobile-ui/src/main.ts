@@ -437,6 +437,18 @@ interface SampledRecord {
    *  real answer: a `Membrane` has a description, a `WorldlineTrace` has no
    *  prose at all, and inventing a line for it would be worse than a blank. */
   content: string | null;
+  /** ROW 6.26. The domain this record names, when it names one — a `Claim`
+   *  and a `Membrane` carry the field, a `WorldlineTrace` and a CapGrant do
+   *  not, and `null` is the honest answer for the rest.
+   *
+   *  A CRITIQUE IS THE CASE WORTH NAMING, because it looks like it should
+   *  have one and must not be given one: a `Critique` has a `target`, and the
+   *  domain a reader would want is the TARGET's. Resolving it means a network
+   *  read per record, this row is one navigation edge with no zome call, and
+   *  a guess would send the reader to the wrong place while looking right. So
+   *  a critique gets no link, and the absence is a true answer rather than a
+   *  missing feature. */
+  domain: string | null;
 }
 
 /** `entry_index` -> the integrity zome's own name for it.
@@ -5840,9 +5852,13 @@ function sampledRecord(record: any): SampledRecord {
       machinery: true,
       writtenAt: typeof content?.header?.timestamp === 'number' ? content.header.timestamp : null,
       content: null,
+      // Machinery names no domain, and this is not a read that failed — the
+      // chain's own bookkeeping has nowhere to go.
+      domain: null,
     };
   }
   let prose: string | null = null;
+  let domain: string | null = null;
   try {
     const entry = record?.entry?.Present ? decodeEntry(record.entry.Present.entry) : null;
     // `content` on a Claim/Critique/Evidence, `description` on a Membrane.
@@ -5850,8 +5866,16 @@ function sampledRecord(record: any): SampledRecord {
     // from the action — so this only picks a field to display.
     const candidate = entry?.content ?? entry?.description ?? null;
     prose = typeof candidate === 'string' && candidate.trim() ? candidate : null;
+    // ROW 6.26, and read the same way for the same reason: the field is taken
+    // if the entry has one, and nothing is concluded from its presence. A
+    // `Claim` and a `Membrane` both carry `domain`; an entry type this build
+    // predates might too, and that is fine — the link goes where the string
+    // says, which is the only place it could honestly go.
+    const where = entry?.domain ?? null;
+    domain = typeof where === 'string' && where.trim() ? where : null;
   } catch {
     prose = null;
+    domain = null;
   }
   return {
     entryIndex,
@@ -5864,6 +5888,7 @@ function sampledRecord(record: any): SampledRecord {
     machinery: false,
     writtenAt: typeof content?.header?.timestamp === 'number' ? content.header.timestamp : null,
     content: prose,
+    domain,
   };
 }
 
@@ -6095,6 +6120,49 @@ function renderPeriodWindow(
       // field inside the entry — see `SampledRecord`.
       when.textContent = new Date(r.writtenAt / 1000).toISOString().slice(0, 16).replace('T', ' ');
       li.appendChild(when);
+    }
+
+    // ROW 6.26 — the edge between 6.17 and 6.16, and neither covered it.
+    //
+    // 6.17 made this window DRAW its records instead of counting them, and
+    // 6.16 made a domain reachable again from the Domains side. A reader could
+    // therefore see that a claim of theirs exists in a window of their own
+    // history, and had no way to open the domain it lives in. Reported by the
+    // pilot's first publisher, 2026-11-17: "In wordline- would be great if
+    // that takes you straight to the actual Domain. Saves time?"
+    //
+    // IT IS NOT A CONVENIENCE, AND THE REPORTER'S OWN "SAVES TIME" UNDERSTATES
+    // IT. What it saves is retyping a domain string by hand — the act 6.12
+    // records going wrong once already, a wrong string sent to a participant
+    // and corrected after the fact, and the one 6.27 exists to be helpful
+    // after. A LINK CANNOT BE MISTYPED, so this removes a class of error and
+    // not a number of clicks.
+    //
+    // NEVER HIDDEN FOR AN UNFOUNDED DOMAIN, which is the one thing this row
+    // said to settle while building. Publishing does not require founding, so
+    // a claim's domain may have no `Membrane` behind it — and Browse will
+    // honestly show it empty, with 6.27's notice beside it. Hiding the link in
+    // that case would make the app's own history less navigable than a string
+    // the reader could have typed, and would make foundedness look like a
+    // precondition for reading your own work. So nothing here consults
+    // `membranes` at all.
+    //
+    // Same gesture as 6.12's breadcrumb on a claim card, deliberately: same
+    // class, same `loadClaims` call with `fromTheBox` false, which that
+    // function's own comment already describes as "following a domain from a
+    // card".
+    if (r.domain !== null) {
+      const where = document.createElement('button');
+      where.className = 'domain-link';
+      where.dataset.testid = 'period-record-domain';
+      where.textContent = r.domain;
+      where.title = 'Browse the claims in this domain';
+      where.onclick = () => {
+        activeTab = 'browse';
+        void loadClaims(r.domain!);
+      };
+      li.append(' · in ');
+      li.appendChild(where);
     }
 
     if (r.content !== null) {
