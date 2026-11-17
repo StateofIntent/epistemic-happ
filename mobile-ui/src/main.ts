@@ -2278,6 +2278,97 @@ function renderBrowseTab(): HTMLElement {
         + 'exact match, capitals and spaces included.';
     }
     list.appendChild(empty);
+    // ROW 6.27. The sentence above is true and it is not the answer. It warns
+    // about the RULE while the app is already holding the thing the reader
+    // wanted: `nearFoundedDomain` finds a founded domain differing only in
+    // capitals or spacing, and until now its only caller was the New Claim
+    // form's findability notice. The reader who mistypes a domain is on THIS
+    // screen, and this screen told them the rule and kept the answer.
+    //
+    // Reported by the pilot's first publisher, 2026-11-17: "If you accidently
+    // type in Mental health Reform compared to Mental Health Reform - it
+    // states no domains found. I get why, but it is I think inconvinient."
+    // They had already worked out the rule. What they were missing was which
+    // domain they meant.
+    //
+    // FOLDING THE LOOKUP IS NOT THE FIX AND IS NOT DONE HERE.
+    // `get_claims_by_domain` hashes `Path::from(format!("domain_{}", domain))`,
+    // so two spellings are two domains that cannot see each other, and a
+    // case-insensitive match would report a domain as findable under a string
+    // that reaches nothing — see `foundedDomain`'s own comment. This states a
+    // second domain exists; it never merges it with the first.
+    //
+    // FOUR STATES, FOR THE REASON 6.13 AND 6.25 BOTH ESTABLISHED. `membranes`
+    // being empty means "nobody founded anything" OR "nobody asked", and this
+    // screen does not ask on its own — so silence here would say "no near
+    // miss" when the truth is "never looked", which is the vacuous shape this
+    // repository has now paid for twice. The absence of a hint is therefore
+    // never how "no near miss" is expressed.
+    if (currentDomain && browseLoaded) {
+      const near = membranesLoaded ? nearFoundedDomain(currentDomain) : null;
+      const hint = document.createElement('p');
+      // `.hint` with the state in `data-state` and no per-state CSS, which is
+      // exactly how the New Claim form's findability notice does it: the state
+      // is for harnesses and the meaning is in the text.
+      hint.className = 'hint';
+      hint.setAttribute('data-testid', 'browse-near-miss');
+      if (membranesError) {
+        hint.dataset.state = 'unknown';
+        hint.textContent =
+          'Could not check whether a domain differing only in capitals or '
+          + 'spacing is founded, so this says nothing either way: '
+          + membranesError;
+      } else if (!membranesLoaded) {
+        hint.dataset.state = 'checking';
+        hint.textContent =
+          'Checking whether a domain differing only in capitals or spacing is '
+          + 'founded…';
+      } else if (near) {
+        hint.dataset.state = 'near';
+        hint.textContent =
+          `"${near.entry.domain}" IS founded — the same words, different `
+          + 'capitals or spacing. That is a different domain and its claims '
+          + 'will never appear here, so if that is the one you meant, this is '
+          + 'the string.';
+        // A SENTENCE STILL LEAVES THEM RETYPING IT, and retyping a domain
+        // string by hand is the act 6.12 records going wrong once already — a
+        // wrong string sent to a participant and corrected after the fact.
+        // This is 6.26's argument arriving one screen early: a link cannot be
+        // mistyped. Deliberately beyond the row's stated scope, for that
+        // reason and no other.
+        const go = document.createElement('button');
+        go.className = 'link-button';
+        go.setAttribute('data-testid', 'browse-near-miss-load');
+        go.textContent = `Load claims in "${near.entry.domain}"`;
+        // NOT `fromTheBox` — that flag means "the string is already in the
+        // input", and here it is not: the input holds the TYPO. Passing it
+        // would load the right domain and leave the wrong string on screen,
+        // which is this row's own confusion rebuilt one step later. The
+        // default seeds `domainDraft`, exactly as 6.16's chip click does.
+        go.onclick = () => loadClaims(near.entry.domain);
+        hint.appendChild(document.createElement('br'));
+        hint.appendChild(go);
+      } else {
+        hint.dataset.state = 'none';
+        // SAYS WHAT WAS CHECKED, WHICH IS NARROWER THAN WHAT THE READER MIGHT
+        // HEAR. `membranes` holds FOUNDED domains only, so a case-variant that
+        // somebody published in without founding is invisible to this check —
+        // and that is not a gap in the check, it is what 6.12 decided founding
+        // buys. Saying "no domain" instead of "no founded domain" would be
+        // this notice overclaiming in the one direction it can.
+        hint.textContent =
+          'No FOUNDED domain differs from this one only in capitals or '
+          + 'spacing. An unfounded one could not be looked for — nothing '
+          + 'lists it.';
+      }
+      list.appendChild(hint);
+      // Asked once, from the empty state only, and never retried after a
+      // failure — the guard the New Claim form's notice already uses, for the
+      // same reason: a notice that re-fires a failing read would turn a dead
+      // conductor into a flood. `readMembranes` renders on both paths, so the
+      // `checking` state above repaints itself without a watcher here.
+      if (!membranesLoaded && !membranesError && connection) void readMembranes();
+    }
   }
   for (const claim of claims) {
     list.appendChild(renderClaimCard(claim));

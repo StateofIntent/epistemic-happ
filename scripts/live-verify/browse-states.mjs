@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // ============================================================================
 // scripts/live-verify/browse-states.mjs — the four answers the Browse tab can
-// give, and the breadcrumb that says which domain a claim is in.
+// give, the breadcrumb that says which domain a claim is in, and the domain
+// the reader actually meant when they mistyped the capitals.
 //
 // WHY THIS EXISTS, and it is a measurement rather than a polish item. On
 // 2026-11-09 the shipped v0.3.3 desktop build was driven to find out whether a
@@ -73,7 +74,31 @@
 // UI and everything here will pass.
 // ============================================================================
 // ---------------------------------------------------------------------------
-// NEGATIVE EVIDENCE — this harness has been watched failing five times. 31
+// AND 6.27, THE NEAR MISS THE SCREEN WAS HOLDING AND NOT SAYING. The empty
+// state already warned that a domain is an exact match, which is TRUE and is
+// the rule rather than the answer — and the pilot's first publisher had worked
+// the rule out already: "If you accidently type in Mental health Reform
+// compared to Mental Health Reform - it states no domains found. I get why,
+// but it is I think inconvinient." What they could not get was WHICH domain
+// they meant, and `nearFoundedDomain` had been computing exactly that since
+// 6.12 — for one caller, on the New Claim form, which is not the screen where
+// a reader mistypes a domain.
+//
+// FOLDING THE LOOKUP IS NOT THE FIX AND IS NOT WHAT IS CHECKED HERE.
+// `get_claims_by_domain` hashes the domain string, so two spellings are two
+// domains that cannot see each other, and a case-insensitive match would
+// report a domain as findable under a string that reaches nothing. The notice
+// states that a second domain exists; it never merges it with the first, and
+// a check asserts it says so.
+//
+// FOUR STATES AGAIN, FOR THE REASON 6.13 ESTABLISHED AND 6.25 FOUND FOUR MORE
+// OF: `membranes` being empty means "nobody founded anything" OR "nobody
+// asked", so SILENCE would say "no near miss" when the truth is "never
+// looked". Every phase below therefore opens by asserting the notice is on
+// screen AT ALL, and the no-near-miss case is asserted to say so out loud.
+// Injection H is that exact defect, and one phase can see it.
+//
+// NEGATIVE EVIDENCE — this harness has been watched failing EIGHT times. 51
 // checks green on a live conductor; every figure below is a real run.
 //
 //   A. The screen this replaced, reverted wholesale — `git stash` of
@@ -119,6 +144,32 @@
 //   the condition that makes the chip count meaningful. Neither half is the
 //   test; the pair is.
 //
+//   F. 6.27 REVERTED WHOLESALE — `git checkout main -- mobile-ui/src/main.ts`,
+//   so the empty state is the old sentence and no notice exists.
+//   Result: 13 of 16 red. AND FOUR CONTROLS STAYED GREEN, every one of them a
+//   "does not say X" assertion that passes against text that does not exist:
+//   `does not name a domain it never managed to read`, `does not name the
+//   founded domain it did NOT match`, `nor does the typo spelling itself get
+//   reported as founded`, and `the near-miss notice is gone`. That is this
+//   file's own first lesson arriving in a new section, which is why every
+//   phase opens with a presence check — those are among the 13 that fall, and
+//   they are what make the four mean anything.
+//
+//   G. `loadClaims(near.entry.domain, true)` — the `fromTheBox` flag passed
+//   when the box holds the TYPO, which was the first version of the feature.
+//   Result: EXACTLY 1 red — `the box now holds the domain being shown, not the
+//   typo`. The check beside it, `following it lands on the founded domain's
+//   claims`, correctly STAYED GREEN: the claims do load and only the input is
+//   wrong. A content check cannot see a wrong input value, which is why the
+//   pair is asserted rather than the landing alone.
+//
+//   H. THE VACUOUS SHAPE THE ROW WARNED ABOUT: the notice appended only when
+//   it has something to report, so "I looked and found none" becomes silence.
+//   Result: EXACTLY 3 red, all in phase 6b, and EVERY OTHER PHASE STAYED FULLY
+//   GREEN — the near-miss path still works and the failure path still reports.
+//   6b is the only thing in this suite that can see it, and without it the
+//   silent version would ship looking identical to the correct one.
+//
 //   E. The two lists merged into one, the shape this file exists to refuse.
 //   Result: 3 red, including `the device-local half says on screen that it
 //   is device-local and losable` — because once merged there is no second
@@ -127,6 +178,7 @@
 // ---------------------------------------------------------------------------
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
+import { decode } from '@msgpack/msgpack';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CHROMIUM } from './chromium.mjs';
@@ -154,6 +206,13 @@ const DOMAIN_OTHER = `BrowseOther${STAMP}`;
 const DOMAIN_EMPTY = `BrowseEmpty${STAMP}`;
 const CONTENT_FULL = 'Published into the domain the Browse box loads.';
 const CONTENT_OTHER = 'Published into a second domain, so the breadcrumb has something to be wrong about.';
+// ROW 6.27. A FOUNDED domain, and the same string with its capitals flattened.
+// `.toLowerCase()` over a name whose tail is a timestamp changes only the
+// letters, so the two differ in case and in nothing else — which is the exact
+// pair the reporter hit, and narrower than a general typo.
+const DOMAIN_FOUNDED = `BrowseFounded${STAMP}`;
+const DOMAIN_FOUNDED_TYPO = DOMAIN_FOUNDED.toLowerCase();
+const CONTENT_FOUNDED = 'Published into the founded domain, so following the hint lands somewhere.';
 
 const PROMPT = 'Enter a domain above and load its claims.';
 
@@ -213,6 +272,25 @@ async function main() {
   await claim(agent, DOMAIN_FULL, CONTENT_FULL);
   await claim(agent, DOMAIN_OTHER, CONTENT_OTHER);
 
+  // ROW 6.27's world, founded through the zome so the screen has a real
+  // near miss to be right about rather than a fixture's idea of one.
+  log(`founding ${DOMAIN_FOUNDED} and publishing into it ...`);
+  const constitution = await agent.call('publish_constitution', {
+    agent: agent.me,
+    promises: [{ action: 'state my sources', domain: DOMAIN_FOUNDED, modality: null }],
+    conditions: [], published_at: Math.floor(Date.now() / 1000), expires_at: null,
+  });
+  await agent.call('create_membrane', {
+    domain: DOMAIN_FOUNDED,
+    description: 'Founded so the Browse hint has a founded near miss to name.',
+    required_promises: ['state my sources'],
+    validation_rules_hash: null,
+    creator: agent.me,
+    created_at: Math.floor(Date.now() / 1000),
+    constitution,
+  });
+  await claim(agent, DOMAIN_FOUNDED, CONTENT_FOUNDED);
+
   // The empty domain is empty according to the conductor, not according to
   // the screen. Without this the file would be asserting that a UI reports
   // emptiness correctly on a domain that might simply be unreadable.
@@ -222,6 +300,29 @@ async function main() {
     log('  SETUP FAILED: the domain chosen to be empty is not empty.');
     process.exit(1);
   }
+  // ROW 6.27's three controls. Without them this file would assert that a
+  // screen names a near miss correctly for domains whose real state nobody
+  // established: that the typo'd spelling is EMPTY (or the hint never renders
+  // at all, since it lives in the empty state), that the founded spelling IS
+  // founded, and that the typo'd one is NOT — because a hint that fired on an
+  // exact match would be reporting the domain you are already looking at.
+  const typoTruth = await agent.call('get_claims_by_domain', DOMAIN_FOUNDED_TYPO);
+  if (typoTruth.length !== 0) {
+    log(`  SETUP FAILED: ${DOMAIN_FOUNDED_TYPO} is not empty, so the hint would never render.`);
+    process.exit(1);
+  }
+  const foundedNow = await agent.call('get_membranes', null);
+  const foundedNames = foundedNow.map((r) => {
+    const entry = r?.entry?.Present?.entry;
+    try { return entry ? decode(entry).domain : null; } catch { return null; }
+  });
+  if (!foundedNames.includes(DOMAIN_FOUNDED) || foundedNames.includes(DOMAIN_FOUNDED_TYPO)) {
+    log('  SETUP FAILED: the founded/typo pair is not the pair this file needs —');
+    log(`  founded=${foundedNames.includes(DOMAIN_FOUNDED)} typo=${foundedNames.includes(DOMAIN_FOUNDED_TYPO)}`);
+    process.exit(1);
+  }
+  log(`get_membranes lists ${DOMAIN_FOUNDED} and not its lowercased spelling — the control.`);
+
   const fullTruth = await agent.call('get_claims_by_domain', DOMAIN_FULL);
   if (fullTruth.length !== 1) {
     log(`  SETUP FAILED: ${DOMAIN_FULL} holds ${fullTruth.length} claims, expected 1.`);
@@ -425,6 +526,136 @@ async function main() {
     check("and the followed domain's claims are what is on screen",
       followedText.includes(CONTENT_OTHER) && !followedText.includes(CONTENT_FULL));
 
+    // ---- 6. ROW 6.27 — the answer the screen was holding and not saying ---
+    //
+    // The empty state already warned that a domain is an exact match. That is
+    // true, it is the RULE, and the reporter had already worked the rule out
+    // for themselves: "I get why, but it is I think inconvinient." What they
+    // could not get was WHICH domain they meant — and `nearFoundedDomain` had
+    // been computing exactly that since 6.12, for one caller on another screen.
+    //
+    // EVERY CHECK HERE IS PAIRED, because this whole family fails by being
+    // SILENT. A notice that renders nothing looks identical to a notice that
+    // correctly found no near miss — 6.13's defect, and the four more 6.25
+    // found after it.
+    //
+    // HOW THE FAILURE IS REACHED, AND THE FIRST VERSION OF THIS PHASE GOT IT
+    // WRONG — caught by this harness on its first run, which is the only
+    // reason it is written down. It injected the failure here and asserted
+    // `unknown`, on the reasoning that nothing had read `get_membranes` yet so
+    // the notice's own cold-read guard would fire and fail. **It had already
+    // fired, in phase 4**: that phase browses an empty domain, which is
+    // exactly the state this notice lives in, so the read happened there and
+    // succeeded. The result was `state=none` — the notice correctly reporting a
+    // successful read nobody had noticed it making.
+    //
+    // TWO THINGS FOLLOW. The injection must therefore force a RE-read, and
+    // only the Domains tab's button does that (`loadMembranes` calls
+    // `readMembranes` unconditionally; the notice's own guard deliberately
+    // does not, so a dead conductor is not flooded). And phase 4's checks now
+    // silently depend on a membrane read they do not mention — which is fine
+    // and worth knowing: a `get_membranes` failure during phase 4 would show
+    // up there as this notice saying it could not check.
+    log('\n=== 6. The membrane read failing, told apart from finding nothing ===');
+    await page.evaluate(() => { window.__failZome = 'get_membranes'; });
+    await page.getByRole('button', { name: 'Domains', exact: true }).click();
+    await page.getByRole('button', { name: 'Load domains' }).first().click();
+    await page.waitForTimeout(2500);
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN_EMPTY);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForTimeout(3000);
+    check('the near-miss notice is on screen even when its read failed',
+      (await page.locator('[data-testid="browse-near-miss"]').count()) === 1);
+    const failState = await page.locator('[data-testid="browse-near-miss"]').first()
+      .getAttribute('data-state').catch(() => null);
+    check(`a failed membrane read is NOT reported as "none" (state=${failState})`,
+      failState === 'unknown');
+    const failText = await textOf(page, '[data-testid="browse-near-miss"]');
+    check('CONTROL: it says it could not check, rather than that nothing matched',
+      /could not check/i.test(failText));
+    check('CONTROL: and does not name a domain it never managed to read',
+      !failText.includes(DOMAIN_FOUNDED));
+    check('CONTROL: the empty answer is unaffected — one read failing is not the other',
+      (await page.locator('[data-testid="browse-empty"]').count()) === 1);
+
+    // Recovery through the same button, which is the only path that re-reads
+    // after a failure — by design, and realistic: the reader retries. Without
+    // this every phase below would stay 'unknown'.
+    await page.evaluate(() => { window.__failZome = null; });
+    await page.getByRole('button', { name: 'Domains', exact: true }).click();
+    await page.getByRole('button', { name: 'Load domains' }).first().click();
+    await page.waitForTimeout(3000);
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+
+    // ---- 6b. No near miss, said out loud rather than by silence ----------
+    log('\n=== 6b. No near miss, said out loud rather than by silence ===');
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN_EMPTY);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForTimeout(3000);
+    check('a domain with no founded near miss still renders the notice',
+      (await page.locator('[data-testid="browse-near-miss"]').count()) === 1);
+    const noneState = await page.locator('[data-testid="browse-near-miss"]').first()
+      .getAttribute('data-state').catch(() => null);
+    check(`and says it looked and found none (state=${noneState})`, noneState === 'none');
+    const noneText = await textOf(page, '[data-testid="browse-near-miss"]');
+    // `membranes` holds FOUNDED domains only, so this must not be heard as "no
+    // domain": an unfounded case-variant is invisible to it, and that is what
+    // 6.12 decided founding buys rather than a gap in this check.
+    check('CONTROL: and scopes itself to FOUNDED domains rather than overclaiming',
+      /founded/i.test(noneText));
+    check('CONTROL: and does not name the founded domain it did NOT match',
+      !noneText.includes(DOMAIN_FOUNDED));
+
+    // ---- 6c. The near miss, named ----------------------------------------
+    log('\n=== 6c. A domain differing only in capitals, NAMED rather than hinted at ===');
+    await page.locator('[data-testid="browse-domain-input"]').fill(DOMAIN_FOUNDED_TYPO);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForTimeout(3000);
+    check('a near miss is reported on screen at all',
+      (await page.locator('[data-testid="browse-near-miss"]').count()) === 1);
+    const nearState = await page.locator('[data-testid="browse-near-miss"]').first()
+      .getAttribute('data-state').catch(() => null);
+    check(`the notice says it FOUND one (state=${nearState})`, nearState === 'near');
+    const nearText = await textOf(page, '[data-testid="browse-near-miss"]');
+    // The failure this separates: "a similar domain exists" makes the reader
+    // hunt for it, which is the old sentence with more words in it.
+    check('and NAMES the founded domain, which is the thing the reader was missing',
+      nearText.includes(DOMAIN_FOUNDED));
+    check('CONTROL: and says the two are DIFFERENT domains rather than folding them',
+      /different domain/i.test(nearText));
+    check('CONTROL: the empty answer is still there, so the hint ADDS and does not replace',
+      (await page.locator('[data-testid="browse-empty"]').count()) === 1);
+    check('CONTROL: and this is not reported as a failure',
+      (await page.locator('[data-testid="browse-error"]').count()) === 0);
+    check('CONTROL: nor does the typo spelling itself get reported as founded',
+      !new RegExp(`"${DOMAIN_FOUNDED_TYPO}" IS founded`).test(nearText));
+
+    // ---- 6d. Following it through, and the box following with it ---------
+    //
+    // A sentence still leaves the string to be retyped, and retyping a domain
+    // by hand is the act 6.12 records going wrong once already — a wrong
+    // string sent to a participant and corrected after the fact. A link
+    // cannot be mistyped, which is 6.26's argument one screen early.
+    log('\n=== 6d. Following the hint, and the box following with it ===');
+    const goBtn = page.locator('[data-testid="browse-near-miss-load"]');
+    check('the hint is actionable rather than only informative', (await goBtn.count()) === 1);
+    if (await goBtn.count()) {
+      await goBtn.first().click();
+      await page.waitForTimeout(3000);
+    }
+    check("following it lands on the founded domain's claims",
+      (await textOf(page, '[data-testid="browse-claim-list"]')).includes(CONTENT_FOUNDED));
+    // THE DEFECT THIS CHECK EXISTS FOR, and it was in the first version of
+    // this feature: `loadClaims(domain, true)` means "the string is already in
+    // the input", and it is not — the input holds the TYPO. Passing it loads
+    // the right domain and leaves the wrong string on screen, which is this
+    // row's own confusion rebuilt one step later.
+    check('and the box now holds the domain being shown, not the typo',
+      (await valueOf(page, '[data-testid="browse-domain-input"]')) === DOMAIN_FOUNDED);
+    check('CONTROL: and the near-miss notice is gone, the domain being founded and non-empty',
+      (await page.locator('[data-testid="browse-near-miss"]').count()) === 0);
+
     check('CONTROL: the page raised no uncaught errors throughout',
       pageErrors.length === 0);
     if (pageErrors.length) for (const e of pageErrors) log(`    pageerror: ${e}`);
@@ -437,8 +668,10 @@ async function main() {
   if (failures === 0) {
     log('ALL CHECKS PASSED — the Browse tab tells a domain nobody has written');
     log('in apart from a read that never ran and a read that failed, says so');
-    log('while it is reading, advances the tour only on an answer, and every');
-    log('claim card names the domain it is in and navigates there.');
+    log('while it is reading, advances the tour only on an answer, every');
+    log('claim card names the domain it is in and navigates there, and a');
+    log('domain differing only in capitals is NAMED rather than hinted at —');
+    log('with "I looked and found none" said out loud rather than by silence.');
   } else {
     log(`${failures} CHECK(S) FAILED.`);
   }
