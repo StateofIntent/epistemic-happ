@@ -163,6 +163,24 @@ function walk(dir, out = []) {
   return out;
 }
 
+// A citation with NO ROW NUMBER — "the row's `[D]`", "this row's `[D]`". It
+// cannot be resolved against an owner column, because there is nothing to
+// resolve: which row "the row" means lives in a doc comment somewhere above, or
+// in the reader's head. THIS IS WHY THE REPORT MISSED THE WORST DEFECT IT HAS
+// FOUND — `main.ts:621` justified a design with "Push is the row's `[D]` half
+// and stays undecided", beside a cost claim this repository had measured FALSE
+// three days earlier, and the first version of this scan could not see either
+// because it was looking for a row id. So these are listed UNADJUDICATED: the
+// report says where to look and a human says which row.
+// NARROWED BY MEASUREMENT. The first pattern also matched a plain "the `[D]`",
+// and that returned five more hits of which NONE was a defect: inside a file
+// whose header names its row, "the `[D]`" is ordinary self-reference, and the
+// rows it referred to (6.23, 6.14) are genuinely open. What is worth flagging
+// is the possessive form — "THE ROW'S `[D]`" — because it points at an
+// external referent while giving no way to find it, which is the shape that
+// looks resolvable and is not. Both real defects are in that form.
+const BARE_CITE = /\b(?:the|this|that)\s+row(?:'s)?\s+own\s+(?:sub-)?`?\[D\]`?|\b(?:the|this|that)\s+row's\s+(?:sub-)?`?\[D\]`?/gi;
+
 function scan(files, rows) {
   const CITE = /(\d+\.\d+)'s (?:sub-)?`?\[D\]`?/g;
   const hits = [];
@@ -188,6 +206,35 @@ function scan(files, rows) {
     }
   }
   return { hits, citations };
+}
+
+/** Bare `[D]` citations beside words asserting openness. The SAME openness
+ *  filter as the resolved side, and on the tree before #510 it returned
+ *  exactly the two live defects and excluded the one legitimate historical
+ *  reference (`reading-a-thread.mjs`'s "the row's `[D]` WAS about where").
+ *  Two for two is not a measured false-positive rate and is not claimed as
+ *  one — three examples is an anecdote. It is reported as a look-here list. */
+function scanBare(files) {
+  const out = [];
+  for (const file of files) {
+    if (file === ROWS_FILE) continue; // the ledger says "the row" constantly, and means the row it is on
+    const raw = fs.readFileSync(file, 'utf-8');
+    const flat = normalise(raw);
+    for (const m of flat.matchAll(BARE_CITE)) {
+      const window = flat.slice(Math.max(0, m.index - WINDOW), m.index + m[0].length + WINDOW);
+      const asserts = OPENNESS.filter((p) => window.toLowerCase().includes(p));
+      if (asserts.length === 0) continue;
+      out.push({
+        file,
+        phrase: m[0].trim(),
+        asserts,
+        correcting: CORRECTING.test(neighbourhood(flat, m.index, m[0].length)),
+        line: (raw.slice(0, Math.max(0, raw.indexOf(m[0].trim()))).match(/\n/g) ?? []).length + 1,
+        window: window.trim(),
+      });
+    }
+  }
+  return out;
 }
 
 /** The citation's own sentence plus the one either side — the scope a
@@ -259,7 +306,18 @@ function main() {
       `${h.correcting ? ' [correction marker]' : ''}`);
   }
 
-  console.log('THIS IS A REPORT AND ALWAYS EXITS ZERO. It catches one of the four stale');
+  const bare = scanBare(files).filter((h) => !h.correcting);
+  if (bare.length > 0) {
+    console.log(`\nAnd ${bare.length} citation(s) of a \`[D]\` with NO ROW NUMBER, beside words asserting`);
+    console.log('it is open. UNADJUDICATED — there is no row id to resolve, so a human says which');
+    console.log('row each means. This is the class that hid the worst defect the report has found:');
+    for (const h of bare) {
+      console.log(`  ${h.file}:~${h.line}  "${h.phrase}" — ${h.asserts.map((a) => JSON.stringify(a)).join(', ')}`);
+      console.log(`    …${h.window.slice(0, 220)}…`);
+    }
+  }
+
+  console.log('\nTHIS IS A REPORT AND ALWAYS EXITS ZERO. It catches one of the four stale');
   console.log('blockers that motivated it — the cross-reference kind. It cannot know that a');
   console.log('person replied, that a measurement went stale, or that a citation is');
   console.log('historical. Those need a human re-reading the thing beside the work.');
