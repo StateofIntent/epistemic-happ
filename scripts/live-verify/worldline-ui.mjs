@@ -52,6 +52,10 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { CHROMIUM } from './chromium.mjs';
 
+// 6.26's control decodes membrane entries to assert this run's domain is NOT
+// founded — see §4b.
+import { decode } from '@msgpack/msgpack';
+
 const requireFromUi = createRequire(new URL('../../mobile-ui/package.json', import.meta.url));
 let chromium;
 try {
@@ -117,6 +121,27 @@ async function main() {
       confidence: 'Moderate', semantic_tags: [], source_mew: null,
     });
   }
+
+  // ROW 6.26's NEGATIVE INSTANCE, and it is the case a future change is most
+  // likely to get wrong. A `Critique` carries no `domain` of its own — it
+  // carries a `target` — so the domain a reader would want is the TARGET's,
+  // and resolving it means a network read per record. 6.26 is one navigation
+  // edge with no zome call, so a critique gets NO link, and §4b asserts that
+  // against a real critique rather than trusting the type. A critique targets
+  // an ENTRY hash while `create_claim` returns an ActionHash, hence the read
+  // back through the domain.
+  const seeded = await call('get_claims_by_domain', DOMAIN);
+  if (seeded.length === 0) {
+    log('\n  SETUP FAILED: the claims just published are not readable back.');
+    process.exit(1);
+  }
+  await call('create_critique', {
+    target: seeded[0].signed_action.hashed.content.data.entry_hash,
+    target_type: 'Claim', critique_mode: 'Methodological',
+    content: 'A critique has no domain of its own, which is what §4b is about.',
+    author: me, timestamp: nowMicros(),
+    replication_attempted: false, evidence_hashes: [], species: null,
+  });
 
   // The exact answer the UI must not depart from.
   await call('generate_worldline_trace', {
@@ -327,6 +352,147 @@ async function main() {
     await page.waitForTimeout(500);
     check('and clicking it again closes the window',
       await page.locator('[data-testid="period-window"]').count() === 0);
+
+    // ---- 4b. ROW 6.26 — a record in your history opens the domain it is in -
+    //
+    // 6.17 made this window DRAW its records instead of counting them, and
+    // 6.16 made a domain reachable again from the Domains side. So a reader
+    // could see that a claim of theirs exists in a window of their own history
+    // and had no way to open the domain it lives in. The pilot's first
+    // publisher asked for exactly that edge, 2026-11-17: "In wordline- would
+    // be great if that takes you straight to the actual Domain."
+    //
+    // WHAT MAKES THIS MORE THAN A CONVENIENCE, and why the checks below go as
+    // far as the claims rather than stopping at the link: what it removes is
+    // RETYPING A DOMAIN STRING BY HAND, the act 6.12 records going wrong once
+    // already. A link cannot be mistyped, so this removes a class of error.
+    //
+    // AND THIS DOMAIN IS NOT FOUNDED, WHICH IS THE POINT RATHER THAN AN
+    // ACCIDENT. This file founds no membrane, so `DOMAIN` has no `Membrane`
+    // behind it — and 6.26's one stated constraint is that the link must work
+    // anyway: publishing does not require founding, so hiding it would make
+    // the app's own history less navigable than a string the reader could
+    // type, and would make foundedness look like a precondition for reading
+    // your own work. The control below asserts the unfoundedness, so these
+    // checks cannot pass by the domain quietly having been founded.
+    log('\n=== 4b. A record in your own history opens the domain it is in ===');
+    const registry = await call('get_membranes', null);
+    const registered = registry.map((r) => {
+      const e = r?.entry?.Present?.entry;
+      try { return e ? decode(e).domain : null; } catch { return null; }
+    });
+    check('CONTROL: this run\'s domain is NOT founded, so the link is proving the '
+      + 'unfounded case rather than the easy one', !registered.includes(DOMAIN));
+
+    // SCOPED TO THIS RUN'S PERIOD BY TAG, NOT BY INDEX — and a dirty sandbox
+    // is how that was found rather than foresight. The first version clicked
+    // `period-sample.first()`, which is period 0, which on a chain carrying an
+    // earlier run is an EARLIER RUN'S window: the run that caught it reported
+    // `10 period(s)` and a box holding `Worldline1794932467854` while it had
+    // seeded `Worldline1794932694342`. Correct code, false red. CI never sees
+    // it because every harness gets `sandbox.sh clean && start`, so this would
+    // only ever have bitten somebody re-running locally — which is exactly
+    // what `reading-a-thread` means by keeping a harness cheap to re-run:
+    // "every needle is scoped to a timestamped domain... which is what makes
+    // an injection cheap to run: rebuild, re-run, read the reds."
+    //
+    // `hasText: DOMAIN` alone would also match the `<domain>/critique` period,
+    // so the claims period is the one that is NOT that.
+    const claimPeriod = page.locator('li.period-row', { hasText: DOMAIN })
+      .filter({ hasNotText: '/critique' });
+    check('CONTROL: this run\'s own claims period is on screen, so the checks below '
+      + 'are about this run and not whatever the chain already held',
+      (await claimPeriod.count()) === 1);
+    if (await claimPeriod.count()) {
+      await claimPeriod.first().locator('[data-testid="period-sample"]').click();
+      await page.waitForTimeout(2500);
+    }
+    const rows = await claimPeriod.locator('[data-testid="period-record"]').count();
+    const links = await claimPeriod.locator('[data-testid="period-record-domain"]').count();
+    check(`a record that names a domain offers it as a link (${links} of ${rows} rows)`,
+      links > 0);
+    const linkNames = await claimPeriod.locator('[data-testid="period-record-domain"]').allTextContents();
+    check('and every link names THIS run\'s domain rather than some other string',
+      linkNames.length > 0 && linkNames.every((t) => t.trim() === DOMAIN));
+    // NOT EVERY ROW GETS ONE, and this is the half that can actually fail.
+    // Linking every row would pass the two checks above.
+    check(`and NOT every row gets one — ${rows - links} row(s) name no domain`,
+      links < rows);
+    // Machinery names no domain either, and that must not be expressed by
+    // hiding the row — Invariant 1 keeps raw history open, and §4 already
+    // asserts the row is there and named in plain words.
+    const machineryRow = claimPeriod.locator('[data-testid="period-record"][data-kind*="not something you wrote"]');
+    check('CONTROL: machinery is in this window, named rather than filtered out',
+      (await machineryRow.count()) > 0);
+    check('and machinery offers no domain link either',
+      (await machineryRow.locator('[data-testid="period-record-domain"]').count()) === 0);
+
+    // ---- The critique, in the period critiques actually land in ----------
+    //
+    // THE CASE A FUTURE CHANGE IS MOST LIKELY TO GET WRONG. A `Critique`
+    // carries a `target`, not a `domain`, so the domain a reader would want is
+    // the TARGET's — and resolving it is a network read per record, which this
+    // row explicitly is not. A link here would send the reader somewhere
+    // plausible and wrong, so the absence is the true answer.
+    //
+    // AND IT IS NOT IN THE FIRST WINDOW, WHICH THE CONTROL BELOW CAUGHT RATHER
+    // THAN A HUMAN. Asserting it on period 0 passed VACUOUSLY — there was no
+    // critique row there to lack a link. Measured off the trace: a critique
+    // gets its OWN period, tagged `<domain>/critique`, and each boundary here
+    // is one second wide (`start_time === end_time`), so whether two writes
+    // share a window depends on which side of a second they fall. One run saw
+    // the critique in period 0 and the next did not. The period is therefore
+    // found BY ITS TAG, which is deterministic, instead of by index.
+    const critiquePeriod = page.locator('li.period-row', { hasText: '/critique' });
+    check('CONTROL: a period tagged for critiques exists, so the next checks have '
+      + 'somewhere to look', (await critiquePeriod.count()) > 0);
+    if (await critiquePeriod.count()) {
+      await critiquePeriod.first().locator('[data-testid="period-sample"]').click();
+      await page.waitForTimeout(2500);
+    }
+    const critiqueRow = critiquePeriod.locator('[data-testid="period-record"][data-kind="Critique"]');
+    check('CONTROL: and a critique is really in it, so the next check can fail',
+      (await critiqueRow.count()) > 0);
+    check('a critique offers NO domain link — its domain would be its target\'s, '
+      + 'which needs a read this row does not make',
+      (await critiqueRow.count()) > 0
+        && (await critiqueRow.locator('[data-testid="period-record-domain"]').count()) === 0);
+
+    // FOLLOWED THROUGH TO THE CLAIMS, not stopped at the click. A button that
+    // changes tabs and lands on an empty Browse box would pass a check that
+    // only asserted the tab.
+    //
+    // COUNT-GUARDED, AND INJECTION I IS WHY. The first version clicked
+    // straight at the link, and with 6.26 reverted that click sat in
+    // `locator.click: Timeout 30000ms exceeded` for thirty seconds and then
+    // took the rest of the file with it — so the injection reported a stack
+    // trace instead of a count. That is `browse-states`' own first lesson and
+    // `applet-view`'s second: a gate that crashes on the defect it guards
+    // reports nothing. Every interaction below is guarded; the checks still
+    // run and still go red, which is the whole point of running them.
+    const domainLink = claimPeriod.locator('[data-testid="period-record-domain"]');
+    if (await domainLink.count()) {
+      await domainLink.first().click();
+      await page.waitForTimeout(3000);
+    }
+    check('following it lands on the Browse tab',
+      (await page.locator('[data-testid="browse-claim-list"]').count()) === 1);
+    // Read through guards for the same reason — on a screen that never
+    // navigated, neither element is there to be read.
+    const boxValue = await page.locator('[data-testid="browse-domain-input"]').count()
+      ? await page.locator('[data-testid="browse-domain-input"]').first().inputValue()
+      : null;
+    check(`and the box carries the domain, so the reader can see where they are (got ${JSON.stringify(boxValue)})`,
+      boxValue === DOMAIN);
+    const browseText = await page.locator('[data-testid="browse-claim-list"]').count()
+      ? await page.locator('[data-testid="browse-claim-list"]').first().innerText()
+      : '';
+    check("and the domain's own claims are what is on screen",
+      browseText.includes(CLAIM_TEXT));
+
+    // Back, so the scoping section below reads the screen it is about.
+    await page.getByRole('button', { name: 'Worldline', exact: true }).click();
+    await page.waitForTimeout(1500);
 
     log('\n=== 5. Only this agent\'s own worldline is probed ===');
     // The scoping decision, asserted rather than trusted: no field
