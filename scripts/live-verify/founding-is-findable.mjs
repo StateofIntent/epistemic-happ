@@ -240,6 +240,30 @@ async function main() {
     log('  SETUP FAILED: a domain chosen to be UNfounded is in the registry.');
     process.exit(1);
   }
+
+  // ONE CLAIM IN THE FOUNDED DOMAIN, AND IT IS PHASE 2b THAT NEEDS IT —
+  // ADDED 2026-11-18 BECAUSE 6.27 TOOK THAT PHASE'S IN-FLIGHT MOMENT AWAY.
+  // 6.27 put a near-miss notice in the Browse tab's EMPTY state, and that
+  // notice reads `get_membranes` itself when nothing has yet. Phase 2b reaches
+  // the New Claim form by browsing `DOMAIN_FOUNDED` first, so that the box
+  // pre-fills and the registry read is still in flight when the form is built
+  // — and this file publishes nothing, so that domain was empty, so the browse
+  // landed in 6.27's notice and the read it needed in flight had already
+  // happened. CI caught it: `"checking" was EVER displayed ... (saw: founded)`.
+  //
+  // A claim here makes the browse land on a populated domain, which renders no
+  // near-miss notice, fires no registry read, and leaves phase 2b's in-flight
+  // moment exactly where it was. It is also the more representative path: a
+  // reader browsing a founded domain usually finds something in it.
+  //
+  // Nothing in this file asserts anything about the claim list, so this
+  // changes no other phase.
+  await agent.call('create_claim', {
+    content: 'Published so browsing the founded domain is not an EMPTY browse — see the note above.',
+    domain: DOMAIN_FOUNDED, confidence: 'Moderate', semantic_tags: [],
+    author: agent.me, timestamp: Date.now() * 1000, evidence_hashes: [], attestation_policy: null,
+  });
+  log(`published one claim into ${DOMAIN_FOUNDED}, so phase 2b's browse is not empty.`);
   log('');
 
   log('Starting vite preview (production bundle) ...');
