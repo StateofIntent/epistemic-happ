@@ -1185,10 +1185,19 @@ pub fn create_critique(critique: Critique) -> ExternResult<ActionHash> {
     // WHAT THIS DOES AND DOES NOT DO, said plainly because the row's value is
     // the split. `emit_signal` reaches THIS agent's own client and nobody
     // else's — so this tells the critique's own author that their write
-    // landed, and tells the claim's author nothing at all. Reaching another
-    // agent is `send_remote_signal`, which is 6.15's `[D]` and is deliberately
-    // not here. What this closes is the inconsistency: a client can now hook
-    // the three writes uniformly instead of two of three.
+    // landed, and tells the claim's author nothing at all. What this closes is
+    // the inconsistency: a client can now hook the three writes uniformly
+    // instead of two of three.
+    //
+    // REACHING THE OTHER AGENT IS IN THIS FUNCTION, SIXTY LINES DOWN. This
+    // paragraph used to end *"Reaching another agent is `send_remote_signal`,
+    // which is 6.15's `[D]` and is deliberately not here"*, and that was true
+    // for part of one day: `06340c9` wrote it, and `43f7eac` TOOK THE `[D]` AND
+    // BUILT THE PUSH the same day, appending its block directly beneath this
+    // one without re-reading it. **A comment denying a call, zero lines above
+    // the comment introducing that call**, is 1.33's defect with the distance
+    // removed, and it is what row 1.35's report found on its first run
+    // (2026-11-17).
     //
     // Zero entries, exactly like its siblings: a signal is not a write.
     // ROW 6.15's PUSH HALF. The local emit above tells THIS agent its write
