@@ -4843,7 +4843,18 @@ async function loadClaimsByAuthor(agentB64: string) {
   try {
     agent = bytesFromB64(agentB64);
   } catch {
-    authorError = 'That is not a valid agent key. Keys are base64, like the one shown on a claim.';
+    // NOT "like the one shown on a claim", WHICH IS WHAT THIS SAID AND WAS
+    // ALREADY NOT TRUE. A byline renders twelve characters and an ellipsis and
+    // is deliberately uncopyable, so a reader who followed that sentence would
+    // paste something that cannot satisfy this field — 6.8's defect exactly, a
+    // field answerable only by a value this UI never offers. Row 6.23 made it
+    // plainer by putting a mnemonic in front of those twelve characters, and
+    // the honest fix is to stop pointing at the byline and point at the
+    // gesture that works: the byline is a BUTTON, and it carries the whole key
+    // without anybody retyping it.
+    authorError = 'That is not a valid agent key. A key is a long base64 string — the byline '
+      + 'on a claim shows only the start of one and cannot be pasted here. Click a claim\'s '
+      + 'byline instead, which carries the whole key for you.';
     render();
     return;
   }

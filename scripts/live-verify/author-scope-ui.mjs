@@ -336,6 +336,20 @@ async function main() {
     await page.waitForTimeout(1500);
     check('a malformed key is explained rather than swallowed',
       (await page.locator('[data-testid="author-error"]').count()) === 1);
+    // AND THE EXPLANATION POINTS AT A GESTURE THAT WORKS, which is more than
+    // "an error appeared" and is the half that was wrong for months. This
+    // message used to say keys are base64 "like the one shown on a claim" —
+    // and a byline renders twelve characters and an ellipsis and is
+    // deliberately uncopyable, so a reader who followed the sentence pasted
+    // something that could never satisfy the field. That is 6.8's defect, and
+    // the check above could not see it: the element was there and said the
+    // wrong thing. Row 6.23 made it plainer by putting a mnemonic in front of
+    // those twelve characters, which is what prompted the reword.
+    const authorErrText = await page.locator('[data-testid="author-error"]').innerText();
+    check(`and names the byline BUTTON as the way in rather than inviting a paste from a `
+      + `truncated key (${JSON.stringify(authorErrText.slice(0, 60))})`,
+      /byline/i.test(authorErrText) && /click/i.test(authorErrText)
+      && !/like the one shown/i.test(authorErrText));
 
     check('CONTROL: the page raised no uncaught errors throughout',
       pageErrors.length === 0);
