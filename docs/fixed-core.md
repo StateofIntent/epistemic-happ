@@ -109,6 +109,12 @@ defends against the people who agreed to run it.
 project**, however good the purpose it is pursuing. A system whose
 self-defence could resist shutdown is not a self-maintaining tool.
 
+**AND THE PRESSURE TO BREAK IT WILL ARRIVE AS BEST PRACTICE, not as
+temptation.** MAPE-K — the standard reference architecture for exactly this
+kind of system, see rule 4 — lists **self-protection without human
+intervention** among the properties an autonomic system is supposed to have.
+So the literature will tell you this rule is a missing feature. It is not.
+
 **Today: there is no stop mechanism, because there is nothing running that
 needs stopping** — `systemctl --user stop epistemic-pilot-node` is the whole of
 it, and it works because no converging process is trying to restart it.
@@ -157,6 +163,42 @@ reinforced* layer, or any fleet-wide level at which a signal becomes an action.
 Time passes whether or not anybody promised a rate. Per-link conductance
 already decays and may be read; what may not exist is a shipped number that
 turns that reading into a decision on somebody's behalf.
+
+**AND WHAT IT DOES NOT FORBID, because the first draft of this section
+overstated it and was corrected the same day.** It is tempting to summarise
+this rule as *no nervous system*, and that is false — **a human has one and is
+autopoietic.** In Maturana and Varela the nervous system is **operationally
+closed and non-representational**, a system *without inputs and outputs towards
+the external world*: it does not pick up information from an environment, it
+maintains correlations between its own sensory and motor surfaces. Closure is
+not something the nervous system escapes, it is another instance of it — Varela
+generalised closure beyond cells to nervous, immune and social systems.
+
+**So a nervous system is allowed and a homunculus is not**, and the test is
+usable rather than philosophical:
+
+| proposed layer | shape |
+|---|---|
+| signals fade, and at threshold X the system acts | representation + command → **controller** |
+| per-host threshold, neutral off, each node coupling its own sensing to its own acting | closed → **nervous-system-shaped** |
+
+**Plasticity is also allowed and already exists.** Structural coupling —
+structure changing with the history of interactions — is exactly per-link
+conductance changing with reinforcement. **What 3.1 retired was a UNIVERSAL
+RATE: plasticity yes, universal clock no.**
+
+**AND THE STANDARD ARCHITECTURE FOR THIS FAILS THIS RULE AND RULE 2 BY
+CONSTRUCTION, WHICH IS WORTH KNOWING BEFORE READING ANY OF THE LITERATURE.**
+What rows 7.31 and 5.5 describe has a canonical name — **MAPE-K**
+(Monitor-Analyse-Plan-Execute over a shared Knowledge base), from IBM's
+autonomic computing initiative, the reference model for self-adaptive systems.
+It is an **external feedback-control approach with an *autonomic manager*
+distinct from the *managed element*** — the homunculus, architecturally. And
+its canonical self-\* properties are specified as *without human
+intervention*, **including self-protection as "the ability to defend itself
+against misuse without human intervention."** That is **rule 2's dangerous
+version, in the reference architecture, as a stated goal.** Borrow MAPE-K's
+vocabulary if useful; do not borrow its topology or its autonomy targets.
 
 ## 5. A reflex acts only on its own substrate, from an enumerated set — **WRITTEN ONLY**
 
