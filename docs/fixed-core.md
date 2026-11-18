@@ -273,7 +273,12 @@ behind §4's fork collision like everything else that touches integrity.
 - **Physical substrate.** Software cannot make chips or electricity. The
   realistic reading of *produces its own substrate* is that the system secures,
   maintains and pays for machines **with their owners' consent** — which is
-  rules 1 and 2, not a manufacturing claim.
+  rules 1 and 2, not a manufacturing claim. **And the paying half was priced on
+  2026-11-19 and is not available: see row 7.32.** HoloFuel went to mainnet
+  2026-11-01 but **hosts are not earning yet**, so there is no mechanism by
+  which this system could pay for a machine. That row carries a decay date
+  (2027-01-30, when the operator's provisional licence lapses or renews) —
+  **re-read it rather than quoting it.**
 - **Purpose.** A boundary exists to protect something. None of the rules above
   say what the system is *for*, and a self-maintaining system with no function
   it serves for others ends up maintaining only its own survival. That is the
