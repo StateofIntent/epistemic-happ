@@ -110,8 +110,15 @@ written to be sent as-is, or edited for tone but not for content.
 > tests a publisher who closed the app within ten seconds was never found at
 > all. Nothing is lost when that happens — your claim is on your own chain
 > permanently — but it is readable by nobody else until you are next online.
-> **So after you publish, leave the app open for a minute.** That is the whole
-> fix, and it is the only thing I'd ask you to remember from this paragraph.
+>
+> **And I can't give you a safe number, which I'd rather say than round off.**
+> Staying open about a minute got it across in my tests; ten seconds reliably
+> did not. But the time it takes varies a lot — in one run the machine found
+> the publisher in two and a half seconds, and in another it still had not
+> after ten. **So: after you publish, leave the app open for a while, longer
+> if it matters to you.** There is no point at which it becomes guaranteed,
+> and that is the honest version of the one thing I'd ask you to remember
+> from this paragraph.
 >
 > Two things follow, and I'd rather you heard them from me. Every
 > participant's computer already keeps copies of other people's entries —
@@ -152,8 +159,11 @@ written to be sent as-is, or edited for tone but not for content.
 > - When we are both online, things appear in **seconds**. Because of the
 >   always-on machine above, you no longer have to wait for me to be at my
 >   desk for anything to reach me — publish whenever suits you, **and then
->   leave the app open for a minute** so that machine has time to find you.
->   Publishing and closing straight away is the one case it cannot cover.
+>   leave the app open for a while** so that machine has time to find you.
+>   How long varies between attempts and I cannot give you a number that is
+>   safe: a minute worked in my tests, ten seconds did not, and once it took
+>   only two and a half seconds. Publishing and closing straight away is the
+>   one case it cannot cover.
 > - If you close your laptop and come back, expect to wait **five to twelve
 >   minutes** to catch up — and longer the longer you were away. The app
 >   looks stale during that time. It is not; it is syncing.
