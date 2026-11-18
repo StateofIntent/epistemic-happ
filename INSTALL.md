@@ -321,7 +321,8 @@ Download the build for your system from the
 | Linux | `....AppImage`, or the `.deb` |
 
 The `.zip` and `.blockmap` files in that release are for the in-app updater;
-you do not need them.
+you do not need them. **On macOS the in-app updater cannot install anything —
+see *Updates on macOS are by hand* below.**
 
 You do **not** need Rust, Node, a terminal, or a copy of this repository. The
 app carries its own Holochain conductor. There is no account, no server to
@@ -386,7 +387,20 @@ wrong and what the distinction between a fork and a cleanroom build changes.
 None of these are reasons not to try it. They are things you would otherwise
 find out the hard way.
 
-**The app is not code signed.** On **macOS 15 (Sequoia)** it is quarantined
+**The app is not code signed**, and that has a second consequence beyond the
+quarantine below: **on macOS, updates are by hand, permanently.** This is not a
+temporary state of the project. macOS will only replace a running app with a
+new build that satisfies the running one's code-signing identity, and this app
+has none — measured on the shipped `v0.3.6` bundle on 2026-11-18, which carries
+no bundle signature at all and whose executable still holds the ad-hoc
+signature Electron's linker produced. So no build we publish can ever be
+accepted as an automatic update by an installed one, whatever the in-app
+updater reports. **The app may still tell you an update is available, and the
+download may still complete; the install is what cannot happen.** Until that
+notice is removed, treat it as a prompt to come back here and download the new
+`.dmg` yourself. Windows and Linux auto-update normally.
+
+On **macOS 15 (Sequoia)** the app is also quarantined
 when you open it, and the System Settings option that used to allow it has
 been removed. You have to open Terminal and run:
 
