@@ -323,6 +323,30 @@ showed no Intel mac artifacts and looked exactly like a regression.
   off that column would have said *more context, less work*. Fixed with a
   per-depth nonce leading the prompt plus `cache_prompt: false`. **The first
   table was discarded.**
+**NEXT SESSION, IN ORDER — AND THE FIRST FACT IS THAT THERE IS NO UNBLOCKED
+`[M]` WORK LEFT.** Written 2026-11-18 after #515 and #516, because a session
+that opens expecting a queue will not find one and should not invent one.
+
+1. **READ `verify.mjs`'s OUTPUT FIRST, NOT ITS EXIT CODE.** `cd
+   ~/.epi-pilot-node && node verify.mjs`. It now derives the released seed from
+   GitHub, so **it can print `NO — WRONG NETWORK` or `CANNOT VERIFY` for the
+   first time.** `node verify-injections.mjs` re-proves it can fail (9 modes).
+2. **CHECK WHETHER ANY `[X]` WAS SENT**, by asking rather than assuming — five
+   drafts sit unsent in the local-only file and **§5 decays daily**. The habit
+   below applies to every one of them.
+3. **PUT THE THREE DECISIONS TO THE HUMAN.** They are the only things that
+   unblock work, and the two new ones came out of 2026-11-18's measurements:
+   **(a) 6.21's route** — Apple Developer ID (`[H]`, money, yearly), a macOS
+   updater that bypasses Squirrel.Mac (`[M]`, a project), or **accept
+   hand-installs indefinitely**, which is what the §7 draft now says; **(b) the
+   RELEASE HOLD**, whose stated unblocking condition was measured on 2026-11-18
+   as never arriving, so 6.26 and 6.27 are held for ever by default rather than
+   by decision; **(c) 6.23's derived nickname**, the strongest-evidenced `[D]`
+   here and asked for in the reporter's own words.
+4. **ONLY THEN LOOK FOR WORK.** `[M]` is empty. Do not manufacture a row to have
+   something to build; the honest next candidates all sit behind (3), and
+   **6.12's reversal evidence is still collectable and still uncollected.**
+
 **THE RESUME LIST, ORGANISED BY WHO CAN ACT — and the first line of it is a
 habit rather than a task: BEFORE TRUSTING ANY LINE THAT SAYS "WAITING ON THEM",
 CHECK WHETHER IT WAS ALREADY ANSWERED.** Four such lines were wrong this
@@ -374,7 +398,10 @@ shape the row warned about** (silence instead of *"I looked and found none"*):
 **exactly 3 red, all in one phase, every other phase fully green.**
 **It is unreleased — it ships in the next desktop build.**
 
-**B. MODEL WORK — `[M]`. 1.35 IS BUILT (2026-11-17), AND IT FOUND THREE MORE
+**B. MODEL WORK — `[M]`. THE UNBLOCKED LIST IS EMPTY AS OF 2026-11-18**: 7.30
+is built (#515) and the macOS question is answered (#516), and everything that
+remains is a `[D]` or an `[X]`. The paragraph below records how B got here and
+is history, not a queue. **1.35 IS BUILT (2026-11-17), AND IT FOUND THREE MORE
 STALE BLOCKERS ON ITS FIRST RUN.** `scripts/check-stale-blockers.mjs` — a
 report that exits zero, in **no workflow**, exactly as `check-prose-claims.mjs`
 is and for the same measured reason, **declared here so it is not a 1.29
