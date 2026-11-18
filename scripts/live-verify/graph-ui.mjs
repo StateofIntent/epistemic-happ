@@ -150,6 +150,18 @@ const b64 = (u8) => Buffer.from(u8).toString('base64');
 const HASH_TAG_CHARS = 4;
 const short = (u8) => `${b64(u8).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12)}\u2026`;
 
+/** A byline is `<mnemonic> · <key>` since row 6.23's `[D]` was taken
+ *  (2026-11-18): a two-word mnemonic derived from the key, then the key. This
+ *  returns the KEY half, which is what every check below is about — the
+ *  mnemonic's own derivation is gated once, in `mobile-ui/key-mnemonic-check.mjs`,
+ *  against the single copy of the two wordlists it is built from.
+ *
+ *  WHY THE WHOLE BYLINE IS NOT COMPARED HERE. These checks ask *which agent
+ *  is this node attributed to*, and the answer is the key. Comparing the whole
+ *  string would make them red whenever the byline gained a part, which is a
+ *  mirror going stale rather than a defect being found. */
+const bylineKey = (text) => String(text ?? '').trim().split(' · ').pop();
+
 let failures = 0;
 const check = (label, cond) => {
   if (cond) log(`  PASS: ${label}`);
@@ -438,9 +450,9 @@ async function main() {
     const concession = atDepth(3)[0];
     check('the level-1 objection is attributed to agent2, who wrote it \u2014 not to the '
       + `viewer (${objection?.byline})`,
-      objection?.byline === short(agent2.me));
+      bylineKey(objection?.byline) === short(agent2.me));
     check(`the level-2 defence is attributed to agent1 (${defence?.byline})`,
-      defence?.byline === short(agent1.me));
+      bylineKey(defence?.byline) === short(agent1.me));
 
     // THE RELATIONS. 6.18's participant asked to see "if an author responded",
     // so the author DEFENDING is the headline; the third relation is the one
@@ -454,7 +466,7 @@ async function main() {
       /the critique\u2019s author/.test(concession?.relation ?? ''));
     // AN UNMARKED NODE IS WHAT MAKES A MARKED ONE MEAN ANYTHING. Under the
     // impostor defect every node would read "you", so this reds there too.
-    const strangers = rows.filter((r) => r.byline === short(agent2.me));
+    const strangers = rows.filter((r) => bylineKey(r.byline) === short(agent2.me));
     check(`CONTROL: agent2\u2019s ${strangers.length} nodes are marked with nothing at all, so a `
       + 'marker is a statement rather than furniture',
       strangers.length === 2 && strangers.every((r) => r.relation === ''));
@@ -464,7 +476,7 @@ async function main() {
     // author — the seed interleaves the two authors deliberately, so a view
     // that gathered a thread by person would read agent2, agent2, agent1,
     // agent1 and go red.
-    const bylineOrder = rows.map((r) => (r.byline === short(agent1.me) ? '1' : '2')).join('');
+    const bylineOrder = rows.map((r) => (bylineKey(r.byline) === short(agent1.me) ? '1' : '2')).join('');
     log(`  byline order in reading order: ${bylineOrder}`);
     check(`nothing is grouped by author \u2014 the order is the argument's (${bylineOrder})`,
       bylineOrder === '2112');
@@ -479,8 +491,16 @@ async function main() {
       named === 5 && ariaLabels.length === 5);
     const claimLabel = await page.locator('.graph-node.claim').getAttribute('aria-label');
     log(`  the claim node: ${claimLabel?.slice(0, 70)}\u2026`);
-    check('including the claim node, against its own author\u2019s key',
-      (claimLabel ?? '').includes(`by ${short(agent1.me)}`));
+    // BOTH HALVES AND THEIR ORDER, which is more than this asserted before
+    // 6.23's mnemonic existed: it read `by <key>` and would now red on a
+    // correct label. Re-expressed rather than loosened to `includes(key)` —
+    // the accessible label is the entire reason this view is SVG, so a
+    // screen-reader user must get the glanceable half too, and in the same
+    // order a sighted reader gets it.
+    const labelPattern = new RegExp(`by [a-z]+-[a-z]+ \u00b7 ${short(agent1.me).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+    check(`including the claim node, against its own author\u2019s key and mnemonic `
+      + `(${labelPattern.source.slice(0, 40)}\u2026)`,
+      labelPattern.test(claimLabel ?? ''));
 
     log('\n=== Invariant #1: size encodes nothing ===');
     const radii = await nodes.evaluateAll((els) => els.map((el) => el.getAttribute('r')));

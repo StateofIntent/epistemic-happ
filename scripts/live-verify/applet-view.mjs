@@ -1123,9 +1123,25 @@ async function main() {
       // every byline, exercised here on the same screen.
       const status = await textIfThere(page, '.status, [data-testid="status"]');
       const statusOrBody = status || (await page.evaluate(() => document.body.innerText));
-      check('CONTROL: an agent the host has NO name for still renders as a bare '
-        + 'key, so a name on screen is a name that was fetched',
-        statusOrBody.includes(short(me)) && !statusOrBody.includes(`${nickname} · ${short(me)}`));
+      // RE-EXPRESSED 2026-11-18, AND IT WOULD HAVE GONE VACUOUS IF IT WERE NOT.
+      // This read `!statusOrBody.includes(`${nickname} · ${short(me)}`)` — the
+      // exact string a wrongly-named reader would have rendered when a byline
+      // had two parts. Row 6.23 gave it three (`<name> · <mnemonic> · <key>`),
+      // so that string can no longer appear on ANY screen, right or wrong, and
+      // a negative check that cannot match is a check that cannot fail. This is
+      // the vacuous-green shape this suite has paid for before: the assertion
+      // stays green, the control stops controlling, and nothing says so.
+      //
+      // WHAT IT MEANS, EXPRESSED SO THAT ADDING A FOURTH PART CANNOT BREAK IT:
+      // no name appears in the run-up to the READER's own key. The window is
+      // the text immediately before it, which is where a byline's other parts
+      // live, so a nickname painted on an agent the host has no name for lands
+      // inside it whatever else the byline carries.
+      const ownKeyAt = statusOrBody.indexOf(short(me));
+      const beforeOwnKey = ownKeyAt < 0 ? '' : statusOrBody.slice(Math.max(0, ownKeyAt - 60), ownKeyAt);
+      check('CONTROL: an agent the host has NO name for still renders without one, so '
+        + `a name on screen is a name that was fetched (${JSON.stringify(beforeOwnKey.slice(-40))})`,
+        ownKeyAt >= 0 && !beforeOwnKey.includes(nickname));
       check('CONTROL: the names came from the HOST and not from a zome call — '
         + 'no profile read appears on the bridge',
         !wire.some((fn) => String(fn).includes('profile')));

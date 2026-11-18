@@ -282,6 +282,40 @@ const b64 = (u8) => Buffer.from(u8).toString('base64');
 const HASH_TAG_CHARS = 4;
 const short = (u8) => `${b64(u8).slice(HASH_TAG_CHARS, HASH_TAG_CHARS + 12)}…`;
 
+/** A byline has TWO parts since 6.23's `[D]` was taken (2026-11-18): a
+ *  key-derived two-word mnemonic, then the shortened key. `<mnemonic> · <key>`.
+ *
+ *  THE MNEMONIC IS NOT MIRRORED HERE, AND THAT IS THE POINT. Deriving it needs
+ *  two frozen 256-word lists, and a transcribed 512-word table is the kind of
+ *  copy that drifts silently while both halves still look plausible — the
+ *  `breakingVersion` lesson. So the lists have exactly one copy
+ *  (`mobile-ui/src/key-mnemonic.ts`), `mobile-ui/key-mnemonic-check.mjs`
+ *  imports it and gates the derivation in node with 23 checks, and THIS file
+ *  asserts only what a SCREEN can be asked without holding the lists:
+ *
+ *    - the shape, per row: two lowercase words and a hyphen;
+ *    - the key half, per row, EXACTLY — unchanged from before;
+ *    - that two rows by the same author show the same mnemonic, and two rows
+ *      by different authors show different ones, with the expectation computed
+ *      from the two keys' own bytes so the check cannot pass or fail by luck.
+ *
+ *  WHAT NEITHER FILE ASSERTS, stated rather than left to be discovered: that
+ *  the mnemonic on a row belongs to the agent whose key is beside it. It is
+ *  ruled out by construction rather than by assertion — `agentLabel` computes
+ *  both halves from one `bytes` argument, so there is no path by which one row
+ *  gets another row's mnemonic while keeping its own key. If that function ever
+ *  takes the two from different places, this paragraph is the thing that was
+ *  wrong. */
+const BYLINE_MNEMONIC = /^[a-z]+-[a-z]+$/;
+const splitByline = (text) => {
+  const parts = text.trim().split(' · ');
+  return { mnemonic: parts.length >= 2 ? parts[0] : null, key: parts[parts.length - 1] };
+};
+/** The two bytes a mnemonic is derived from — past the 3-byte multihash tag.
+ *  Used ONLY to decide what two keys' mnemonics ought to do relative to each
+ *  other, never to name a word. */
+const digestBytes = (u8) => `${u8[3]},${u8[4]}`;
+
 async function connectApp(admin, appId) {
   const { token } = await admin.issueAppAuthenticationToken({ installed_app_id: appId });
   const app = await AppWebsocket.connect({ url: new URL(APP_URL), token, wsClientOptions: { origin: 'live-verify' } });
@@ -627,8 +661,13 @@ async function main() {
     check('CONTROL: no byline begins with the four characters every agent key shares',
       bylines.length > 0 && !bylines.some((t) => t.trim().startsWith('hCAk')));
     const fullKeys = [b64(agent1.me), b64(agent2.me)];
+    // THE KEY IS THE LAST PART OF THE BYLINE SINCE 6.23's mnemonic landed, so
+    // this reads the part after the final separator rather than the whole
+    // string. Taking the whole string would make every check below red on a
+    // correct screen, which is the failure mode of a mirror that stops moving
+    // with the UI.
     const offsets = bylines.map((t) => {
-      const shown = t.trim().replace(/…$/, '');
+      const shown = splitByline(t).key.replace(/…$/, '');
       const full = fullKeys.find((f) => f.includes(shown));
       return full === undefined ? -1 : full.indexOf(shown);
     });
@@ -636,13 +675,23 @@ async function main() {
       + `key, past the tag (offsets ${offsets.join(',')})`,
       offsets.length === bylines.length && offsets.every((o) => o === HASH_TAG_CHARS));
 
-    // AND IT IS NOT THE ANSWER TO 6.23, which is asserted here so that a green
-    // run cannot be read as closing that row: twelve characters that all
-    // differ is still a string compared character by character or not at all.
-    // The `[D]` is whether anything glanceable gets minted from the key.
-    check('  ...and the byline is still twelve characters, so the [D] on minting '
-      + 'something glanceable is untouched by this',
-      bylines.every((t) => t.trim().replace(/…$/, '').length === 12));
+    // RE-EXPRESSED 2026-11-18, NOT RELAXED — AND IT IS THE REASON THIS CHECK
+    // WAS WORTH WRITING. It used to read "the byline is still twelve
+    // characters, so the [D] on minting something glanceable is untouched by
+    // this", and its PURPOSE was to stop a green run being read as closing
+    // 6.23 while the row's real question stood. That [D] was TAKEN on
+    // 2026-11-18 — build the mnemonic — so the assertion that twelve
+    // characters is the whole byline is now the thing that must fail, and §1b
+    // below is where the row is actually answered.
+    //
+    // WHAT SURVIVES IS THE HALF THAT WAS ALWAYS THE POINT: the key is still
+    // there, still twelve characters, and still the part the critique is held
+    // to. A mnemonic that REPLACED the key would be the display-name defect
+    // this row ruled out, so this now asserts the key is present rather than
+    // that it is alone.
+    check('  ...and the key is still twelve characters and still the last part of the '
+      + 'byline, so the mnemonic was ADDED to it rather than put in place of it',
+      bylines.every((t) => splitByline(t).key.replace(/…$/, '').length === 12));
 
     // PER ROW, not merely present: the key beside a critique is the key of the
     // agent who wrote THAT critique. A byline taken from the logged-in agent,
@@ -661,11 +710,13 @@ async function main() {
       const el = item.querySelector('[data-testid="critique-author"]');
       return el ? el.textContent.trim() : null;
     }, needle);
+    // THE KEY HALF IS STILL COMPARED EXACTLY, which is what makes these
+    // per-row rather than per-screen; the mnemonic half is §1b's.
     check(`the stranger's critique is attributed to the STRANGER (${await bylineFor(CRIT_ONE)})`,
-      (await bylineFor(CRIT_ONE)) === short(agent2.me));
+      splitByline(await bylineFor(CRIT_ONE)).key === short(agent2.me));
     check(`and the author's own reply to the STRANGER's objection is attributed to the author `
       + `(${await bylineFor(CRIT_AUTHOR)})`,
-      (await bylineFor(CRIT_AUTHOR)) === short(agent1.me));
+      splitByline(await bylineFor(CRIT_AUTHOR)).key === short(agent1.me));
 
     const relationFor = async (needle) => page.evaluate((n) => {
       const item = [...document.querySelectorAll('.critique-item:not(.critique-reply)')]
@@ -713,6 +764,100 @@ async function main() {
     check('CONTROL: and the lone author\'s critique does not say it either, since '
       + 'nobody else repeated — otherwise the marker is a constant',
       !/same author as an earlier critique/.test((await relationFor(CRIT_AUTHOR)) ?? ''));
+
+    // ---- 1b-ii. The mnemonic, which is what the row was finally decided on -
+    //
+    // THE MARKER ABOVE WAS CONFIRMED WORKING AND CONFIRMED INSUFFICIENT IN ONE
+    // BREATH, by the person who asked for it: "It saying same author as an
+    // earlier critique = good" beside "this remains unclear" about one person
+    // or several. It answers the question WITHIN a panel by a sentence; it
+    // cannot answer it ACROSS panels, or between two people neither of whom
+    // wrote the row above. On the third report of the same thing they asked
+    // for "a nickname DERIVED FROM KEY", and the `[D]` was taken 2026-11-18.
+    //
+    // THE DERIVATION IS NOT GATED HERE — see the `splitByline` header. These
+    // checks ask what a screen can be asked without holding two 256-word
+    // lists, and `mobile-ui/key-mnemonic-check.mjs` holds the other half.
+    const bylineParts = bylines.map((t) => splitByline(t));
+    check(`every byline carries a two-word mnemonic before its key `
+      + `(${bylineParts.map((p) => p.mnemonic).join(', ')})`,
+      bylineParts.length > 0
+      && bylineParts.every((p) => p.mnemonic !== null && BYLINE_MNEMONIC.test(p.mnemonic)));
+    // NOT CAPITALISED, and this is a check rather than a style note because
+    // the row's closing constraint is that a mnemonic "must not be allowed to
+    // read as one" — a name. "Folded-Lantern" reads as somebody's name;
+    // "folded-lantern" reads as a tag. The wordlists are gated against given
+    // names in node; the casing is a property of what reaches the screen, so
+    // it belongs here.
+    // GUARDED, AND THE GUARD WAS NOT FORESIGHT — it was found by arming the
+    // injection below. `p.mnemonic` is null for a byline with no mnemonic in
+    // it, and `null.toLowerCase()` threw, which took the harness down after 17
+    // of its 71 checks: the five reds that matter printed, and then every
+    // later section went unrun and unreported. A check that CRASHES on the
+    // defect it is watching for is worse than one that misses it, because the
+    // output stops looking like a result. Same shape as the missing-element
+    // crash row 6.26 paid for.
+    check('and none of them is capitalised, so none reads as what somebody is called',
+      bylineParts.every((p) => p.mnemonic !== null && p.mnemonic === p.mnemonic.toLowerCase()));
+
+    // SAME PERSON, TWO NON-ADJACENT ROWS, SAME MNEMONIC — which is the
+    // reporter's question stated as an assertion. The fixture was already
+    // shaped this way and was not altered to suit it: agent2 wrote the first
+    // and third critiques.
+    const mnemonicFor = async (needle) => splitByline(await bylineFor(needle)).mnemonic;
+    const strangerMnemonicOne = await mnemonicFor(CRIT_ONE);
+    const strangerMnemonicPara = await mnemonicFor(CRIT_PARA);
+    const authorMnemonic = await mnemonicFor(CRIT_AUTHOR);
+    check(`the stranger's two critiques carry the SAME mnemonic, so a reader can answer `
+      + `"is this the same person as above" by looking rather than by comparing twelve `
+      + `base64 characters (${strangerMnemonicPara} / ${strangerMnemonicOne})`,
+      strangerMnemonicOne !== null && strangerMnemonicOne === strangerMnemonicPara);
+
+    // AND TWO DIFFERENT PEOPLE DIFFER — WITH THE EXPECTATION COMPUTED RATHER
+    // THAN ASSUMED, which is the part worth copying. The obvious assertion is
+    // "the two authors' mnemonics differ", and it is WRONG as a gate: a
+    // mnemonic is a 16-bit digest, so two fresh keys collide about one run in
+    // 65536 and the check would red on a correct screen. This repository has
+    // refused a 1-in-64 check that passed by luck; a check that FAILS by luck
+    // is the same defect pointed the other way, and in CI it is worse, because
+    // the one person who sees it has no way to tell it from a real break.
+    //
+    // So the harness reads the two keys' OWN digest bytes and asserts what
+    // ought to happen for these two keys. Both branches are real: the
+    // collision branch asserts the mnemonics MATCH, which is the honest
+    // consequence of a digest and is why the key stays on screen beside it.
+    const sameDigest = digestBytes(agent1.me) === digestBytes(agent2.me);
+    check(`the author and the stranger carry ${sameDigest ? 'the SAME' : 'DIFFERENT'} `
+      + `mnemonics, which is what these two keys' own bytes ${digestBytes(agent1.me)} and `
+      + `${digestBytes(agent2.me)} require — a 16-bit digest collides about one run in `
+      + `65536 and the key beside it is what disambiguates `
+      + `(${authorMnemonic} / ${strangerMnemonicOne})`,
+      sameDigest ? authorMnemonic === strangerMnemonicOne
+        : authorMnemonic !== strangerMnemonicOne);
+
+    // IT IS DERIVED, SO IT IS THE SAME EVERYWHERE THE SAME AGENT APPEARS —
+    // including on a surface the critique panel knows nothing about. The
+    // connected-status line renders the logged-in agent through the same
+    // `agentLabel`, and agent1 IS the claim's author here, so a mnemonic that
+    // was per-panel state rather than a function of the key would disagree
+    // with itself across two parts of one screen.
+    // `.status.connected` rather than a testid: it is the only element in the
+    // UI with that class pair, and adding a testid to a shipped element for a
+    // check to grab is a product change this does not need.
+    const statusByline = await page.locator('.status.connected').innerText();
+    const statusMnemonic = splitByline(statusByline.replace(/^Connected · /, '')).mnemonic;
+    check(`the author's mnemonic in the status line matches the one on their critique, so `
+      + `it is a property of the key and not of the panel (${statusMnemonic} / `
+      + `${authorMnemonic})`,
+      statusMnemonic !== null && statusMnemonic === authorMnemonic);
+
+    // AND IT COUNTS NOTHING, WHICH IS INVARIANT #1 AT THE VIEW LAYER. A
+    // mnemonic makes two rows comparable; it must not make them tallyable.
+    // "folded-lantern (3)" beside a byline would be the per-agent count the By
+    // Author tab already declines to render.
+    check('CONTROL: no byline carries a count beside its mnemonic — the marker makes '
+      + 'rows comparable and must not make them tallyable',
+      bylineParts.every((p) => !/\d/.test(p.mnemonic ?? '')));
 
     // Invariant #1 at the view layer. The vacuity control comes FIRST.
     const byCountGrouped = [CRIT_PARA, CRIT_ONE, CRIT_AUTHOR];
@@ -946,7 +1091,17 @@ async function main() {
     }, [REPLY_DEFENCE.split('\n')[0], testid]);
 
     const replyByline = await replyPart('critique-author');
-    check(`the reply says who wrote it (${replyByline})`, replyByline === short(agent1.me));
+    check(`the reply says who wrote it (${replyByline})`,
+      splitByline(replyByline).key === short(agent1.me));
+    // A REPLY IS A BYLINE TOO, which is worth one check rather than assumed:
+    // it renders through the same `agentLabel`, so a mnemonic that reached
+    // only the top-level rows would mean a reader could compare critiques with
+    // each other and not with the replies under them — and this fixture's
+    // reply is by the claim's author, who also wrote a critique above it.
+    check(`and carries the same mnemonic as that author's own critique, so the glanceable `
+      + `half works across the nesting too (${splitByline(replyByline).mnemonic})`,
+      splitByline(replyByline).mnemonic !== null
+      && splitByline(replyByline).mnemonic === authorMnemonic);
     const replyRel = await replyPart('critique-relation');
     check(`and says it is the CLAIM'S AUTHOR answering the objection — which is the `
       + `half of "It doesnt show if an author responded" that a byline alone does not `
