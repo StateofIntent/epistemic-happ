@@ -22,19 +22,75 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-18 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
+**CHECKPOINT, 2026-11-19 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
 IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
 with this block, this block wins.**
 
-**WHERE THINGS STAND, 2026-11-18 (evening).** happ `main` is at **`5d06ba2`**;
+**WHERE THINGS STAND, 2026-11-19.** happ `main` is at **`67994da`**. **SIX PRs
+merged across 2026-11-18/19 — #518 to #523.** `#350` is the only open PR and
+**stays HELD — do not merge.** Tree clean, nothing in flight, branches pruned.
+**`v0.3.7` IS PUBLISHED AND IS `/latest`** (desktop `release` `a7abb65`, tag at
+that commit because the artifacts are built from `release` — **v0.3.6 tags
+`release` too, so a `main`-targeted tag would name a commit that was not the
+build input**). 15 assets, four platforms, `latest-mac.yml` merged across both
+mac runners. **The pilot node read the NEW tag live and said YES** — a check
+that could not fail at all before #515.
+
+### RESUME HERE — THE ORDERED LIST, 2026-11-19
+
+**`[M]` IS EMPTY. Everything below is an `[X]` the human sends or a `[D]` only
+the human can take** — so a session that opens looking for something to build
+will not find it and must not invent it. **The list refills when a `[D]` is
+taken, which is exactly what happened on 2026-11-18.**
+
+- [ ] **1. ASK WHETHER THE FIVE MESSAGES WENT OUT.** The human said on
+      2026-11-19 they would send **all of them on 2026-11-20** — §9 (assembled,
+      to Kupukupu), §5, §4, §6. **Ask; do not assume.** This list was wrong
+      four separate times in that direction on 2026-11-16/17, and §7 going out
+      on 11-18 was only discovered by asking.
+- [ ] **2. `verify.mjs`'s OUTPUT, NOT ITS EXIT CODE.** `cd ~/.epi-pilot-node &&
+      node verify.mjs`. It derives the expected seed from the live `/latest`
+      tag, **which is now `v0.3.7`**, so a wrong answer is possible.
+      `node verify-injections.mjs` re-proves it can fail (9 modes).
+- [ ] **3. THE RECOMMENDED `[D]`: 7.30's sub-`[D]` — put `verify.mjs` and its
+      injection harness IN THE REPO.** It is the precondition for every
+      autopoiesis row, and on 2026-11-19's analysis it is **the project's first
+      sensory organ AND its first motor neuron** (detect, refuse to act,
+      notify). It lives in one person's home directory, outside CI, where **no
+      second operator can inherit it** — and §4 is the message that makes a
+      second operator real.
+- [ ] **4. IF §4 WENT OUT AND LUCK LIGHT SAYS YES, that is the event three
+      things wait on**: 7.31 (convergence gets a population), `fixed-core.md`
+      rule 1 (consent has never been posed, because the only node is the
+      author's own machine), and 7.30's sub-`[D]` above.
+- [ ] **5. ONLY THEN look for work.** Do not manufacture a row. **And do not
+      start the autopoiesis stack**: 7.31 is NOT yet worth building (see its
+      row — the one failure mode this project has is one convergence cannot
+      see), and `fixed-core.md` rule 2 must be built WITH it rather than after.
+
+**WHAT IS DELIBERATELY NOT DONE, so it is not mistaken for an oversight:**
+the macOS error-string ask is inside §9 as an *optional* request; 6.12's
+reversal evidence is **not collectable** (it needs a conductor that accepts
+zome calls, and the archive prints `VIOLATED` if anything calls one); and the
+HoloFuel figures in **row 7.32 carry a decay date of 2027-01-30** — re-read
+them rather than quoting them.
+
+**CHECKPOINT, 2026-11-18 — SUPERSEDED BY THE BLOCK ABOVE. Still the authority
+on the three decisions taken that day, row 6.23's build, and the §0 rule it
+established.**
+
+**WHERE THINGS STAND, 2026-11-18 (evening) — SUPERSEDED; `main` and `/latest`
+both moved on 2026-11-19.** happ `main` was at **`5d06ba2`**;
 **#515, #516 and #517 merged**, and `#350` is again the only open PR in either
 repository and **stays HELD — do not merge.** Desktop untouched as this is
 written: `release` `319f0f4`, tag `v0.3.6`, still `/latest`. Tree clean. **The
 pilot node is healthy and its released-DHT check was re-run and re-proved the
 same day** — `verify.mjs` YES on a live GitHub read, `verify-injections.mjs`
 all 9 modes as expected, 13 records, 0 App entries, arc `null`, peers 1,
-*publishes nothing* HOLDS. **The unit is `epistemic-pilot-node.service`**, not
-`epi-pilot-node`.
+*publishes nothing* HOLDS. **The unit is `epistemic-pilot-node.service`** —
+recorded here because it was GUESSED wrong from memory on 2026-11-18 and then
+read; [[pilot-node-always-on]] had it right all along, so the correction is to
+the habit of guessing a unit name, not to any record.
 
 **THREE DECISIONS WERE TAKEN 2026-11-18, AND THEY ARE THE REASON THIS BLOCK
 EXISTS.** All three had sat in the `[D]` column, two of them opened by the same
