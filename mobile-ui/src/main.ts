@@ -27,6 +27,7 @@ import { askAdversary, AdversaryError, type AdversaryVerdict } from './adversary
 import { entryPoint, type AppletSurface, type AppletTarget, type WeaveHost } from './applet';
 import { hostContext, connectAppletHost } from './applet-host';
 import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
+import { keyMnemonic } from './key-mnemonic';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -1084,11 +1085,14 @@ const HASH_TAG_CHARS = 4;
  *  the sentence around it — "flagged by", "founded by", "on question" — so
  *  nothing a reader uses is lost by dropping it.
  *
- *  THIS IS AN IMPROVEMENT AND IT IS NOT THE ANSWER, which is worth stating
- *  here rather than letting the next reader assume 6.23 is closed. Twelve
- *  characters that all differ is still a string compared character by
- *  character or not at all; the `[D]` on minting something glanceable from the
- *  key — a colour, a shape, a two-word mnemonic — is untouched by this.
+ *  THIS IS AN IMPROVEMENT AND IT WAS NEVER THE ANSWER. Twelve characters that
+ *  all differ is still a string compared character by character or not at all,
+ *  which is why this note used to end by saying the `[D]` on minting something
+ *  glanceable from the key was untouched by it. **THAT `[D]` WAS TAKEN
+ *  2026-11-18 — see `key-mnemonic.ts`**, which mints a two-word mnemonic from
+ *  the same bytes these twelve characters begin with. This function is now the
+ *  second half of a byline rather than the whole of one, and it is still the
+ *  half the critique is held to.
  *
  *  Nothing parses this. The output is display-only and deliberately
  *  uncopyable (see the `foresightPrefill` note: a field that could only be
@@ -1170,10 +1174,34 @@ async function primeNames(agents: Uint8Array[]): Promise<void> {
  *  THE SEPARATOR IS A MIDDLE DOT and not parentheses or "aka", because this
  *  string is read inside sentences that already carry their own punctuation
  *  ("flagged by", "founded by") and a bracket inside those reads as an
- *  aside — which a byline is not. */
+ *  aside — which a byline is not.
+ *
+ *  AND SINCE 6.23's `[D]` WAS TAKEN (2026-11-18) THERE IS A MIDDLE PART: a
+ *  two-word mnemonic derived from the key itself (`key-mnemonic.ts`). THE
+ *  ORDER IS BY WHO VOUCHES FOR IT, weakest claim first, and that is the rule
+ *  to apply if a fourth part is ever added:
+ *
+ *    <host name> · <mnemonic> · <key>
+ *     chosen        derived      binding
+ *
+ *  The host name is chosen and changeable and only the host says it. The
+ *  mnemonic and the key are both the key — the mnemonic is a 16-bit rendering
+ *  of the same bytes the shortened key begins with, so the two can never
+ *  disagree about which agent they describe, and the key remains what the
+ *  critique is held to. A reader scans leftward to rightward and so meets the
+ *  cheap-to-read parts before the one they can check.
+ *
+ *  ALL THREE ARE PRESENT ONLY UNDER A MOSS HOST THAT SUPPLIES A NAME, which
+ *  the pilot does not have: `agentNames` is empty outside Moss, so the pilot
+ *  sees "<mnemonic> · <key>". That is worth knowing because the person asking
+ *  for this reported twice that a screen "becomes a lot of texts and fine
+ *  prints", and the three-part form is the one to look at first if a byline is
+ *  ever judged too long. */
 function agentLabel(bytes: Uint8Array): string {
   const name = agentNames.get(b64(bytes));
-  return name ? `${name} · ${short(bytes)}` : short(bytes);
+  const mnemonic = keyMnemonic(bytes);
+  const derived = mnemonic ? `${mnemonic} · ${short(bytes)}` : short(bytes);
+  return name ? `${name} · ${derived}` : derived;
 }
 
 
@@ -4815,7 +4843,18 @@ async function loadClaimsByAuthor(agentB64: string) {
   try {
     agent = bytesFromB64(agentB64);
   } catch {
-    authorError = 'That is not a valid agent key. Keys are base64, like the one shown on a claim.';
+    // NOT "like the one shown on a claim", WHICH IS WHAT THIS SAID AND WAS
+    // ALREADY NOT TRUE. A byline renders twelve characters and an ellipsis and
+    // is deliberately uncopyable, so a reader who followed that sentence would
+    // paste something that cannot satisfy this field — 6.8's defect exactly, a
+    // field answerable only by a value this UI never offers. Row 6.23 made it
+    // plainer by putting a mnemonic in front of those twelve characters, and
+    // the honest fix is to stop pointing at the byline and point at the
+    // gesture that works: the byline is a BUTTON, and it carries the whole key
+    // without anybody retyping it.
+    authorError = 'That is not a valid agent key. A key is a long base64 string — the byline '
+      + 'on a claim shows only the start of one and cannot be pasted here. Click a claim\'s '
+      + 'byline instead, which carries the whole key for you.';
     render();
     return;
   }

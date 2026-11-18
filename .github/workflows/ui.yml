@@ -260,6 +260,16 @@ jobs:
           npx esbuild src/applet.ts --format=esm --outfile=/tmp/applet.mjs
           node applet-prototype-check.mjs /tmp/applet.mjs
 
+      # ROW 6.23. Placed beside the applet step for the same reason it is: no
+      # conductor, no browser, so a mnemonic that stopped being derived from
+      # the key — or a wordlist entry that started reading as somebody's name —
+      # fails this job in seconds rather than inside a five-minute pack.
+      - name: key mnemonic — derived from the key, frozen lists, and not a name
+        working-directory: mobile-ui
+        run: |
+          npx esbuild src/key-mnemonic.ts --format=esm --outfile=/tmp/key-mnemonic.mjs
+          node key-mnemonic-check.mjs /tmp/key-mnemonic.mjs
+
       # The repository's own documented build-and-pack path, driven unmodified.
       # It builds the zomes BEFORE packing, because `hc dna pack` compiles
       # nothing and packing first would wrap stale wasm in a fresh timestamp —
