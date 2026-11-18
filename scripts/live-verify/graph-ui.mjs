@@ -497,9 +497,18 @@ async function main() {
     // the accessible label is the entire reason this view is SVG, so a
     // screen-reader user must get the glanceable half too, and in the same
     // order a sighted reader gets it.
+    // THE LABEL IS STATIC, DELIBERATELY. `scripts/injection-ledger` resolves a
+    // red check back to its call site by STRING EQUALITY against this source,
+    // so a label carrying an interpolated value can never resolve and the
+    // check silently stops counting as covered. This one is recorded red by
+    // injection V (2026-11-14), and that record is worth more than printing
+    // the pattern; the pattern is in the line above for anyone reading a
+    // failure.
     const labelPattern = new RegExp(`by [a-z]+-[a-z]+ \u00b7 ${short(agent1.me).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
-    check(`including the claim node, against its own author\u2019s key and mnemonic `
-      + `(${labelPattern.source.slice(0, 40)}\u2026)`,
+    log(`  expecting: ${labelPattern.source}`);
+    check('including the claim node, against its own author\u2019s key AND the mnemonic '
+      + 'derived from it, in that order \u2014 a screen-reader user must get the '
+      + 'glanceable half too',
       labelPattern.test(claimLabel ?? ''));
 
     log('\n=== Invariant #1: size encodes nothing ===');
