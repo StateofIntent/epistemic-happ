@@ -28,6 +28,7 @@
 
 1. [What This Is](#1-what-this-is)
 2. [The Five Pillars](#2-the-five-pillars)
+   - [2.7 Running inside Moss — the host surface](#27-running-inside-moss--the-host-surface)
 3. [The Architecture Stack](#3-the-architecture-stack)
 4. [How It All Connects](#4-how-it-all-connects)
 5. [Code Walkthrough](#5-code-walkthrough)
@@ -209,6 +210,64 @@ This keeps HRR consistent with Invariant #10 (Appendix A) for exactly the reason
 **The mismatch recorded as structure, how it actually works:** `BridgeRecord` gained four fields — `carried_fields`/`dropped_fields: Vec<String>`, `original_length`/`excerpt_length: u32` — a real set difference, not a fabricated scalar like the naming-discipline note below warns against. The DHT can't compute this itself (`record_twitter_mirror` just stores whatever `BridgeRecord` it's handed), so `bridge/src/index.ts` computes it at the moment it actually builds the tweet text, from a small `MEW_FIELDS`/`CLAIM_FIELDS` list kept in sync with the real Rust struct fields by hand (there's no shared schema to derive it from automatically — a field added to either struct needs a matching update in the bridge or `dropped_fields` silently under-reports). `validate_bridge_record` checks the two constraints that *are* independently derivable from the entry's own data alone — `excerpt_length` can't exceed `original_length`, and no field name can appear in both lists — via a pure, directly-unit-tested `bridge_record_loss_fields_consistent` (five new tests, the integrity zome's first test module: everything else there needed either a real host call or was covered indirectly through the coordinator's own extractions). It can't verify the lists are *accurate* to what was really dropped — same asymmetric-witness limit as the rest of `BridgeRecord` — only that they're internally consistent.
 
 **A naming discipline worth stating explicitly:** the earlier design document that inspired this section used "infinite step-down Tesla transformer." That device doesn't exist as described, and the name carries real crank valence with exactly the technically literate readers this project needs to convince. "Impedance matching across scale boundaries" is standard, respectable RF engineering vocabulary that generates the same real constraints without that cost — the same judgment that made removing the EVA-era versor algebra correct. The test applied to every row above: *does this generate a constraint that could be violated?* If a piece of the metaphor doesn't clear that bar, it isn't in this section.
+
+---
+
+### 2.7 Running inside Moss — the host surface
+
+Moss (Lightning Rod Labs) is a Holochain group-ware host; a happ can render
+inside it as a **Tool** rather than as a standalone desktop app. This UI does
+both, from one codebase, and the Moss arm is **gated in CI** by
+[`scripts/live-verify/applet-view.mjs`](scripts/live-verify/applet-view.mjs)
+against a fake Moss host whose `appletClient` bridges to a **real conductor**.
+
+**Read the limitation first, because it bounds everything below.** No pilot
+participant runs the Moss build — **every one of them runs the standalone
+desktop app** — and the harness drives a *fake* host, not Moss itself. What is
+verified is that this UI behaves correctly against the Weave API as published.
+**Nothing here has been exercised against a real Moss installation**, and a
+green typecheck on an applet was previously mistaken for exactly that, which is
+why the harness exists.
+
+**What the harness actually proves, against a live conductor:**
+
+- **No connect form inside a Tool render.** That form asks for an Admin
+  WebSocket URL and a Tool has no Admin API at all.
+- **It reaches the conductor through the host's client and opens no socket of
+  its own** — proven twice: the admin URL in `localStorage` is pointed at a
+  dead port before the page loads, and every zome call arrives through the
+  bridged `appletClient`, so a call the UI made by itself would be invisible.
+- **`RenderInfo` is consumed, not merely detected** — the host's group name is
+  on screen and the three `AppletView` arms each draw a different surface.
+- **The `creatable` contract is honoured on both halves** — cancelling calls
+  `cancel`, publishing calls `resolve` with a WAL carrying this cell's real DNA
+  hash.
+- **A hanging `WeaveClient.connect()` ends in a sentence rather than a blank
+  page** — a measured defect, not a hypothetical.
+- **The standalone app is unaffected**, measured in the same run with no Weave
+  globals present at all.
+
+**Two things Moss gives this protocol that the standalone build structurally
+cannot.** Both are design consequences rather than conveniences:
+
+1. **A name nobody chose for themselves.** A self-asserted display name was
+   ruled out (§2.2's no-imposition reasoning, and Invariant #1): a chosen label
+   asserts something the key does not. Under a Moss group the nickname is **the
+   group's own, vouched for by the host rather than asserted by this client**,
+   so the byline becomes `host name · key-derived mnemonic · key` — ordered
+   weakest claim first: chosen, derived, binding. **The standalone pilot build
+   sees two of those three**, and that asymmetry is the point rather than a gap.
+   The harness carries a control: an agent the host has no name for renders
+   bare, so a name on screen is a name that was *fetched*.
+2. **Notification to someone whose app is closed.** The standalone arm has
+   exactly two options — poll, or stay silent — and a participant reported the
+   consequence: nothing notifies anyone. **Moss can raise a notification in its
+   own frame**, which reaches a person who is not running the app. That is a
+   third option the standalone arm has no way to build.
+
+**What this is not.** It is not a claim that the Moss integration is finished,
+nor that it has users. It is a second host surface, built and gated, whose
+first real-world exercise has not happened yet.
 
 ---
 
