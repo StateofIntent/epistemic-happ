@@ -47,13 +47,27 @@ a `[D]`.** Everything still open below is an `[X]` the human sends or a `[D]`
 only they can take, **so a session opening for something to build will not find
 it and must not invent it.**
 
-- [x] **~~1. ASK WHETHER THE FIVE MESSAGES WENT OUT.~~ ASKED 2026-11-19
-      (evening): NONE have been sent.** Still owed, all four — §9 (assembled,
-      to Kupukupu), §5, §4, §6; **§1 is superseded by §9.** The human intends
-      to send them on 2026-11-20. **ASK AGAIN NEXT SESSION; DO NOT ASSUME** —
-      this list was wrong four separate times in that direction on 2026-11-16/17,
-      and §7 going out on 11-18 was only discovered by asking. **§5 decays
-      daily.**
+- [x] **~~1. ASK WHETHER THE FIVE MESSAGES WENT OUT.~~ TWO WENT OUT 2026-11-19
+      (evening): §6 to Eric Doriean** (the depth sweep he accepted on 11-09 and
+      had waited ten days for) **and §8 to Kupukupu** (v0.3.7, the macOS
+      explanation, the optional update-log ask). **KUPUKUPU IS TRAVELLING from
+      2026-11-20** and reads §8 on return, so the 6.23 *does it work* question
+      has no answer due for days — **waiting, not silence.**
+      **STILL OWED: §4 (Luck Light), §5 (both participants), §1 (Kupukupu).**
+- [ ] **1b. THE "§9" IN THE LINE ABOVE WAS A POINTER TO TEXT THAT DOES NOT
+      EXIST, and finding it is the reason this step is still open.** This block
+      and the session memory both named **§9** — one assembled message carrying
+      v0.3.7's features, the 6.23 question, the macOS explanation, **§5's
+      correction**, the log ask and the recruitment ask — and claimed **§1 is
+      superseded by §9**. **The drafts file runs §1 to §8 and has no §9**: it
+      was composed in conversation on 2026-11-19 and never written down.
+      **1.35's defect, in the outreach record rather than a row.** The
+      consequence is live, not clerical: **§5's correction was riding on §9, so
+      §8 going out did NOT carry it. §5 is still owed, and §1 is not
+      superseded by anything.** **§5 DECAYS DAILY** — it corrects something
+      false that two people were told on 2026-11-09 and still act on.
+      **SEND §5 TO LUCK LIGHT NOW**: he is not travelling, §4 goes to him too,
+      and the two pair naturally; Kupukupu's copy follows when he is back.
 - [x] **~~2. `verify.mjs`'s OUTPUT, NOT ITS EXIT CODE.~~ RUN 2026-11-19
       (evening): `YES`, and for the first time with the derived side MOVED** —
       `/latest` read live as **`v0.3.7`**, expected seed `Epistemic
