@@ -224,7 +224,8 @@ only when a *level* is made to stand in for *agreement*.
 
 ## 6. The archive publishes nothing — **ENFORCED (and it rules out the obvious design)**
 
-`~/.epi-pilot-node/verify.mjs` dumps the node's own chain and asserts
+[`scripts/pilot-node/verify.mjs`](../scripts/pilot-node/verify.mjs) dumps the
+node's own chain and asserts
 `0 App entries` on every run, printing `VIOLATED` the moment anything calls a
 zome function on it. Neither zome has an `init` callback, so enabling the app
 writes no app entry **by construction rather than by restraint**.
@@ -234,9 +235,16 @@ That would break the invariant it exists to demonstrate. Node-health
 observations need a *different* key — which is row 7.29's refusal again, and
 which is why row 5.5's *on which network?* is a blocker rather than a detail.
 
-**Status caveat:** enforced by a script that lives at `~/.epi-pilot-node`,
-**outside the repository and outside CI** — row 7.30's sub-`[D]`. So it is
-enforced on one machine by one operator's copy. That is weaker than it reads.
+**Status caveat, HALF CLOSED 2026-11-19.** This used to read: *enforced by a
+script that lives at `~/.epi-pilot-node`, outside the repository and outside
+CI.* **The script is now in the repository** — row 7.30's sub-`[D]` was taken —
+so it is versioned, reviewable, and can be SENT to a second operator. **It is
+still not in CI, and that is now a decision rather than a gap**: the check needs
+a running conductor and a live GitHub read, and in CI a rate limit would be
+indistinguishable from the real `CANNOT VERIFY` it exists to raise. So it
+remains enforced on one machine by one operator's run — **but no longer by a
+copy nobody else can hold**, which was the part that made it weaker than it
+read.
 
 ## 7. Nothing writes at volume without a human, because nothing can be cleaned up — **STRUCTURAL**
 
