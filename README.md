@@ -4,9 +4,9 @@
 
 ---
 
-**Version:** 0.1.0  
-**Date:** 2026-08-25  
-**Status:** Design Complete — HRR Compressor Deferred  
+**Released:** v0.3.7  
+**Document updated:** 2026-11-19  
+**Status:** Pilot live since 2026-11-09 — two participants, claims and critiques crossing the DHT, and one author retraction after a participant's critique. HRR Compressor still deferred.  
 **Licence:** MIT OR Apache-2.0, at your option — see [Licence](#licence)  
 **Runs on:** Holochain 0.7.0
 
