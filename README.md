@@ -125,7 +125,9 @@ A protocol that:
 
 ### 2.4 Correlative Witness (inspired by Mattereum) — The Binding Layer
 
-**What it is:** A pattern *inspired by* Vinay Gupta's Ricardian contracts — legal agreements that are simultaneously human-readable and machine-executable, binding physical assets to digital tokens with enforceable terms on both sides.
+**What it is:** A pattern *inspired by* **Mattereum's** use of **Ricardian contracts** — a concept introduced by **Ian Grigg** in 1996, for the Ricardo payment system and named after David Ricardo: a legal agreement that is simultaneously human-readable and machine-parseable, cryptographically identified by the hash of its own text. **Mattereum (Vinay Gupta) is the application this design actually borrows from** — using them to bind *physical* assets to digital tokens with enforceable terms on both sides, which is the part that matters here.
+
+*(The attribution is split deliberately. An earlier version of this line credited the Ricardian contract itself to Vinay Gupta; the concept is Grigg's and the physical-asset application is Mattereum's, and crediting the wrong half of that to the wrong party in the one section that borrows from both is exactly the sort of unchecked claim the rest of this document tries not to make.)*
 
 **Important distinction:** Our bridge is **not** a Ricardian contract in the strict sense — there's no human-signed agreement, no legal enforceability, and no obligation on Twitter's part. What we borrow from Mattereum is the *shape* of the idea: a **binding layer** that preserves the irreducible complexity of the thing being bridged, rather than flattening it. We call our version a **correlative witness** — a deliberately more modest, more accurate name for what the bridge actually does.
 
