@@ -46,6 +46,17 @@ node scripts/pilot-node/verify.mjs              # needs the conductor running
 node scripts/pilot-node/verify-injections.mjs   # needs it too; ~9 real runs
 ```
 
+Single modes can be run by hand, which is how you read a failure in full:
+
+```sh
+node scripts/pilot-node/verify-injections.mjs control        # live, unstubbed
+node scripts/pilot-node/verify-injections.mjs down           # band-free
+node scripts/pilot-node/verify-injections.mjs bumped 0.3.x   # band-dependent
+```
+
+A band-dependent mode has to be **told** its band rather than assuming the one
+this machine is on — that assumption is exactly what rotted before the move.
+
 `verify.mjs` reads the live release from GitHub unauthenticated, so no `gh` and
 no token — the repository is public precisely so a second operator needs neither.
 

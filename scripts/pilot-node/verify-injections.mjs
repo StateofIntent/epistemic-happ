@@ -10,7 +10,15 @@
 // unchanged; the conductor, the cell and the chain dump are all real.
 //
 //   node verify-injections.mjs                 # every mode, with verdicts
-//   node verify-injections.mjs <mode>          # one mode, full output
+//   node verify-injections.mjs control         # the live release, unstubbed
+//   node verify-injections.mjs down            # one band-free mode, full output
+//   node verify-injections.mjs bumped 0.3.x    # one band-DEPENDENT mode
+//
+// A band-dependent mode needs to be told which band to be relative to,
+// because that is the whole point of the table below no longer being
+// pasted. The full run reads it off the node; a single-mode run cannot,
+// so it ASKS rather than defaulting to the band this machine happens to
+// be on — which is the assumption that rotted in the first place.
 //
 // ────────────────────────────────────────────────────────────────────────
 // THE MODE TABLE IS DERIVED NOW, AND IT USED TO BE PASTED. That is the
@@ -56,6 +64,17 @@ const UNCONDITIONAL = {
   down:    { throws: true,  exit: 1, why: 'no network — fail loud rather than fall back' },
 };
 
+// Build one band-dependent mode's spec by hand. Returns null for an
+// unknown mode, an unreadable band, or `patch` in a band that has no
+// seed-keeping tag — all of which are a refusal rather than a guess.
+function specFromBand(mode, band) {
+  const plan = band && bandPlan(band);
+  if (!plan) return null;
+  const pick = { patch: plan.same, bumped: plan.minor, major: plan.major, pre: plan.pre }[mode];
+  if (!pick) return null;
+  return { tag: pick, exit: mode === 'patch' ? 0 : 2 };
+}
+
 // ── child: run one mode ────────────────────────────────────────────────
 const one = process.argv[2];
 if (one) {
@@ -64,8 +83,17 @@ if (one) {
     // the only way the word "control" stays true without maintenance.
     await import('./verify.mjs');   // exits on our behalf
   }
-  const spec = JSON.parse(process.env.EPI_INJECT ?? 'null');
-  if (!spec) { console.error(`mode '${one}' needs EPI_INJECT; run without arguments`); process.exit(64); }
+  // The full run passes the spec in the environment, already derived. A
+  // hand-run single mode builds its own: band-free modes need nothing,
+  // and band-dependent ones take the band as the second argument.
+  let spec = JSON.parse(process.env.EPI_INJECT ?? 'null');
+  if (!spec) spec = UNCONDITIONAL[one] ?? specFromBand(one, process.argv[3]);
+  if (!spec) {
+    console.error(`mode '${one}' is relative to a seed band — give it one:`);
+    console.error(`  node verify-injections.mjs ${one} 0.3.x`);
+    console.error(`modes: control ${Object.keys(UNCONDITIONAL).join(' ')} patch bumped major pre`);
+    process.exit(64);
+  }
   const real = globalThis.fetch;
   globalThis.fetch = async (url, opts) => {
     if (!String(url).includes('api.github.com')) return real(url, opts);
