@@ -22,84 +22,88 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-19 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
+**CHECKPOINT, 2026-11-20 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
 IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
 with this block, this block wins.**
 
-**WHERE THINGS STAND, 2026-11-19 (evening).** happ `main` is at **`8aa9636`**.
-**SEVEN PRs merged across 2026-11-18/19 — #518 to #524**, and this block's own
-pointer was one of them: #524 moved it after six PRs and a release had made
-it false.** `#350` is the only open PR and
-**stays HELD — do not merge.** Tree clean, nothing in flight, branches pruned.
-**`v0.3.7` IS PUBLISHED AND IS `/latest`** (desktop `release` `a7abb65`, tag at
-that commit because the artifacts are built from `release` — **v0.3.6 tags
-`release` too, so a `main`-targeted tag would name a commit that was not the
-build input**). 15 assets, four platforms, `latest-mac.yml` merged across both
-mac runners. **The pilot node read the NEW tag live and said YES** — a check
-that could not fail at all before #515.
+**WHERE THINGS STAND, 2026-11-20.** happ `main` is at **`49dafbd`**. **EIGHT
+PRs merged across 2026-11-18/19 — #518 to #525.** `#350` is the only open PR
+and **stays HELD — do not merge.** Tree clean, nothing in flight, branches
+pruned. **`v0.3.7` IS PUBLISHED AND IS `/latest`** — 15 assets, four
+platforms, `latest-mac.yml` merged across both mac runners. **The pilot node
+reads the live tag and says YES**, re-measured 2026-11-19 from both the repo
+path and the symlink.
 
-### RESUME HERE — THE ORDERED LIST, 2026-11-19 (evening)
+**THE RELEASE-TAG TRAP, KEPT HERE BECAUSE REWRITING THIS BLOCK ON 2026-11-20
+NEARLY DELETED THE ONLY COPY.** The tag sits on desktop `release` (`a7abb65`),
+**not on `main`**, because **the artifacts are built from `release`** — and
+**`v0.3.6` tags `release` too**, so a `main`-targeted tag would name a commit
+that was **not the build input**. **This belongs in a row rather than in a
+checkpoint header**: §0 blocks are superseded and discarded, which is how this
+one was nearly lost, and a trap that only lives in the resume pointer has the
+lifetime of the next rewrite.
 
-**TWO OF THE FIVE STEPS ARE DONE AND `[M]` IS EMPTY AGAIN.** Step 2 was run and
-step 3's `[D]` was TAKEN — which is the same shape as 2026-11-18 and worth
-naming twice: **`[M]` does not refill by itself, it refills when somebody takes
-a `[D]`.** Everything still open below is an `[X]` the human sends or a `[D]`
-only they can take, **so a session opening for something to build will not find
-it and must not invent it.**
+**THE OUTREACH BACKLOG IS CLEAR FOR THE FIRST TIME SINCE 2026-11-08.** Five
+messages went out on **2026-11-19** — §1 and §8 to Kupukupu, §4 and §5 to Luck
+Light, §6 to Eric Doriean — and **every draft in the local-only drafts file is
+now sent.** That file is a record, not a queue. **Do not resend any of them.**
 
-- [x] **~~1. ASK WHETHER THE FIVE MESSAGES WENT OUT.~~ TWO WENT OUT 2026-11-19
-      (evening): §6 to Eric Doriean** (the depth sweep he accepted on 11-09 and
-      had waited ten days for) **and §8 to Kupukupu** (v0.3.7, the macOS
-      explanation, the optional update-log ask). **KUPUKUPU IS TRAVELLING from
-      2026-11-20** and reads §8 on return, so the 6.23 *does it work* question
-      has no answer due for days — **waiting, not silence.**
-      **STILL OWED: §4 (Luck Light), §5 (both participants), §1 (Kupukupu).**
-- [ ] **1b. THE "§9" IN THE LINE ABOVE WAS A POINTER TO TEXT THAT DOES NOT
-      EXIST, and finding it is the reason this step is still open.** This block
-      and the session memory both named **§9** — one assembled message carrying
-      v0.3.7's features, the 6.23 question, the macOS explanation, **§5's
-      correction**, the log ask and the recruitment ask — and claimed **§1 is
-      superseded by §9**. **The drafts file runs §1 to §8 and has no §9**: it
-      was composed in conversation on 2026-11-19 and never written down.
-      **1.35's defect, in the outreach record rather than a row.** The
-      consequence is live, not clerical: **§5's correction was riding on §9, so
-      §8 going out did NOT carry it. §5 is still owed, and §1 is not
-      superseded by anything.** **§5 DECAYS DAILY** — it corrects something
-      false that two people were told on 2026-11-09 and still act on.
-      **SEND §5 TO LUCK LIGHT NOW**: he is not travelling, §4 goes to him too,
-      and the two pair naturally; Kupukupu's copy follows when he is back.
-- [x] **~~2. `verify.mjs`'s OUTPUT, NOT ITS EXIT CODE.~~ RUN 2026-11-19
-      (evening): `YES`, and for the first time with the derived side MOVED** —
-      `/latest` read live as **`v0.3.7`**, expected seed `Epistemic
-      Resonance-0.3.x`, installed seed the same, 13 records, 0 App entries,
-      arc `null`, peers 1, *publishes nothing* **HOLDS**. Injections **9 of 9**.
-- [x] **~~3. THE RECOMMENDED `[D]`: put `verify.mjs` and its injection harness
-      IN THE REPO.~~ TAKEN AND BUILT 2026-11-19 — [`scripts/pilot-node/`](../scripts/pilot-node/).**
-      See row 7.30. **The move paid for itself immediately: the harness had
-      already rotted in the one day it was unversioned** — a `control` mode
-      hardcoded to `v0.3.6` and still commented as *the live tag*, passing by
-      luck; a whole mode table silently relative to a `0.3.x` seed that nothing
-      stated, which would have reported **FAIL for a correct check** the day
-      the node was reinstalled under `0.4.x`; and a closing count of "six ways"
-      against seven failing modes. **It is deliberately NOT in CI** — that is
-      now a decision with a stated reason, not a gap.
-- [ ] **4. IF §4 WENT OUT AND LUCK LIGHT SAYS YES, that is the event two things
-      wait on**: 7.31 (convergence gets a population) and `fixed-core.md`
-      rule 1 (consent has never been posed, because the only node is the
-      author's own machine). **7.30's sub-`[D]` is no longer among them — it
-      was taken above, which means the thing to SEND a second operator now
-      exists before the operator does.**
+### RESUME HERE — THE ORDERED LIST, 2026-11-20
+
+**`[M]` IS EMPTY AND SO IS `[X]`.** Everything open is **somebody else's reply**
+or a **`[D]` only the human can take**. A session opening for something to
+build will not find it and **must not invent it**. The list refills when a
+`[D]` is taken — which is what happened on 11-18 and again on 11-19.
+
+- [ ] **1. ASK WHETHER ANY REPLY CAME BACK. Do not chase any of them.**
+      **Kupukupu is TRAVELLING from 2026-11-20** and reads §8 on return, so the
+      6.23 *does it work* question and the optional macOS error-string log have
+      no answer due for several days. **Luck Light has §4's seed string and an
+      accepted offer on his own timetable** — the message says the machine can
+      wait for the office. **Eric Doriean owes nothing**; he said he would
+      report back when the plain-model memory switch ships. **Both recruitment
+      asks are made.** **This is waiting, not silence.**
+- [ ] **2. `verify.mjs`'s OUTPUT, NOT ITS EXIT CODE.**
+      `node scripts/pilot-node/verify.mjs` — **it is in the repo now**, so this
+      is a path any operator can be sent. `node scripts/pilot-node/verify-injections.mjs`
+      re-proves it can fail (9 modes, band derived, 7 ways).
+      `band-plan-check.mjs` needs no conductor and no network.
+- [ ] **3. THE EVENT TWO THINGS WAIT ON IS LUCK LIGHT'S NODE ACTUALLY COMING
+      UP**: 7.31 (convergence gets a population) and `fixed-core.md` rule 1
+      (consent has never been posed, because the only node is the author's own
+      machine). **His seed string is `Epistemic Resonance-0.3.x` and he has
+      it.** If he reports trouble, the first question is whether his node is on
+      the released DHT, and `scripts/pilot-node/` is now the answer to send.
+- [ ] **4. RECRUITMENT IS STILL THE BINDING CONSTRAINT**, more than anything in
+      the code — 2 confirmed, needs 2 to 4 more. Both asks are made and **an
+      intro is the only thing that changes it.** Nothing here is actionable
+      without one.
 - [ ] **5. ONLY THEN look for work.** Do not manufacture a row. **And do not
       start the autopoiesis stack**: 7.31 is NOT yet worth building (see its
       row — the one failure mode this project has is one convergence cannot
       see), and `fixed-core.md` rule 2 must be built WITH it rather than after.
 
+**A POINTER WAS FOUND DANGLING ON 2026-11-19, AND THE LESSON IS GENERAL.** This
+block and the session memory both cited a **"§9"** — one assembled message to
+Kupukupu carrying v0.3.7's features, the 6.23 question, the macOS explanation,
+**§5's correction**, the log ask and the recruitment ask — and both said **§1
+was superseded by it.** **There is no §9 in the drafts file and there never
+was**: it was composed in conversation on 11-19 and never written down, so the
+resume pointer named text that did not exist. **That is 1.35's defect in the
+outreach record rather than in a row.** The consequence was nearly live: **§5's
+correction was riding on §9**, so it would have been dropped silently had the
+sends not been itemised one at a time. **THE RULE: a message that exists only
+in a conversation is not a draft.** Compose into the drafts file, or it is not
+written down.
+
 **WHAT IS DELIBERATELY NOT DONE, so it is not mistaken for an oversight:**
-the macOS error-string ask is inside §9 as an *optional* request; 6.12's
-reversal evidence is **not collectable** (it needs a conductor that accepts
-zome calls, and the archive prints `VIOLATED` if anything calls one); and the
-HoloFuel figures in **row 7.32 carry a decay date of 2027-01-30** — re-read
-them rather than quoting them.
+6.12's reversal evidence is **not collectable** (it needs a conductor that
+accepts zome calls, and the archive prints `VIOLATED` if anything calls one);
+the HoloFuel figures in **row 7.32 carry a decay date of 2027-01-30** — re-read
+them rather than quoting them; and **`scripts/pilot-node/` is deliberately NOT
+in CI** — the check needs a running conductor and a live GitHub read, and a CI
+rate limit is indistinguishable from the real `CANNOT VERIFY` it exists to
+raise. That is a decision with a stated reason, not a gap.
 
 **CHECKPOINT, 2026-11-18 — SUPERSEDED BY THE BLOCK ABOVE. Still the authority
 on the three decisions taken that day, row 6.23's build, and the §0 rule it
