@@ -398,7 +398,17 @@ accepted as an automatic update by an installed one, whatever the in-app
 updater reports. **The app may still tell you an update is available, and the
 download may still complete; the install is what cannot happen.** Until that
 notice is removed, treat it as a prompt to come back here and download the new
-`.dmg` yourself. Windows and Linux auto-update normally.
+`.dmg` yourself.
+
+On **Linux** the AppImage does update itself, and that was measured end to end
+on 2026-11-20 rather than assumed: a shipped v0.3.6 AppImage found v0.3.7,
+fetched it and restarted itself on the new version. It needs only that the
+AppImage sits somewhere you can write to — it replaces itself with a file named
+for the new version and removes the old one, so the file you launch from will
+change name. The download is a block-level delta against the copy you already
+have, so it is usually a few megabytes rather than the full artifact, whatever
+the dialog estimates. **Windows is untested; it is believed to update normally
+and nobody has watched it.**
 
 On **macOS 15 (Sequoia)** the app is also quarantined
 when you open it, and the System Settings option that used to allow it has
