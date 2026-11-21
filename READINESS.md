@@ -558,6 +558,55 @@ arrived, and **that is a decision rather than a measurement** — recorded here,
 unruled, with the 10.0s standing as the live evidence that the intermittency
 premise has not simply become false.
 
+**AND A SYSTEMATIC WINDOW, 2026-11-22, WHICH MOVES THAT DECISION BACK AWAY FROM
+ITS RETIREMENT CONDITION — because the count above is a list of NOTICED
+occurrences rather than a sample.** Every observation above was written down
+*because somebody hit it*, so its denominator holds only runs worth recording,
+which skews hard toward failures; this section already says to treat the rate
+as an order of magnitude. `scripts/baseline-history.mjs` reads the figure out of
+every run in a defined window instead, and for `partition-rejoin` alone over the
+last 60 `network.yml` runs: **5 failures of 27 runs where the job actually ran —
+19%**, with the most recent 14-run window at **3 of 11, 27%**. **So the word
+"most" has NOT arrived on a systematic count, and the retirement condition is
+not met.** The unruled decision above can stay unruled, on better evidence than
+it had.
+
+**THE DENOMINATOR IS THE WHOLE POINT AND IT IS EASY TO GET WRONG IN BOTH
+DIRECTIONS.** The first version of that measurement reported **11%** because it
+divided by all 46 completed runs — and `network.yml` **skips** this job on
+docs-only diffs, so the job conclusions were **22 success, 20 SKIPPED, 5
+failure**. **A skipped job is not a passing job.** The script now prints
+ran-versus-skipped above the rate and names anything it could not classify,
+because a denominator you cannot see is the defect in both this correction and
+the selection bias above.
+
+**WHAT THE WINDOW ADDS THAT NO SINGLE OBSERVATION DOES: THE DISTRIBUTION HAS AN
+EMPTY MIDDLE.** Passing baselines sit at **0.0–25.1s** and failing ones at
+**210.6–426.1s**, with **nothing ever observed between** — two regimes rather
+than a slow tail. That is evidence the slowness is *intermittent* rather than
+*routine*, which is this section's own open question, and it is the shape a
+retry would need in order to work at all. Both edges move with the sample (the
+fast edge read 20.1s before a 25.1s run arrived), so they are quoted as
+observed rather than as boundaries.
+
+**THREE LIMITS, STATED SO THIS IS NOT READ AS MORE THAN IT IS.** It is
+`partition-rejoin` **only**, not pooled, so it does not supersede the counts
+above — it sits beside them with different semantics. It is **datacentre
+runners**, so it says nothing about the consumer-network question §3 actually
+turns on, which is still what the held retry waits for. And every rate is a
+**LOWER BOUND**, because a re-run overwrites a run's conclusion in `gh`: a
+200.4s attempt on 2026-11-21 was re-run, landed at 275.7s, and only the 275.7s
+survives in the API. **That is a second reason the harness's instruction is to
+record the figure rather than re-run** — re-running destroys the observation
+this list exists to collect.
+
+**ONE CORROBORATION WORTH THE LINE:** the ninth observation's **426.0s** (PR
+#309, 2026-10-22) and a **426.1s** crossing on `main` at `d70723e` (#526, run
+`44538702769`, 2026-11-19) are **separate events three weeks apart** that landed
+on the same poll of the 5s sampler — checked rather than assumed to be one
+mis-dated record, and consistent with the harness's own note that an identical
+figure across runs is expected from this instrument.
+
 **One thing this occurrence settles that no stubbed scenario could: three
 attempts rather than two was load-bearing, and not as a statistical hedge.**
 The comment's reason is the burst limiter — 15 initiations per peer per 10
