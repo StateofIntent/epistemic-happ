@@ -200,10 +200,11 @@ against misuse without human intervention."** That is **rule 2's dangerous
 version, in the reference architecture, as a stated goal.** Borrow MAPE-K's
 vocabulary if useful; do not borrow its topology or its autonomy targets.
 
-## 5. A reflex acts only on its own substrate, from an enumerated set — **WRITTEN ONLY**
+## 5. A reflex acts only on its own substrate, from an enumerated set, at a rate it does not set — **WRITTEN ONLY**
 
 Fast local action with no deliberation is allowed — that is what convergence
-*is* — under two limits:
+*is* — under three limits, the first two on *what* a reflex may do and the
+third, added 2026-11-21, on *how often* it is checked:
 
 - **Own substrate only.** A node repairs itself. It does not act on another
   node, another host's machine, or the network.
@@ -213,6 +214,51 @@ Fast local action with no deliberation is allowed — that is what convergence
 
 **And the list must exclude the stop mechanism** (rule 2), or convergence will
 restart what a host halted and call it repair.
+
+**AND A THIRD LIMIT, ADDED 2026-11-21: the check rate is a constant in the
+core, never earned.** A reflex set is only as good as the sampling that feeds
+it, and the standard advice is to sample *less* as trust accrues. Mark Burgess
+states it plainly in *The Second Smartest "Reasoning Model" In The Infants*
+(2026-11-21) — the essay proposing CFEngine's own anomaly detection as the
+immune system for AI agents, so this is rule 2's source arriving as best
+practice a second time: *"Our initial trust is based on past history of whether
+an agent has kept its promises or not. This informs a rate of checking, or
+sampling of actual operational state (a kinetic response). The more we trust,
+the less we need to look."*
+
+**Adopted here, that rule is the mechanism by which this system would go blind
+to the only failure mode it has.** The hedge attached to it — *"If things
+change, we'll want to follow more closely again"* — presupposes that the change
+is visible to the watcher, and **the seed trap is a change that is not.** A
+node stranded by a `0.4.0` release (row 7.31) is in perfect health on every
+local measure: conductor up, app enabled, disk fine, chain clean. It keeps
+every promise it can see itself making, so every unchecked hour is clean
+history *earning it a longer interval*, and the interval grows fastest exactly
+when the node has been wrong longest. **Decaying sample rate is worse than a
+blind spot, because it is a blind spot that widens on success.**
+
+**This is not a prediction. The repository has measured it three times, and in
+each case trust was the reason nothing looked:**
+
+- The pilot-node harness **rotted in one day**, unversioned, with zero second
+  operators — a `control` mode hardcoded to `v0.3.6` and still commented *the
+  live tag*, **passing by luck.**
+- On 2026-11-19 the three surfaces that get *read* were the three most out of
+  date — **the same `control` mode again, counted once**, plus the pinned demo
+  video and a README header saying `0.1.0` / "Design Complete" while v0.3.7
+  shipped. Frequently read is not frequently checked.
+- 6.15's CapGrant cost claim was **an injected defect read as a measurement**,
+  propagated into nine places, measured false on 2026-11-14 — and it stood in
+  the client as a design's stated reason until 11-17, because the sweep that
+  corrected the harness never reached a file nobody suspected.
+
+**So the rule: the interval at which the enumerated set is checked is itself
+fixed where rule 0 says a core must live, and is not a function of accumulated
+trust.** A reflex list with no stated check rate is incomplete. Trust may
+decide what a host *promises*; it may not decide how often the promise is
+measured. ([`scripts/pilot-node/verify.mjs`](../scripts/pilot-node/verify.mjs)
+is a hand-run check today, which is a constant rate of zero — honest, and the
+thing 7.31's second trigger changes.)
 
 **This is also where the two speeds separate honestly:** reflexes are local and
 unreviewed because they are a host keeping a promise about its own machine, and
