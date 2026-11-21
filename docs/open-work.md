@@ -326,7 +326,18 @@ OF ALARM.**
       `bump/foreign-critique-held` REMAINS** (#350, OPEN, HELD), plus
       `remotes/origin/corpus/item-18-probers` — **a stale REMOTE branch this
       item did not cover and I left alone**: its content is landed, deleting it
-      is harmless, and it is the human's repo to tidy. `[M]`
+      is harmless, and it is the human's repo to tidy. **AND THE TWO CORPUS
+      COMMITS NEEDED NO EVIDENCE REF, WHICH SHARPENED 0b's CONVENTION RATHER
+      THAN WIDENING IT:** GitHub keeps a merged PR's head forever at
+      `refs/pull/<N>/head`, so `7d79a8d` is still fetchable as
+      `refs/pull/269/head` without anybody doing anything. **The injections are
+      the exception because of the very pattern that makes them clean** — they
+      go on throwaway refs so a PR's history stays green, which is what puts
+      them outside the one namespace GitHub preserves by itself. **MEASURED
+      across all 548 `refs/pull/*` entries: none of the six injection commits
+      is in any of them.** So the practice that protects the PR history is the
+      practice that strands the evidence, and `refs/evidence/*` is needed for
+      exactly the commits that never had a PR. `[M]`
 - [ ] **1. TWO REPLIES CAME BACK — ERIC DORIEAN AND LUCK LIGHT, BOTH
       2026-11-20. ONE CORRECTION IS OWED; CHASE NOTHING ELSE.** Eric is
       recorded above and in the 2026-11-18 block and **owes nothing** (§9 is
