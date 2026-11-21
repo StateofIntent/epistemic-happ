@@ -2264,12 +2264,28 @@ red on a real poisoning.
 **58 of the 101 checks have never been shown to fail**, and naming them is more
 useful than a percentage: the **38 paired validation-source assertions**, which
 would fail only if a refusal arrived from a coordinator guard rather than from
-validation; the **18 positive reads**, which need an ***over*-refusing
-injection** — the exercise that would catch a rule refusing everything, and the
-one still not done; one plumbing control; and one check proven **insensitive**
-rather than unproven. **The rules are well evidenced. A little under half the
-individual assertions are.** That is the honest shape of it, and the next
-injection worth running is the over-refusing one.
+validation; the **18 positive reads**, which are the paragraph below; one
+plumbing control; and one check proven **insensitive** rather than unproven.
+**The rules are well evidenced. A little under half the individual assertions
+are.** That is the honest shape of it.
+
+**The 18 positive reads are NOT waiting on an over-refusing injection, and this
+section said they were long after one had been run.** That exercise exists — run
+[`38129574846`](../../actions/runs/38129574846), `TargetToCritique` made to
+refuse every link, correct ones included — and its result was that **part 1
+never executed.** Link creation shares a zome call with entry creation, so an
+over-refusing rule fails *setup*, long before any read; the run went red by
+crashing rather than by naming a property. **That is a property of the substrate
+rather than of the harness**, which is the same mechanism this section already
+describes two paragraphs down for `RetractionToReplacement` — *"an over-refusing
+rule makes the whole create fail"* — stated there and not carried up to here.
+**So the over-refusing injection is not the next exercise worth running: it is
+done, and it closed the route.** Those 18 are **unproven by a route nobody has
+built**, rather than pending a known one. What they are sensitive to is the
+narrower case — a defect breaking a legitimate *read* while leaving writes
+intact, the coordinator's read-path anchor derivation drifting from the one it
+wrote through, which refuses nothing and returns nothing. **That has not been
+injected, and nothing here claims it would work until it has been.**
 
 **What the FIRST injection did not cover, said when it was the only one.** It was run against the twelve-probe, 35-check version. The
 tenth rule brought two more probes and two more controls, so **the six checks

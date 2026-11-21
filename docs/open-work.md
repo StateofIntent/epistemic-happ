@@ -237,7 +237,7 @@ was there with `Run` wrapped onto the previous line, which my regex could not
 see). **A REGEX OVER PROSE IS AN INSTRUMENT AND CAN BE WRONG IN THE DIRECTION
 OF ALARM.**
 
-- [ ] **0a. THE OVER-REFUSING INJECTION IS RECORDED AS BOTH DONE AND UNDONE, IN
+- [x] **0a. THE OVER-REFUSING INJECTION IS RECORDED AS BOTH DONE AND UNDONE, IN
       THE SAME FILE.** `README.md:2263` says the 18 positive reads *"need an
       **over**-refusing injection — the exercise that would catch a rule
       refusing everything, and **the one still not done**… the next injection
@@ -253,7 +253,45 @@ OF ALARM.**
       substrate rather than of the harness"*. **So those 18 checks are not
       waiting on an injection anyone could run, and two surfaces still price
       them as a to-do.** Fix both sentences to say what they are actually
-      waiting on. `[M]`
+      waiting on. ~~`[M]`~~ **DONE 2026-11-21 — AND THE ITEM UNDERCOUNTED ITS
+      OWN FINDING BY MORE THAN HALF. It named two surfaces; there were FIVE**,
+      found by sweeping the claim rather than the two line numbers
+      ([[sweep-adjacent-claims-not-just-the-one-you-came-for]]):
+      `README.md:2258`, `scripts/live-verify/attachment-links.mjs:257`,
+      **`SPEC.md:563`**, **`SECURITY.md:138`** and
+      **`scripts/live-verify/README.md:124`**. **`SPEC.md` is the worst of the
+      three new ones and is the same shape as the original finding, one level
+      up:** its stale sentence sits *directly beneath its own point 3*, which
+      states the correction in full — so the file contradicted itself across a
+      single paragraph break, exactly as `attachment-links.mjs` did across 130
+      lines. **AND THE COUNT WAS WRONG TOO, which the item did not notice: the
+      header said "COVERAGE AFTER FIVE INJECTIONS" and there were SIX.** The
+      sixth *is* the over-refusing run — so the count was low for precisely the
+      reason the prose was stale, one defect wearing two faces: the injection
+      was excluded from the total because the surrounding sentence believed it
+      had never happened. Both totals corrected to six
+      (`attachment-links.mjs:251`, `scripts/live-verify/README.md:124`); the
+      *"after four"* blocks at `attachment-links.mjs:221` and `README.md:2182`
+      are deliberately historical and left alone. **All five surfaces now say
+      the same thing: the route is CLOSED, not pending** — those 18 reads are
+      *unproven by a route nobody has built*, and the case they are sensitive
+      to is a defect breaking a legitimate READ while leaving writes intact,
+      which is named as uninjected rather than claimed to work. **GATED AS FAR
+      AS IT HONESTLY CAN BE, WHICH IS NOT AS A COUNTER:**
+      `check-prose-claims.mjs` gained `injections` in `UNCOVERED_BY_DESIGN`
+      with the exemption **measured** — that file cites **10 distinct run IDs
+      of which 6 are injections**, the other four a green first run and three
+      count fixes wearing the identical shape, so a mechanical counter reports
+      10 where the prose should say six and the script's own rule (*a counter
+      that is ambiguous must not ship as truth*) forbids shipping it. The gap
+      is now a statement rather than a silence. **WHAT REMAINS UNGATED IS THE
+      CLASS, NOT THIS INSTANCE:** no check can yet see *a surface claiming X is
+      undone while the same file records X done*. `check-stale-blockers.mjs`
+      catches `[D]` cross-references only, and this is not a counted claim
+      either, so `check-prose-claims.mjs` is the wrong home for it. **A
+      detector for it is a real `[M]`, and a bad one is worse than none** by
+      that script's own argument — it would convert an unexamined claim into
+      one somebody believes has been examined.
 - [x] **0b. `main` CITES A COMMIT THAT EXISTS ONLY ON THIS MACHINE.** `3f90244`
       — the `ClaimToRetraction` over-refusal injection — is cited three times
       as the evidence that rule was watched failing: `SPEC.md:532`,

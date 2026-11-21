@@ -125,9 +125,12 @@ fraction.** Five deliberate injections have now established that **every rule
 the harness claims to cover has been watched failing on its own probe** — both
 halves (base comparison and author binding) of all eighteen link rules, plus
 the update refusal, the tag rule, the shared anchor helper and the Claim/Mew
-discrimination. All **38 of 38 probes** have been shown to detect the absence
-of the rule they name, by reverting that rule and watching exactly that probe
-go red. Five of the six poisoning checks have gone red on a real poisoning.
+discrimination. **Five is the number that established probe sensitivity, not
+the number run: a sixth went red by crashing setup rather than by naming a
+probe**, which is the entry below on the 18 positive reads. All **38 of 38
+probes** have been shown to detect the absence of the rule they name, by
+reverting that rule and watching exactly that probe go red. Five of the six
+poisoning checks have gone red on a real poisoning.
 
 **What has never been shown to fail — 58 of the 101 checks, and each for a
 reason worth knowing:**
@@ -135,9 +138,15 @@ reason worth knowing:**
 - **38 paired "refused by DHT validation, not a coordinator guard" assertions.**
   Each would fail only if a refusal arrived from a coordinator guard instead of
   validation, which no injection has produced.
-- **18 positive reads** asserting the honest path still works. These need an
-  *over*-refusing injection rather than an under-refusing one — a different
-  exercise, and the one that would catch a rule that refuses everything.
+- **18 positive reads** asserting the honest path still works. **No injection
+  anyone has described can turn these red, and this entry used to name one that
+  cannot.** The obvious candidate — an *over*-refusing rule, which refuses
+  everything — was run (`38129574846`) and fails during *setup*, because link
+  creation shares a zome call with entry creation, so the read phase never
+  executes. That is a property of the substrate rather than of the harness.
+  These 18 are **unproven by a route nobody has built**, not pending a known
+  exercise; the case they are sensitive to is a defect breaking a legitimate
+  *read* while leaving writes intact, which has not been injected.
 - **1 plumbing control** (credentials still work after the update refusal).
 - **1 check that was proven INSENSITIVE** rather than unproven: the read-side
   check on an updated claim passed while a forged update was accepted, because
