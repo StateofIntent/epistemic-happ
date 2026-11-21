@@ -135,9 +135,15 @@ reason worth knowing:**
 - **38 paired "refused by DHT validation, not a coordinator guard" assertions.**
   Each would fail only if a refusal arrived from a coordinator guard instead of
   validation, which no injection has produced.
-- **18 positive reads** asserting the honest path still works. These need an
-  *over*-refusing injection rather than an under-refusing one — a different
-  exercise, and the one that would catch a rule that refuses everything.
+- **18 positive reads** asserting the honest path still works. **No injection
+  anyone has described can turn these red, and this entry used to name one that
+  cannot.** The obvious candidate — an *over*-refusing rule, which refuses
+  everything — was run (`38129574846`) and fails during *setup*, because link
+  creation shares a zome call with entry creation, so the read phase never
+  executes. That is a property of the substrate rather than of the harness.
+  These 18 are **unproven by a route nobody has built**, not pending a known
+  exercise; the case they are sensitive to is a defect breaking a legitimate
+  *read* while leaving writes intact, which has not been injected.
 - **1 plumbing control** (credentials still work after the update refusal).
 - **1 check that was proven INSENSITIVE** rather than unproven: the read-side
   check on an updated claim passed while a forged update was accepted, because
