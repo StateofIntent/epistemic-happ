@@ -51,6 +51,12 @@ sequential. One bump, one number.
 > The numbers above are now read from the enums, which is the only way they
 > stay right: nothing gates a count written in prose.
 
+**AND ONE RELAUNCH IN THIS COST MODEL IS NOT OURS TO SCHEDULE: §6 BELOW.**
+Everything above and everything in §2-§4 is about an integrity change *this
+project chooses*. A Holochain breaking change forks the DNA hash by the same
+mechanism, on upstream's clock, with none of these decisions involved — and
+until 2026-11-21 this file did not mention it.
+
 ---
 
 ## 2. The candidate set — six, after 3.1 was decided, two were found missing, and all six were re-priced
@@ -243,3 +249,158 @@ bump and release step 4's invitation collide, and that ordering is still
 unmade. **It is now the only thing standing between this plan and step 4** —
 the release half closed on 2026-10-24 and 7.1 was decided the same day, so
 nothing else in this file is waiting on anything inside the project.
+
+**ONE QUALIFICATION, ADDED WITH §6 RATHER THAN LEFT TO ROT:** that last
+sentence is true of **the bump**, and §6.3 names one thing inside this
+project's control that nothing is waiting on only because it is not scheduled
+— **publishing the `.happ` beside the installers, which is the only artefact
+that could ever verify a seed against a DNA hash.** It is not a bump
+precondition and does not belong in §3; it is recorded here so the absolute
+above is not read wider than it was measured.
+
+---
+
+## 6. The Holochain version — the relaunch this plan does not schedule
+
+**Added 2026-11-21, as row 7.37's `[D]`, taken.** Until that day this file was
+245 lines on breaking changes and **mentioned the Holochain version zero
+times** — measured by grep, not impression. It was found by reading what an
+adjacent Holochain project open-sourced, whose author's stated reason was *"to
+be a viable long running app, you need to plan for Holochain breaking change
+migrations at a minimum."* **This section is that plan, and most of it is
+already implied by §1 — which is the point: the mechanism is the same one, and
+nobody had written down that it fires without us.**
+
+### 6.1 A Holochain breaking change forks the DNA hash, by §1's own mechanism
+
+Not reasoned — the chain is measured end to end, in three places that already
+existed:
+
+1. **The hash covers the integrity zomes** (SPEC §11.1, quoted in §1 above):
+   `network_seed`, `properties`, and the integrity zomes, and nothing else.
+2. **"The integrity zomes" means the compiled wasm, and the evidence is
+   sharper than the manifest.** SPEC §5.1 records a **measured** three-row
+   table — baseline, a ~30-line explanatory **comment** added, comment
+   reverted — in which **the comment alone changed the DNA hash**, with the
+   revert returning to the baseline hash as the control. The mechanism is that
+   `wasm_error!` expands to a struct carrying `::core::line!()` and this zome
+   uses it **23 times**, so any line-shifting edit rewrites baked-in constants
+   and changes the wasm. **If a comment forks the network, a different
+   compiler input certainly does.**
+3. **A new `hdi` is a different compiler input for every entry struct in the
+   zome, and this project has already been through one.** The 0.6 → 0.7 move
+   **changed `dna/integrity/Cargo.toml`'s dependency list**: the file's own
+   comment records that `holochain_serialized_bytes` became **a required
+   DIRECT dependency from 0.7 on**, because `#[hdk_entry_helper]` expands to a
+   `#[derive(SerializedBytes)]` naming it by absolute path, *"so the crate has
+   to be in this crate's own dependency list or every entry struct fails"*.
+   Current pins: **`hdi = "=0.8.0"`, `hdk = "=0.7.0"`**, and this machine's
+   conductor reports **`holochain 0.7.0`**.
+
+**So §1's framing holds without amendment — a Holochain bump is a relaunch,
+not an upgrade** — and nothing in §2's candidate set, §3's preconditions or
+§4's ordering bears on it at all. There is no entry struct to append, no
+validation rule to price, and no decision of ours to take first.
+
+### 6.2 What is different, and it is the whole reason this section exists: the schedule is not ours
+
+**§4 decided *invite first, bump second*, and that decision assumes the bump's
+timing is a choice.** For a Holochain breaking change it is not. It arrives
+when upstream ships it, and the only lever here is whether to follow.
+
+**"Never follow" is a real option and it is the one with an expiry**, which is
+what distinguishes it from §4's *invite, and never bump*. Declining our own
+bump costs five candidates; declining Holochain's costs a conductor nobody
+upstream maintains, and the cost grows on its own. **This file does not pick a
+date, because nobody here knows one:** we are on `0.7.0`, the next line is
+`0.8.x`, and the adjacent project that prompted this section moved 0.6.1 →
+0.7.1 and is planning for 0.8.
+
+### 6.3 And it is a relaunch the network seed does not know about
+
+**`breakingVersion` takes exactly one input: the desktop release tag.**
+`scripts/pilot-node/breaking-version.mjs`, the ported single copy of the
+desktop's `filesystem.ts:190`, reads a semver and collapses it to a band;
+`cli.ts:103` builds the seed as `${productName}-${breakingVersion()}`. **The
+Holochain version is not an input to the seed, and cannot be inferred from the
+tag.**
+
+**The shape of this gap is ALREADY written down, with one cause named instead
+of two.** `verify.mjs:187-195` says it plainly: *"the DNA hash is a hash of the
+integrity zomes AND the modifiers. A PATCH release that changed an integrity
+zome would keep the seed `0.3.x`, split the network anyway, and this check
+would say YES."* That names **us** editing the zome. **A Holochain upgrade is a
+second cause of the identical silent fork, and it is the one nobody chooses** —
+which is why it is worse: the first is a mistake someone could notice making,
+and the second is a consequence of a dependency bump.
+
+**THE RULE THIS SECTION ADOPTS, AND IT IS THE ONLY CHOICE IN IT: a release
+that moves the Holochain version ships as a desktop MINOR at minimum, never as
+a patch.** The DNA hash forks either way — that is 6.1 and it is not
+negotiable — so the seed is the only thing that makes the fork **legible**, and
+`breakingVersion` moves the seed on a minor and keeps it on a patch. A
+Holochain upgrade shipped as a patch would produce two DNA hashes under one
+seed, which is precisely the *"mystery hash"* SPEC §5.1 records `dna/dna.yaml`'s
+version field as existing to prevent. **It costs nothing, it needs no work, and
+it is reversible.**
+
+**NOTHING VERIFIES IT, AND THAT IS STATED RATHER THAN PAPERED OVER.** The
+release publishes installers, not the `.happ`, **so there is no released DNA
+hash to read** — `verify.mjs`'s own recorded limit, and the reason its old
+`RELEASED_DNA` paste was deleted rather than kept. The rule above is therefore
+**a discipline, not a gate**, and this file does not keep a claim with no
+artefact behind it. What *would* close it is a released `.happ` to hash
+against; that is not scheduled either.
+
+### 6.4 What it does not change: the data, and Invariant 6
+
+**§1's corollary stands and gets no worse.** A Holochain-forced relaunch
+strands the old network's entries exactly as one of ours would, and
+**Invariant 6 forbids cleaning up after either.** §4's obligation — telling
+people *before* they write that what they publish does not survive the next
+integrity change — already covers this, and the honest reading is that it
+makes that disclosure **more** load-bearing rather than different: a further
+break is planned *and* one can arrive unplanned.
+
+**The migration machinery that prompted this section does not change that for
+us.** `flowsta-hc-lines` caches and runs two conductor versions side by side to
+carry one person's data from the old line to the new, which is the right shape
+of the problem — but it is Tauri-oriented Rust against a different application
+framework (row 7.37). **Not scheduled and not priced, and 7.31's rule applies:
+nothing here is worth building before it is needed.**
+
+**One thing from that work is worth taking as a DESIGN rather than as code.**
+Its release manifest carries `holochain: { lines: [...], changes_line: bool }`,
+so a release **declares** which Holochain lines it runs on and whether it moves
+people's data. Here the same fact is **implicit in a seed string** that
+`band-plan-check.mjs` has to round-trip through the real `breakingVersion` to
+check at all. A declared field is strictly more legible than a derived one, and
+6.3's rule is the cheap half of it.
+
+**And its zero-knowledge point lands the same way for this protocol, which is
+why it is recorded rather than just noted.** Private data cannot be migrated by
+the network, because it is locked to whoever holds the keys: some people sign
+back in late and some never return. **So a migration is per-person and
+voluntary** — which is what Invariant 6 would require here anyway, and it means
+the expensive version of this problem (moving everyone's data) is not available
+to be chosen even if it were wanted.
+
+### 6.5 What this section deliberately does not do
+
+It does **not add a candidate to §2.** A Holochain bump is not an integrity
+change this project selects, so it has no entry type, no link type and no
+validation rule to price, and putting it in that table would make the batch
+look schedulable when the trigger is somebody else's release.
+
+It does **not reopen §4's ordering.** *Invite first* was decided on the cost of
+the testers' data being knowingly disposable; an unscheduled fork makes that
+cost arrive **sooner**, not become something else. The disclosure that decision
+obliges is unchanged in wording and more important in fact.
+
+And it does **not claim this has been rehearsed.** The 0.6 → 0.7 move is
+evidence that a Holochain breaking change reaches `dna/integrity/Cargo.toml`;
+**it is not evidence that this project has ever carried live participant data
+across one**, because there was none to carry at the time. `docs/holochain-runtime-0.7.patch`
+is the other artefact from that period and is explicit about the same
+distinction — *"`cargo check` exits 0 … what it is NOT verified to do: anything
+at runtime."*
