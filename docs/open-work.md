@@ -292,7 +292,7 @@ OF ALARM.**
       detector for it is a real `[M]`, and a bad one is worse than none** by
       that script's own argument — it would convert an unexamined claim into
       one somebody believes has been examined.
-- [ ] **0b. `main` CITES A COMMIT THAT EXISTS ONLY ON THIS MACHINE.** `3f90244`
+- [x] **0b. `main` CITES A COMMIT THAT EXISTS ONLY ON THIS MACHINE.** `3f90244`
       — the `ClaimToRetraction` over-refusal injection — is cited three times
       as the evidence that rule was watched failing: `SPEC.md:532`,
       `scripts/live-verify/attachment-links.mjs:119`, `README.md:2081`.
@@ -302,8 +302,35 @@ OF ALARM.**
       produced it is on one laptop.** Row 7.30's sub-`[D]` again. **The fix is
       to push it under a non-branch ref** — `refs/evidence/retraction-link-rule`
       — so the three citations resolve for anybody but me, and `[D]` whether
-      every cited injection SHA should get the same treatment. `[M]`, then `[D]`
-- [ ] **0c. SEVEN LOCAL BRANCHES ARE SAFE TO DELETE AND TWO ARE NOT.** **KEEP:**
+      every cited injection SHA should get the same treatment. ~~`[M]`, then
+      `[D]`~~ **DONE 2026-11-21. Pushed, re-measured before and after, and the
+      `[D]` WAS TAKEN IN THE CONSERVATIVE DIRECTION BY ACTION — all six
+      injections are preserved, not just the cited one.** Before:
+      `git fetch origin 3f90244` → `fatal: couldn't find remote ref`, confirmed
+      again rather than taken from this item. After:
+      `refs/evidence/retraction-link-rule` fetches from an empty clone and
+      shows **one file, six lines** — exactly the *"nothing else touched"* this
+      repo's three citations assert, now checkable by a reader instead of taken
+      on our word. **THE FIX NEEDED A SECOND HALF THE ITEM DID NOT ANTICIPATE,
+      and it is the part worth keeping: pushing the ref did NOT make the
+      citations resolve.** `git fetch origin <sha>` still fails — GitHub does
+      not enable `uploadpack.allowAnySHA1InWant` (**measured, not assumed**) —
+      so **a bare SHA is not an address**, and three citations naming only a
+      hash would have stayed unresolvable beside a perfectly good ref. All
+      three now name the ref and the fetch command. **WHY ALL SIX RATHER THAN
+      THE ONE:** the other five are cited **by run ID only** — a sweep
+      confirmed `3f90244` is the single injection SHA quoted anywhere in the
+      prose, which is exactly the discriminator the audit used — but 0c would
+      have deleted their branches in the next step, and **deleting them settles
+      the `[D]` by destroying the material it is about.** A ref is free and
+      reversible; the five are cheap to drop later if the human wants them
+      dropped, and impossible to recover if not. **CONVENTION WRITTEN, ONE
+      HOME:** `scripts/live-verify/README.md` under *Negative evidence* — push
+      before deleting, cite ref *and* run ID because the log expires
+      (~2027-01-09) and the diff does not, and keep them outside `refs/heads/*`
+      so a `DO NOT MERGE` commit never appears in the branch list. `[M]` done,
+      `[D]` answered conservatively and cheap to reverse
+- [x] **0c. SEVEN LOCAL BRANCHES ARE SAFE TO DELETE AND TWO ARE NOT.** **KEEP:**
       `bump/foreign-critique-held` (PR **#350 OPEN**, HELD) and
       `injection/retraction-link-rule` (0b — the only copy). **DELETE, content
       landed:** `corpus/long-chains` (PR **#269 MERGED**) and
@@ -317,7 +344,38 @@ OF ALARM.**
       makes `3f90244` unrecoverable. **AND A DEADLINE: those runs are
       2026-10-11 and GitHub's default log retention is 90 days (policy, not
       measured), so around 2027-01-09 `main`'s prose becomes the whole
-      record.** `[M]`
+      record.** ~~`[M]`~~ **DONE 2026-11-21 — EIGHT DELETED, NOT SEVEN, AND THE
+      EIGHTH IS THE ONE THIS ITEM SAID TO KEEP.** Every tip was verified
+      against the SHA named here before deletion (all five injection tips
+      matched; `corpus/long-chains` `7d79a8d`, `corpus/item-18-probers`
+      `07c7ae6`). `injection/retraction-link-rule` went too, **because its KEEP
+      was conditional on being the only copy and 0b removed that condition** —
+      the item's own gate (*do 0b first*) is what made it safe, and keeping a
+      local branch after pushing the ref would just be the branch list carrying
+      a `DO NOT MERGE` commit for no reason. **`corpus/item-18-probers`
+      re-verified rather than trusted:** §"Item 18" is at
+      `scripts/validation-corpus/README.md:649` and the prober at
+      `dna/coordinator/src/lib.rs:2618` — **note this item's own pointer said
+      "the corpus README", and the file is under `scripts/validation-corpus/`,
+      so the first grep looked in `corpus/` and found nothing**; a three-dot
+      diff also shows 445 insertions branch-ward, which proves nothing here
+      because the repo squash-merges. `main` is 53,776 deletions ahead of that
+      branch, which is the measurement that settles it. **ONLY
+      `bump/foreign-critique-held` REMAINS** (#350, OPEN, HELD), plus
+      `remotes/origin/corpus/item-18-probers` — **a stale REMOTE branch this
+      item did not cover and I left alone**: its content is landed, deleting it
+      is harmless, and it is the human's repo to tidy. **AND THE TWO CORPUS
+      COMMITS NEEDED NO EVIDENCE REF, WHICH SHARPENED 0b's CONVENTION RATHER
+      THAN WIDENING IT:** GitHub keeps a merged PR's head forever at
+      `refs/pull/<N>/head`, so `7d79a8d` is still fetchable as
+      `refs/pull/269/head` without anybody doing anything. **The injections are
+      the exception because of the very pattern that makes them clean** — they
+      go on throwaway refs so a PR's history stays green, which is what puts
+      them outside the one namespace GitHub preserves by itself. **MEASURED
+      across all 548 `refs/pull/*` entries: none of the six injection commits
+      is in any of them.** So the practice that protects the PR history is the
+      practice that strands the evidence, and `refs/evidence/*` is needed for
+      exactly the commits that never had a PR. `[M]`
 - [ ] **1. TWO REPLIES CAME BACK — ERIC DORIEAN AND LUCK LIGHT, BOTH
       2026-11-20. ONE CORRECTION IS OWED; CHASE NOTHING ELSE.** Eric is
       recorded above and in the 2026-11-18 block and **owes nothing** (§9 is

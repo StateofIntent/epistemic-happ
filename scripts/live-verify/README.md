@@ -267,3 +267,29 @@ That shape has since turned up three times more, all as *intermittencies* rather
 This is what the sweep was for. A green suite tells you nothing about assertions that cannot go red, and reading them will not reliably reveal it: both weak checks above look correct, and their labels describe the strong version.
 
 And check that a new harness can actually fail. `affordance-surfacing.mjs` passed on its first run, which proved nothing until the feature was disabled and the harness observed going red. A suite that has only ever been green has not been shown to test anything.
+
+### Keep the injection commit, under `refs/evidence/*`
+
+Injections are dispatched on throwaway refs — `conductor` only runs on PRs, `main` and dispatch, so a branch is how you get a run without polluting a PR's history. **The refs then get deleted, and a cited injection SHA outlives the ref that carried it.**
+
+Measured on 2026-11-21: `3f90244`, cited in three files as the evidence that the `ClaimToRetraction` rule was watched failing, **was fetchable from nobody.** `git fetch origin 3f90244` into an empty clone returned `fatal: couldn't find remote ref`, and the only copy was one laptop's local branch, six weeks after the run. The CI run survived, so the *result* was never at risk — **but a reader could read the claim and not the diff, which is the one asymmetry this directory's whole doctrine is against.**
+
+So: **before deleting an injection branch, push its commit under `refs/evidence/<name>`.**
+
+```sh
+git push origin <branch>:refs/evidence/<name>
+git fetch origin refs/evidence/<name>    # how a reader gets it back
+```
+
+Two things make this the right shape rather than keeping the branches:
+
+- **`refs/evidence/*` is outside `refs/heads/*`**, so these never appear in `git branch -a`, never offer themselves for merge, and never look like live work. An injection branch is a *result*, not a line of development, and a commit titled `INJECTION — DO NOT MERGE` should not sit in the branch list waiting to be misread.
+- **A bare SHA is not an address.** GitHub does not enable `uploadpack.allowAnySHA1InWant`, so `git fetch origin <sha>` fails even when the object is on the server — measured, not assumed. **A citation must therefore name the ref, not only the hash**, or it is unresolvable by construction. All three of `3f90244`'s citations now do.
+
+**When this is actually needed, which is narrower than "always", and the reason is the sting in it.** GitHub keeps a merged PR's head forever at `refs/pull/<N>/head`, so **anything that went through a PR is already preserved and needs nothing** — `corpus/long-chains` was deleted the same day and its commit `7d79a8d` is still fetchable as `refs/pull/269/head`. **Injections are the exception precisely because of the pattern that makes them clean:** they are dispatched on throwaway refs so a PR's history stays green, and that is what puts them outside the one namespace GitHub preserves on its own. Measured across all 548 `refs/pull/*` entries: **none of the six injection commits appears in any of them.** So the practice protecting the PR history is the same practice stranding the evidence, and `refs/evidence/*` is needed for exactly the commits that never had a PR.
+
+**Checked the thing that would have made this pointless: a non-standard ref namespace is served to anonymous clients.** The worry is real — these refs are outside `refs/heads/*` and a reader has no push access — so it was measured rather than assumed, with the credential helper disabled and no global config: `ls-remote 'refs/evidence/*'` lists all six and the fetch returns the diff. **If that had failed, the refs would have been recoverable only by the one person who already had the commit**, which is the state this convention exists to end.
+
+**Cite the run ID as well, and know which one expires.** The run holds the log, the ref holds the diff, and they fail differently: GitHub's default log retention is 90 days, so the six runs behind this directory's injections — all dated 2026-10-11 — are expected to go around **2027-01-09** (policy, not measured here). After that the refs and this prose are the whole record, which is the argument for keeping the refs rather than trusting either alone.
+
+All six of `attachment-links.mjs`'s injections are preserved this way. Only `3f90244` was cited by hash; the other five were cited by run ID alone, and were pushed anyway, because deleting them would have settled the question of whether they were worth keeping by destroying the material.
