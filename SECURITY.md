@@ -125,9 +125,12 @@ fraction.** Five deliberate injections have now established that **every rule
 the harness claims to cover has been watched failing on its own probe** — both
 halves (base comparison and author binding) of all eighteen link rules, plus
 the update refusal, the tag rule, the shared anchor helper and the Claim/Mew
-discrimination. All **38 of 38 probes** have been shown to detect the absence
-of the rule they name, by reverting that rule and watching exactly that probe
-go red. Five of the six poisoning checks have gone red on a real poisoning.
+discrimination. **Five is the number that established probe sensitivity, not
+the number run: a sixth went red by crashing setup rather than by naming a
+probe**, which is the entry below on the 18 positive reads. All **38 of 38
+probes** have been shown to detect the absence of the rule they name, by
+reverting that rule and watching exactly that probe go red. Five of the six
+poisoning checks have gone red on a real poisoning.
 
 **What has never been shown to fail — 58 of the 101 checks, and each for a
 reason worth knowing:**
