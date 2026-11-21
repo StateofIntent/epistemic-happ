@@ -205,6 +205,7 @@ const UNCOVERED_BY_DESIGN = [
   ['check() calls',    `already gated per harness by check-harness-counts.mjs; the SUITE total (${countCheckSites('scripts/live-verify')} call sites in live-verify, ${countCheckSites('scripts')} across scripts/ — MEASURED here, not stated, because this line itself had gone stale by 23 and 36) is given in prose and is a real extension candidate`],
   ['packages',         'gated by check-packages.mjs and published-packages'],
   ['time fields',      'gated by check-time-units.mjs — this is 1.17, and it is closed'],
+  ['injections',       'MEASURED 2026-11-21 and the reason is a number: attachment-links.mjs cites 10 distinct run IDs of which 6 are injections, the other 4 being a green first run and three count fixes wearing the identical \\d{10} shape. A counter reading run IDs reports 10 where the prose should say six, so by this file\'s own rule it must not ship as truth. The claim shape is real and recurs ("watched failing five times", "COVERAGE AFTER FIVE INJECTIONS", "26 checks, five injections") and it went stale: the sixth injection was run, recorded twice inside attachment-links.mjs itself, and counted in NEITHER of the two surfaces stating a total (that file and scripts/live-verify/README.md) while FIVE surfaces priced it as an exercise still to run. Distinguishing an injection run from any other needs the surrounding prose, which is why this is named rather than counted'],
 ];
 
 const WORDS = {

@@ -248,17 +248,40 @@
 // denominator against INFLATION by a third party, not only against
 // misfiling — which the rule's own commit never said.
 //
-// COVERAGE AFTER FIVE INJECTIONS, as arithmetic rather than a fraction. All
+// SIXTH INJECTION: AN OVER-REFUSING RULE, AND IT CLOSED A ROUTE RATHER THAN
+// OPENING ONE. Run 38129574846 made TargetToCritique refuse EVERY link,
+// correct ones included. The full record is the `seed` helper's note below —
+// three findings, kept in one place rather than restated here — and the one
+// that matters for the arithmetic is that PART 1 NEVER RAN. It is not
+// numbered alongside the five above because those five each turned a named
+// probe red; this one turned the run red by crashing setup, which is
+// detection without naming a property.
+//
+// COVERAGE AFTER SIX INJECTIONS, as arithmetic rather than a fraction. All
 // 38 OF 38 PROBES have been shown to detect the absence of the rule they
 // name. Five of the six part-3 poisoning checks have gone red on a real
 // poisoning. What has NEVER been shown to fail is 58 of the 101 checks, and
 // each for a knowable reason: the 38 paired validation-source assertions,
 // which need a refusal arriving from a coordinator guard; the 18 positive
-// reads, which need an OVER-refusing injection — the exercise that would
-// catch a rule refusing everything, and the one still not done; the plumbing
-// control; and the claim-A check, which is proven INSENSITIVE rather than
-// unproven. The rules are well evidenced. A little under half the individual
-// assertions are.
+// reads, which are the paragraph below because their obvious exercise is
+// CLOSED rather than pending; the plumbing control; and the claim-A check,
+// which is proven INSENSITIVE rather than unproven. The rules are well
+// evidenced. A little under half the individual assertions are.
+//
+// THE 18 POSITIVE READS ARE NOT WAITING ON AN OVER-REFUSING INJECTION, and
+// this block said they were for most of its life — while the injection sat
+// recorded 230 lines below it. They cannot be exercised that way at all: an
+// over-refusing rule fails SETUP, so part 1 never executes, which is a
+// property of the substrate rather than of this harness. So it is not "the
+// next injection worth running"; it is done, and the route is shut. The
+// honest status of those 18 is UNPROVEN BY A ROUTE NOBODY HAS BUILT, not
+// pending a known exercise.
+//
+// WHAT THEY ARE SENSITIVE TO is the narrower case this file's header names:
+// a defect breaking a legitimate READ while leaving writes intact — the
+// coordinator's read-path anchor derivation drifting from the one it wrote
+// through, which refuses nothing and returns nothing. That has NOT been
+// injected, and nothing here claims it would work until it has been.
 //
 // Re-check the same way if you change what this file asserts: revert one
 // rule, watch exactly its own probe go red, restore, watch it return.
