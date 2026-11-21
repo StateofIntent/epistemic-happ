@@ -89,10 +89,17 @@ messages went out on **2026-11-19** — §1 and §8 to Kupukupu, §4 and §5 to 
 Light, §6 to Eric Doriean — and **every draft in the local-only drafts file is
 now sent.** That file is a record, not a queue. **Do not resend any of them.**
 
-### RESUME HERE — THE ORDERED LIST, 2026-11-20
+### RESUME HERE — THE ORDERED LIST, 2026-11-21
 
-**`[M]` IS EMPTY AGAIN — ITS ONE ITEM WAS TAKEN 2026-11-20 — AND `[X]` IS
-NOT EMPTY, WHICH THE FIRST VERSION OF THIS LINE GOT WRONG.** The `[M]` was
+**`[M]` IS NOT EMPTY ANY MORE — IT HOLDS 0a, 0b AND 0c, ALL OPENED
+2026-11-21 BY THE BRANCH AUDIT, AND ITEM 5's *do not manufacture a row* NOW
+HAS SOMETHING TO POINT AT.** They are **work that generated work**, which is
+the only way this list has ever refilled besides a `[D]` being taken. The
+paragraph below is kept because its accounting was right when written and
+its last sentence is the general rule; read it as of 2026-11-20.
+
+**AS OF 2026-11-20: `[M]` WAS EMPTY — ITS ONE ITEM WAS TAKEN THAT DAY — AND
+`[X]` WAS NOT EMPTY, WHICH THE FIRST VERSION OF THIS LINE GOT WRONG.** The `[M]` was
 (c) below, the update dialog's download figure, and it is **done: desktop PR
 #21**. **`[X]` holds two things and this line claimed it held none:** 7.35's
 upstream filing is the human's ([[upstream-filing-is-the-users-job]]), and
@@ -189,6 +196,90 @@ this project has owed somebody something USEFUL rather than merely true**, and
 check the test goes red.** **§13 IS DRAFTED, UNSENT, AND OWED — he asked the
 human a direct question by name.**
 
+**2026-11-21 (EVENING) ADDS — #542 MERGED, AND A BRANCH AUDIT THAT INVERTED ITS
+OWN EXPECTATION. `main` = `be132bf`, tree clean, nothing in flight.**
+**CFEngine's author published the agent-era version of 7.31's own proposal** —
+Mark Burgess, *The Second Smartest "Reasoning Model" In The Infants*,
+2026-11-21: ingest an agent's markdown specs and JSON tool-call transcripts
+into **SSTorytime** (which this repo already stands up, `sstorytime/`), then
+flag patterns with **text fractionation** against a response matrix sold as
+*"another way of responding in real time without escalation to a human"* —
+**which is `fixed-core.md` rule 2's dangerous version arriving as best practice
+a SECOND time, after MAPE-K.** **NONE OF IT MOVES 7.31, and the reason is the
+useful part: that row's blocker was never FIT** — it already grants CFEngine is
+a fit, promises from the same Promise Theory — **it is POPULATION, and an essay
+does not produce a second operator.** **WHAT WAS WORTH KEEPING IS THE ONE CLAIM
+IN IT THIS REPO HAS MEASURED FALSE THREE TIMES:** *"The more we trust, the less
+we need to look."* **That is the DETECTION rule rather than the repair rule,
+which makes it the sharper form of this project's own objection to
+convergence** — a node stranded by a `0.4.0` release keeps every promise it can
+see itself making, so clean history earns it a longer interval and **the
+interval grows fastest exactly when the node has been wrong longest. A BLIND
+SPOT THAT WIDENS ON SUCCESS.** Shipped as **rule 5's third limit** (#542): the
+check interval is a constant where rule 0 says a core must live, never earned,
+and the heading says so. **IT IS WRITTEN ONLY, SO IT SAYS WHAT THE INTERVAL MAY
+NOT DEPEND ON WHILE THERE IS STILL NO INTERVAL** — `verify.mjs` is hand-run, a
+constant rate of zero, and only 7.31's second trigger changes that.
+
+**THEN THE BRANCH AUDIT, AND IT FOUND THE OPPOSITE OF WHAT IT WENT LOOKING
+FOR.** Nine local branches, audited by content because **this repo
+squash-merges, so a merged branch is not an ancestor of `main` and `git branch
+--merged` shows nothing.** **THE BRANCHES ARE SPENT AND FAITHFULLY RECORDED —
+all six injections' runs are cited on `main` and all six runs are alive, every
+one `failure`, every `headSha` matching its branch. WHAT ROTTED IS THE SUMMARY
+PROSE ABOUT THEM**, which is the 2026-11-19 pattern again: the most-read
+surface was the most out of date. **And `check-stale-blockers.mjs` cannot see
+this class — it catches `[D]` cross-references, not a claim that something is
+UNDONE.** **A SECOND-ORDER LESSON FROM THE AUDIT ITSELF: two of my own findings
+dissolved on a closer read** (one claimed `four-families` had no record;
+`SPEC.md:539` has it — the other claimed a run was uncited, and the citation
+was there with `Run` wrapped onto the previous line, which my regex could not
+see). **A REGEX OVER PROSE IS AN INSTRUMENT AND CAN BE WRONG IN THE DIRECTION
+OF ALARM.**
+
+- [ ] **0a. THE OVER-REFUSING INJECTION IS RECORDED AS BOTH DONE AND UNDONE, IN
+      THE SAME FILE.** `README.md:2263` says the 18 positive reads *"need an
+      **over**-refusing injection — the exercise that would catch a rule
+      refusing everything, and **the one still not done**… the next injection
+      worth running is the over-refusing one"*, and
+      `scripts/live-verify/attachment-links.mjs:257` repeats it in the
+      "COVERAGE AFTER FIVE INJECTIONS" block. **130 lines earlier in that same
+      file, `:25` says it was done** — *"corrected after run 38129574846 made a
+      rule over-refuse on purpose. **Part 1 does not catch a rule that refuses
+      everything**"* — and `:325`–`:345` record all three results and build the
+      `seed()` helper in response. **THE STALE PART IS NOT ONLY "IT WAS DONE":
+      the pending exercise is IMPOSSIBLE BY THAT ROUTE**, because an
+      over-refusing rule stops the run before part 1, *"a property of the
+      substrate rather than of the harness"*. **So those 18 checks are not
+      waiting on an injection anyone could run, and two surfaces still price
+      them as a to-do.** Fix both sentences to say what they are actually
+      waiting on. `[M]`
+- [ ] **0b. `main` CITES A COMMIT THAT EXISTS ONLY ON THIS MACHINE.** `3f90244`
+      — the `ClaimToRetraction` over-refusal injection — is cited three times
+      as the evidence that rule was watched failing: `SPEC.md:532`,
+      `scripts/live-verify/attachment-links.mjs:119`, `README.md:2081`.
+      **MEASURED: `git fetch origin 3f90244` into an empty clone returns
+      `fatal: couldn't find remote ref`.** The CI run survives (38111598258,
+      `failure`, headSha matches) so the *result* is safe; **the diff that
+      produced it is on one laptop.** Row 7.30's sub-`[D]` again. **The fix is
+      to push it under a non-branch ref** — `refs/evidence/retraction-link-rule`
+      — so the three citations resolve for anybody but me, and `[D]` whether
+      every cited injection SHA should get the same treatment. `[M]`, then `[D]`
+- [ ] **0c. SEVEN LOCAL BRANCHES ARE SAFE TO DELETE AND TWO ARE NOT.** **KEEP:**
+      `bump/foreign-critique-held` (PR **#350 OPEN**, HELD) and
+      `injection/retraction-link-rule` (0b — the only copy). **DELETE, content
+      landed:** `corpus/long-chains` (PR **#269 MERGED**) and
+      `corpus/item-18-probers` (no PR, but `attempt_false_taxonomy_index` is in
+      `dna/coordinator/src/lib.rs` and the corpus README has §"Item 18").
+      **DELETE, spent instruments with results cited on `main`:**
+      `author-bindings` `4abef09`→run 38124976517, `base-comparisons`
+      `f054411`→38125081165, `four-families` `ebcf0dd`→38124164735,
+      `author-bindings-again` `6589d4d`→38127900644, `over-refusing`
+      `ab97098`→38129574846. **DO 0b FIRST** — deleting the local ref is what
+      makes `3f90244` unrecoverable. **AND A DEADLINE: those runs are
+      2026-10-11 and GitHub's default log retention is 90 days (policy, not
+      measured), so around 2027-01-09 `main`'s prose becomes the whole
+      record.** `[M]`
 - [ ] **1. TWO REPLIES CAME BACK — ERIC DORIEAN AND LUCK LIGHT, BOTH
       2026-11-20. ONE CORRECTION IS OWED; CHASE NOTHING ELSE.** Eric is
       recorded above and in the 2026-11-18 block and **owes nothing** (§9 is
