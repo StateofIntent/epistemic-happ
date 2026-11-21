@@ -22,6 +22,114 @@ third-party.
 
 ## 0. In flight right now
 
+**CHECKPOINT, 2026-11-22 — RESUME HERE. EVERY BLOCK BELOW THIS ONE IS OLDER,
+INCLUDING ANY THAT STILL SAYS "RESUME HERE" OR CARRIES A LATER-LOOKING DATE IN
+ITS OWN HEADING; where they disagree, this block wins.** (The 2026-11-20 block
+below and the *"ORDERED LIST, 2026-11-21"* heading beneath it were both still
+claiming the top when this was written — which is the defect §0 exists to
+catch, recorded at line ~589 of this file.)
+
+**`main` = `86cb69e`. TREE CLEAN, NOTHING IN FLIGHT. SIX PRs MERGED: #544–#549.**
+Only `bump/foreign-critique-held` (#350, OPEN, HELD — do not merge) remains,
+plus a stale remote `corpus/item-18-probers` whose content is landed.
+
+**`[M]` IS EMPTY. A session opening for something to build will not find it and
+MUST NOT INVENT IT.** Everything open is somebody else's reply, a `[D]` only the
+human can take, or an `[X]` the human sends. This list refills when a `[D]` is
+taken or when work generates work.
+
+**THREE RULES THIS SESSION PRODUCED, ALL FROM GETTING THEM WRONG FIRST:**
+
+1. **A SENT RECORD IS EVIDENCE, NOT PROSE.** I swept a correction across four
+   `docs/funding/` letters before noticing row 7.21 records them **SENT**. The
+   remedy for an error already sent is a note, or a correction to the recipient
+   — **never an edit to the file that records it.** All four reverted. Row 7.39.
+2. **A SKIPPED JOB IS NOT A PASSING JOB.** `network.yml` skips
+   `partition-rejoin` on docs-only diffs, and a rate that divided by all
+   completed runs said 11% where the answer is **5 of 27 = 19%**. **A
+   denominator you cannot see is the defect.** Row 7.40.
+3. **READ THE HARNESS HEADER AND `READINESS` BEFORE OPENING A CI ROW.** Row 7.40
+   re-discovered analysis already in `partition-rejoin.mjs`'s
+   `MAX_SOUND_BASELINE_MS` note and `READINESS` §3 — **four of its five
+   proposals were already done or already refused** — and is withdrawn to the
+   one part that survives. **1.35's stale-blocker defect pointed the other way.**
+
+**TWO NEW HAND-RUN TOOLS, NEITHER OF WHICH MAY EVER GO IN CI:**
+
+- **`scripts/check-outbound-claims.mjs`** — checks ONE draft you are about to
+  send, against what this repo measures. Its inputs are gitignored, so a CI job
+  would grep an absent directory and go green. Exits **2 / CANNOT VERIFY**,
+  never 0, when it cannot see them. `--list` inventories `docs/funding/` with
+  **no extension filter**. Usage:
+  `node scripts/check-outbound-claims.mjs <file> [--section N]`.
+  **Never run it on a section marked SENT.**
+- **`scripts/baseline-history.mjs`** — reads `partition-rejoin`'s Phase 0
+  baseline out of every run in a window, prints **ran-vs-skipped above the
+  rate**, and **refuses to be a gate** (always exit 0). Takes minutes; it
+  downloads each run's log.
+
+**AND A CI FACT WORTH NOT RE-LEARNING: `conductor` and `ui` ARE required checks;
+`partition-rejoin` is NOT, nor are the heavy jobs on a docs-only diff.** #549
+went `BLOCKED` on only those two, where #545 merged with `partition-rejoin` still
+pending. **Stacked PRs need `--delete-branch` on the parent** so children
+retarget, and **this repo refuses a merge from a branch behind `main`** — #547
+was refused for exactly that, caught only because the merge was verified rather
+than assumed.
+
+### RESUME HERE — THE ORDERED LIST, 2026-11-22
+
+- [ ] **1. NOTHING IS OWED BACK ON A CLOCK, AND `[M]` IS EMPTY — START BY
+      READING, NOT BUILDING.** `[X]` holds two drafts, **both local-only and
+      both the human's to send**
+      ([[upstream-filing-is-the-users-job]]): **§13 to Paul d'Aoust is the one
+      genuinely OWED** (he asked the human a direct question by name, and the
+      answer pays back the test-quality doubt his reply raised about his own
+      process-control system); **§15 to Philipp S is the Coasys intro ask**,
+      242 words, **its stated gate cleared by reading AD4M's repositories**.
+      **§15 carries ONE assumption that is the human's to check before sending,
+      flagged in the drafts file**: *"no skills, not the docs either"* is read
+      off this repository's contents, not off what the human actually does.
+      **Blocked on: the human sending. Nothing to build.**
+- [ ] **2. THE ONE GENUINELY NEW TECHNICAL IDEA FOUND THIS SESSION, AND IT IS A
+      `[D]` RATHER THAN AN `[M]`.** Nondominium (`Sensorica/nondominium`,
+      Holochain + hREA) shares **one ungated predicate crate** between integrity
+      validation, coordinator advisory feedback, UI dry-run and unit tests
+      (`crates/shared/src/constraints.rs`, *"Ungated (no hdk/hdi)"*), with `hdk`
+      behind an optional `coordinator` feature — **where this repo duplicates
+      byte-for-byte *"because the two share no library"*** (`README.md:2310`)
+      and built harness checks to catch the two derivations drifting.
+      **Nondominium shows that was a CHOICE, not a constraint.** The price we
+      are uniquely placed to see: such a crate is a dependency of the integrity
+      zome, **so editing even a Soft advisory string in it forks the DNA hash**
+      — this repo measured that a *comment* does. **Blocked on: a decision
+      about whether eliminating the drift class is worth coupling the network
+      identity to code the UI also consumes. Not opened as a row, because
+      opening rows for things already analysed is exactly what 7.40 did.**
+- [ ] **3. THREE DATES, THE ONLY THINGS HERE WITH CLOCKS.**
+      **2026-12-08** — the persistent agent's `AttestationGrant` becomes first
+      exercisable (the protocol's thirty-day tenure bar, `SECURITY.md:47`, from
+      a stand-up of 2026-11-08). **SOURCE NOTE: that stand-up date is NOT in
+      this repository** — it is `~/.epi-agent`'s mtime on the author's machine,
+      checked rather than recalled, so a session without that machine cannot
+      re-derive this date and must not treat it as repo-recorded;
+      **~2027-01-09** — GitHub's default 90-day log retention expires on the six
+      2026-10-11 injection runs, after which `main`'s prose plus
+      `refs/evidence/*` are the whole record (the diffs are safe; the LOGS are
+      what go);
+      **2027-01-30** — row 7.32's HoloFuel decay date.
+      **Blocked on: time. Nothing to do now.**
+- [ ] **4. RECRUITMENT REMAINS THE BINDING CONSTRAINT** — 2 confirmed, needs 2
+      to 4 more, and **both existing asks are already made.** An INTRODUCTION is
+      the only thing that moves it, which is why §15 exists. **Three adjacent
+      Holochain projects were read this session and none supplies a second
+      OPERATOR:** AD4M/Coasys and Nondominium are organisations, and *"each
+      agent runs their own executor"* is **many keys on one machine, which is
+      one operator** — the sybil shape `SECURITY.md` already says this protocol
+      does not resist. **Blocked on: somebody else's yes.**
+- [ ] **5. DO NOT MANUFACTURE A ROW.** Item 2 above is the live example of
+      something deliberately NOT opened. 7.40 is the live example of what
+      happens when one is opened without reading first.
+
 **CHECKPOINT, 2026-11-20 — RESUME HERE. EVERY CHECKPOINT BLOCK BELOW THIS ONE
 IS OLDER, INCLUDING ANY THAT STILL SAYS "RESUME HERE"; where they disagree
 with this block, this block wins.**
@@ -89,7 +197,7 @@ messages went out on **2026-11-19** — §1 and §8 to Kupukupu, §4 and §5 to 
 Light, §6 to Eric Doriean — and **every draft in the local-only drafts file is
 now sent.** That file is a record, not a queue. **Do not resend any of them.**
 
-### RESUME HERE — THE ORDERED LIST, 2026-11-21
+### (SUPERSEDED) THE ORDERED LIST AS OF 2026-11-21 — the 2026-11-22 list above wins
 
 **`[M]` IS NOT EMPTY ANY MORE — IT HOLDS 0a, 0b AND 0c, ALL OPENED
 2026-11-21 BY THE BRANCH AUDIT, AND ITEM 5's *do not manufacture a row* NOW
