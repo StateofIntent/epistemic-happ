@@ -2078,18 +2078,27 @@ defect this repository keeps finding in itself: `pre-registration`'s probe
 scoring a pass against a function that was never there, a label claiming more
 than its assertions, a hit-rate injection recorded as red that never had been.
 
-**Run [`38111598258`](../../actions/runs/38111598258), commit `3f90244` on a
-throwaway ref** — `conductor` only runs on PRs, `main` and dispatch, so the
-injection went on its own ref and `#238`'s history stayed green, the same
-throwaway-ref pattern this section already used to measure the `network` flake.
-The `retraction.target_claim != declared_claim` comparison was deleted and
-nothing else touched. **2 checks failed of 34:**
+**Run [`38111598258`](../../actions/runs/38111598258), commit `3f90244`** —
+`conductor` only runs on PRs, `main` and dispatch, so the injection went on its
+own throwaway ref and `#238`'s history stayed green, the same throwaway-ref
+pattern this section already used to measure the `network` flake. The
+`retraction.target_claim != declared_claim` comparison was deleted and nothing
+else touched. **2 checks failed of 34:**
 
 ```
 FAIL: a retraction cannot be filed against a claim it does not name
       — it SUCCEEDED, which means the link is forgeable
 FAIL: claim B still carries no retraction
 ```
+
+**That commit is now preserved on origin at `refs/evidence/retraction-link-rule`,
+and until 2026-11-21 it was not.** `git fetch origin refs/evidence/retraction-link-rule`
+is the only way in — GitHub refuses a fetch by bare SHA, so the hash this
+section quotes resolved for nobody. A throwaway ref is throwaway, and for six
+weeks the diff behind three citations existed on one laptop while the CI run
+survived: **the result was safe and the evidence for it was not.** The
+convention that came out of it is in `scripts/live-verify/README.md` under
+*Negative evidence*.
 
 **The prediction was written into the injection commit before the run**, so
 getting it wrong would have been visible rather than retrofitted. It held, and

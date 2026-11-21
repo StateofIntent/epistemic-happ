@@ -116,7 +116,13 @@
 // no library, and the two derivations agreed byte for byte at the first
 // attempt.
 //
-// INJECTION, RED: run 38111598258, commit 3f90244 on a throwaway ref, the
+// INJECTION, RED: run 38111598258, commit 3f90244 — preserved on origin at
+// `refs/evidence/retraction-link-rule`, which is the ONLY way to reach it
+// (`git fetch origin refs/evidence/retraction-link-rule`; GitHub refuses a
+// fetch by bare SHA, so the hash alone resolves for nobody). It was dispatched
+// on a throwaway ref and for six weeks that ref existed on one laptop while
+// three files cited the hash as evidence — see scripts/live-verify/README.md
+// under "Negative evidence" for why the ref is kept. The
 // `retraction.target_claim != declared_claim` comparison deleted from the
 // ClaimToRetraction branch and nothing else touched. **2 CHECK(S) FAILED,
 // 34 checks total**, and WHICH two is the whole result:
