@@ -44,7 +44,7 @@ dotenv.config();
 //   3. Even if Twitter deletes the tweet, the witness persists
 //
 // This is NOT a mutual contract, and specifically not a Ricardian one in
-// Vinay Gupta's sense — that requires assent from both parties, and
+// Ian Grigg's sense — that requires assent from both parties, and
 // Twitter has given none. Putting a DHT hash inside a tweet's text does
 // not make Twitter a signatory; it's this agent inscribing one half of a
 // binding into a medium that never agreed to carry it. Calling this a
