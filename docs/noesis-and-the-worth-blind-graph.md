@@ -362,11 +362,23 @@ AS A THEORY.** *Intelligence Is Coordination* §I:
 > recompute, a signature, a record that contradicts the fabrication."* ·
 > ***"The harness is the moat, not the model."***
 
-`[A]` **That is `scripts/live-verify/` — ~30 scripts, ~15,000 lines, run against
-a real conductor — described from the outside by someone who has never seen
-it.** This repo's recurring lesson (*a check that cannot fail has proven
+`[A]` **That is `scripts/live-verify/` — `[V]` 76 scripts, 34,795 lines, run
+against a real conductor — described from the outside by someone who has never
+seen it.** This repo's recurring lesson (*a check that cannot fail has proven
 nothing*; *a declaration nothing checks is a comment*) is the same claim arrived
 at independently.
+
+**`[REV2]` THE FIRST VERSION OF THAT SENTENCE SAID *"~30 scripts, ~15,000
+lines"*, UNDERSTATING THE HARNESS BY ~2.3×.** It was **estimated from a
+truncated file listing rather than counted** (`git ls-files
+'scripts/live-verify/*.mjs' | xargs wc -l` gives both figures in one command).
+**Caught while verifying numbers for an outbound funding application, which is
+the only reason it was caught at all** — nothing drift-checks `docs/*.md`, as
+§0 of this file says about itself. **A second instance surfaced in the same
+minutes:** a draft said *"553 merged pull requests"*, which is the highest
+merged PR **number**; **548** are merged, 4 were closed unmerged and #350 is
+open. **Both errors were a number that looked like a count**, and the outbound
+style rule already names the fix — *measure it, do not estimate it.*
 
 **AND HE NAMES A LIMIT THIS SESSION HIT EMPIRICALLY:** *"The instinct is to run
 several models and let them vote. That catches independent errors and does
