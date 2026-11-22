@@ -4,6 +4,15 @@
 repository's biological borrowings, prompted by a Friston/Levin exchange on
 "platonic ingression."
 
+**REVISION 1, 2026-11-22, SAME DAY.** The synthesis's author replied with a
+provenance pass and four reasoning errors found against their document after
+this file was written. **Eight corrections were applied and are marked `[REV1]`
+in place, with what overturned each.** The first draft's §-numbering is kept so
+the revision is visible rather than tidied away — the same reason the
+synthesis's own §12.1 exists. **The headline: this file's §2, its strongest
+claim, rests on an inference rather than on a literature, and its author says
+so.**
+
 **Nothing here is a row.** Two `[D]`s fall out and are recorded at the bottom as
 decisions *not* taken. `docs/open-work.md` §0 was deliberately not edited —
 opening rows for things already analysed is what row 7.40 did.
@@ -43,6 +52,20 @@ marks which claims were well-sourced upstream and which were inferences the
 discussion made.** The precision survived and the confidence signal died. Cost
 to prevent: bare author-year is ~3 tokens a claim, ~450 tokens against 9,300
 words.
+
+**`[REV1]` THAT PRESCRIPTION IS AIMED AT THE WRONG THING, AND THE SYNTHESIS'S
+AUTHOR SAID SO.** Their provenance pass tags each claim `[P]` primary read,
+`[R]` secondary, `[I]` the discussion's own inference — and **the tag carrying
+all the weight is `[I]`, which no citation would ever have supplied, because
+those claims had no citation to strip.** The four-category taxonomy, the design
+criterion, §2.3's conjunction, the ex-vivo constraint and the §9 modality audit
+are all `[I]`. **Preserving every citation would have left every one of them
+exactly as untraceable as it is now.**
+
+> **An inference does not lose provenance under compression; it never had any.
+> The expensive thing to mark is therefore not the source — it is the ABSENCE of
+> one.** A compression pass that emits `[P]/[R]/[I]` costs about the same ~600
+> tokens and marks the thing that actually moves.
 
 **Second source:** a multiscale **mechano-chemo-biological coupling** review,
 Tsinghua / Sun Yat-sen / Tianjin, *Acta Mechanica Sinica*, July 2025,
@@ -117,17 +140,29 @@ that the system does not compute truth**, and settlement is instead *"a named
 agent's declared policy, applied to a named set of inputs, [where] anybody can
 recompute it."*
 
-> **Positional information can only be carried by a field regenerated locally at
-> every point, because that is the only kind whose resolution and extent
-> decouple. Epistemic position can only be computed locally by each reader from
-> named inputs, because that is the only kind nobody has to trust. SAME
-> STRUCTURAL REASON: a signal broadcast from one place attenuates and must be
-> trusted; a signal regenerated at every point does neither.**
+> **In a locally regenerated field, every point has equivalent access because
+> every point is a source. In a locally recomputable claim, every reader has
+> equivalent access because every reader is a computer of it. THE SHARED
+> PROPERTY IS THE ABSENCE OF POSITIONAL PRIVILEGE RELATIVE TO AN ORIGIN — not
+> the absence of attenuation.**
 
-**That is the real borrowing, it is correct, and the repository has it without
-having the word for it.** It is better grounded than any of the immune-system
-metaphors in the README, and it is the sentence to reach for when asked what
-biology this protocol actually takes from.
+**`[REV1]` THE FIRST DRAFT SAID "SAME STRUCTURAL REASON" AND THAT OVERCLAIMED.**
+It rested the parallel on attenuation — but attenuation is energy spreading over
+an expanding wavefront plus dissipation, i.e. **it turns on a conserved
+quantity, and there is no epistemic analogue of energy conservation.** The two
+therefore share a source *topology*, not a mechanism. The formulation above is
+the synthesis author's, drops the half that does not transfer, and survives the
+objection; it is the version to use in public.
+
+**That is the real borrowing, and the repository has it without having the word
+for it.** It is better grounded than any of the immune-system metaphors in the
+README, and it is the sentence to reach for when asked what biology this
+protocol actually takes from.
+
+**`[REV1]` THE FIRST DRAFT SAID "IT IS CORRECT" HERE AND THAT CLAIM IS
+WITHDRAWN.** The physical half rests on a conjunction its own author tags `[I]`
+(§8), so this parallel is **well-argued and unreviewed**, not established. It is
+the best thing in this file and it is still an argument.
 
 ---
 
@@ -164,17 +199,38 @@ The post says **"The free lunch is real."** The ECM synthesis is ~64KB of
 evidence that it is not: setpoints are *"easy to fall below and impossible to
 exceed"*, the asymmetry is **selected-for** rather than an engineering gap (a
 control system whose job is to stop growth has its brakes guarded), the only
-route to raising a growth setpoint is oncogenesis, and plasticity trades off
-against complexity — *"the inability to re-specify is the cost of holding a
-specification."*
+route to raising a growth setpoint is oncogenesis.
+
+**`[REV1]` THE FIRST DRAFT CITED A SECOND LEG HERE — *"plasticity trades off
+against complexity"* — AND IT IS WITHDRAWN.** That claim was n=4 selected on the
+dependent variable; **this analysis had already called it the synthesis's
+clearest overclaim in an earlier review and then leaned on it anyway**, which is
+the failure this file is otherwise about. **Deer antler kills the strong
+version**: annual casting and regrowth of a branched, species-specific organ in
+a large mammal, up to 2 cm/day, described in its own literature as the only
+stem-cell-based full organ regeneration in mammals. The synthesis has demoted
+it to a heuristic.
 
 **FEP predicts that rigidity, and elegantly** — adult tissue at NESS with high
 precision on its own setpoints is exactly a system that refuses
 re-specification. **That is a better argument than the free-lunch one and the
-post does not make it.** But the two cannot both be load-bearing: either
-high-scale constraint is **tight**, which explains why adult ECM cannot be
-re-specified and why acromegaly delivers more tissue in the wrong places, or it
-is **generous**, which is what unpaid-for competency needs.
+post does not make it.**
+
+**`[REV1]` AND THE DILEMMA THE FIRST DRAFT DREW IS A FALSE CHOICE.** It said
+high-scale constraint must be either **tight** (explaining why adult ECM cannot
+be re-specified) or **generous** (what unpaid-for competency needs). **Those are
+different quantities.** "Free lunch" is about *unpaid-for competency*; the
+setpoint asymmetry is about *magnitude regulation resisting upward
+perturbation*. **A system can be tight on magnitude and generous on capability
+at once**, so the two claims do not compete and nothing had to be chosen
+between.
+
+What survives is narrower and still worth saying: **the post does not engage the
+magnitude evidence at all**, and the magnitude evidence is the part FEP explains
+best. *(The synthesis author offers planaria as a system satisfying both horns.
+It is the weaker half of a correct argument — whole-animal regeneration is paid
+for, by maintaining a distributed neoblast compartment that mammals decline to
+fund. The structural point holds without the example.)*
 
 ### 3.3 Scale-invariance of a formalism is not scale-invariance of a mechanism
 
@@ -280,6 +336,12 @@ because **boundary conditions can only be controlled outside the body.**
 
 ## 6. The two corrections this analysis produced, and the class they belong to
 
+**`[REV1]` §6 IS NOW REDUNDANT AS CORRECTIONS AND IS RETAINED ONLY FOR §6.1 AND
+§6.2.** Both are logged in the synthesis's own §12.1, with the Matrigel payload
+developed further there than here. Nothing below needs sending; the reasoning is
+kept because §6.1's mechanism and §6.2's receptor gap are what this file
+contributes.
+
 Both were found by checking the synthesis against external sources.
 
 **(a) A universal with approved counterexamples.** *"There is no depositional
@@ -330,9 +392,22 @@ are other (a conflation, a factual error, an imprecision). **With the two above:
 TWICE** (`READINESS` §3's noticed-occurrences count; row 7.40's skipped jobs):
 that log holds corrections somebody **noticed**, and a quantifier overreach is
 unusually easy to notice — one counterexample kills it, where a subtle factual
-error can sit for years. **So 7/11 is probably an OVERESTIMATE of the true
-share, and the supported claim is "the most-CAUGHT class", not "the
-most-COMMITTED class."**
+error can sit for years.
+
+**`[REV1]` AND THE FIRST DRAFT'S CAUTION WAS STILL TOO WEAK. THE DEFECT IS NOT
+THE LOG, IT IS THE INSTRUMENT.** The method that produced these two corrections
+was **source-checking**, and source-checking is **structurally incapable** of
+finding the other classes — equivocation across a redefinition and selective
+sampling of one's own evidence are invisible to it **precisely because every
+citation is valid.** So this file has **no evidence about commission rates at
+all**, only about detection rates under one method, and *"the most-caught
+class"* must be read as *"the most-caught BY SOURCE-CHECKING"*, which is close
+to tautological.
+
+**The honest tally across both reviews is 2 of 6 — and the 2 are exactly the
+class the instrument could reach.** Four reasoning errors were found against the
+synthesis by other means after this file was written (see §6.2), and **none of
+them appears anywhere in the first draft.**
 
 The mechanism, which is why this is not a coincidence of a small sample:
 
@@ -345,6 +420,22 @@ The mechanism, which is why this is not a coincidence of a small sample:
 > with matrix"* names matrix as the variable — **and the variable IS the
 > finding.** Tightening a quantifier does not weaken a claim; it restores what
 > the quantifier had absorbed.
+
+**`[REV1]` THAT PRINCIPLE FAILED ITS OWN TEST AND IS NOW SCOPED.** As first
+written — *"a universal claim is a claim with the mechanism factored out"* — it
+is itself an **unscoped universal, and it is false for derivations.** Energy
+conservation, no-cloning and the second law are universals with no free
+parameter that **are** the explanatory content rather than a mechanism removed.
+Unscoped, the principle would flag this file's own §8 entry *"a spatially
+uniform field carries zero positional information"*, which should not be
+flagged.
+
+> **The discriminating variable is whether the claim's support is a SAMPLE or a
+> DERIVATION.** The principle holds for **empirical generalisations over a
+> surveyed domain** — where the quantifier can outrun what was examined — and
+> not for universals as such.
+
+That is the same move the principle prescribes, applied to the principle.
 
 ### 6.2 This protocol has no receptor for that class
 
@@ -378,6 +469,42 @@ the network."* A `CritiqueSpecies` is an ordinary entry type created at runtime
 through `create_critique_species`, linked by `CritiqueToSpecies`, **extensible
 without forking anything.** That is what the extensible taxonomy is for.
 
+**`[REV1]` AND THE GAP IS FOUR TIMES THE SIZE THE FIRST DRAFT MEASURED.** Four
+reasoning-error classes have now been raised against the synthesis, and **none
+of the five `CritiqueMode` variants reaches any of them:**
+
+| error class | existing mode? | why not |
+|---|---|---|
+| **Scope exceeds survey** | no | the quantifier is broader than the sampled domain |
+| **Regime-restricted result asserted universally** | no | true in a stated regime, applied outside it |
+| **Equivocation across a redefinition** | `Logical`, weakly | **an equivocation does not contradict itself — that is what makes it work** |
+| **Selective sampling of one's own evidence** | no | **every citation is valid, so `Evidential` cannot reach it** |
+
+**One species closes one of four.** And if only one is seeded, the synthesis
+author argues — convincingly — that **selective sampling is worth more than
+quantifier scope**: it is invisible to verification by construction, and in the
+case at hand it removed a **confirming** case rather than a disconfirming one
+(pirfenidone and nintedanib, approved, ~50% reduction in FVC decline, and
+explicitly **no reversal of fibrosis** — the framework's best supporting
+evidence, omitted). **That is the direction least likely to be reported by
+anyone who shares the conclusion, and therefore least likely to be caught by
+use.**
+
+### 6.3 `[REV1]` Three second-hand data, and this file's non-dependency on them
+
+The synthesis author flags three claims in their document as read second-hand
+and asks that nothing load on them unverified: the **250/500/1000 μm germ-layer
+threshold** (§7.1, via a science-communication summary rather than the primary
+paper, and the most load-bearing single datum in their §7); the **organ-size
+architecture table** (§3.4, one popular review); and **fibromodulin as the
+scarless-healing switch** (§8.4, abstract only, and it carries weight in their
+§11.3).
+
+**Checked: this file cites none of the three.** Its §5 uses the scaffold and
+ex-vivo results, not the micropattern threshold. **Recorded rather than assumed,
+because a non-dependency nobody checked is how a dependency gets acquired
+later.** The verification is owed on the synthesis side, not here.
+
 ---
 
 ## 7. Two `[D]`s, recorded as not taken
@@ -398,15 +525,35 @@ without forking anything.** That is what the extensible taxonomy is for.
   graph itself). **Blocked on: a decision about whether the distinction earns a
   place in the protocol's vocabulary, given §1's finding that the whole
   developmental register was kept out deliberately.**
+  **`[REV1]` MATERIAL THAT MAY CLEAR THAT BLOCKER WITHOUT RESOLVING THE `[D]`:**
+  the transferable content is **not** the vocabulary but the failure mode, and
+  it states without a single word of developmental register — ***a scalar
+  reading cannot answer a positional question, and substituting one for the
+  other is how dose-gated metrics come to stand in for position-gated ones.***
+  The synthesis's own §3.1 is the cleanest illustration available: **teratoma
+  formation rate varies eightfold across host sites (12.5% → 100%) while
+  teratoma composition does not vary at all** — an eightfold swing in the
+  scalar, zero change in the structure. ***"Discourse health is 0.8"* is the
+  governance form of reading formation rate and concluding something about
+  composition.** Still a `[D]`; the blocker is narrower than it was.
 
 ---
 
 ## 8. Confidence tiering
 
-**Will not move:**
-- A spatially uniform field carries zero positional information.
-- Resolution and extent decouple only for locally regenerated fields; the
-  λ/2-versus-d/λ coupling for propagating fields is the wave equation.
+**`[REV1]` THE FIRST DRAFT PUT A COMPOUND CLAIM IN THE TOP TIER THAT DOES NOT
+BELONG THERE.** The synthesis author's provenance pass tags the decoupling
+*conjunction* `[I]` — their own argument, appearing in no source they read —
+while its components are textbook. **The top tier now holds the components
+only**, and the conjunction has moved down. *The whole value of a top tier is
+that one stops checking it, which is why one soft member costs the most.*
+
+**Will not move — derivations and textbook physics:**
+- A spatially uniform field carries zero positional information. **A derivation,
+  not a survey**, which is why §6.1's scoped principle correctly does not flag
+  it.
+- λ = √(D/k) sets reaction–diffusion feature size; the λ/2-versus-d/λ coupling
+  **for propagating fields** is the wave equation. **Components only.**
 - `CritiqueMode` is in the integrity zome, so a sixth variant forks the network;
   `CritiqueSpecies` is a runtime entry type and does not.
 - Teriparatide/abaloparatide/romosozumab are approved osteoanabolic agents.
@@ -416,10 +563,18 @@ without forking anything.** That is what the extensible taxonomy is for.
 - The §6.1 classification — interpretive, and biased toward over-counting.
 
 **Argument, not measurement — could be wrong:**
-- §2's claim that the locally-regenerated condition and local recomputability
-  are the *same* structural property. It is an analogy with a stated mechanism,
-  not a derivation.
-- §3.2's claim that the free lunch and the setpoint asymmetry cannot both be
-  load-bearing. Someone could argue the scales differ.
+- **`[REV1]` MOVED DOWN FROM THE TOP TIER:** *resolution and extent decouple
+  only for locally regenerated fields, which is why biology's carriers are
+  chemistry and voltage.* Textbook components, **unsourced conjunction**,
+  tagged `[I]` by its own author and reviewed by nobody. **This file's §2, §3.1
+  and §3.3 all rest on it**, so they inherit an inference's confidence rather
+  than a literature's.
+- §2's access-symmetry parallel between locally-regenerated fields and locally
+  recomputable claims. **`[REV1]`** The first draft's stronger "same structural
+  reason" version is withdrawn — the physical side turns on a conserved
+  quantity with no epistemic analogue.
+- ~~§3.2's claim that the free lunch and the setpoint asymmetry cannot both be
+  load-bearing.~~ **`[REV1]` WITHDRAWN** — they are different quantities and a
+  system can satisfy both; see §3.2.
 - §4's reading of the post's phrasing as controller language. The fair counter
   is stated; this is a dispute about wording, and wording is what was offered.
