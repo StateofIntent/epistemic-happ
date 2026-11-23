@@ -3184,3 +3184,173 @@ reach: a person still installs the hApp, and a system that cannot delete cannot
 heal, only accrete and lose standing. **Coral reef rather than cell** — durable
 accretion with living tissue on the surface — is the better description and the
 better story.
+
+
+---
+
+## 8. Adopted from an adversarial ECM-remodelling inquiry — a sibling taxonomy, and the science carried more than the self-audit did
+
+**Opened 2026-11-24.** Source: a 507-line external working document — the final
+distillation of a long adversarial inquiry into adult extracellular-matrix
+remodelling and biological size specification — **held locally by its author and
+deliberately not in this repository.** Its title is omitted here on the same
+grounds: this repository is public, the document is not, and nothing structural
+below depends on naming it. Its
+own instruction is that Parts I–IV are the worked example and **Part V is the
+transferable payload**: *"If the purpose is architectural ideas for a
+claim/critique system, Part V is the payload."*
+
+> **THAT INSTRUCTION WAS FOLLOWED TOO LITERALLY ON THE FIRST PASS, AND THE
+> CORRECTION IS THE REASON THIS SECTION IS SHAPED AS IT IS.** The first reading
+> took its items from Part V and **described them as if all of them came from
+> there, which was false** — the role grid is **§2.5, in Part II**, and §5.7
+> only restates it. Asked directly whether the items came from the biology, the
+> answer was no. **Re-read in full, the SCIENCE carried more transferable
+> structure than the self-audit did**, and the three strongest items in this
+> section (8.7, 8.8, 8.9) are from Parts II and III. **A document's own account
+> of where its value sits is evidence, not an index** — which is this
+> repository's own *"read the harness header"* lesson arriving from outside.
+
+**AND IT INDEPENDENTLY DERIVES THIS REPOSITORY'S OWN CONCLUSION, THEN ADDS A
+THIRD TERM.** The 2026-11-22 finding was that **source-checking can find only
+one class of error**, blind to equivocation and selective sampling because in
+both cases every citation is valid. Part V §5.1 reaches that from an unrelated
+inquiry and names a third class this repository had not:
+
+> **Unconsulted adjacency** — sourcing correct, inference valid, **premise set
+> incomplete.** *"Cannot be closed from inside a document by any amount of
+> self-audit, because the missing premise is invisible to the frame that
+> omitted it. The only detector is a reader with different training."*
+
+**The first error class on this list whose only detector is social.**
+
+### 8.0 A measurement, because §5.2 claims its trigger vocabulary is countable
+
+§5.2 names the most frequent error in that inquiry as **a list of alternatives
+presented as complete when it was not**, and claims the triggers are few:
+*exactly two, the only, must be, either/or, ruled out, no X anywhere.*
+**Measured against this repository's six prose documents, 2026-11-24: 648
+boundary-shaped phrases**, `the only` alone **288**, then `must be` 128,
+nowhere/anywhere 110, `exactly N` 42, either/or 28, can-never 20, `ruled out`
+19, there-are-N 7, exhaustive 6.
+
+**Most are benign** — *"the only writer of that map"* is a code fact. **But the
+class has a confirmed hit in this file:** line ~1811 reads *"~~It is the only
+open decision on this list~~ — **FALSE, corrected 2026-11-14: TWENTY-SEVEN rows
+carry a live `[D]`**."* A `the only` claim, wrong, **inherited as a premise and
+quoted back as fact repeatedly inside one session** — §5.2's compounding
+warning, already paid for here. One question catches it: **"over what set, and
+who enumerated it?"**
+
+### 8.1 The candidates
+
+| # | item | who | blocked on |
+|---|---|---|---|
+| 8.1 | **§5.9 IS OUTSIDE SUPPORT FOR A `[D]` ALREADY HERE, AND IT ARGUES THE CHEAPER ARM.** *"Version the mechanism claims aggressively; treat the ontology as the stable layer. A system that tracks claims without tracking the categories they are claims about will churn on exactly the content that changes most."* Across ~40 revisions his **categories survived and the mechanisms under them turned over.** An argument for seeding a **`CritiqueSpecies`** — runtime, hierarchical via `parent_species`, **no fork** — over a sixth `CritiqueMode` variant, which changes the integrity zome and **forks the network.** Gap and choice already recorded in the positional brief §6.2 with a worked specimen in the immune brief §7 | D | the same `[D]` — which species to seed first |
+| 8.2 | **ROLE TAGS, FROM §2.5's FIVE-WAY GRID — sensor / reference / setpoint-comparator / target / budget.** §5.7's rule: *"a claim is only responsive to a question if the roles match. Most apparent progress in this inquiry was a role mismatch."* General form: ***a mechanism that reports a quantity is routinely mistaken for one that determines it*** — Weyl's law as the pure case, an exact size **sensor** carrying nothing about target size. **`Claim.semantic_tags: Vec<String>` already ships (`dna/integrity/src/lib.rs:115`), so this is a CONVENTION over a shipped field: no entry change, no bump, no fork.** This repository found a sibling independently — #555's *"the taxonomy is a taxonomy of signals, and a selector is a third kind of address"* **is a role-mismatch finding** | D | whether a convention nothing validates earns its place — the declaration problem again |
+| 8.3 | **A BOUNDARY-CLAIM REPORT OVER THIS REPOSITORY'S OWN PROSE — the only `[M]` here.** The 648 phrases need triage, not a feature; `check-prose-claims.mjs` already reads those six files. **No protocol, cannot fork anything.** Would have caught the `the only open decision` error this file records propagating. **Risk stated in advance: 648 mostly-benign hits means a gate that cries wolf is worse than none**, so it must rank by context or REPORT rather than fail — the `check-stale-blockers.mjs` precedent is a report that always exits zero | M | nothing — the cry-wolf design is the real question |
+| 8.4 | **REVIEWER-DOMAIN *MISMATCH* ROUTING — most interesting, least ready.** §5.1: *"route critiques by reviewer-domain mismatch, not topic match. The useful critic of a biology claim resting on spectral theory is a spectral theorist, and a topic-similarity router will never surface them."* **Compatible with Invariants 1 and 2 by construction** — a mismatch ordering is not a merit ordering and ranks nobody — and it answers something this protocol does not address at all: how a claim reaches the reader able to see what is missing. **Needs a notion of reviewer domain that does not exist, and a two-operator pilot has nobody to route between** | D | a notion of reviewer domain, and more than two operators |
+| 8.5 | **A THIRD VERDICT CLASS, HALF-PRESENT.** §5.6 wants *supported*, *contradicted*, and **"this design cannot address this claim"** — stronger than confounded: a design that cannot answer the question **however well executed**. `Stance`'s third variant is not this: `Abstains` is *"I have read it and I am not taking a position"*. `CritiqueMode::Methodological` is adjacent, not the same. **Must NOT be a new `Stance` variant — that forks** — so it is a `CritiqueSpecies`, hence a sub-case of 8.1 | D | 8.1 first |
+| 8.6 | **RECORDER VERSUS GOVERNOR — and this repository has paid for it at least three times without ever naming it.** §3.4, from the biology: a real per-division epigenetic register exists, *"but it records without governing"* — old chondrocytes with a high reading still divide like fetal cells. ***"An odometer does not stop the car. Recorder and governor are different objects, and the register question had assumed they were one."*** **THE INSTANCES ALREADY ON DISK, each found separately, none connected:** `CritiqueSpecies.adoption_count` was *"a free, self-declared number, not a derived signal"* with no validation and no increment mechanism anywhere (`dna/integrity/src/lib.rs:390`, removed for a query-time count of real links); founding's accountability was *"a coordinator-side courtesy while being documented as an invariant"* (`founding-ui.mjs:18`); the `metabolism` harness's BM injection produced ***"a declaration nothing compares to reality is a label"***, where the declaration check stayed GREEN because the declaration was still false; and **`fromTheBox` is a fourth.** The borrowable thing is a NAME for a class this repository keeps rediscovering, and the audit it generates: **for every field that reports state, what governs it, and is there a check comparing the two?** | M to audit, D on whether it becomes a standing rule | nothing to run the audit; the `[D]` is whether it joins `docs/fixed-core.md` |
+| 8.7 | **"DETERMINED WITHOUT BEING SPECIFIED" — the best idea in the document for this protocol, and it is from §3.1, not Part V.** The growth plate sets an absolute adult size with **no stored target and no comparison**: *"Final length = divisions remaining × length gained per division, and **neither factor knows the product.** Nothing is compared, nothing stores the answer. This is how an absolute size can be determined without being specified — which is why B looked unsolvable while the search was for a stored value."* **THIS IS INVARIANT 1's PROBLEM SOLVED IN TISSUE.** Invariant 1 bars a canonical comparative measure, so this protocol may not store a score — and the standing worry is that refusing the score refuses determinacy with it. **A budget answers that: an outcome that is definite without being canonical, because the magnitude is a CONSEQUENCE of a consumable rather than a value anybody wrote down.** And this protocol **already has budgets** — friction windows, and `AttestationGrant`'s per-window grant budget. **The borrowable item is therefore not a mechanism but a reframing of one it already ships**, and the question it opens: which of this protocol's refusals-to-score could be re-expressed as a budget, rather than as an absence | D | whether the reframing earns a place in README/SPEC's account of Invariant 1 |
+| 8.8 | **A COUNT IS SPENT BY EVENTS; A TIMER IS SPENT BY TIME — AND THIS PROTOCOL'S CONDUCTANCE IS A TIMER. MEASURED.** §3.2's table was first drawn **exactly backwards**, and the correction *"reverses which observation supports which model"*: under a transient pause, a **count** spends nothing (catch-up, no deficit) while a **timer** closes the window regardless (permanent deficit). *"Parking meter versus prepaid card."* **MEASURED HERE 2026-11-24: `get_effective_conductance` decays by `CONDUCTANCE_HALF_LIFE_SECS` — ELAPSED SECONDS. A timer.** So a participant who goes quiet loses conductance **for being quiet**, which on this pilot is the normal state: row 7.29 already records that the network exists only while two people happen to be online at once. **Whether that is right is a decision, not a defect — but it was never named, and §3.2 names it with its opposite.** §2.4 supplies the frame: rate, variability and count are *"a parameter, a gate and a store"*, and **only a count is intrinsically a reference to an unoccupied state.** This protocol has all three — conductance is the rate, friction windows the gate, the grant budget the store | D | whether intermittent participation should cost standing on a pilot built from intermittent participants |
+| 8.9 | **"NAMES THE ELSEWHERE AND THE CARRIER" — a test for deferred explanation, and it is sharper than unfalsifiable.** §3.10: *"A proposal that a reference is held 'elsewhere' is a hypothesis exactly to the extent that it names the elsewhere and the carrier."* The liver's size reference is demonstrably not in its hepatocytes, and the candidates named are **portal haemodynamics and bile-acid signalling** — *"a pressure and a metabolite — both with units, both measurable, both manipulable."* **§2.3's four-condition test is the same rule generalised**: an appeal to a wider context earns its place only if it (1) has a carrier that reaches the thing, (2) varies at the relevant scale, (3) connects by a named path, and (4) **relocates the reference rather than adding a modulator** — *"condition 4 does the work. Influence is not reference."* **A `CritiqueSpecies` candidate with real teeth**, and it tests a move this protocol's own documents make constantly: *the answer lives at the read layer / in the lens / in the policy.* **Each of those is legitimate exactly to the degree it names the carrier** | D | a sub-case of 8.1 — which species to seed first |
+
+### 8.2 What is NOT adopted, and the best of them cannot be had cheaply
+
+**§5.3's LOAD-BEARING CONCENTRATION IS THE ONE THIS PROTOCOL MOST WANTS AND
+CANNOT AFFORD.** *"Build the dependency graph, weight each node by how much
+rests on it, and flag any node whose support is thin relative to its load."* In
+the source inquiry four successive conclusions each rested on the one before and
+**all traced to a single secondhand, unreplicated observation with a known
+confound** (§3.6) — every individual step locally sound. Its own verdict on
+that: *"the model verdicts are **untested**, not ruled out."*
+
+**MEASURED: THIS PROTOCOL HAS NO CLAIM-TO-CLAIM DEPENDENCY EDGE.**
+`Stance::Supports` is one agent's position on a target, not a structural premise
+link; `past_cone` is retention, not dependency; no `LinkTypes` variant expresses
+*this claim's argument uses that claim*. A new link type **changes the integrity
+zome and forks the network.**
+
+> **DELIBERATELY NOT ADDED TO §4's BUMP CANDIDATE SET, on that section's own
+> rule.** `docs/integrity-bump-plan.md` §2 is the authority on the set, and an
+> index listing a candidate the authority does not **is the index being wrong.**
+> **A `[D]` nobody has taken is not a bump candidate** — 4.7 was withdrawn by
+> decision, so the set is for what is wanted, not what is imagined. **If the
+> premise edge is ever decided FOR, it joins §4 and the plan's §2 in the same
+> commit, never one without the other.**
+
+**The read-layer half IS available and is a different thing.** This file's rows
+cite each other and `check-stale-blockers.mjs` already does cross-reference
+work, so dependency-weighting over `docs/open-work.md` needs no protocol at all.
+Not opened; named so it is not confused with the forked version.
+
+**THE THREE OF §5.9's FIVE DURABLE CATEGORIES NOT IMPORTED, ASSESSED RATHER
+THAN SKIPPED.** §5.9 names five that survived ~40 revisions — the A/B/C split,
+the role grid, capacity/occupancy, recorder/governor, the budget category — and
+the first pass took one.
+
+- **Capacity/occupancy** — *"occupancy deficits present identically to capacity
+  deficits, because both are measured by the same observable"* — is a family
+  this repository holds under other names: row **6.25**'s four surfaces *where
+  a read that FAILED rendered as an answer nobody got*, and the standing rule
+  that **an exit code is not a measurement**. Two states, one observable.
+  **Corroborates; nothing to import.**
+- **The A/B/C split** — three problems routinely conflated, where *"most
+  apparent progress on B turns out to be A or C wearing B's clothes"* — has
+  **no identified analogue here**, and inventing one would be the role mismatch
+  it warns about. **Named as not-transferred rather than left out.**
+- **The budget category** is 8.7 and 8.8, and it was **already built twice**
+  before the category arrived.
+
+**§5.5's cross-product of accepted claims is declined.** Its own text calls it
+*"cheapest class to detect, easiest to miss"* — true of a document, false of a
+DHT: O(n²) over claims, local to no agent.
+
+**§5.8's revealed clustering is an analysis method, not a feature.** *"When
+every successful intervention in a field clusters on one side of a distinction
+the field does not draw, the distinction is probably real."* Worth knowing;
+nothing to build.
+
+**AND ONE PHYSICS RESULT THAT CORROBORATES A CHOICE ALREADY MADE.** §2.1: *"a
+local rule is scale-free unless a scale enters it"*, and every formalism
+examined **concedes the scale rather than deriving it** — in noncommutative
+geometry the absolute scale enters through the operator's normalisation,
+*"inserted as data, not derived"*; in modular theory the flow has **no unit**
+and the scale is fixed from outside. *"The scale is physics, not mathematics,
+and the search object therefore has units."* **This protocol already obeys
+that**: `SettlementPolicy`'s parameters *"are all integers and all comparisons
+are exact"*, published and named by whoever aims them, and friction limits are
+integers in a window. **The scale is inserted as data and says so.** Nothing to
+change — recorded because a future proposal to *derive* a threshold rather than
+publish one is now answerable with a structural reason instead of a preference.
+
+### 8.3 The caveat this section owes, on the model of §5's own
+
+**DO NOT IMPORT THE BIOLOGY AS FACT, AND DO NOT TREAT PART V's FREQUENCY CLAIM
+AS MEASURED HERE.** Part V's authority rests on its own statement that *"every
+entry below was derived by auditing this inquiry's own errors, each of which is
+traceable to a specific correction in the record."* **That record has not been
+read from this repository — only the distillation of it.** So Part V is a
+well-argued design brief whose claims about its own process are its author's to
+vouch for, and the most exposed is §5.2's *"single most frequent error"*, a
+frequency assertion over a corpus not inspected here. **The 648 figure in §8.0
+is ours and is measured; the claim that this class is the most common is not.**
+
+**THE SUBSTANTIVE BIOLOGY IS UNCHECKED AND NOTHING ABOVE DEPENDS ON IT BEING
+TRUE.** Parts I–IV carry figures this repository has not verified — a ~17-fold
+dog body-mass range, six loci at ~46–52.5% of breed size variance, *Drosophila*
+critical size ~1.10 mg at 17 °C vs ~0.87 mg at 25 °C, a photoperiod null at
+F = 0.0001, macrophage depletion abolishing regeneration in 10 of 10 animals,
+18 cm of new bone by distraction at 1 mm/day. **Every row in §8.1 borrows a
+STRUCTURE — budget-not-target, recorder-versus-governor, count-versus-timer,
+name-the-carrier — and none of them needs its biological instance to hold.**
+That is deliberate: a structure that depends on an unverified figure would be
+§5.3's load-bearing concentration, built here on purpose.
+
+**And the document is honest about its own weakest point in a way worth
+recording:** §3.6 names a single secondhand, unreplicated, *uninterpretable*
+observation as the single point of failure for most of §3.4, and states the
+consequence rather than burying it. **That disclosure is why Part V's taxonomy
+is worth borrowing from at all** — it is the behaviour row 7.40 and READINESS §3
+ask of this repository, arriving from someone else's inquiry.
