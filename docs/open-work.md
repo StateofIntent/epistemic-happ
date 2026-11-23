@@ -29,6 +29,61 @@ this block wins.**
 **`main` = `5ef3c4f` when this was written. ONE PR OPEN: #556 (row 6.29).**
 `bump/foreign-critique-held` (#350) stays HELD — do not merge.
 
+## PAUL D'AOUST — TWO MESSAGES SENT 2026-11-24, AND §13 WAS ABANDONED
+
+**SENT, both of them, and NOTHING IS OWED BACK TO US:** the dwell-time reply
+answering his gossip-interval suggestion, and the reply to his two 2026-11-21
+questions. **Neither is `§13`.** That draft was abandoned rather than improved,
+because it was MY prose and the whole reason the question needed answering is
+that this reader said H's messages read as AI-generated. The content was handed
+over; **H wrote the messages.**
+
+**THIS IS ROW 7.38's FIRST FIELD TEST, AND THE EVIDENCE IS HIS REPLY OR ITS
+ABSENCE.** The style rule exists because of this reader. Two messages written
+under it have now reached the person who raised it. **Nothing to build. Do not
+chase.**
+
+**WHAT THE SEND COST, AND IT IS WORTH READING BECAUSE IT WAS CAUGHT IN TIME.**
+The dwell-time message's `Setup:` line was MINE, inferred from the always-on
+node's `conductor-config.yaml`, and **it was WRONG**: H confirms the run used
+the **local sandbox bootstrap/relay at `http://127.0.0.1:8887` over QUIC** —
+`sandbox.sh` generates `network -b $BOOTSTRAP_URL quic $BOOTSTRAP_URL` — so
+there was **no public bootstrap and no iroh canary relay in that run at all**.
+Corrected before the final send.
+> **AND THE SAME INFERENCE CARRIED A SECOND CLAIM OUT WITH IT:
+> `target_arc_factor: 1`. `sandbox.sh` NEVER SETS IT**, so node A was most
+> likely on the default, and the *"same as my always-on node"* line was
+> withdrawn rather than repaired. **Nothing in the argument needed it** — the
+> measured `arc=null` → full readings do that work, and the row's own
+> conclusion is that the arc was not the cause.
+> **THE RULE: a config read off ONE machine is not evidence about a run on
+> ANOTHER, and "same config as" is the phrasing that hides the assumption.**
+
+**ONE PRECISION ERROR FIXED IN THE SAME PASS:** the message presented *"the arc
+goes full within five seconds"* as a latency. **It is a SAMPLING RESOLUTION** —
+this file says so at line ~1042 — so it is an upper bound of 5s, and the sent
+version says that. **Stating your own resolution is what makes the other
+figures credible**, which is the opposite of how it first read.
+
+**AND LOOPBACK MAKES THE RESULT STRONGER, WHICH IS WHY THE CORRECTION WAS NOT
+MERELY COSMETIC.** Slow, variable discovery with a local bootstrap and no WAN
+leaves far less room for *"that is just the internet"* — it sharpens the
+question put to him rather than softening it.
+
+**§18, THE FUND REFERENCE ASK, IS DEFERRED BY H — AND ITS OWN STATED CONDITION
+HAS FIRED.** It was drafted to be APPENDED to §13 and says in terms that if §13
+is abandoned it *"needs re-drafting as its own message with a different
+opening — it is not portable as written."* §13 is now abandoned and the draft
+opens *"One unrelated thing"*. **Re-draft the opening before it goes.** The
+original hold reason — a request arriving while a reply is owed — **is
+discharged**; H's reason is new and legitimate (two messages had just gone out).
+**AND ONE FACT IS NEEDED FIRST: was Paul actually named in the submitted
+application?** The voucher names were entered by H at submission and this
+repository does not know them, so the draft's *"I'd like to list you"* may need
+to be *"I listed you — is that alright"*. **Ask once; do not reconstruct.** The
+fund decides **~14 December**, so it is not indefinitely deferrable if he was
+named.
+
 ## KUPUKUPU REPLIED, 2026-11-23 — NINE POINTS, AND THREE OF THEM CLOSE ROWS
 
 **THE REPORTER CONFIRMED TWO ROWS IN THE FIELD AND PARTIALLY CONFIRMED A
