@@ -112,6 +112,46 @@
 //   labels broken. A text run split across more than two line boxes is the
 //   signature — wrapping between words is fine, wrapping inside one is not.
 //
+//   ROW 6.30's PROBE, 2026-11-23 — the status byline, and the reason it had
+//   to be built. The header's byline is `Connected · <mnemonic> · <key>`, the
+//   mnemonic is DERIVED FROM THE AGENT KEY, and every run of this harness
+//   starts a conductor that mints a fresh one. So the only surface here whose
+//   content nothing seeded was tested as strongly as a random draw allowed —
+//   65,536 pairs from 8 to 21 characters, median 15.
+//
+//   WHAT THAT COST. The byline was clipped from the right by `nowrap` +
+//   `overflow: hidden` + an ellipsis, which removed the KEY — the one part of
+//   that line a reader can check, placed last on purpose because `agentLabel`
+//   orders it weakest-claim-first. It survived five days and then went red in
+//   CI on `shuttered-escarpment` (20 chars, the longest 1.14%), on a pull
+//   request that had not touched the status bar. Worse: the run that verified
+//   the FIX drew `gilded-weathervane` at 18 and would have passed without it,
+//   so that green was not a replication of anything.
+//
+//   Injection: the pre-fix CSS put back (`nowrap`, `overflow: hidden`,
+//   `text-overflow: ellipsis`).
+//   Result: 1 red, at 320px, naming the byline — and the figure is the point:
+//   the worst byline reaches 337px AT EVERY WIDTH, because `nowrap` means the
+//   run does not break. It fits 390 and 360 and does not fit 320, which is
+//   exactly where CI caught it. The probe found it while this run's own agent
+//   key carried a short mnemonic, which is the whole difference from the
+//   instrument it replaces.
+//
+//   The margin it makes visible is worth reading: restored, the worst byline
+//   reaches 233 of 390 and 224 of 320 — lower at the narrower width because
+//   the line now WRAPS, so each run is shorter. Broken, 360px passes with
+//   only 23px to spare, so a wider font on some other runner would take that
+//   width down too. The figure is logged on every run, pass or fail.
+//
+//   Injection: `MNEMONIC_ADJECTIVES` renamed, so the parse finds nothing.
+//   Result, FIRST TIME: the harness ran NORMALLY and measured happily — the
+//   lookup was `indexOf('export const MNEMONIC_ADJECTIVES')`, a PREFIX match,
+//   so it still found `MNEMONIC_ADJECTIVES_RENAMED`. A probe that cannot tell
+//   it has lost its inputs is the species this file exists to refuse, found
+//   by trying to break the probe rather than the product. Anchored on the
+//   declaration's `:` type annotation, it now throws before the conductor is
+//   touched.
+//
 //   The lesson is the one this directory keeps relearning in new costume: a
 //   check whose label claims more than its assertion tests. "Fits the
 //   viewport" claimed the page was laid out acceptably; it tested only that
@@ -146,6 +186,7 @@
 
 import { AdminWebsocket, AppWebsocket, CellType } from '@holochain/client';
 import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { CHROMIUM } from './chromium.mjs';
 
@@ -175,6 +216,58 @@ const MEMBRANE_DESC = `Seeded for layout verification. Charter: ${LONG_TOKEN}`;
 const SPECIES_NAME = `LayoutSpecies${STAMP}`;
 const SPECIES_EVIDENCE = `The source, published at ${LONG_TOKEN}`;
 const FORESIGHT_PREDICTION = `By the end of the period, the source at ${LONG_TOKEN} will have been retracted.`;
+/** THE LONGEST BYLINE THE MNEMONIC LISTS CAN PRODUCE — ROW 6.30's `[M]`.
+ *
+ *  WHY THIS EXISTS. The status bar carries `Connected · <mnemonic> · <key>`,
+ *  the mnemonic is derived from the agent key, and the key is minted fresh by
+ *  every conductor this harness starts. So the one surface here whose content
+ *  nothing seeds was tested only as strongly as a random draw allowed: at
+ *  65,536 pairs from 8 to 21 characters, a short mnemonic made the check pass
+ *  for a reason nobody chose. It did exactly that for five days, and then went
+ *  red in CI on `shuttered-escarpment` (20 chars, the longest 1.14%) three
+ *  days after the mnemonic shipped — on a pull request that had not touched
+ *  the status bar. The fix for the clipping shipped in #556; the run that
+ *  verified it drew `gilded-weathervane` at 18 and WOULD HAVE PASSED WITHOUT
+ *  THE FIX, so that green was not a replication and this probe is why.
+ *
+ *  Read from `key-mnemonic.ts` rather than hardcoded, because the point is to
+ *  track the lists: a pair added tomorrow should widen this automatically. The
+ *  file imports nothing by design, which is what makes a regex read of it
+ *  sound — `key-mnemonic-check.mjs` relies on the same property.
+ *
+ *  AND IT THROWS RATHER THAN FALLING BACK. A probe that quietly substituted a
+ *  default string when the parse failed would keep passing while measuring
+ *  nothing, which is the species of defect this whole file exists to refuse. */
+const WORST_MNEMONIC = (() => {
+  const src = readFileSync(
+    new URL('../../mobile-ui/src/key-mnemonic.ts', import.meta.url), 'utf8',
+  );
+  const listOf = (name) => {
+    const at = src.indexOf(`export const ${name}:`);
+    if (at < 0) throw new Error(`layout-fits: ${name} not found in key-mnemonic.ts`);
+    const body = src.slice(src.indexOf('[', at), src.indexOf('];', at));
+    return [...body.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  };
+  const adjectives = listOf('MNEMONIC_ADJECTIVES');
+  const nouns = listOf('MNEMONIC_NOUNS');
+  if (adjectives.length < 2 || nouns.length < 2) {
+    throw new Error('layout-fits: mnemonic lists parsed empty — probe would measure nothing');
+  }
+  // EVERY PAIR AT THE MAXIMUM LENGTH, NOT ONE OF THEM, AND MEASURED RATHER
+  // THAN RANKED. Character count is a PROXY for width: a 21-character string
+  // of narrow glyphs can render narrower than a 20-character string of wide
+  // ones, so picking `longest adjective + longest noun` and calling it the
+  // worst case would be the same kind of unexamined assumption this file
+  // exists to catch. The candidates at the longest length are handed to the
+  // page and each is measured in the real element, and the widest WINS. The
+  // set is small enough for that to cost nothing — a few dozen layouts.
+  const pairs = [];
+  for (const a of adjectives) for (const n of nouns) pairs.push(`${a}-${n}`);
+  const max = pairs.reduce((m, p) => Math.max(m, p.length), 0);
+  const longest = pairs.filter((p) => p.length === max);
+  return { candidates: longest.slice(0, 80), chars: max, total: longest.length };
+})();
+
 const nowSecs = () => Math.floor(Date.now() / 1000);
 
 const log = (...a) => console.log(...a);
@@ -423,6 +516,69 @@ async function main() {
           for (const o of m.offenders) log(`      element ${o}`);
         }
       }
+      // --- ROW 6.30: the status bar, with the key taken out of it ------
+      //
+      // ONCE PER WIDTH RATHER THAN PER TAB, because the status bar is in the
+      // header and is therefore on every tab — which is why the CI failure
+      // that opened this row reddened all seven at once.
+      //
+      // The byline is substituted IN THE LIVE ELEMENT and put back, inside a
+      // single evaluate so no render can land in the middle. Measuring a
+      // detached clone would have been easier and wrong: `.status` sits in a
+      // flex row opposite the Disconnect button and carries a `●` through
+      // `::before`, and the thing under test is whether it fits THERE.
+      const statusProbe = await page.evaluate(({ candidates, w }) => {
+        const el = document.querySelector('.status.connected');
+        if (!el) return { missing: true };
+        const original = el.textContent;
+        // The REAL key is kept and only the mnemonic swapped, so this measures
+        // the shipped byline with its worst legal middle rather than a string
+        // the app would never render. `agentLabel` joins with ' · '.
+        const parts = original.split(' · ');
+        let worst = { right: 0, text: '' };
+        for (const mnemonic of candidates) {
+          const next = parts.slice();
+          if (next.length >= 3) next[next.length - 2] = mnemonic;
+          else next.splice(1, 0, mnemonic);
+          el.textContent = next.join(' · ');
+          for (const node of el.childNodes) {
+            if (node.nodeType !== 3) continue;
+            const rng = document.createRange();
+            rng.selectNodeContents(node);
+            const right = rng.getBoundingClientRect().right;
+            if (right > worst.right) worst = { right: Math.round(right), text: el.textContent };
+          }
+        }
+        el.textContent = original;
+        return {
+          missing: false,
+          restored: el.textContent === original,
+          widest: worst.right,
+          text: worst.text,
+          scrollsX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+          viewport: w,
+        };
+      }, { candidates: WORST_MNEMONIC.candidates, w: width });
+
+      // CONTROL FIRST. If the element is not there, every assertion below is
+      // about nothing — the shape that made the By Author check vacuous on
+      // this file's first injection.
+      check(`${width}px CONTROL: the status byline is on screen to be measured`,
+        statusProbe.missing === false);
+      if (!statusProbe.missing) {
+        log(`      worst byline (${WORST_MNEMONIC.chars} chars, `
+          + `${WORST_MNEMONIC.total} pairs at that length, `
+          + `${WORST_MNEMONIC.candidates.length} measured): `
+          + `reaches ${statusProbe.widest} of ${width}`);
+        check(`${width}px the LONGEST POSSIBLE key-derived byline fits`,
+          statusProbe.widest <= width + 1 && !statusProbe.scrollsX);
+        if (statusProbe.widest > width + 1) log(`      "${statusProbe.text}"`);
+        // The substitution must not leak into later checks, and the only way
+        // to know is to assert it rather than trust the assignment.
+        check(`${width}px CONTROL: the real byline was put back after measuring`,
+          statusProbe.restored === true);
+      }
+
       check(`${width}px CONTROL: no uncaught page errors while measuring`, pageErrors.length === 0);
       await page.close();
     }
