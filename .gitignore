@@ -66,3 +66,10 @@ Thumbs.db
 # file with no extension, so `git add -A` swept 1.6MB of build output into a
 # commit once. Named explicitly so it cannot happen again.
 /epistemic-resonance-happ
+
+# Deliberately untracked: the learner-facing half names where one person is
+# mid-curriculum, and this repository is public while recruitment is open.
+# Committing the contributor-facing half is a standing recommendation to be
+# taken deliberately, not by a `git add -A` sweeping an untracked file in --
+# which is exactly how it reached main once, in #556.
+docs/learning-the-codebase.md

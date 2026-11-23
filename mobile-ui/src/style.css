@@ -131,12 +131,43 @@ html, body {
   gap: 0.75rem;
 }
 
+/* WRAPS RATHER THAN CLIPS, AND WHAT WAS BEING CLIPPED IS THE REASON.
+   This was `white-space: nowrap` with `overflow: hidden` and an ellipsis, so
+   at a narrow width the line was cut from the right — and the rightmost part
+   of `Connected · <mnemonic> · <key>` is the KEY. `agentLabel`'s own rule
+   orders that byline by who vouches for it, weakest first, precisely so the
+   binding part comes last; clipping from the right therefore removed the one
+   component a reader can check and kept the two that are easier to read.
+   An ellipsis is the right answer for a label whose tail is incidental and
+   the wrong one here.
+
+   FOUND BY CI, AND IT DOES NOT REPRODUCE ON THIS MACHINE — which is part of
+   the finding rather than an aside. `layout-fits` went red at 320px in
+   `ui.yml` on "Connected · shuttered-escarpment · Nz89D" reaching 323px, a
+   3px overflow. The mnemonic is derived from the agent key, so its length
+   varies per agent: 65,536 pairs from 8 to 21 characters, median 15, and
+   `shuttered-escarpment` at 20 is in the longest 1.14%. That alone looked
+   like the whole story and is NOT: with the longest pair the lists can
+   produce (`whistling-wheelbarrow`, 21) forced in deliberately and this rule
+   reverted, the harness passed locally at all three widths. So the trigger is
+   font metrics, not length — `-apple-system, BlinkMacSystemFont, 'Segoe UI',
+   Roboto, sans-serif` resolves to a wider default sans on a GitHub runner
+   than here — and NO RATE SHOULD BE READ OFF THE LENGTH DISTRIBUTION,
+   because the budget in characters is not known for any real device.
+
+   WHICH IS ALSO WHY THIS FIX IS A WRAP RATHER THAN A SHORTER STRING. A
+   budget tuned to one font would be the same defect waiting on a different
+   device; a line that can break has no budget to exceed.
+
+   The page itself never scrolled sideways — the clip prevented that — so the
+   document assertion stayed green and only the text-run one caught it. A
+   `Range` rect ignores ancestor clipping, which is exactly what let this be
+   seen at all. */
 .status {
   font-size: 0.75rem;
   color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .header-meta .link-button {

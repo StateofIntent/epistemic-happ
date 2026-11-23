@@ -1434,7 +1434,30 @@ function captureFieldValues(): () => void {
     for (const { key, ordinal, value } of typed) {
       const field = fieldsWithKey(key)[ordinal];
       // ONLY into a box the rebuild left empty — see the safety property above.
-      if (field && !field.value) field.value = value;
+      if (field && !field.value) {
+        field.value = value;
+        // AND THE SENTENCE COMPUTED FROM THAT VALUE, which this function
+        // restored the text of and not the meaning of.
+        //
+        // FOUND 2026-11-23 while building 6.29's duplicate notice, and the
+        // defect was ALREADY SHIPPED on the New Claim form's findability
+        // notice — both are painted at form-build time and again on `input`,
+        // and a rebuild fires neither. So a reader who typed a domain and
+        // waited while any background read landed was left with the box
+        // holding one string and the notice describing another: "No FOUNDED
+        // domain uses this name" about a name that is a duplicate, or the
+        // reverse. The value survived the rebuild; the only thing on screen
+        // that interprets it did not.
+        //
+        // SAFE BECAUSE NO `oninput` IN THIS APP RENDERS. All twenty-two are
+        // draft-setters or paint functions (checked, not assumed), so this
+        // cannot re-enter `render` — and a handler that did would be a
+        // rebuild triggered by a rebuild with or without this line.
+        //
+        // Dispatched only where a value was actually written, so a box the
+        // rebuild filled by itself is not told it changed when it did not.
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
   };
 }
@@ -6996,6 +7019,126 @@ function renderFoundingForm(): HTMLElement {
   // being paid once already by hand in Telegram.
   domainInput.value = foundingDomainSeed;
   theirs.appendChild(domainInput);
+
+  // ROW 6.29. THE THIRD SCREEN, AND THIS IS 6.27's ARGUMENT WITH THE SCREENS
+  // SWAPPED. 6.27 put the near-miss help on the screen where a reader
+  // SEARCHES a mistyped domain; the reader who CREATES one is on this screen,
+  // and this screen checked only that the name was non-empty.
+  //
+  // Reported by the pilot's first publisher, 2026-11-23, predicting the
+  // outcome rather than hitting it: "If someone can't find a domain, say
+  // 'Mental Health Reform' spelt differently, they'll just create a new one.
+  // You'll end up with a dozen domains with slightly different spellings,
+  // plus frustrated people."
+  //
+  // MEASURED, AND NOTHING BELOW THIS FORM CATCHES IT EITHER. `validate_membrane`
+  // (`dna/integrity/src/lib.rs:1948`) checks the creator and a non-empty
+  // domain; `create_membrane` checks the constitution and the promises. NO
+  // layer checks uniqueness, exact or near — so the same string founds a
+  // second membrane and a case variant founds a second DOMAIN. Uniqueness is
+  // a global property and DHT validation resolves deterministic dependencies
+  // locally, so two agents founding the same name at once would both
+  // validate; this cannot be fixed in validation and belongs on the screen.
+  //
+  // IT WARNS AND DOES NOT BLOCK, which is this form's existing standard: the
+  // permanence note states the cost before the button rather than
+  // interrupting after it, and a domain somebody means to found under a
+  // nearly-identical name is their call to make. Folding the lookup is still
+  // not the fix — see `foundedDomain`'s comment.
+  //
+  // FOUR STATES, AND SILENCE IS NEVER ONE OF THEM. `membranes` empty means
+  // "nothing founded" OR "never asked", so an absent warning here would say
+  // "no duplicate" when the truth is "could not look" — the vacuous shape
+  // 6.13, 6.25 and 6.27 each paid for.
+  const duplicate = document.createElement('p');
+  duplicate.className = 'hint';
+  duplicate.dataset.testid = 'founding-duplicate';
+  theirs.appendChild(duplicate);
+
+  const goToExisting = document.createElement('button');
+  goToExisting.type = 'button';
+  goToExisting.className = 'link-button';
+  goToExisting.dataset.testid = 'founding-duplicate-load';
+  goToExisting.hidden = true;
+  theirs.appendChild(goToExisting);
+
+  /** Repaint the duplicate notice without a full render, for the reason
+   *  `paintFindability` does the same: a render per keystroke is not what
+   *  the focus-restoring machinery is for. */
+  const paintDuplicate = () => {
+    const typed = domainInput.value.trim();
+    goToExisting.hidden = true;
+    if (!typed) {
+      // Nothing typed is not a finding, the same judgement the New Claim
+      // form's notice makes about an empty box.
+      duplicate.dataset.state = 'empty';
+      duplicate.textContent = '';
+      return;
+    }
+    if (membranesError) {
+      duplicate.dataset.state = 'unknown';
+      duplicate.textContent =
+        'Could not check whether this domain, or one differing only in '
+        + 'capitals or spacing, is already founded — so this says nothing '
+        + 'either way: ' + membranesError;
+      return;
+    }
+    if (!membranesLoaded) {
+      duplicate.dataset.state = 'checking';
+      duplicate.textContent =
+        'Checking whether this domain is already founded…';
+      return;
+    }
+    const exact = foundedDomain(typed);
+    const near = exact ? null : nearFoundedDomain(typed);
+    const existing = exact ?? near;
+    if (!existing) {
+      duplicate.dataset.state = 'none';
+      // SAYS WHAT WAS CHECKED, which is narrower than what a reader might
+      // hear: `membranes` holds FOUNDED domains only, so a name somebody
+      // publishes under without founding is invisible here. 6.27's notice
+      // makes the same distinction for the same reason.
+      duplicate.textContent =
+        'No FOUNDED domain uses this name, or one differing only in capitals '
+        + 'or spacing. An unfounded one could not be looked for — nothing '
+        + 'lists it.';
+      return;
+    }
+    duplicate.dataset.state = exact ? 'exact' : 'near';
+    duplicate.textContent = exact
+      ? `"${existing.entry.domain}" is ALREADY FOUNDED. You do not need to `
+        + 'found it again to publish in it — founding a second time leaves two '
+        + 'entries for one name, and neither replaces the other, because '
+        + 'nothing in this protocol is deleted.'
+      : `"${existing.entry.domain}" is already founded — the same words, `
+        + 'different capitals or spacing. A domain is an exact match, so '
+        + 'founding this would make a SECOND domain, and a claim in one will '
+        + 'never appear in the other. If that is the one you meant, use that '
+        + 'string instead.';
+    // A SENTENCE STILL LEAVES THEM RETYPING IT, and retyping a domain by hand
+    // is the act 6.12 records going wrong once already. Not `fromTheBox`: the
+    // box holds the name they were about to found, not the one being opened.
+    goToExisting.hidden = false;
+    goToExisting.textContent = `Load claims in "${existing.entry.domain}"`;
+    goToExisting.onclick = () => {
+      // The form closes behind them. Leaving it open would keep a half-filled
+      // founding form, and its permanent `Constitution`, waiting on a tab the
+      // reader has just left for the domain they actually meant.
+      foundingOpen = false;
+      activeTab = 'browse';
+      void loadClaims(existing.entry.domain);
+    };
+  };
+
+  domainInput.oninput = paintDuplicate;
+  paintDuplicate();
+
+  // Asked once per form build and never after a failure, the guard both the
+  // New Claim notice and 6.27's hint already use: a notice that re-fires a
+  // failing read on every keystroke turns a dead conductor into a flood.
+  if (!membranesLoaded && !membranesError && connection) {
+    void readMembranes().then(paintDuplicate);
+  }
 
   const descInput = document.createElement('textarea');
   descInput.placeholder = 'What is this domain for?';
