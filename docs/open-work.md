@@ -84,12 +84,31 @@ over as four numbered items with the brackets left in.
 REFERENCE WORK IS DONE.**~~ **FALSE, AND IT WAS MY ERROR. CORRECTED 2026-11-24
 BY H: §18 IS STILL UNSENT AND PAUL HAS NOT BEEN ASKED AT ALL.**
 
-**THREE ASKS ARE OUT AND TWO ARE FULLY SETTLED** — Kupukupu and Eric both said
-yes **and both nominated their own contact**; Eric chose `eric@flowsta.com`
-himself in answer to the second half of §19's ask. **Luck Light was asked
-2026-11-24 and has not answered.** **Paul has never been asked** and is held on
-purpose. **So the application has two complete referees, which is a complete
-set, and nothing is owed to or from either of them.**
+**ALL THREE SENT ASKS ARE ANSWERED YES, AND ALL THREE REFEREES ARE COMPLETE —
+2026-11-25.** Kupukupu, Eric (`eric@flowsta.com`, nominated by him) and **Luck
+Light, who answered 2026-11-25 with consent and contact in one line:
+*"Feel free to share any of my public dialog if it helps. I use Telegram
+primarily but they can also contact me as Luck Light on LinkedIn."*** **Paul
+has never been asked** and is held on purpose. **Nothing is owed to or from any
+of the three.**
+
+> **LINKEDIN IS WHAT GOES IN THE FORM, NOT TELEGRAM, DESPITE HIS PREFERENCE.**
+> An evaluator who has never met him **cannot reach a Telegram handle they do
+> not hold**; `Luck Light` on LinkedIn is a findable profile, and Nathan's
+> criteria accept a profile over an email. H holds the handle; **this file does
+> not and must not reconstruct one.**
+>
+> **ONE LIMIT READ CAREFULLY RATHER THAN GENEROUSLY.** *"Any of my public
+> dialog"* is permission, and the ask he answered **described exactly what the
+> application would say** — the monetization proposal, the two refusals, the
+> one concession — so the referee paragraph is consented in substance. **But
+> the exchange itself was not public**, so the application **characterises it
+> and does not quote him.** **Do not quote a participant's private messages
+> into an outward document on the strength of a generous sentence.**
+>
+> **HE IS IN CALIFORNIA**, which this record did not hold. It matters for one
+> thing: ~19 hours from here, so an evaluator's reference email should expect a
+> day's turnaround rather than read silence as a non-answer.
 
 > **A NOTE ON WHY THIS SENTENCE WAS WRONG TWICE BEFORE.** It said Eric's contact
 > was *"not supplied and not needed"*, then that it was *"one step ahead of his
