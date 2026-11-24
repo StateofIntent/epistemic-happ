@@ -22,12 +22,75 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-23 — RESUME HERE. EVERY BLOCK BELOW THIS ONE IS OLDER,
-INCLUDING THE 2026-11-22 ONE THAT ALSO SAYS "RESUME HERE"; where they disagree,
-this block wins.**
+**CHECKPOINT, 2026-11-24 — RESUME HERE. EVERY BLOCK BELOW THIS ONE IS OLDER,
+INCLUDING THE 2026-11-23 AND 2026-11-22 ONES THAT ALSO SAY "RESUME HERE"; where
+they disagree, this block wins.**
 
-**`main` = `5ef3c4f` when this was written. ONE PR OPEN: #556 (row 6.29).**
-`bump/foreign-critique-held` (#350) stays HELD — do not merge.
+**`main` = `d3d8cf5` when this was written. ONE PR OPEN: #561 (§5.3's read-layer
+half and the Part V check), green on its own head `b413de8` with all five
+required checks real rather than skipped.** `bump/foreign-critique-held` (#350)
+stays HELD — do not merge.
+
+## A REFERENCE SAID YES, AND A BLOCKER DISSOLVED WHEN THE RECORD WAS READ
+
+**ERIC DORIEAN CONSENTED TO BEING A FUNDING REFERENCE, 2026-11-24, in his own
+words:** *"Go for it. I want you and your project to win. If this helps then
+I'm all for it."* **§19 of the outreach drafts is CLOSED.** H replied the same
+day. **He answered one half of a two-part ask** — consent, not the *"which
+contact should I use?"* — and **that half needs no second message**, because H
+has a live email thread with him already. Asking for a detail already in hand
+is a chase.
+
+> **THE REASON TO NAME HIM WAS THAT THIS PROJECT ARGUED WITH HIM AND LOST**
+> (row 6.10: he removed `granite-4`'s `agentic` tag on our argument, measured it
+> himself, found our conclusion false, and put the tag back). **He said yes to
+> being the reference for that.**
+
+**REFERENCE LIST: TWO OF THREE CONFIRMED** — Kupukupu (2026-11-22, name and
+email supplied, named upstream) and Eric (today, named upstream). **Paul
+d'Aoust has never been asked.**
+
+**AND §18's BLOCKER WAS NOT A BLOCKER. THE ANSWER WAS ON DISK, TWO FILES
+AWAY.** The 2026-11-23 block below says a fact had to be put to H before §18
+could go — *was Paul named in the submitted application?* — on the stated
+premise that *"the voucher names were entered by H at submission."* **That
+premise was false, and the funding directory already contained its
+refutation:** the *"Who is involved?"* box **was submitted EMPTY** with a
+`[H: names and contact details to add …]` placeholder pasted in verbatim, and
+was **filled upstream afterwards naming Eric and Kupukupu only**, with Paul
+*"held behind §13."*
+
+**SO PAUL IS NOT NAMED, THE DRAFT'S *"I'd like to list you"* TENSE IS CORRECT,
+AND THERE IS NO QUESTION TO ASK.** What remains on §18 is the opening — it was
+written to hinge onto §13, which was abandoned — and **per the standing
+instruction on that thread the re-draft is H's, not mine.** The content is
+handed over in §18 as four numbered items with the brackets left in. Fund
+decides ~14 December; the application is live-editable, so a name added later
+still counts.
+
+> **RULE, AND IT IS THE SECOND TIME THIS FILE HAS PAID FOR IT:** a question
+> framed for the human is a claim that the record cannot answer it. **CHECK
+> THAT CLAIM BEFORE ASKING.** The wrong premise survived because a later,
+> better-evidenced block in the *same file* contradicted an earlier one and the
+> earlier one was left standing — which is precisely the false positive
+> `check-load-bearing.mjs` hit first, on this file's own retained superseded
+> blocks. **Superseded prose left in place is read as current state.** The
+> application file's stale paragraph is corrected rather than annotated.
+
+## `[M]` IS NOT EMPTY — THE 2026-11-23 BLOCK'S CLAIM WAS TRUE WHEN WRITTEN AND IS NOT NOW
+
+**Row 8.6's audit half is an `[M]` whose blocked-on column reads *"nothing to
+run the audit"*.** The 2026-11-23 block says in bold that `[M]` is empty and
+that a session must not invent work; **it was written before §8 was imported
+with 8.6 in it, and §8 arrived carrying one buildable item among twelve
+decisions.** The instruction not to manufacture a row still stands — **this one
+is not manufactured, it is recorded.**
+
+**THE AUDIT 8.6 GENERATES:** *for every field that reports state, what governs
+it, and is there a check comparing the two?* Four instances are already on disk
+and were each found separately — `CritiqueSpecies.adoption_count`, founding's
+coordinator-side accountability, the `metabolism` harness's BM declaration, and
+`fromTheBox`. **Blocked on: nothing.**
 
 ## PAUL D'AOUST — TWO MESSAGES SENT 2026-11-24, AND §13 WAS ABANDONED
 
@@ -77,12 +140,16 @@ opening — it is not portable as written."* §13 is now abandoned and the draft
 opens *"One unrelated thing"*. **Re-draft the opening before it goes.** The
 original hold reason — a request arriving while a reply is owed — **is
 discharged**; H's reason is new and legitimate (two messages had just gone out).
-**AND ONE FACT IS NEEDED FIRST: was Paul actually named in the submitted
+~~**AND ONE FACT IS NEEDED FIRST: was Paul actually named in the submitted
 application?** The voucher names were entered by H at submission and this
 repository does not know them, so the draft's *"I'd like to list you"* may need
-to be *"I listed you — is that alright"*. **Ask once; do not reconstruct.** The
-fund decides **~14 December**, so it is not indefinitely deferrable if he was
-named.
+to be *"I listed you — is that alright"*. **Ask once; do not reconstruct.**~~
+**STRUCK 2026-11-24 — DO NOT ASK IT. THE PREMISE WAS FALSE AND THE ANSWER WAS
+ALREADY ON DISK: the box was submitted EMPTY and filled upstream afterwards
+naming Eric and Kupukupu only. PAUL IS NOT NAMED; the tense is correct as
+drafted.** See the 2026-11-24 block at the top of this section. The
+fund decides **~14 December**, and the application is live-editable, so a name
+added later still counts.
 
 ## KUPUKUPU REPLIED, 2026-11-23 — NINE POINTS, AND THREE OF THEM CLOSE ROWS
 
@@ -214,10 +281,15 @@ catch, recorded at line ~589 of this file.)
 Only `bump/foreign-critique-held` (#350, OPEN, HELD — do not merge) remains,
 plus a stale remote `corpus/item-18-probers` whose content is landed.
 
-**`[M]` IS EMPTY. A session opening for something to build will not find it and
-MUST NOT INVENT IT.** Everything open is somebody else's reply, a `[D]` only the
-human can take, or an `[X]` the human sends. This list refills when a `[D]` is
-taken or when work generates work.
+~~**`[M]` IS EMPTY. A session opening for something to build will not find it and
+MUST NOT INVENT IT.**~~ **TRUE WHEN WRITTEN, FALSE BY 2026-11-24 — and it went
+false exactly the way this paragraph's last sentence predicts: *"work generates
+work."*** §8 was imported the same day carrying twelve `[D]`s **and one
+buildable `[M]`, row 8.6's recorder-versus-governor audit, whose blocked-on
+column reads *"nothing to run the audit."*** The prohibition on INVENTING a row
+stands unchanged; 8.6 is recorded, not invented. Everything else open is still
+somebody else's reply, a `[D]` only the human can take, or an `[X]` the human
+sends.
 
 **THREE RULES THIS SESSION PRODUCED, ALL FROM GETTING THEM WRONG FIRST:**
 
