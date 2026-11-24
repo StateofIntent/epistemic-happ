@@ -80,20 +80,39 @@ was written to hinge onto §13, which was abandoned — and **per the standing
 instruction on that thread the re-draft was H's, not mine.** Content was handed
 over as four numbered items with the brackets left in.
 
-**§18 IS SENT, 2026-11-24, BY H — SO ALL THREE REFERENCE ASKS ARE OUT AND THE
-REFERENCE WORK IS DONE.** Two have answered yes. **Nothing is owed outward on
-any of the three; the standing do-not-chase rule applies.** Fund decides
-~14 December and the application is live-editable, so a name added later still
-counts.
+~~**§18 IS SENT, 2026-11-24, BY H — SO ALL THREE REFERENCE ASKS ARE OUT AND THE
+REFERENCE WORK IS DONE.**~~ **FALSE, AND IT WAS MY ERROR. CORRECTED 2026-11-24
+BY H: §18 IS STILL UNSENT AND PAUL HAS NOT BEEN ASKED AT ALL.**
 
-> **AND THE RECORD HAS A HOLE IT MUST NOT FILL BY INFERENCE: THIS REPOSITORY
-> DOES NOT KNOW WHAT WAS SENT.** The draft was unsendable as written, so the
-> text that went out is H's and is not on disk. **Row 7.21 says a sent record
-> is EVIDENCE, not prose; the corollary is that a sent record this file cannot
-> quote is not a record at all.** H has been asked once for the text.
-> **DO NOT RECONSTRUCT IT FROM THE DRAFT** — that is precisely §13's own
-> history, where a draft was taken for what went out and two different messages
-> had gone instead.
+**TWO OF THREE ASKS ARE OUT** — Kupukupu and Eric, both answered yes. **Paul
+has never been asked.**
+
+> **HOW THE ERROR HAPPENED, because the mechanism is the reusable part.** H
+> asked to see §18's content; I printed it; he replied ***"I already sent this
+> message."*** **I read that as §18 having gone out.** He meant the two
+> messages that went to Paul earlier that day — the dwell-time reply and the
+> reply to his two 2026-11-21 questions, both genuinely sent. **A pronoun with
+> two available referents, resolved to the wrong one, and written into the
+> record as a fact.**
+>
+> **AND I COMPOUNDED IT RATHER THAN CHECKING IT.** The same reading produced a
+> whole block about *"a sent record this file cannot quote"* — a careful note
+> about an epistemic gap **in a record of an event that had not occurred.** The
+> rigour was real and was spent on a false premise. **It shipped in #563 and
+> reached `main`.**
+>
+> **THE RULE: "I sent it" IS NOT A REFERENT. Ask WHICH message.** This file
+> already carries the general form at §12.1b's level — *valid reasoning over an
+> unexamined premise, and the premise chose the conclusion.* **An ambiguous
+> confirmation is exactly that premise, and a one-line question would have
+> settled it.** The same session had just finished auditing an external
+> document for this class of error.
+
+**H's REASON FOR WAITING IS THE FILE'S OWN SEQUENCING DISCIPLINE AND IS
+CORRECT:** he is waiting for Paul to read the older messages **before** a favour
+is asked. **That is §18's original hold reason** — *"a request arriving while a
+reply is owed"* — applied by H independently. **Do not treat this as a blocker
+to clear; it is a decision, and the timing is his.**
 
 > **RULE, AND IT IS THE SECOND TIME THIS FILE HAS PAID FOR IT:** a question
 > framed for the human is a claim that the record cannot answer it. **CHECK
