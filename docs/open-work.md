@@ -84,9 +84,22 @@ over as four numbered items with the brackets left in.
 REFERENCE WORK IS DONE.**~~ **FALSE, AND IT WAS MY ERROR. CORRECTED 2026-11-24
 BY H: §18 IS STILL UNSENT AND PAUL HAS NOT BEEN ASKED AT ALL.**
 
-**THREE ASKS ARE OUT AND TWO ARE ANSWERED** — Kupukupu and Eric said yes; **Luck
-Light was asked 2026-11-24 and has not answered.** **Paul has never been asked**
-and is held on purpose.
+**THREE ASKS ARE OUT AND TWO ARE FULLY SETTLED** — Kupukupu and Eric both said
+yes **and both nominated their own contact**; Eric chose `eric@flowsta.com`
+himself in answer to the second half of §19's ask. **Luck Light was asked
+2026-11-24 and has not answered.** **Paul has never been asked** and is held on
+purpose. **So the application has two complete referees, which is a complete
+set, and nothing is owed to or from either of them.**
+
+> **A NOTE ON WHY THIS SENTENCE WAS WRONG TWICE BEFORE.** It said Eric's contact
+> was *"not supplied and not needed"*, then that it was *"one step ahead of his
+> answer"*. **Both were mine and both were wrong: he supplied it.** The address
+> appeared in H's own application draft, which was the evidence, and I recorded
+> it as an open question instead of asking one. **THIRD TIME TODAY THE SAME
+> SHAPE: a detail about third-party correspondence inferred rather than asked.**
+> **RULE: this repository cannot observe H's inbox. Anything about what a
+> participant said or sent is ASKED, never inferred — including from a detail H
+> has already written down.**
 
 > **LUCK LIGHT IS THE RIGHT THIRD AND THE REASON IS THE SAME AS ERIC'S.** He
 > proposed a monetization layer; **engagement rewards and ads were refused using
