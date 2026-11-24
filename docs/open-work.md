@@ -74,13 +74,26 @@ refutation:** the *"Who is involved?"* box **was submitted EMPTY** with a
 was **filled upstream afterwards naming Eric and Kupukupu only**, with Paul
 *"held behind §13."*
 
-**SO PAUL IS NOT NAMED, THE DRAFT'S *"I'd like to list you"* TENSE IS CORRECT,
-AND THERE IS NO QUESTION TO ASK.** What remains on §18 is the opening — it was
-written to hinge onto §13, which was abandoned — and **per the standing
-instruction on that thread the re-draft is H's, not mine.** The content is
-handed over in §18 as four numbered items with the brackets left in. Fund
-decides ~14 December; the application is live-editable, so a name added later
-still counts.
+**SO PAUL IS NOT NAMED, THE DRAFT'S *"I'd like to list you"* TENSE WAS CORRECT,
+AND THERE WAS NO QUESTION TO ASK.** What remained on §18 was the opening — it
+was written to hinge onto §13, which was abandoned — and **per the standing
+instruction on that thread the re-draft was H's, not mine.** Content was handed
+over as four numbered items with the brackets left in.
+
+**§18 IS SENT, 2026-11-24, BY H — SO ALL THREE REFERENCE ASKS ARE OUT AND THE
+REFERENCE WORK IS DONE.** Two have answered yes. **Nothing is owed outward on
+any of the three; the standing do-not-chase rule applies.** Fund decides
+~14 December and the application is live-editable, so a name added later still
+counts.
+
+> **AND THE RECORD HAS A HOLE IT MUST NOT FILL BY INFERENCE: THIS REPOSITORY
+> DOES NOT KNOW WHAT WAS SENT.** The draft was unsendable as written, so the
+> text that went out is H's and is not on disk. **Row 7.21 says a sent record
+> is EVIDENCE, not prose; the corollary is that a sent record this file cannot
+> quote is not a record at all.** H has been asked once for the text.
+> **DO NOT RECONSTRUCT IT FROM THE DRAFT** — that is precisely §13's own
+> history, where a draft was taken for what went out and two different messages
+> had gone instead.
 
 > **RULE, AND IT IS THE SECOND TIME THIS FILE HAS PAID FOR IT:** a question
 > framed for the human is a claim that the record cannot answer it. **CHECK
