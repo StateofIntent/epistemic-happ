@@ -37,9 +37,23 @@ stays HELD — do not merge.
 words:** *"Go for it. I want you and your project to win. If this helps then
 I'm all for it."* **§19 of the outreach drafts is CLOSED.** H replied the same
 day. **He answered one half of a two-part ask** — consent, not the *"which
-contact should I use?"* — and **that half needs no second message**, because H
-has a live email thread with him already. Asking for a detail already in hand
-is a chase.
+contact should I use?"*
+
+~~**That half needs no second message**, because H has a live email thread with
+him already. Asking for a detail already in hand is a chase.~~ **WRONG, AND
+CORRECTED WITHIN THE HOUR: H SENT THE CONTACT ASK AND SHOULD HAVE.** It is
+recorded verbatim in §19. **The ask is not for an address — it is for which
+address a third party may be given, and that is the asker's to answer, not the
+holder's.** §20 extended exactly that courtesy to Kupukupu, *"their call, asked
+rather than decided"*, and I reasoned past a precedent two sections away.
+**H's wording also beats the draft's**, offering a profile link as an
+alternative to an email, which the form accepts.
+
+> **RULE: having someone's address is not consent to hand it to an evaluator.**
+> Possession and permission are different objects — **row 8.6's
+> recorder-versus-governor confusion applied to a contact detail**, which is
+> the second time in one session that row has turned out to describe something
+> other than a struct field.
 
 > **THE REASON TO NAME HIM WAS THAT THIS PROJECT ARGUED WITH HIM AND LOST**
 > (row 6.10: he removed `granite-4`'s `agentic` tag on our argument, measured it
