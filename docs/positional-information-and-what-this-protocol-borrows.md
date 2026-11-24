@@ -39,6 +39,31 @@ lines, ~9,300 words. Scope: how undifferentiated cells relate to growth and
 development; what governs ECM morphology, quantity and dimension in adult
 mammals; which physical and molecular inputs can and cannot change it.
 
+> **THOSE TWO FIGURES ARE STALE AS OF 2026-11-24 AND THE FILE IS NOW 3-4×
+> LARGER. MEASURED: 2,111 lines, 42,798 words** — against the ~690 / ~9,300
+> recorded above, so **3.1× the lines and 4.6× the words.** It has gained
+> §11.5d-i, §11.6a-e, §12.1c, §12.1d and conclusions 13i/14a since this note
+> was written. **The figures above are left intact as the record of what was
+> reviewed, which is what they are for; this block is the current measurement.**
+>
+> **AND ONE CHARACTERISATION BELOW HAS QUIETLY EXPIRED, WHICH MATTERS BECAUSE A
+> WITHDRAWAL RESTS ON IT.** The *"no citations anywhere"* finding was withdrawn
+> on the ground that the file is **a compressed summary** and *"the citations
+> were stripped in compression"* — correct, and the withdrawal was right for a
+> ~9,300-word compression. **Measured at the current size: 42,798 words
+> carrying ONE full author-year citation** (`(Godwin et al., PNAS 2013)`), 20
+> parenthesised years in total, and 5 lines mentioning a DOI, PMID or URL. **So
+> the document quadrupled in words and gained essentially no citation
+> apparatus.**
+>
+> **THIS DOES NOT REINSTATE THE ORIGINAL CRITICISM AND MUST NOT BE READ AS
+> DOING SO.** What has changed is the premise the withdrawal depended on: at
+> 42,798 words the *"compressed summary of a much longer cited discussion"*
+> framing no longer describes the artefact, so **the question is open again
+> rather than answered in either direction.** The withdrawal was sound for what
+> it was withdrawing from. **The underlying numbers were never in dispute — it
+> is the sourcing of them that is unestablished at this size.**
+
 **PROVENANCE MATTERS AND I GOT IT WRONG ONCE.** That file is a **compressed
 summary of a much longer cited discussion**, produced to be fed into a fresh
 session cheaply. **The citations were stripped in compression; the numbers were
