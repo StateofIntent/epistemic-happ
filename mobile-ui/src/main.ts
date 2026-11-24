@@ -667,6 +667,28 @@ const replyOpen = new Set<string>();
  * moment the screen opens, before any read has returned — the most
  * expensive false statement this surface could make. */
 const myCritiqueCounts = new Map<string, number>();
+/** ROW 6.28 — WHETHER a claim has been critiqued, for every claim, with the
+ *  NUMBER THROWN AWAY AT THE POINT OF DERIVATION.
+ *
+ *  Three states, the same discipline `myCritiqueCounts` uses and for the same
+ *  reason: absent means nobody has asked yet, `false` means somebody asked and
+ *  the answer was none, `true` means it has been critiqued. The middle state is
+ *  what stops this screen telling a reader a claim is unchallenged before the
+ *  read has returned.
+ *
+ *  WHY A BOOLEAN AND NOT THE COUNT, which is the whole of row 6.28's decision.
+ *  A count across other people's claims is comparative and becomes a ranking
+ *  surface — see the Invariant 1 note above `renderByAuthorTab`. A boolean
+ *  sorts into two buckets and TWO BUCKETS ARE NOT A GRADIENT: there is no
+ *  magnitude to order by, so the thing Invariant 1 refuses is absent by
+ *  construction rather than by restraint. `records.length > 0` is computed and
+ *  the length discarded in the same expression, so no number ever enters this
+ *  map to be rendered or sorted by accident.
+ *
+ *  It is still WEAKER than the participant asked for. He wanted the count, and
+ *  argued that it shows where the learning is rather than what is popular. The
+ *  answer to him has to say that this is less than he asked for and why. */
+const critiquedFlags = new Map<string, boolean>();
 
 // ---- ROW 6.15's PUSH HALF, RECEIVER SIDE (2026-11-15) ---------------------
 //
@@ -2122,11 +2144,26 @@ function renderTabs(): HTMLElement {
 //   - it is attached to a CLAIM, not to a person. "Two people disagreed with
 //     this sentence" is a fact about the sentence; "this agent has made
 //     fourteen claims" is a figure about the agent.
-//   - it appears ONLY on the reader's own claims, so there is no second
-//     number beside it to compare it with. A critique count rendered across
-//     a domain's claims WOULD be comparative, and would quietly become the
-//     ranking surface Invariant 1 exists to refuse — which is why nothing
-//     outside `loadMyCritiqueCounts` ever writes that map.
+//   - it appears ONLY on this screen and only on the reader's own claims, so
+//     there is no second number beside it to compare it with. A critique
+//     count rendered across a domain's claims WOULD be comparative, and would
+//     quietly become the ranking surface Invariant 1 exists to refuse.
+//
+//     THIS CLAUSE USED TO END "which is why nothing outside
+//     `loadMyCritiqueCounts` ever writes that map", AND THAT GUARD WAS THE
+//     WRONG KIND — corrected 2026-11-24, row 6.28. Restricting who WRITES the
+//     map does not restrict where a written map is READ, and the map is
+//     module-level and never cleared, so after a By Author visit the count
+//     rendered on Browse beside other people's numberless claims. The gate in
+//     `renderClaimCard` is now on the SURFACE as well as on ownership, which
+//     is a read-side fix for a read-side problem. The write-side restriction
+//     still holds; it was simply never what made this safe.
+//
+//     AND ROW 6.28 NOW PUTS A BOOLEAN WHERE THE COUNT IS REFUSED: "this claim
+//     has been critiqued", on every claim this screen does not count. It
+//     carries where the argument is with no magnitude to rank by, because two
+//     buckets are not a gradient. That is the thing being refused here stated
+//     precisely — not disputedness, but an ORDERING of it.
 //   - nothing is ordered by it, and no total is taken across claims. A sum
 //     in the header would be precisely the "total that reads as a standing"
 //     this paragraph already rules out, and the framing note below still
@@ -2267,7 +2304,7 @@ function renderByAuthorTab(): HTMLElement {
   }
 
   for (const claim of authorClaims) {
-    list.appendChild(renderClaimCard(claim));
+    list.appendChild(renderClaimCard(claim, 'byAuthor'));
   }
   section.appendChild(list);
 
@@ -2434,7 +2471,7 @@ function renderBrowseTab(): HTMLElement {
     }
   }
   for (const claim of claims) {
-    list.appendChild(renderClaimCard(claim));
+    list.appendChild(renderClaimCard(claim, 'browse'));
   }
   section.appendChild(list);
 
@@ -2518,7 +2555,17 @@ function renderWhereYouHaveBeen(): HTMLElement {
   return block;
 }
 
-function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
+/** `surface` EXISTS BECAUSE THE COUNT'S SAFETY IS A PROPERTY OF THE SCREEN, NOT
+ *  OF THE CLAIM — row 6.28, 2026-11-24. See the Invariant 1 note above
+ *  `renderByAuthorTab`: a critique count is admissible in the By Author view
+ *  because that view shows ONE agent, so there is no second number beside it.
+ *  Browse interleaves many agents' claims, where the same number would be
+ *  comparative. The card is shared by both, so the card has to be told which
+ *  it is rendering into. */
+function renderClaimCard(
+  claim: DecodedRecord<Claim>,
+  surface: 'byAuthor' | 'browse',
+): HTMLElement {
   const key = b64(claim.entryHash);
   const card = document.createElement('article');
   card.className = 'claim-card';
@@ -2587,9 +2634,24 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
   // `loadMyCritiqueCounts` is the only writer of that map — see the Invariant
   // 1 note above `renderByAuthorTab` for why that restriction is load-bearing
   // rather than incidental.
+  //
+  // AND IT IS NOW GATED ON THE SURFACE TOO, WHICH CLOSED A SHIPPED DEFECT —
+  // row 6.28, 2026-11-24. The gate used to be ownership plus map-presence and
+  // nothing else. `myCritiqueCounts` is MODULE-LEVEL AND NEVER CLEARED (no
+  // `.clear()`, no `.delete()` anywhere), Browse renders the reader's OWN
+  // claims alongside everyone else's, and this card is shared by both tabs —
+  // so visiting By Author on yourself and then opening a domain you have
+  // claims in rendered "3 critiques on this claim." on your claims, beside
+  // other people's claims carrying no number. That is exactly the comparative
+  // surface the note above says is refused.
+  //
+  // THE GUARD THAT NOTE NAMED WAS THE WRONG KIND. "Nothing outside
+  // `loadMyCritiqueCounts` ever writes that map" is a WRITE-side guard for a
+  // READ-side problem: restricting who fills the map does not restrict where a
+  // filled map is rendered. The fix belongs where the reading happens.
   const mineForCount = connection
     && b64(claim.entry.author) === b64(connection.myAgentPubKey);
-  if (mineForCount && myCritiqueCounts.has(key)) {
+  if (surface === 'byAuthor' && mineForCount && myCritiqueCounts.has(key)) {
     const n = myCritiqueCounts.get(key)!;
     const line = document.createElement('p');
     line.className = n > 0 ? 'critique-count answered' : 'critique-count';
@@ -2609,6 +2671,33 @@ function renderClaimCard(claim: DecodedRecord<Claim>): HTMLElement {
       : n === 1
         ? '1 critique on this claim.'
         : `${n} critiques on this claim.`;
+    card.appendChild(line);
+  } else if (critiquedFlags.has(key)) {
+    // ROW 6.28 — THE BOOLEAN, wherever the count is not shown: every claim on
+    // Browse, and other people's claims in the By Author view. No claim ever
+    // shows both, so there is never a number and a boolean side by side.
+    //
+    // WHAT MAKES THIS ADMISSIBLE WHERE THE COUNT IS NOT: it has no magnitude.
+    // Two buckets cannot be ordered into a gradient, so a reader cannot read
+    // "more disputed" off it, which is the specific thing Invariant 1 refuses.
+    // The participant who asked for this argued that disputedness shows where
+    // the learning is rather than what is popular; this gives him that signal
+    // and withholds the ranking it would otherwise arrive inside.
+    //
+    // Says what happened and not what to do about it, for the same reason the
+    // count does: an instruction here would be an attention ordering.
+    const critiqued = critiquedFlags.get(key)!;
+    const line = document.createElement('p');
+    line.className = critiqued ? 'critique-count answered' : 'critique-count';
+    line.setAttribute('data-testid', 'critiqued-flag');
+    line.dataset.critiqued = String(critiqued);
+    // DELIBERATELY CARRIES NO DIGIT. `author-scope-ui.mjs` asserts the framing
+    // note on the By Author screen has none; this line is held to the same bar
+    // by `critiqued-flag-ui.mjs`, because the moment a number appears here the
+    // row's decision has been reversed by a text change.
+    line.textContent = critiqued
+      ? 'This claim has been critiqued.'
+      : 'No critiques on this yet.';
     card.appendChild(line);
   }
   card.appendChild(renderAuthorConstitution(claim.entry.author));
@@ -4752,6 +4841,10 @@ async function loadClaims(domain: string, fromTheBox = false) {
   // generation by the time the stores are emptied.
   browseGeneration += 1;
   critiquesByClaim.clear();
+  // ROW 6.28 — per-domain read state like the stores around it. Keeping it
+  // across a domain change would answer "has this been critiqued?" for a
+  // claim the reader is no longer looking at.
+  critiquedFlags.clear();
   // ROW 1.32 — a marker says "the list you are reading has moved on", and
   // this clear is the moment every list on screen is rebuilt anyway, so a
   // flag surviving it would point at a panel that no longer exists.
@@ -4821,6 +4914,12 @@ async function loadClaims(domain: string, fromTheBox = false) {
     // — it used to advance the tour on a conductor that was down.
     markDone('browsed-domain');
     rememberVisited(domain);
+    // ROW 6.28 — started after the claims are on screen, the same degradation
+    // rule 6.15's count uses: a slow read makes the flag arrive late rather
+    // than holding the list back. Every claim in the domain, the reader's own
+    // included, because on this surface they all get the boolean and none gets
+    // the count.
+    void loadCritiquedFlags(claims);
     // ROW 1.31 — the claim cards' own bylines, resolved alongside the
     // critique bylines rather than only inside a panel somebody opens. A
     // reader deciding WHICH claim to open is reading authors too.
@@ -4891,6 +4990,10 @@ async function loadClaimsByAuthor(agentB64: string) {
     // are already on screen so a slow count degrades the answer rather than
     // delaying it.
     if (agentB64 === b64(connection.myAgentPubKey)) void loadMyCritiqueCounts(authorClaims);
+    // ROW 6.28 — the boolean, for SOMEBODY ELSE's listing. Mutually exclusive
+    // with the line above by construction, which is the same split the card
+    // renders: the count where it is safe, the boolean everywhere else.
+    else void loadCritiquedFlags(authorClaims);
   } catch (e) {
     authorError = `Could not read this agent's claims: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -5091,6 +5194,30 @@ async function loadMyCritiqueCounts(claimsOfMine: DecodedRecord<Claim>[]) {
       const records = await conn.callZome<any[]>('get_critiques_for', claim.entryHash);
       myCritiqueCounts.set(b64(claim.entryHash), records.length);
     } catch { /* unasked rather than zero — see the map's own comment */ }
+  }));
+  render();
+}
+
+/** ROW 6.28. Reads every claim's critique list and keeps only whether it was
+ *  non-empty. One zome call per claim, which is what the coordinator offers —
+ *  there is no bulk count — and acceptable at pilot size; it is the obvious
+ *  thing to replace first if a domain ever holds hundreds of claims.
+ *
+ *  EACH READ IS SETTLED ON ITS OWN, the same degradation rule
+ *  `loadMyCritiqueCounts` and the membrane aggregates use: a claim whose read
+ *  rejects stays ABSENT from the map rather than landing as `false`, so a
+ *  failure renders as "not asked yet" and never as "nobody has critiqued
+ *  this". Writing `false` on failure is the defect this whole screen is
+ *  careful about, one map over. */
+async function loadCritiquedFlags(subject: DecodedRecord<Claim>[]) {
+  if (!connection) return;
+  const conn = connection;
+  await Promise.all(subject.map(async (claim) => {
+    try {
+      const records = await conn.callZome<any[]>('get_critiques_for', claim.entryHash);
+      // The length is consumed here and not stored. See the map's own comment.
+      critiquedFlags.set(b64(claim.entryHash), records.length > 0);
+    } catch { /* absent, not false — see this function's comment */ }
   }));
   render();
 }
