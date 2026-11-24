@@ -149,6 +149,53 @@ been measured.
 first count run here was itself wrong, matching the `D` in `DONE`). 8.14's
 blocker is **8.6's own `[D]`**, which now carries a second question.
 
+## ROW 7.38 GETS A THIRD INDEPENDENT CONFIRMATION, AND THIS ONE ARRIVED IN ADVANCE FROM A FUND EVALUATOR
+
+**H supplied Nathan Young's *"What a good application looks like"*. He is ONE OF
+THE THREE EVALUATORS of the Epistemics Fund this project has applied to**, so it
+is a published statement of what the reader of our submitted application
+prefers — not general advice.
+
+**TWO SENTENCES IN IT ARE ROW 7.38 STATED PROSPECTIVELY BY THE READER:**
+*"Avoid overly polished, AI-generated prose"*, and **AI-written applications
+*"lack confidence-building signals"*** — with the explicit remedy that if that
+is your process, **submit bullets instead.**
+
+> **ROW 7.38 WAS BUILT FROM TWO RETROSPECTIVE OBSERVATIONS — Paul d'Aoust and
+> Cameron Burgess INDEPENDENTLY read H's messages as AI-generated.** This is a
+> **third source, independent of both, stating the criterion BEFORE reading**
+> rather than reacting after. **And it is the first one that is not about this
+> author's materials at all** — which is what makes it evidence about the
+> class rather than about him.
+
+**THE REASON THIS MATTERS BEYOND THE APPLICATION:** 7.38's remedy was inferred
+here — *hand content, never prose* — and was adopted on two data points from
+readers who had already bounced. **It is now the stated preference of a reader
+who has not yet bounced, which converts the rule from a repair into a
+specification.** And the remedy the evaluator names is **the same one**: bullets,
+not better sentences. **The standing instruction and the evaluator agree, so
+there is no trade-off to manage.**
+
+**WHAT WAS DONE WITH IT, AND WHAT WAS DELIBERATELY NOT.** The application's
+revision guidance is written into `docs/funding/` as **content, ordering and
+gaps — not a rewrite**, for the reason §0 of that guidance gives: *a
+better-polished version from me makes the largest problem worse.* **The eight
+items are H's to act on and the sentences are his.**
+
+> **THE LARGEST ITEM IS NOT A WRITING ITEM AND IS RECORDED HERE BECAUSE IT HAS
+> A PRICE ATTACHED.** The article says a **501(c)3 or equivalent** materially
+> improves ranking, prices a non-standard structure's disadvantage at
+> **$3–10M**, and recommends **fiscal sponsorship** as achievable. **§4 of the
+> submitted application declares *"Individual applicant, not an incorporated
+> entity, applying internationally (Australia)"* — the exact structure named.**
+> **A `[D]` for H, and the fund decides ~14 December while the deadline is
+> 26 November, two days out.**
+
+**AND ONE THING THE APPLICATION ALREADY GETS RIGHT THAT MUST SURVIVE EDITING:**
+§3 discloses *"I use Claude heavily and continuously for this work and say so in
+public."* **7.38's rule is never deny the assistance** — the disclosure is
+correct, and it is the texture around it that trips the detector.
+
 ## FOUR DECISIONS TAKEN BY H, 2026-11-24 — AND `[M]` REFILLS WITH TWO BUILDS
 
 **Put to him as four forked questions with a recommendation each; all four recommendations were taken. This block is the decision record.**
@@ -157,7 +204,30 @@ blocker is **8.6's own `[D]`**, which now carries a second question.
 
 > **THIS ONE DECISION CLOSES OR UNBLOCKS FIVE ROWS.** 8.1 and 8.12 are **decided**; 8.5, 8.9 and 8.10 stay open but are **no longer blocked on a decision** — they are behind 8.12's build, which is a different and better state. **8.12 IS NOW AN `[M]`, blocked on nothing.**
 
-**2. ROW 6.28 — A BOOLEAN ACROSS ALL CLAIMS SHIPS.** *"This claim has been critiqued"* / *"nobody has asked yet"*, on every claim in every tab — **not** the count. **This is 8.15's supply-the-consequence move executed on the adjacency channel 8.15 identified:** the boolean carries *where the argument is* with **no magnitude to rank by**, and two buckets are not a gradient, which is the specific object `main.ts:2124` refuses. **Weaker than Kupukupu asked for, and the message to him has to say so and why.** **6.28 IS NOW AN `[M]`; 8.15's `[D]` closes with it.**
+**2. ROW 6.28 — A BOOLEAN ACROSS ALL CLAIMS SHIPS. BUILT AND GATED 2026-11-24, AND IT FOUND A SHIPPED DEFECT.**
+
+> **THE BUILD FOUND THE THING THE ROW HAD ARGUED ABOUT ALREADY LEAKING.**
+> `myCritiqueCounts` is module-level and **never cleared** (no `.clear()`, no
+> `.delete()` anywhere), Browse renders the reader's OWN claims beside
+> everyone else's, and `renderClaimCard` is **shared by both tabs** — so
+> *By Author on yourself, then Browse a domain you have claims in* rendered
+> **"3 critiques on this claim."** on the reader's claims next to other
+> people's numberless ones. **Exactly the comparative surface `:2124` says is
+> refused.** Gate is now on the **surface** as well as ownership.
+> **AND THE GUARD THAT NOTE NAMED WAS THE WRONG KIND, which is the
+> transferable part: *"nothing outside `loadMyCritiqueCounts` ever writes that
+> map"* is a WRITE-side guard for a READ-side problem.** Restricting who fills
+> a map does not restrict where a filled map is rendered. **This corrects the
+> 2026-11-23 reading that the count "renders for NOBODY" — it rendered for the
+> reader, on the wrong screen.**
+> **`critiqued-flag-ui.mjs`, 19 checks, in `ui.yml`. WATCHED FAILING: the
+> surface gate reverted gives 3 red — AND THE OTHER SIXTEEN STAY GREEN**, every
+> check that reads like the harness's purpose. **A suite of only the obvious
+> "does the boolean work" assertions would have certified the screen the row
+> exists to prevent.** The leak needs a NAVIGATION to exist, so check 3 is a
+> sequence with a precondition assertion above it.
+
+ *"This claim has been critiqued"* / *"nobody has asked yet"*, on every claim in every tab — **not** the count. **This is 8.15's supply-the-consequence move executed on the adjacency channel 8.15 identified:** the boolean carries *where the argument is* with **no magnitude to rank by**, and two buckets are not a gradient, which is the specific object `main.ts:2124` refuses. **Weaker than Kupukupu asked for, and the message to him has to say so and why.** **6.28 IS NOW AN `[M]`; 8.15's `[D]` closes with it.**
 
 **3. ROW 8.8 — NO: INTERMITTENT PARTICIPATION MUST NOT COST STANDING ON THIS PILOT, AND CONDUCTANCE GETS A NEUTRAL OFF.** Row 7.29 records that this network **exists only while two people happen to be online at once**, so an elapsed-seconds decay penalises the pilot's *normal condition*. **The protocol already knows how to build the fix and `SPEC.md` says so in both directions:** `standing_policy: None` is *"a genuinely neutral off position, which is the property a half-life cannot have"*, while for conductance *"time passes whether or not anybody promised a rate."* **Doing for conductance what was done for standing is a VALIDATION change, so it joins §4's accumulated bump — not a patch.**
 

@@ -1,5 +1,5 @@
 # =============================================================================
-# Twenty-nine browser harnesses, against a real conductor and a real DHT. This is
+# Thirty browser harnesses, against a real conductor and a real DHT. This is
 # the layer that had no automatic check at all. The counts further down this
 # header are historical — they record what was measured when this workflow was
 # written, at seventeen.
@@ -406,6 +406,19 @@ jobs:
         run: |
           scripts/sandbox.sh clean && scripts/sandbox.sh start
           node scripts/live-verify/author-scope-ui.mjs
+
+      # ROW 6.28. A participant asked three times whether a claim had been
+      # argued with; the answer was refused twice because a critique COUNT
+      # across a domain's claims orders it by disputedness. A boolean carries
+      # the same signal with no magnitude to order by. What this step is
+      # really guarding is the leak the row found: the count and the boolean
+      # are rendered by one shared card, and the count's map is never cleared,
+      # so a By Author visit used to make the count follow the reader to
+      # Browse. Needs the same sandbox the step above does.
+      - name: critiqued-flag-ui — whether a claim was critiqued, with no count to rank by
+        run: |
+          scripts/sandbox.sh clean && scripts/sandbox.sh start
+          node scripts/live-verify/critiqued-flag-ui.mjs
 
       # Two fakes here, and neither is a broken screen. One sentence stood for
       # a domain nobody has written in, a read that never ran and a conductor
