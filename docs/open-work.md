@@ -215,6 +215,55 @@ items are H's to act on and the sentences are his.**
 public."* **7.38's rule is never deny the assistance** — the disclosure is
 correct, and it is the texture around it that trips the detector.
 
+## A NEGATIVE FINDING OF MINE WAS FALSE, AND THE SEARCH THAT PRODUCED IT WAS TOO NARROW TO HAVE FOUND THE POSITIVE
+
+**I TOLD H THERE WAS NO RECORD OF A CRITIQUE LANDING ON A CLAIM INSIDE THE APP.
+THERE IS, AND IT IS A FULL ADVERSARIAL ROUND TRIP.** He recalled a pilot session
+with claims, critiques and a retraction visible on both ends.
+`checkpoint-2026-11-09-pilot-is-live-resume-here` confirms it more strongly than
+he did: ***"A participant critiqued the author's claim and won, the author
+retracted, and the author critiqued back — all in one day, verified across three
+nodes from a node that authored none of it"*** — **5 claims, 2 critiques, 1
+retraction** — and ***"The binding constraint was never the code. Everything
+that happened today happened because two people were in the room at once."***
+
+**TWO MECHANISMS PRODUCED THE ERROR AND BOTH ARE REUSABLE.**
+
+**(a) TWO COMPATIBLE FACTS READ AS ONE.** `main.ts` says *"the first two
+critiques in its history were both delivered over Telegram"*, and I read it as
+*no critique has ever landed in the app.* **It means the NOTIFICATION came over
+Telegram** — `create_critique` emitted no signal — **while the records
+themselves propagated over the DHT and were legible on both machines.** The
+sentence is about delivery of NEWS, not delivery of DATA, and nothing in it
+claims the loop failed.
+
+**(b) I LET A `superseded` FLAG STAND IN FOR THE CONTENT.** The file that says
+this plainly is a memory checkpoint marked superseded, so I did not open it.
+***Superseded as a resume point is not superseded as evidence*** — and
+`check-load-bearing.mjs` hit precisely this false positive on this file's own
+retained superseded blocks, which §8.3 records. **The lesson was already
+written down here and I did not apply it to the memory directory.**
+
+> **THE RULE: A NEGATIVE FINDING NEEDS A SEARCH WIDE ENOUGH TO HAVE FOUND THE
+> POSITIVE.** I wrote *"there is no record"* after grepping two files. **The
+> honest form was *"I did not find one"***, and the gap between those is the
+> entire error. **I also said a measurement could not settle it** — true of the
+> live DHT, where a null read is indistinguishable from offline peers, and
+> **irrelevant, because the answer was in the written record.** *"It cannot be
+> measured"* is not a licence to assert the negative.
+
+**THIS IS THE SECOND TIME TODAY THE SAME SHAPE COST SOMETHING.** The §18 error
+was an ambiguous pronoun resolved to the wrong referent and written down as
+fact; this is an ambiguous sentence resolved to the wrong reading and written
+down as fact. **Both were one question away from being settled, and in both the
+rigour was real and spent on a false premise.**
+
+**WHAT IT CHANGES FOR THE FUNDING APPLICATION:** the worked example goes from
+an honest gap to the strongest section in it. **The full loop ran on real
+machines, the author of the software LOST the argument and retracted, and a
+third node that authored none of it confirmed the sequence.** The grant's case
+is unchanged and better stated — *the binding constraint was never the code.*
+
 ## FOUR DECISIONS TAKEN BY H, 2026-11-24 — AND `[M]` REFILLS WITH TWO BUILDS
 
 **Put to him as four forked questions with a recommendation each; all four recommendations were taken. This block is the decision record.**
