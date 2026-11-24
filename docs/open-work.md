@@ -80,20 +80,70 @@ was written to hinge onto §13, which was abandoned — and **per the standing
 instruction on that thread the re-draft was H's, not mine.** Content was handed
 over as four numbered items with the brackets left in.
 
-**§18 IS SENT, 2026-11-24, BY H — SO ALL THREE REFERENCE ASKS ARE OUT AND THE
-REFERENCE WORK IS DONE.** Two have answered yes. **Nothing is owed outward on
-any of the three; the standing do-not-chase rule applies.** Fund decides
-~14 December and the application is live-editable, so a name added later still
-counts.
+~~**§18 IS SENT, 2026-11-24, BY H — SO ALL THREE REFERENCE ASKS ARE OUT AND THE
+REFERENCE WORK IS DONE.**~~ **FALSE, AND IT WAS MY ERROR. CORRECTED 2026-11-24
+BY H: §18 IS STILL UNSENT AND PAUL HAS NOT BEEN ASKED AT ALL.**
 
-> **AND THE RECORD HAS A HOLE IT MUST NOT FILL BY INFERENCE: THIS REPOSITORY
-> DOES NOT KNOW WHAT WAS SENT.** The draft was unsendable as written, so the
-> text that went out is H's and is not on disk. **Row 7.21 says a sent record
-> is EVIDENCE, not prose; the corollary is that a sent record this file cannot
-> quote is not a record at all.** H has been asked once for the text.
-> **DO NOT RECONSTRUCT IT FROM THE DRAFT** — that is precisely §13's own
-> history, where a draft was taken for what went out and two different messages
-> had gone instead.
+**THREE ASKS ARE OUT AND TWO ARE FULLY SETTLED** — Kupukupu and Eric both said
+yes **and both nominated their own contact**; Eric chose `eric@flowsta.com`
+himself in answer to the second half of §19's ask. **Luck Light was asked
+2026-11-24 and has not answered.** **Paul has never been asked** and is held on
+purpose. **So the application has two complete referees, which is a complete
+set, and nothing is owed to or from either of them.**
+
+> **A NOTE ON WHY THIS SENTENCE WAS WRONG TWICE BEFORE.** It said Eric's contact
+> was *"not supplied and not needed"*, then that it was *"one step ahead of his
+> answer"*. **Both were mine and both were wrong: he supplied it.** The address
+> appeared in H's own application draft, which was the evidence, and I recorded
+> it as an open question instead of asking one. **THIRD TIME TODAY THE SAME
+> SHAPE: a detail about third-party correspondence inferred rather than asked.**
+> **RULE: this repository cannot observe H's inbox. Anything about what a
+> participant said or sent is ASKED, never inferred — including from a detail H
+> has already written down.**
+
+> **LUCK LIGHT IS THE RIGHT THIRD AND THE REASON IS THE SAME AS ERIC'S.** He
+> proposed a monetization layer; **engagement rewards and ads were refused using
+> his own noise-over-signal objection against him**, the deleted mutual-credit
+> ledger was disclosed rather than hidden, and **the membership fee was conceded
+> as a genuine disagreement.** He stayed in the pilot and offered a second node.
+> **A referee who argued about a core commitment, won one of three, and still
+> runs it.**
+> **NOTHING WAS OWED TO HIM FIRST** — the always-on-node correction went to both
+> participants 2026-11-19 — **which is what made this clean to send where §18 is
+> not.** **But his second-node offer sat unread for six days and the record shows
+> no reply; that offer is now in the funding roadmap's months 1-3, so answering
+> it is owed on its own merits, separately.**
+> **AND THE SENT TEXT IS H's, NOT THIS FILE's.** A draft was handed over; §22
+> holds the basis, not a transcript. **Do not reconstruct it.**
+> **HE MUST NOT BE NAMED IN THE APPLICATION UNTIL HE ANSWERS.** Two named
+> referees is a complete set.
+
+> **HOW THE ERROR HAPPENED, because the mechanism is the reusable part.** H
+> asked to see §18's content; I printed it; he replied ***"I already sent this
+> message."*** **I read that as §18 having gone out.** He meant the two
+> messages that went to Paul earlier that day — the dwell-time reply and the
+> reply to his two 2026-11-21 questions, both genuinely sent. **A pronoun with
+> two available referents, resolved to the wrong one, and written into the
+> record as a fact.**
+>
+> **AND I COMPOUNDED IT RATHER THAN CHECKING IT.** The same reading produced a
+> whole block about *"a sent record this file cannot quote"* — a careful note
+> about an epistemic gap **in a record of an event that had not occurred.** The
+> rigour was real and was spent on a false premise. **It shipped in #563 and
+> reached `main`.**
+>
+> **THE RULE: "I sent it" IS NOT A REFERENT. Ask WHICH message.** This file
+> already carries the general form at §12.1b's level — *valid reasoning over an
+> unexamined premise, and the premise chose the conclusion.* **An ambiguous
+> confirmation is exactly that premise, and a one-line question would have
+> settled it.** The same session had just finished auditing an external
+> document for this class of error.
+
+**H's REASON FOR WAITING IS THE FILE'S OWN SEQUENCING DISCIPLINE AND IS
+CORRECT:** he is waiting for Paul to read the older messages **before** a favour
+is asked. **That is §18's original hold reason** — *"a request arriving while a
+reply is owed"* — applied by H independently. **Do not treat this as a blocker
+to clear; it is a decision, and the timing is his.**
 
 > **RULE, AND IT IS THE SECOND TIME THIS FILE HAS PAID FOR IT:** a question
 > framed for the human is a claim that the record cannot answer it. **CHECK
@@ -195,6 +245,55 @@ items are H's to act on and the sentences are his.**
 §3 discloses *"I use Claude heavily and continuously for this work and say so in
 public."* **7.38's rule is never deny the assistance** — the disclosure is
 correct, and it is the texture around it that trips the detector.
+
+## A NEGATIVE FINDING OF MINE WAS FALSE, AND THE SEARCH THAT PRODUCED IT WAS TOO NARROW TO HAVE FOUND THE POSITIVE
+
+**I TOLD H THERE WAS NO RECORD OF A CRITIQUE LANDING ON A CLAIM INSIDE THE APP.
+THERE IS, AND IT IS A FULL ADVERSARIAL ROUND TRIP.** He recalled a pilot session
+with claims, critiques and a retraction visible on both ends.
+`checkpoint-2026-11-09-pilot-is-live-resume-here` confirms it more strongly than
+he did: ***"A participant critiqued the author's claim and won, the author
+retracted, and the author critiqued back — all in one day, verified across three
+nodes from a node that authored none of it"*** — **5 claims, 2 critiques, 1
+retraction** — and ***"The binding constraint was never the code. Everything
+that happened today happened because two people were in the room at once."***
+
+**TWO MECHANISMS PRODUCED THE ERROR AND BOTH ARE REUSABLE.**
+
+**(a) TWO COMPATIBLE FACTS READ AS ONE.** `main.ts` says *"the first two
+critiques in its history were both delivered over Telegram"*, and I read it as
+*no critique has ever landed in the app.* **It means the NOTIFICATION came over
+Telegram** — `create_critique` emitted no signal — **while the records
+themselves propagated over the DHT and were legible on both machines.** The
+sentence is about delivery of NEWS, not delivery of DATA, and nothing in it
+claims the loop failed.
+
+**(b) I LET A `superseded` FLAG STAND IN FOR THE CONTENT.** The file that says
+this plainly is a memory checkpoint marked superseded, so I did not open it.
+***Superseded as a resume point is not superseded as evidence*** — and
+`check-load-bearing.mjs` hit precisely this false positive on this file's own
+retained superseded blocks, which §8.3 records. **The lesson was already
+written down here and I did not apply it to the memory directory.**
+
+> **THE RULE: A NEGATIVE FINDING NEEDS A SEARCH WIDE ENOUGH TO HAVE FOUND THE
+> POSITIVE.** I wrote *"there is no record"* after grepping two files. **The
+> honest form was *"I did not find one"***, and the gap between those is the
+> entire error. **I also said a measurement could not settle it** — true of the
+> live DHT, where a null read is indistinguishable from offline peers, and
+> **irrelevant, because the answer was in the written record.** *"It cannot be
+> measured"* is not a licence to assert the negative.
+
+**THIS IS THE SECOND TIME TODAY THE SAME SHAPE COST SOMETHING.** The §18 error
+was an ambiguous pronoun resolved to the wrong referent and written down as
+fact; this is an ambiguous sentence resolved to the wrong reading and written
+down as fact. **Both were one question away from being settled, and in both the
+rigour was real and spent on a false premise.**
+
+**WHAT IT CHANGES FOR THE FUNDING APPLICATION:** the worked example goes from
+an honest gap to the strongest section in it. **The full loop ran on real
+machines, the author of the software LOST the argument and retracted, and a
+third node that authored none of it confirmed the sequence.** The grant's case
+is unchanged and better stated — *the binding constraint was never the code.*
 
 ## FOUR DECISIONS TAKEN BY H, 2026-11-24 — AND `[M]` REFILLS WITH TWO BUILDS
 
