@@ -22,12 +22,89 @@ third-party.
 
 ## 0. In flight right now
 
-**CHECKPOINT, 2026-11-23 — RESUME HERE. EVERY BLOCK BELOW THIS ONE IS OLDER,
-INCLUDING THE 2026-11-22 ONE THAT ALSO SAYS "RESUME HERE"; where they disagree,
-this block wins.**
+**CHECKPOINT, 2026-11-24 — RESUME HERE. EVERY BLOCK BELOW THIS ONE IS OLDER,
+INCLUDING THE 2026-11-23 AND 2026-11-22 ONES THAT ALSO SAY "RESUME HERE"; where
+they disagree, this block wins.**
 
-**`main` = `5ef3c4f` when this was written. ONE PR OPEN: #556 (row 6.29).**
-`bump/foreign-critique-held` (#350) stays HELD — do not merge.
+**`main` = `d3d8cf5` when this was written. ONE PR OPEN: #561 (§5.3's read-layer
+half and the Part V check), green on its own head `b413de8` with all five
+required checks real rather than skipped.** `bump/foreign-critique-held` (#350)
+stays HELD — do not merge.
+
+## A REFERENCE SAID YES, AND A BLOCKER DISSOLVED WHEN THE RECORD WAS READ
+
+**ERIC DORIEAN CONSENTED TO BEING A FUNDING REFERENCE, 2026-11-24, in his own
+words:** *"Go for it. I want you and your project to win. If this helps then
+I'm all for it."* **§19 of the outreach drafts is CLOSED.** H replied the same
+day. **He answered one half of a two-part ask** — consent, not the *"which
+contact should I use?"*
+
+~~**That half needs no second message**, because H has a live email thread with
+him already. Asking for a detail already in hand is a chase.~~ **WRONG, AND
+CORRECTED WITHIN THE HOUR: H SENT THE CONTACT ASK AND SHOULD HAVE.** It is
+recorded verbatim in §19. **The ask is not for an address — it is for which
+address a third party may be given, and that is the asker's to answer, not the
+holder's.** §20 extended exactly that courtesy to Kupukupu, *"their call, asked
+rather than decided"*, and I reasoned past a precedent two sections away.
+**H's wording also beats the draft's**, offering a profile link as an
+alternative to an email, which the form accepts.
+
+> **RULE: having someone's address is not consent to hand it to an evaluator.**
+> Possession and permission are different objects — **row 8.6's
+> recorder-versus-governor confusion applied to a contact detail**, which is
+> the second time in one session that row has turned out to describe something
+> other than a struct field.
+
+> **THE REASON TO NAME HIM WAS THAT THIS PROJECT ARGUED WITH HIM AND LOST**
+> (row 6.10: he removed `granite-4`'s `agentic` tag on our argument, measured it
+> himself, found our conclusion false, and put the tag back). **He said yes to
+> being the reference for that.**
+
+**REFERENCE LIST: TWO OF THREE CONFIRMED** — Kupukupu (2026-11-22, name and
+email supplied, named upstream) and Eric (today, named upstream). **Paul
+d'Aoust has never been asked.**
+
+**AND §18's BLOCKER WAS NOT A BLOCKER. THE ANSWER WAS ON DISK, TWO FILES
+AWAY.** The 2026-11-23 block below says a fact had to be put to H before §18
+could go — *was Paul named in the submitted application?* — on the stated
+premise that *"the voucher names were entered by H at submission."* **That
+premise was false, and the funding directory already contained its
+refutation:** the *"Who is involved?"* box **was submitted EMPTY** with a
+`[H: names and contact details to add …]` placeholder pasted in verbatim, and
+was **filled upstream afterwards naming Eric and Kupukupu only**, with Paul
+*"held behind §13."*
+
+**SO PAUL IS NOT NAMED, THE DRAFT'S *"I'd like to list you"* TENSE IS CORRECT,
+AND THERE IS NO QUESTION TO ASK.** What remains on §18 is the opening — it was
+written to hinge onto §13, which was abandoned — and **per the standing
+instruction on that thread the re-draft is H's, not mine.** The content is
+handed over in §18 as four numbered items with the brackets left in. Fund
+decides ~14 December; the application is live-editable, so a name added later
+still counts.
+
+> **RULE, AND IT IS THE SECOND TIME THIS FILE HAS PAID FOR IT:** a question
+> framed for the human is a claim that the record cannot answer it. **CHECK
+> THAT CLAIM BEFORE ASKING.** The wrong premise survived because a later,
+> better-evidenced block in the *same file* contradicted an earlier one and the
+> earlier one was left standing — which is precisely the false positive
+> `check-load-bearing.mjs` hit first, on this file's own retained superseded
+> blocks. **Superseded prose left in place is read as current state.** The
+> application file's stale paragraph is corrected rather than annotated.
+
+## `[M]` IS NOT EMPTY — THE 2026-11-23 BLOCK'S CLAIM WAS TRUE WHEN WRITTEN AND IS NOT NOW
+
+**Row 8.6's audit half is an `[M]` whose blocked-on column reads *"nothing to
+run the audit"*.** The 2026-11-23 block says in bold that `[M]` is empty and
+that a session must not invent work; **it was written before §8 was imported
+with 8.6 in it, and §8 arrived carrying one buildable item among twelve
+decisions.** The instruction not to manufacture a row still stands — **this one
+is not manufactured, it is recorded.**
+
+**THE AUDIT 8.6 GENERATES:** *for every field that reports state, what governs
+it, and is there a check comparing the two?* Four instances are already on disk
+and were each found separately — `CritiqueSpecies.adoption_count`, founding's
+coordinator-side accountability, the `metabolism` harness's BM declaration, and
+`fromTheBox`. **Blocked on: nothing.**
 
 ## PAUL D'AOUST — TWO MESSAGES SENT 2026-11-24, AND §13 WAS ABANDONED
 
@@ -77,12 +154,16 @@ opening — it is not portable as written."* §13 is now abandoned and the draft
 opens *"One unrelated thing"*. **Re-draft the opening before it goes.** The
 original hold reason — a request arriving while a reply is owed — **is
 discharged**; H's reason is new and legitimate (two messages had just gone out).
-**AND ONE FACT IS NEEDED FIRST: was Paul actually named in the submitted
+~~**AND ONE FACT IS NEEDED FIRST: was Paul actually named in the submitted
 application?** The voucher names were entered by H at submission and this
 repository does not know them, so the draft's *"I'd like to list you"* may need
-to be *"I listed you — is that alright"*. **Ask once; do not reconstruct.** The
-fund decides **~14 December**, so it is not indefinitely deferrable if he was
-named.
+to be *"I listed you — is that alright"*. **Ask once; do not reconstruct.**~~
+**STRUCK 2026-11-24 — DO NOT ASK IT. THE PREMISE WAS FALSE AND THE ANSWER WAS
+ALREADY ON DISK: the box was submitted EMPTY and filled upstream afterwards
+naming Eric and Kupukupu only. PAUL IS NOT NAMED; the tense is correct as
+drafted.** See the 2026-11-24 block at the top of this section. The
+fund decides **~14 December**, and the application is live-editable, so a name
+added later still counts.
 
 ## KUPUKUPU REPLIED, 2026-11-23 — NINE POINTS, AND THREE OF THEM CLOSE ROWS
 
@@ -214,10 +295,15 @@ catch, recorded at line ~589 of this file.)
 Only `bump/foreign-critique-held` (#350, OPEN, HELD — do not merge) remains,
 plus a stale remote `corpus/item-18-probers` whose content is landed.
 
-**`[M]` IS EMPTY. A session opening for something to build will not find it and
-MUST NOT INVENT IT.** Everything open is somebody else's reply, a `[D]` only the
-human can take, or an `[X]` the human sends. This list refills when a `[D]` is
-taken or when work generates work.
+~~**`[M]` IS EMPTY. A session opening for something to build will not find it and
+MUST NOT INVENT IT.**~~ **TRUE WHEN WRITTEN, FALSE BY 2026-11-24 — and it went
+false exactly the way this paragraph's last sentence predicts: *"work generates
+work."*** §8 was imported the same day carrying twelve `[D]`s **and one
+buildable `[M]`, row 8.6's recorder-versus-governor audit, whose blocked-on
+column reads *"nothing to run the audit."*** The prohibition on INVENTING a row
+stands unchanged; 8.6 is recorded, not invented. Everything else open is still
+somebody else's reply, a `[D]` only the human can take, or an `[X]` the human
+sends.
 
 **THREE RULES THIS SESSION PRODUCED, ALL FROM GETTING THEM WRONG FIRST:**
 
@@ -3251,7 +3337,7 @@ who enumerated it?"**
 | 8.3 | ~~**A BOUNDARY-CLAIM REPORT OVER THIS REPOSITORY'S OWN PROSE — the only `[M]` here.**~~ **THE LOAD-BEARING HALF IS BUILT 2026-11-24 — `scripts/check-load-bearing.mjs`, and the boundary half was DEMOTED TO A COLUMN BY MEASUREMENT.** The 648 phrases need triage, not a feature; `check-prose-claims.mjs` already reads those six files. **No protocol, cannot fork anything.** Would have caught the `the only open decision` error this file records propagating. **Risk stated in advance: 648 mostly-benign hits means a gate that cries wolf is worse than none**, so it must rank by context or REPORT rather than fail — the `check-stale-blockers.mjs` precedent is a report that always exits zero **BUILT AS §5.3's READ-LAYER HALF, over this file's own row-citation graph, which needs no protocol.** Nodes are canonical rows; an edge is a row id appearing in prose elsewhere; a row is reported when much rests on it AND its own `[D]` is still open. **141 canonical rows, 1,336 citations. FIVE rows flagged.** **THE CRY-WOLF RISK 8.3 NAMED IN ADVANCE WAS REAL AND IS MEASURED: flagging on §8.0's boundary vocabulary as well turned 13 of the top 16 rows red**, because rows here are long and *the only* and *must be* occur in nearly all of them — so that signal is a CONTEXT COLUMN, not a trigger. **AND THE FIRST FALSE POSITIVE WAS THE FILE'S OWN CONVENTION:** row 6.12, the most-cited row here, flagged confidently and wrongly, because it is declared TWICE — line ~1801 inside a retained 2026-11-13 block reading *"`[D]` untouched"*, and canonically in §6 where the decision is taken. **§0 retains superseded blocks on purpose, so a naive scan reads history as current state.** Declarations are now parsed from §1 onward only, while load is still counted file-wide. **THE RESULT IT FOUND IS WORTH THE BUILD:** cross-section load discriminates where raw load does not — **row 3.4 carries only 2 citations inside its own section and 23 from others, eleven of them from §6** — and 3.4 is ***"Can a metabolic budget exist without being Invariant 1's leaderboard?"***, which is the question **8.7 bears on directly.** A report, always exits zero, four false-positive classes named in its header | M DONE | **done 2026-11-24** |
 | 8.4 | **REVIEWER-DOMAIN *MISMATCH* ROUTING — most interesting, least ready.** §5.1: *"route critiques by reviewer-domain mismatch, not topic match. The useful critic of a biology claim resting on spectral theory is a spectral theorist, and a topic-similarity router will never surface them."* **Compatible with Invariants 1 and 2 by construction** — a mismatch ordering is not a merit ordering and ranks nobody — and it answers something this protocol does not address at all: how a claim reaches the reader able to see what is missing. **Needs a notion of reviewer domain that does not exist, and a two-operator pilot has nobody to route between** | D | a notion of reviewer domain, and more than two operators |
 | 8.5 | **A THIRD VERDICT CLASS, HALF-PRESENT.** §5.6 wants *supported*, *contradicted*, and **"this design cannot address this claim"** — stronger than confounded: a design that cannot answer the question **however well executed**. `Stance`'s third variant is not this: `Abstains` is *"I have read it and I am not taking a position"*. `CritiqueMode::Methodological` is adjacent, not the same. **Must NOT be a new `Stance` variant — that forks** — so it is a `CritiqueSpecies`, hence a sub-case of 8.1 | D | 8.1 first |
-| 8.6 | **RECORDER VERSUS GOVERNOR — and this repository has paid for it at least three times without ever naming it.** §3.4, from the biology: a real per-division epigenetic register exists, *"but it records without governing"* — old chondrocytes with a high reading still divide like fetal cells. ***"An odometer does not stop the car. Recorder and governor are different objects, and the register question had assumed they were one."*** **THE INSTANCES ALREADY ON DISK, each found separately, none connected:** `CritiqueSpecies.adoption_count` was *"a free, self-declared number, not a derived signal"* with no validation and no increment mechanism anywhere (`dna/integrity/src/lib.rs:390`, removed for a query-time count of real links); founding's accountability was *"a coordinator-side courtesy while being documented as an invariant"* (`founding-ui.mjs:18`); the `metabolism` harness's BM injection produced ***"a declaration nothing compares to reality is a label"***, where the declaration check stayed GREEN because the declaration was still false; and **`fromTheBox` is a fourth.** The borrowable thing is a NAME for a class this repository keeps rediscovering, and the audit it generates: **for every field that reports state, what governs it, and is there a check comparing the two?** | M to audit, D on whether it becomes a standing rule | nothing to run the audit; the `[D]` is whether it joins `docs/fixed-core.md` |
+| 8.6 | **RECORDER VERSUS GOVERNOR — and this repository has paid for it at least three times without ever naming it.** §3.4, from the biology: a real per-division epigenetic register exists, *"but it records without governing"* — old chondrocytes with a high reading still divide like fetal cells. ***"An odometer does not stop the car. Recorder and governor are different objects, and the register question had assumed they were one."*** **THE INSTANCES ALREADY ON DISK, each found separately, none connected:** `CritiqueSpecies.adoption_count` was *"a free, self-declared number, not a derived signal"* with no validation and no increment mechanism anywhere (`dna/integrity/src/lib.rs:390`, removed for a query-time count of real links); founding's accountability was *"a coordinator-side courtesy while being documented as an invariant"* (`founding-ui.mjs:18`); the `metabolism` harness's BM injection produced ***"a declaration nothing compares to reality is a label"***, where the declaration check stayed GREEN because the declaration was still false; and **`fromTheBox` is a fourth.** The borrowable thing is a NAME for a class this repository keeps rediscovering, and the audit it generates: **for every field that reports state, what governs it, and is there a check comparing the two?** | ~~M to audit~~ **M DONE 2026-11-24 — see §8.4**, D on whether it becomes a standing rule | **the audit is RUN: three findings and an organising principle (determinism decides what can be governed). Blocked on H for whether it joins `docs/fixed-core.md`** |
 | 8.7 | **"DETERMINED WITHOUT BEING SPECIFIED" — the best idea in the document for this protocol, and it is from §3.1, not Part V.** The growth plate sets an absolute adult size with **no stored target and no comparison**: *"Final length = divisions remaining × length gained per division, and **neither factor knows the product.** Nothing is compared, nothing stores the answer. This is how an absolute size can be determined without being specified — which is why B looked unsolvable while the search was for a stored value."* **THIS IS INVARIANT 1's PROBLEM SOLVED IN TISSUE.** Invariant 1 bars a canonical comparative measure, so this protocol may not store a score — and the standing worry is that refusing the score refuses determinacy with it. **A budget answers that: an outcome that is definite without being canonical, because the magnitude is a CONSEQUENCE of a consumable rather than a value anybody wrote down.** And this protocol **already has budgets** — friction windows, and `AttestationGrant`'s per-window grant budget. **The borrowable item is therefore not a mechanism but a reframing of one it already ships**, and the question it opens: which of this protocol's refusals-to-score could be re-expressed as a budget, rather than as an absence | D | whether the reframing earns a place in README/SPEC's account of Invariant 1 |
 | 8.8 | **A COUNT IS SPENT BY EVENTS; A TIMER IS SPENT BY TIME — AND THIS PROTOCOL'S CONDUCTANCE IS A TIMER. MEASURED.** §3.2's table was first drawn **exactly backwards**, and the correction *"reverses which observation supports which model"*: under a transient pause, a **count** spends nothing (catch-up, no deficit) while a **timer** closes the window regardless (permanent deficit). *"Parking meter versus prepaid card."* **MEASURED HERE 2026-11-24: `get_effective_conductance` decays by `CONDUCTANCE_HALF_LIFE_SECS` — ELAPSED SECONDS. A timer.** So a participant who goes quiet loses conductance **for being quiet**, which on this pilot is the normal state: row 7.29 already records that the network exists only while two people happen to be online at once. **Whether that is right is a decision, not a defect — but it was never named, and §3.2 names it with its opposite.** §2.4 supplies the frame: rate, variability and count are *"a parameter, a gate and a store"*, and **only a count is intrinsically a reference to an unoccupied state.** This protocol has all three — conductance is the rate, friction windows the gate, the grant budget the store | D | whether intermittent participation should cost standing on a pilot built from intermittent participants |
 | 8.9 | **"NAMES THE ELSEWHERE AND THE CARRIER" — a test for deferred explanation, and it is sharper than unfalsifiable.** §3.10: *"A proposal that a reference is held 'elsewhere' is a hypothesis exactly to the extent that it names the elsewhere and the carrier."* The liver's size reference is demonstrably not in its hepatocytes, and the candidates named are **portal haemodynamics and bile-acid signalling** — *"a pressure and a metabolite — both with units, both measurable, both manipulable."* **§2.3's four-condition test is the same rule generalised**: an appeal to a wider context earns its place only if it (1) has a carrier that reaches the thing, (2) varies at the relevant scale, (3) connects by a named path, and (4) **relocates the reference rather than adding a modulator** — *"condition 4 does the work. Influence is not reference."* **A `CritiqueSpecies` candidate with real teeth**, and it tests a move this protocol's own documents make constantly: *the answer lives at the read layer / in the lens / in the policy.* **Each of those is legitimate exactly to the degree it names the carrier** | D | a sub-case of 8.1 — which species to seed first |
@@ -3394,3 +3480,122 @@ observation as the single point of failure for most of §3.4, and states the
 consequence rather than burying it. **That disclosure is why Part V's taxonomy
 is worth borrowing from at all** — it is the behaviour row 7.40 and READINESS §3
 ask of this repository, arriving from someone else's inquiry.
+
+### 8.4 Row 8.6's audit, run 2026-11-24 — and determinism is what decides which fields get a governor
+
+**THE `[M]` HALF OF ROW 8.6 IS DONE.** The audit it generates was *"for every
+field that reports state, what governs it, and is there a check comparing the
+two?"* It was run over the integrity zome's **19 entry types** — 23 structs in
+`dna/integrity/src/lib.rs`, four of which (`DnaProperties`, `Promise`,
+`Condition`, `PeriodBoundary`) are not entries but were read too, since
+`PeriodBoundary` turned out to carry one of the reported fields — by
+enumerating every field and reading every `validate_*` callback. **Counted, not
+estimated.** **The `[D]`
+half — whether this becomes a standing rule in `docs/fixed-core.md` — is
+untouched and is H's.**
+
+**THE AUDIT FOUND AN ORGANISING PRINCIPLE, WHICH IS WORTH MORE THAN THE LIST,
+AND THE CODE STATES IT ALREADY.** `SettlementPolicy`'s doc comment
+(`lib.rs:992`) explains why its parameters are all integers: *"validation
+recomputes the status from these numbers, so every peer must reach the identical
+answer. A float, a ratio or a clock would each break that in a different way."*
+
+> **THAT IS THE WHOLE RULE: A REPORTED FIELD CAN BE GOVERNED IN VALIDATION
+> EXACTLY WHEN ITS GOVERNOR IS DETERMINISTIC ACROSS PEERS.** Recomputation,
+> hashing and `must_get_valid_record` qualify — `validate_membrane`'s own
+> comment says the last of these is chosen because *"every validating peer
+> resolves the same constitution or defers, rather than disagreeing based on
+> what each happens to have gossiped."* **Wall-clock `now` does not qualify.**
+> So the governed/ungoverned split is not carelessness; it mostly tracks a real
+> constraint. **The findings below are the cases where a DETERMINISTIC governor
+> exists and is not used anyway.**
+
+**FOUR TIERS, AND EVERY REPORTER FIELD IN THE ZOME IS IN ONE OF THEM.**
+
+| tier | fields | state |
+|---|---|---|
+| **1. Governed in validation — recomputed and compared by every peer** | `SettlementStatus.state` (recomputed via `settle()` from `inputs` + `policy`, `lib.rs:1601-1602`, with inputs classified and padding refused); `Revelation.prediction`/`salt` (re-hashed against `SealedPrediction`, `:1433`); `Critique.past_cone` and `Assessment.past_cone` (every member resolves, target-matched, de-duplicated, **transitively closed**); every `author`/`agent`/`creator`/`proposer`/`importer`/`aggregator`/`assessor` binding | **the pattern working.** `SettlementStatus`'s error message is the model: *"Settlement is a pure function and every peer computes it."* |
+| **2. Governor EXISTS but is opt-in at the read layer** | `WorldlineTrace.checksum` — `verify_trace_checksum` (`coordinator:3721`) recomputes the Merkle root and compares; `PeriodBoundary.entry_count` is coordinator-**computed** (`:3422`) and folded into that root (`:5300`), so a tampered count breaks it, and a test asserts so (`:6539`) | **validation checks only `checksum.len() != 32`.** A hand-written trace with a bogus 32-byte checksum **validates fine**; only a reader who chooses to call the verifier finds out. **An odometer with a calibration tool in the glovebox.** |
+| **3. A DETERMINISTIC GOVERNOR IS AVAILABLE AND UNUSED — the findings** | `BridgeRecord.original_length`/`excerpt_length`; the **18** self-declared time fields | see below |
+| **4. No governor possible — and only sometimes said so** | `ExternalCritique.author_handle` (**documented**: *"this DHT cannot verify it and does not pretend to"*); `BridgeRecord.carried_fields`/`dropped_fields` (**documented**: *"the lists' actual accuracy to what was really dropped can't be independently verified; only their internal consistency can"*); `Critique.replication_attempted` (**NOT documented anywhere**) | the documented ones are the right outcome. The undocumented one is the gap. |
+
+**FINDING 1 — `BridgeRecord.original_length` IS CALLER-SUPPLIED IN A STRUCT
+WHOSE DOC COMMENT ARGUES, AT LENGTH, FOR TAKING A FIELD OUT OF THE CALLER'S
+HANDS.** `author` is filled from `agent_info()` *"so the field states who called
+rather than who claims to have"* (`lib.rs:460`). Two fields later,
+`original_length` is taken straight from `payload.original_length`
+(`coordinator:4236`). **And the governor is already loaded in BOTH places:**
+`record_twitter_mirror` fetches the mew's record to pick the link type
+(`:4241`), and `validate_bridge_record` calls
+`must_get_entry(record.mew_hash)` and **discards the result** (`lib.rs:2149`).
+A deterministic comparison against the mirrored entry's own content length is
+one line from code that already ran.
+
+> **THE STRUCT'S COMMENT SAYS THESE ARE THE ONLY TWO CHECKS POSSIBLE** —
+> *"independent of any DHT lookup"* — **and that qualifier is doing unnoticed
+> work, because the DHT lookup happens anyway on the line above.** The claim is
+> true of `carried_fields`/`dropped_fields`, which depend on what the bridge
+> chose to send and are genuinely tier 4. It is **false of `original_length`**,
+> which is a function of an entry validation already fetches.
+
+**FINDING 2 — THE ZOME CARRIES 18 SELF-DECLARED TIME FIELDS AND BINDS NONE OF
+THEM TO ITS OWN ACTION'S TIMESTAMP, WHILE WRITING OUT THE REASON NOT TO TRUST
+THEM.** `validate_pre_registration`'s comment (`lib.rs:1374`) is explicit: the
+ordering is *"checked against the question's own ACTION timestamp rather than
+any self-reported field, because a self-reported timestamp is exactly what an
+author gaming this would set freely."* **That is the correct pattern, stated,
+and used for exactly one thing.**
+
+**MEASURED: zero of the 18 are ever compared to `action.timestamp()`.** The
+only two comparisons involving them are **self-declared against
+self-declared** — `expires_at <= published_at` on `Constitution` (`:2058`) and
+`expires_at <= created_at` on `WorldlineTrace` (`:2114`).
+
+> **AND THAT ONE IS LOAD-BEARING, WHICH IS WHAT LIFTS IT ABOVE A TIDINESS
+> POINT.** The read layer treats expiry as fact:
+> `constitution.expires_at.map_or(true, |exp| exp > now)` decides whether an
+> agent's promises are live (`coordinator:5589`), and the same shape gates
+> traces (`:769`, `:3505`). **So `published_at: 0` with `expires_at: u64::MAX`
+> passes validation — `MAX > 0` — and is read as a live constitution forever.**
+> `validate_membrane` resolves a founder's constitution and checks the agent
+> matches, but **never consults its expiry**, so nothing downstream catches it
+> either. **A check that looks like it governs an expiry governs only the
+> ordering of two numbers the author chose.**
+>
+> **THE DETERMINISTIC FIX EXISTS AND IS ALREADY IN THE FILE.** `action.timestamp()`
+> is in the record every peer holds, so binding a declared time to it — exactly
+> or within a stated tolerance — breaks no peer agreement. **Comparing it to
+> `now` would**, which is precisely why `SettlementPolicy` refused a clock.
+
+**FINDING 3 — `Critique.replication_attempted` IS A TIER-4 FIELD WITH NO NOTE
+SAYING SO, AND IT IS EXPORTED AS A PROPERTY.** It appears in **no** validation
+callback, has no governor even in principle (it reports the author's own offline
+conduct), and is rendered into the N4L export as `"replication attempted"`
+(`coordinator:127`). Every harness in the repository sets it `false`; one
+coordinator test sets it `true`. **The gap is not the field — tier 4 is a
+legitimate place to be — it is that `author_handle` and `dropped_fields` both
+carry a comment admitting the limit and this one does not.** A reader of the
+N4L export cannot tell a verified property from an unverifiable one.
+
+**WHAT THE AUDIT DID NOT FIND, STATED SO THE NEXT RUN DOES NOT RE-DERIVE IT.**
+No ungoverned derived counter of `adoption_count`'s kind survives anywhere in
+the zome — that class is genuinely closed, and `PeriodBoundary.entry_count`,
+the one field shaped like it, is computed rather than declared and is covered by
+a checksum. **The four instances row 8.6 lists were a closed set, and the audit's
+new material is the three findings above plus the determinism principle.**
+
+> **ONE MORE CORROBORATION FOR 8.8, FOUND ON THE WAY.** `SettlementPolicy`
+> **rejected a clock explicitly** — *"a float, a ratio or a clock would each
+> break that in a different way"* — and chose integer counts. §8.8's
+> count-versus-timer distinction is therefore **already decided one way in
+> settlement and the other way in conductance**, which strengthens 8.8's `[D]`
+> rather than changing it: the protocol has made both choices, in different
+> places, for stated reasons in one of them.
+
+**WHAT IS LEFT, AND IT IS ALL `[D]`.** Whether to bind declared times to
+`action.timestamp()` (a validation change, so **a fork** — it belongs in §4's
+bump set, not in a patch); whether `original_length` should be recomputed (also
+validation, also a fork, and it is **one line**); whether tier 4 fields must
+carry a comment admitting their limit (**free, no fork, and the cheapest of the
+three**); and 8.6's original `[D]`, whether the recorder-versus-governor
+distinction joins `docs/fixed-core.md` as a standing rule. **Blocked on: H.**
