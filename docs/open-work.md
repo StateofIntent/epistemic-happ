@@ -84,8 +84,26 @@ over as four numbered items with the brackets left in.
 REFERENCE WORK IS DONE.**~~ **FALSE, AND IT WAS MY ERROR. CORRECTED 2026-11-24
 BY H: §18 IS STILL UNSENT AND PAUL HAS NOT BEEN ASKED AT ALL.**
 
-**TWO OF THREE ASKS ARE OUT** — Kupukupu and Eric, both answered yes. **Paul
-has never been asked.**
+**THREE ASKS ARE OUT AND TWO ARE ANSWERED** — Kupukupu and Eric said yes; **Luck
+Light was asked 2026-11-24 and has not answered.** **Paul has never been asked**
+and is held on purpose.
+
+> **LUCK LIGHT IS THE RIGHT THIRD AND THE REASON IS THE SAME AS ERIC'S.** He
+> proposed a monetization layer; **engagement rewards and ads were refused using
+> his own noise-over-signal objection against him**, the deleted mutual-credit
+> ledger was disclosed rather than hidden, and **the membership fee was conceded
+> as a genuine disagreement.** He stayed in the pilot and offered a second node.
+> **A referee who argued about a core commitment, won one of three, and still
+> runs it.**
+> **NOTHING WAS OWED TO HIM FIRST** — the always-on-node correction went to both
+> participants 2026-11-19 — **which is what made this clean to send where §18 is
+> not.** **But his second-node offer sat unread for six days and the record shows
+> no reply; that offer is now in the funding roadmap's months 1-3, so answering
+> it is owed on its own merits, separately.**
+> **AND THE SENT TEXT IS H's, NOT THIS FILE's.** A draft was handed over; §22
+> holds the basis, not a transcript. **Do not reconstruct it.**
+> **HE MUST NOT BE NAMED IN THE APPLICATION UNTIL HE ANSWERS.** Two named
+> referees is a complete set.
 
 > **HOW THE ERROR HAPPENED, because the mechanism is the reusable part.** H
 > asked to see §18's content; I printed it; he replied ***"I already sent this
