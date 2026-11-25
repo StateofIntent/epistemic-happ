@@ -750,6 +750,152 @@ law is not a structure this protocol has an instance of.
 
 ---
 
+## 12. `[A]` The immune trace — a SIXTH role, a prediction for the next build, and a threshold with no derivation
+
+**A later turn of the same inquiry traced the specification question through
+immunology**, asking where in the immune system a size or form reference might
+sit. `[U]` Its answer is negative and clean: tissue-resident macrophages are
+**imprinted by the niche** (tissue → immune cell, not the reverse); lymphoid
+tissue inducer cells can **instantiate a structure where no anlage existed**
+but carry no position — *"the position came from the needle"*; and tertiary
+lymphoid structures, the one case of immune cells building de novo in adult
+non-lymphoid tissue, come out *"plastic and highly variable"*, with the
+organising program tracing back to **local stroma**. The line the source
+pulls out: `[Q]` *"TLS organization and size do not match the highly regulated
+secondary lymphoid organs."*
+
+**`[A]` Three things transfer, and one of them is a prediction about the build
+this repository has already decided to do.**
+
+### 12.1 `[A]` A sixth role — the ORGANISER — and this protocol ships two
+
+`[U]` The source's own conclusion from the trace: the five-way grid is missing
+a row. *"A cell can carry more than identity. It carries structure"* — an
+**organiser**, a portable program for **what to build**, saying nothing about
+**where** or **how big**.
+
+**`[A]` `CritiqueSpecies` IS AN ORGANISER IN EXACTLY THAT SENSE, FIELD BY
+FIELD.** `name`, `parent_species`, `required_evidence`, `proposer`,
+`created_at` (`dna/integrity/src/lib.rs:381`) — **a program for what a critique
+of this kind must be, with nothing about where it applies or how many are
+enough.** `AntibodyPatternKind`'s five variants are the same shape.
+
+> **`[A]` AND AN ORGANISER IS NOT A SELECTOR, WHICH MATTERS BECAUSE THE THIRD
+> COMPANION FILED ONE.** `docs/immune-effectors-and-the-selector-that-is-not-a-position.md`
+> §5 added **selector over a population** as a third kind of address, and put
+> `CritiqueMode`, `AntibodyPatternKind` and `CritiqueSpecies` in that column.
+> **A selector addresses a population; an organiser carries the construction
+> program.** `CritiqueMode` is a selector — it says *which critiques these are*.
+> `CritiqueSpecies` is both, and the organiser half is the part that was never
+> named: **`required_evidence` is not an address, it is a specification of what
+> the thing must contain.** `[A]` Row 8.2's grid gets a **sixth role**, and the
+> third companion's table gets a column it was missing.
+
+### 12.2 `[A]` TLS-as-preview — a predicted outcome for row 8.18(i)'s open `[D]`
+
+`[U]` The source offers TLS as *"a preview of what route 1 would actually
+produce"*: install a crew carrying an architectural program, impose a boundary,
+and the realistic output is **recognisable architecture, degraded quality,
+variable composition, unregulated size** — *"not failure, and not the clean
+result the document has been implicitly imagining."*
+
+**`[A]` PUT THAT BESIDE §11.2's MEASUREMENT AND IT STOPS BEING AN ANALOGY.**
+`CritiqueSpecies.required_evidence` is **enforced nowhere** — not in
+`validate_critique_species`, not in the `CritiqueToSpecies` link validation,
+not in the coordinator, not in any client. And row 8.1's decision is that
+**8.12 is seeded first.** So:
+
+> **`[A]` Seeding species that state evidence requirements nothing checks is
+> shipping an ORGANISER WITH NO ENFORCED REFERENCE — and the biology says what
+> comes out: species-shaped critiques of recognisable form, variable quality,
+> and UNREGULATED COUNT.** The organiser supplies *what*; nothing supplies *how
+> much* or *how good*. That is TLS, and it is a prediction rather than a worry,
+> because the mechanism is named: **a program with no reference produces
+> structure without regulation.**
+
+`[A]` It does not argue for enforcing `required_evidence` — that is a
+validation change and **forks the network** (8.18's `[D]`). It argues that the
+third option in 8.18(i) — **document it as advisory prose** — is the one whose
+honesty survives the prediction: *a species may state what it expects and
+nothing checks it* is a true sentence, and *required* is not.
+
+### 12.3 `[A]` Seven domains failing the same way is OUT-OF-SAMPLE validation, and it is row 8.2's best evidence
+
+`[U]` The source now tables **seven** candidate references — morphogen
+gradients, mechanical load, Weyl's law, a methylation odometer, body-force
+actuation, pool size, immune surveillance — from **seven unrelated domains**,
+each failing the same grid in the same place: *"that consistency is itself
+evidence the grid is carving at a real joint — a distinction that keeps
+correctly predicting which candidates fail and how, **including ones nobody
+designed it against.**"*
+
+**`[A]` ROW 8.2 ADOPTED THE GRID ON AUTHORITY PLUS ONE IN-FIELD CATCH.** Its
+evidence was the source's own §5.7 claim (*"most apparent progress in this
+inquiry was a role mismatch"*) and the live misassignment the grid caught here
+on 2026-11-24 (#565). **Seven independent domains is a different and stronger
+kind of evidence: a taxonomy predicting failures in domains it was not built
+from.** `[A]` Nothing else in this import has out-of-sample support.
+
+> **`[A]` AND IT HANDS 8.12 A SEEDING BAR IT DOES NOT HAVE.** The test of a
+> taxonomy is **not coverage of what has already been seen** — that is
+> available to any taxonomy, including a bad one. It is whether the categories
+> **predict something they were not built from.** `[A]` So the question to ask
+> of each seeded `CritiqueSpecies` is: *what does this category predict about a
+> critique nobody has written yet?* A species that only labels critiques
+> already in the corpus is a filing scheme; one that says in advance which
+> critiques will fail and how is the kind the grid turned out to be.
+
+### 12.4 `[V]` "A thermostat with no setpoint" — and this protocol's one ratio HAS a setpoint, which is a bare number
+
+`[U]` The source's strongest positive instance, and why it still fails:
+immunoediting equilibrium holds transformed tissue at bounded size for years,
+from outside, continuously — and *"the equilibrium size is wherever
+proliferation rate equals kill rate. Change either and the size moves. Nothing
+represents a target."* `[Q]` **A thermostat with no setpoint.** Its own
+caveats: the constant-population claim is *"explicitly a conceptual scenario in
+the review"*, escape is the rule, and *"a specification that decays isn't one."*
+
+**`[A]` THE TRANSFERABLE RULE IS A READ-LAYER ONE: A BALANCE POINT RENDERED TO
+A READER IS READ AS A SETPOINT.** A number that sits still looks like a target
+being met, whatever its mechanism — which is row 6.28's problem in a different
+costume, where the worry is a count being read as merit.
+
+**`[V]` MEASURED, 2026-11-25 — this protocol has exactly one ratio, and it does
+attach a reference.** `DiscourseHealth.abstract_to_embodied_ratio: f32` is
+logical count over experiential count (`discourse_ratio`,
+`dna/coordinator/src/lib.rs:4921`), and `:5085` attaches a declared threshold:
+
+> `let warning = if ratio > 3.0 { Some("Discourse becoming detached from
+> practice. More experiential data needed.") }`
+
+**`[A]` So the protocol is on the right side of the distinction** — it declares
+the reference beside the balance rather than letting the level be read as one,
+which is the thing immunoediting cannot do.
+
+**`[V]` BUT 3.0 HAS NO DERIVATION ANYWHERE.** Searched `SPEC.md`, `README.md`,
+both zomes and `scripts/`: the only appearances are the comparison itself
+(`:5085`), a unit test asserting it trips (`:7293`), and README's *"warns if
+>3.0"* (`:576`). SPEC §10's table documents the payload, the return shape and
+the `reading_claims` exclusion — **and never the threshold.** No range, no
+regime, no citation, no measurement.
+
+> **`[A]` THAT IS ROW 8.13's COMPLAINT POINTED AT A THRESHOLD INSTEAD OF A
+> LABEL** — *a confidence label without a regime of validity is nearly
+> worthless* — and §4.1's split applies unchanged: **3.0 is a PARAMETRIC regime
+> with no range stated**, which is the expensive half. Row **8.19**.
+
+**`[A]` AND THE PROTOCOL HAS ALREADY REFUSED THIS EXACT OBJECT ONCE, ELSEWHERE.**
+8.4's audit recorded that `SettlementPolicy` **refused a float, a ratio and a
+clock explicitly** — *"a float, a ratio or a clock would each break that in a
+different way"* — and chose integer counts. `[A]` **So the protocol ships a
+ratio-with-a-free-threshold in one place and refuses ratios on principle in
+another**, which is 8.8's pattern exactly: *both choices made, in different
+places, with a stated reason in only one of them.* **That is what makes this a
+`[D]` rather than a defect** — the discourse-health warning may be the right
+place to accept a ratio, and the row is that nothing says so.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
