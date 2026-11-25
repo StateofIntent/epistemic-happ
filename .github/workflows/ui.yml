@@ -270,6 +270,18 @@ jobs:
           npx esbuild src/key-mnemonic.ts --format=esm --outfile=/tmp/key-mnemonic.mjs
           node key-mnemonic-check.mjs /tmp/key-mnemonic.mjs
 
+      # ROW 6.29, and placed here for the reason the step above is: no
+      # conductor, no browser. The check that matters is "no threshold" — a
+      # cutoff added to the ordering would be an assertion that two names are
+      # one domain, which the 2026-11-26 invariant sweep found Invariants 2 and
+      # 10 refuse and `get_claims_by_domain` cannot hold. A browser harness
+      # could not see that property at all; it would see a list either way.
+      - name: domain proximity — an ordering with no threshold and no link-order dependence
+        working-directory: mobile-ui
+        run: |
+          npx esbuild src/domain-proximity.ts --format=esm --outfile=/tmp/domain-proximity.mjs
+          node domain-proximity-check.mjs /tmp/domain-proximity.mjs
+
       # The repository's own documented build-and-pack path, driven unmodified.
       # It builds the zomes BEFORE packing, because `hc dna pack` compiles
       # nothing and packing first would wrap stale wasm in a fresh timestamp —
