@@ -784,12 +784,51 @@ and on a phone there is not one.
 **Propagation is intermittently slow by minutes.** Measured crossings at 175.4s,
 **205.5s**, 210.5s, 415s, **421.1s**, 424.9s, **425.8s**, **884.8s** (×2,
 2026-10-21, local three-node), 929.1s and 943.0s, alongside non-crossings inside
-330s — and a **10.0s** crossing on 2026-10-30 minutes after the 205.5s, on the
+330s — plus **80.3s** and **426.0s** on 2026-11-25, which are the first two
+recorded on the SAME COMMIT, and **80.3s is a genuinely new value: nothing
+previously sat between the 60s precondition and 95.3s** — and a **10.0s** crossing on 2026-10-30 minutes after the 205.5s, on the
 same branch, which is the fast end of the same instrument and belongs on the list
 for that reason. **Every one of these is
 a poll-lattice sample, not a latency** — see the correction below, which is why
 the figures cluster the way they appear to. §9 froze that investigation deliberately: every remaining question
 sits in `kitsune2` or Holochain's op store rather than in this repository.
+
+**TWO OBSERVATIONS ON ONE COMMIT, 2026-11-25 — AND THE SECOND ATTEMPT IS WHY
+THEY ARE WORTH MORE THAN ONE.** PR #574 (a doc comment, two unit tests, a SPEC
+cell and documentation — **every non-comment line inside `#[test]`**, so the
+shipped wasm is behaviourally identical to `main`) failed
+`partition-rejoin`'s Phase 0 precondition twice on the identical SHA: the
+baseline crossed in **80.3s** on the first attempt and **426.0s** on the
+re-run. **Both times every substantive assertion PASSED** — the partition
+held, the returning node converged in 5.0s, the isolated node saw nothing —
+and the harness's own log says where to look: *"See the baseline check above
+for the thing that is actually wrong."*
+
+**426.0s is an ordinary member of the documented ~421s cluster** and is >330s;
+**80.3s is the new figure**, and it is slow without being minutes-slow, which
+is the second such value after 95.3s and further evidence against a purely
+bimodal reading. **The pair is a cleaner observation than either alone,
+because the commit is held constant across them** — the two figures differ by
+5x on identical code.
+
+> **AND THE SAME RE-RUN SHOWED THE RUNNER WAS NOT BROADLY SICK.** `ui` failed
+> on the first attempt and **PASSED on the re-run of that identical SHA**
+> (23m54s), while `conductor`, `network`, `no-conductor` and `zomes` passed
+> throughout. So the slow baseline is not a symptom of a generally degraded
+> runner — which is the confound a single red would have left open.
+
+**`worldline-ui`'s MACHINERY CHECK IS INTERMITTENT, AND NOTHING SAID SO UNTIL
+NOW.** The failing pair was *"machinery on the chain is named in plain words,
+not hidden and not jargon"* together with its own **CONTROL** — *"CONTROL:
+machinery is in this window, named rather than filtered out"* — and the
+control failing means **the precondition did not hold, so the real assertion
+had nothing to find.** It passed on the identical commit minutes later.
+**A control that fails makes a flake read as a regression**, which is the
+expensive half: this harness was trusted precisely because it carries controls,
+and a reader seeing both red would reasonably conclude the UI had stopped
+naming machinery. Recorded as row 7.41 rather than fixed — one occurrence is
+not a distribution, and the next occurrence decides whether the sampled period
+window needs pinning.
 
 **The 421.1s was recorded on 2026-10-20 from [#296](../../pull/296)**, a
 comment-only change to `partition-rejoin.mjs` itself — so it joins 210.5s
