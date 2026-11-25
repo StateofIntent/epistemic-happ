@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16 and 8.17.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16, 8.17 and 8.18.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -493,6 +493,251 @@ has not been asked."*
 
 ---
 
+## 11. `[A]` The biology itself, read for transfer — added 2026-11-25, second pass
+
+**Everything above §9 was taken from the source's epistemic appendix (§12) plus
+two structures from its argument.** That is a partial reading and it was
+flagged as such: the mechanisms were read for provenance, not for transfer.
+This section is the second pass, over the biology proper. **Nine items; three
+produced a measurement in this repository and two of those are defects.**
+
+**`[U]` throughout for the biology.** Nothing below asks the biology to be
+true — each item is used as a *shape*, and where it produced a finding here,
+the finding stands on its own measurement.
+
+### 11.1 `[V]` Adjacency is the generative channel — which prices row 6.28's refusal
+
+`[U]` **Differential growth** is the one boundary-supply mechanism in the source
+that needs no external anchor: *"If two attached layers grow at different
+rates, the slower is strained. **The anchor is the adjacent tissue**, which
+closes the force couple entirely within the tissue."* It is given as the
+mechanism of gyrification, villus formation and buckling morphogenesis
+generally — **and it is geometric, not pharmacological.** The motive force is
+the **difference between neighbours.** Nothing is pushed against from outside.
+
+**`[V]` ROW 6.28's REFUSAL TURNS ON EXACTLY THAT QUANTITY, AND I CHECKED THE
+CODE RATHER THAN THE ROW.** `mobile-ui/src/main.ts:2148`:
+
+> *"it appears ONLY on this screen and only on the reader's own claims, so
+> **there is no second number beside it to compare it with.** A critique count
+> rendered across a domain's claims WOULD be comparative, and would quietly
+> become the ranking surface Invariant 1 exists to refuse."*
+
+**`[A]` So the biology prices the guard, and in the direction that strengthens
+it.** 6.28's open `[D]` is whether a boolean — *this claim has critiques* —
+crosses the line a count does, and the row records that the gate has two
+inputs: **the data** (is the number there at all) and **the adjacency** (is
+there a second number beside it). A reading of the evidence that treats
+adjacency as the weaker, more incidental channel is available, and the
+differential-growth result says the opposite:
+
+> **`[A]` In the one mechanism that generates form with no external anchor, the
+> entire motive force is the difference between adjacent parts.** Adjacency is
+> not a weak proxy for comparison — **it is what does the work.** Withholding
+> the neighbour is therefore the load-bearing guard rather than the cheap one,
+> and 6.28's decision is better taken on the channel the code already uses.
+
+**`[A]` And it suggests the shape of an answer the row has been looking for.**
+A boolean rendered **where nothing sits beside it** inherits the existing
+guard; the same boolean rendered **across a domain's claims** supplies
+neighbours, and a field of *disputed / unchallenged* booleans is a
+differential — two populations, strained against each other, which is the
+ranking surface arriving by buckling rather than by sorting. `[A]` That is an
+argument about **where**, not about **whether**, and it is the first thing in
+this import that bears on 6.28's `[D]` rather than on its shape.
+
+### 11.2 `[V]` "Culture removes the reader, not the mark" — and two fields here have no reader anywhere
+
+`[U]` §12.1c's correction, from the source's own enumeration errors: a whole
+model class was eliminated by **collapsing *mark* with *readout***. A per-cell
+register was ruled out because cultured cells did not behave as though it
+existed — but *"culture removes the reader, not the mark."* A mark whose reader
+is non-cell-autonomous is invisible in isolation **and still present.**
+
+**`[A]` The borrowable rule is therefore not *delete unread fields*. It is:
+NAME THE READER, OR ADMIT THERE IS NONE.** An entry field with no reader *in
+this zome* may be read by a client, an agent or a person — which is a
+legitimate place to be, and is what row 8.4's audit already concluded about
+tier-4 fields. The defect is a field whose reader is **nowhere**, because that
+is the case the biology does not rescue.
+
+**`[V]` MEASURED, 2026-11-25.** 23 entry structs, **127 public fields**; for
+each, searched the coordinator for a read, then the integrity zome, the UI and
+`scripts/`. **Four fields have no coordinator read, and two of those have no
+reader at any layer:**
+
+| field | integrity | coordinator | UI | harnesses |
+|---|---|---|---|---|
+| **`CritiqueSpecies.required_evidence: Vec<String>`** | **declaration only** | none | none | set, never asserted |
+| **`Membrane.validation_rules_hash: Option<EntryHash>`** | **declaration only** | none | none | **every harness sets it `null`** |
+| `SettlementPolicy.statement` | 9 | 2 | none | 43 |
+| `SettlementStatus.aggregator` | 14 | 6 | none | 24 |
+
+**`[V]` AND THE FIRST ONE LANDS ON THE BUILD §0 SAYS IS NEXT.**
+`validate_critique_species` (`dna/integrity/src/lib.rs:2066`) checks the
+proposer matches the author, the name is non-empty, and the parent resolves —
+**and never looks at `required_evidence`.** The `CritiqueToSpecies` link
+validation (`:3113`-`:3170`) resolves both ends, checks the link hangs from the
+species the critique names and that the critique actually adopted it — **and
+never consults the species' stated evidence requirement either.** One harness
+writes an English sentence into the field: `required_evidence: ['at least one
+evidence_hash resolving to Evidence']` (`scripts/live-verify/secretion.mjs:188`).
+
+> **`[A]` SO A SPECIES CAN DECLARE WHAT EVIDENCE ITS CRITIQUES MUST CARRY, AND
+> NOTHING AT ANY LAYER CHECKS A CRITIQUE AGAINST IT.** Row 8.1's decision is
+> that **8.12 is seeded first** — a runtime `CritiqueSpecies` taxonomy in place
+> of a sixth `CritiqueMode` variant, chosen because it needs no fork. **Seeding
+> species that state evidence requirements nothing enforces ships a promise the
+> protocol does not keep**, and it is [[ai-inhabitant-hooks-built-caller-absent]]
+> arriving in the one place this repository is about to build. Row **8.18**.
+
+**`[A]` The second is worse in one respect and cheaper in another.**
+`validation_rules_hash` is an `Option<EntryHash>` — **a type that promises
+resolvability** — and 8.4's audit recorded that this protocol's gated rule is
+that hash fields *resolve their target in validation*, currently 8 of 9. This
+one is resolved nowhere, read nowhere, and null in every harness: not a
+tier-4 self-report like `replication_attempted`, but **a dangling pointer with
+a stated convention it sits outside.** Cheaper because nothing uses it, so
+either a comment admitting the limit or removal is a one-line change — and
+[[what-justifies-removing-code]] says *unused* is not the bar, so the comment
+is the default.
+
+### 11.3 `[V]` A rate band has two ends, and this protocol guards one of them — deliberately
+
+`[U]` Distraction osteogenesis is **rate-banded, not rate-capped**: 0.25 mm
+four times daily, and both ends fail differently — too fast gives fibrous
+non-union (the gap fills with the wrong tissue), too slow gives premature
+consolidation (**the window shuts**).
+
+**`[V]` MEASURED: the integrity zome has five too-fast bounds and exactly one
+too-late bound, and they are on different objects.** The five are rate windows
+— `CRITIQUE_`, `ANTIBODY_PATTERN_`, `SYNAPTIC_LINK_`, `REINFORCEMENT_` and
+`ATTESTATION_GRANT_WINDOW_SECS_VALIDATION` — each counting the author's own
+recent actions back along their source chain. The one is
+`PreRegistration.reveal_deadline`, refused outright (`:1408`), **with a
+commitment born expired also refused** (`:1383`), because *"a commitment that
+is already expired can never be revealed and would pad the denominator."*
+
+> **`[A]` THIS IS CORROBORATION, NOT A GAP, AND THE REASON IS IN THE COMMENT.**
+> The protocol's single too-late failure **expires visibly** — the expired count
+> exists *"to DEFLATE a signal, not to rank agents"*, and revealed, expired and
+> pending are returned as raw lists. The biology's too-slow failure is a window
+> shutting **silently**; this protocol's is a window shutting **on the record.**
+> `[A]` The asymmetry is correct: a rate cap protects the DHT from one agent,
+> and only pre-registration has a *promise* whose lapse is itself information.
+
+### 11.4 `[V]` Pool depletion — the biology's counter is a population, and so is this protocol's
+
+`[U]` The source's most consequential correction (§11.5d) replaced *"any
+organ-scale counter must be accumulation-based"* with **pool depletion** — *"a
+tally held as the number of surviving progenitors rather than as a molecular
+concentration, which has no ceiling at all"* — and noted it **eases the
+instrument problem**, because a population is countable by ordinary methods
+where a per-cell register needs bespoke tooling.
+
+**`[V]` THIS PROTOCOL MADE THE SAME MOVE, IN THE CODE, FOR ITS OWN REASONS.**
+`CritiqueSpecies`'s struct comment (`dna/integrity/src/lib.rs:386`):
+
+> *"adoption_count intentionally removed: it was a plain u32 the proposer set to
+> any value at creation time, with no validation and no increment mechanism
+> anywhere in the codebase — a free, self-declared number, not a derived
+> signal. See coordinator's `get_critique_species_adoption_count` for the real,
+> query-time replacement, which **counts actual CritiqueToSpecies links**."*
+
+**`[A]` A stored register was deleted in favour of counting the surviving
+population at read time** — pool depletion, arrived at from
+recorder-versus-governor rather than from instrument cost, and row 8.6's audit
+found **no ungoverned derived counter of that kind survives anywhere in the
+zome.** `[A]` Independent convergence, and the cheap consequence the source
+names transfers exactly: **a population is countable by the instrument you
+already have.** That is why `get_critique_species_adoption_count` needs no new
+field.
+
+### 11.5 `[A]` Contact versus soluble — the channel is part of the signal
+
+`[U]` The co-culture result that re-ranked the source's own table: fibroblast
+stiffness-dependence was **abolished by direct M2 contact**, restored by IL6
+inhibition — and **conditioned media of any type had no effect.** `[U]`
+(One immortalised line, one timepoint, n = 3–5, contact not fully isolated.)
+The same signal, delivered by broadcast, did nothing.
+
+**`[A]` This protocol has both channels and already instruments the
+difference.** A critique is **published** to the DHT, which is broadcast — it
+exists whether or not the author ever reads it. `critiques_unseen_by`
+(`dna/coordinator/src/lib.rs:1900`, 13 call sites) reports who has **not seen**
+it, and 6.15's gesture gates a notification so *"nothing is raised for somebody
+who never opted in."*
+
+> **`[A]` The transferable claim is narrow and worth stating anyway: a critique
+> that is published and unread has no effect on the author, however well
+> sourced.** Publication is necessary and is not contact. `[A]` That makes
+> `critiques_unseen_by` and the notification surfaces **load-bearing rather
+> than cosmetic** — they are the only places the protocol distinguishes a
+> signal that was emitted from one that arrived. No build is proposed; the
+> instrument exists and this says what it measures.
+
+### 11.6 `[A]` One attempt per site — Invariant 6 is the same architecture, with the cost stated
+
+`[U]` The source's sharpest operational constraint: macrophage-depleted stumps
+**never regenerated even after the population fully returned**, and only
+**fresh injury at new tissue** reset the outcome. The selector commits per
+site, and the commitment does not come back.
+
+**`[A]` That is this protocol's write model exactly.** Invariant 6 keeps
+everything written, deletion is **absent from the integrity zome** rather than
+merely unexposed, and `Retraction`'s own doc comment says what the recovery is:
+*"A retraction is not a deletion. It is a new entry that says: 'I no longer
+stand by this claim, and here is why.'"* **You cannot repair the committed
+site; you can only publish beside it.** `[A]` The biology does not change the
+design — it supplies the cost in one sentence, which is worth having when
+explaining why there is no edit: **a site that commits wrong is spent, and the
+only reset is a fresh one.**
+
+### 11.7 `[A]` "The deposited output has no program of its own"
+
+`[U]` A standing conclusion of the source: *"ECM is deposited output with no
+program of its own — the controllable objects are always the cell and the
+geometry."* Every intervention it ranks acts on a cell or on a boundary, never
+on the material.
+
+**`[A]` Read across: the DHT's contents are deposited output.** The
+controllable objects here are the **agent** and the **validation rules** —
+which is the same statement as *there is no edit*, reached from the other
+direction. `[A]` Worth keeping as a sentence for READINESS rather than as a
+row: it explains why every lever in this protocol is a write rule or a read
+computation, and never a change to what is already written.
+
+### 11.8 `[A]` "Influence is not reference" — row 8.2's grid with a test attached
+
+`[U]` §11.1a's four conditions for a candidate size reference, and the
+source's own verdict on them: *"Condition 4 does all the work. Almost
+everything passes 1–3 and fails 4."* Condition 4 is that the candidate must
+change the **target**, not the attained value — nutrition, oxygen, stress each
+influence the outcome and move no target. *"Without condition 4 the move
+degenerates into 'everything affects everything,' which is true and useless."*
+
+**`[A]` Row 8.2 borrows the five-way grid as a TAXONOMY. This is the grid with
+a DISCRIMINATOR**, and it is the half that does the work: *does this
+mechanism change the reference, or does it change the reading?* `[A]` For a
+critique router the distinction is the difference between *your claim rests on
+a mis-set reference* and *your claim rests on a reading something else
+perturbs* — and only the first is a critique of the claim. Recorded as a
+second sentence on 8.2's convention, not as a row of its own.
+
+### 11.9 `[A]` What the biology did NOT yield
+
+Stated so the next pass does not re-derive it. **The hysteresis material is
+already here** (8.14, 8.15) and this pass added nothing to it. **The three
+outcomes** are in §6 above. **The waveform result produced nothing
+transferable** — *held strain decays, held force creeps, only ratcheting
+maintains* is a fact about viscoelastic materials, and the analogue would have
+to be a claim about something that relaxes when it is not renewed, which this
+protocol's read-time recomputation deliberately does not do. **And the
+anchor/force-couple material yielded §11.1 and nothing else**: Newton's third
+law is not a structure this protocol has an instance of.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -504,4 +749,7 @@ has not been asked."*
 | exactly one ordinal validity rule, five rate windows | `[V]` | `action.timestamp()`'s 10 uses in the integrity zome at `10a5107`; **integrity zome only** — the coordinator is not audited here |
 | the sequence result, the co-culture override, the traction null | `[U]` | the source's, with its own caveats carried in §0 |
 | the ranked table's membership and order | `[Q]` | quoted from §11.6f of the 2026-11-25 revision |
+| 127 public fields over 23 entry structs; two with no reader at any layer | `[V]` | `dna/integrity/src/lib.rs` and `dna/coordinator/src/lib.rs` at `39aa872`, plus `ui/`, `mobile-ui/` and `scripts/`; **"no reader" means no textual reference — a field read through a destructured binding or a serde round-trip would not show, so two is a CEILING on the defect, not a floor** |
+| five too-fast bounds, one too-late bound | `[V]` | integrity zome only, at `39aa872` |
+| row 6.28's refusal turns on adjacency | `[V]` | `mobile-ui/src/main.ts:2148`, read 2026-11-25 — the row cites `:2124`, which is the same comment block |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
