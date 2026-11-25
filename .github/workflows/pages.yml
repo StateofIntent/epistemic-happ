@@ -1,0 +1,63 @@
+# ============================================================================
+# pages.yml — publish site/ to GitHub Pages.
+#
+# WHY THIS IS NOT IN THE SCOPE-GATE FAMILY. `check-workflow-setup-drift.mjs`
+# watches four gated workflows and one ungated one, and `check-ci-scope.mjs`
+# gates the conductor-bound jobs on whether a diff is documentation. This
+# workflow is neither: it asserts nothing about the protocol, runs no harness,
+# and its success is not a required context. It copies a static directory.
+#
+# WHAT IT DOES NOT DO. It does not check the claims on the page. The figures in
+# site/index.html were measured against the source tree by hand on 2026-11-26
+# and NOTHING RE-MEASURES THEM — the same hazard `check-outbound-claims.mjs`
+# exists for, now with a public URL attached. Re-run that check against the
+# page before changing a number on it.
+# ============================================================================
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; never cancel one midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # A broken link to a stylesheet renders as an unstyled page, not an
+      # error, so check every local asset the page references actually exists.
+      - name: every referenced local asset exists
+        run: |
+          cd site
+          miss=0
+          for ref in $(grep -oE '(src|href)="[^"#:]+"' index.html \
+                       | sed -E 's/.*="([^"]+)"/\1/' | sort -u); do
+            if [ ! -e "$ref" ]; then echo "MISSING: $ref"; miss=1; fi
+          done
+          [ "$miss" -eq 0 ] && echo "all local assets present"
+          exit "$miss"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

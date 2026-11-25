@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epistemic Resonance</title>
+<meta name="description" content="A peer-to-peer protocol where disagreeing with a claim is a first-class, typed, attributable object — and where the record can state its own error rate.">
+<link rel="icon" href="assets/icon.png" type="image/png">
+<meta property="og:title" content="Epistemic Resonance">
+<meta property="og:description" content="Producing a claim became free. Checking one did not. A protocol that stores typed disagreement instead of scores.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/epistemic-resonance.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="mast">
+  <a class="mast__logo" href="#top" aria-label="Epistemic Resonance — home">
+    <img class="logo--light" src="assets/logo-light.png" alt="Epistemic Resonance" width="1280" height="347">
+    <img class="logo--dark" src="assets/logo-dark.png" alt="" aria-hidden="true" width="1280" height="347">
+  </a>
+  <nav class="mast__nav" aria-label="Primary">
+    <a class="opt" href="#problem">The problem</a>
+    <a class="opt" href="#state">What exists</a>
+    <a class="opt" href="#method">Method</a>
+    <a class="opt" href="#limits">Limits</a>
+    <a class="btn" href="https://github.com/StateofIntent/epistemic-happ">Source</a>
+  </nav>
+</header>
+
+<div class="shell" id="top">
+
+  <nav class="rail" aria-label="Sections">
+    <ol>
+      <li><a href="#problem">What changed</a></li>
+      <li><a href="#move">The one move</a></li>
+      <li><a href="#types">Five kinds of objection</a></li>
+      <li><a href="#state">What exists today</a></li>
+      <li><a href="#neighbours">Where it sits</a></li>
+      <li><a href="#fraud">Against a curated record</a></li>
+      <li><a href="#method">Why believe any of it</a></li>
+      <li><a href="#convergence">The biology</a></li>
+      <li><a href="#limits">Honest limits</a></li>
+      <li><a href="#support">Funders &amp; collaborators</a></li>
+    </ol>
+  </nav>
+
+  <main class="col" id="main">
+
+    <!-- ================= HERO ================= -->
+    <section class="sec hero">
+      <svg class="wave" id="wave" viewBox="0 0 1200 160" preserveAspectRatio="none" aria-hidden="true"></svg>
+
+      <p class="eyebrow">Peer-to-peer epistemic infrastructure</p>
+      <h1>Disagreement with <em>a name on it.</em></h1>
+      <p class="lede">
+        The cost of producing a plausible claim collapsed. The cost of checking one did not.
+        That inverts what is scarce — not information, but <strong>attributable disagreement</strong>.
+        This is a protocol that stores typed disagreement instead of scores, cannot delete anything,
+        and publishes its own failure rates.
+      </p>
+
+      <div class="chips">
+        <span class="chip">protocol <b>v11</b></span>
+        <span class="chip"><b>580</b> merged PRs</span>
+        <span class="chip"><b>77</b> live-conductor harnesses</span>
+        <span class="chip">built on <b>Holochain</b></span>
+        <span class="chip"><b>MIT</b> &amp; <b>Apache-2.0</b></span>
+        <span class="chip">pilot: <b>2 operators</b></span>
+      </div>
+
+      <div class="cta">
+        <a class="btn" href="#problem">Read the argument</a>
+        <a class="btn btn--ghost" href="https://github.com/StateofIntent/epistemic-happ">Source on GitHub</a>
+      </div>
+    </section>
+
+    <!-- ================= PROBLEM ================= -->
+    <section class="sec" id="problem">
+      <p class="eyebrow">What changed</p>
+      <h2>Asserting became free. Checking did not.</h2>
+      <p class="lede">
+        A language model will produce a confident, well-sourced-looking paragraph on any subject
+        for a fraction of a cent. Verifying that paragraph still costs a human being their
+        attention, their expertise, and often a week.
+      </p>
+
+      <div class="ledger wide">
+        <div class="ledger__row ledger__row--head">
+          <div>the task</div><div>cost before</div><div>cost now</div>
+        </div>
+        <div class="ledger__row">
+          <div class="ledger__what">Produce a plausible claim</div>
+          <div class="ledger__v">hours of expertise</div>
+          <div class="ledger__v ledger__v--now">≈ free</div>
+        </div>
+        <div class="ledger__row">
+          <div class="ledger__what">Produce ten thousand of them</div>
+          <div class="ledger__v">impossible</div>
+          <div class="ledger__v ledger__v--now">≈ free</div>
+        </div>
+        <div class="ledger__row">
+          <div class="ledger__what">Check one properly</div>
+          <div class="ledger__v">a week</div>
+          <div class="ledger__v ledger__v--now">still a week</div>
+        </div>
+        <div class="ledger__row ledger__row--key">
+          <div class="ledger__what">A specific, aimed, attributable objection</div>
+          <div class="ledger__v">expensive</div>
+          <div class="ledger__v ledger__v--now">the only scarce thing</div>
+        </div>
+      </div>
+
+      <p>
+        Every mechanism we have for sorting claims was designed when the opposite was true —
+        when producing a claim was expensive and the problem was <em>finding</em> it.
+      </p>
+
+      <div class="scroll wide">
+        <table>
+          <caption>Four mechanisms, and what they do now</caption>
+          <thead><tr><th>Mechanism</th><th>What it was for</th><th>What it does now</th></tr></thead>
+          <tbody>
+            <tr><td>Ranking</td><td>Surfacing the scarce good thing</td><td>Sorts by volume — the thing that just became free</td></tr>
+            <tr><td>Moderation</td><td>Removing the rare bad actor</td><td>Adjudicates at a volume no human can read, so it is automated, and automation deletes heterodox-but-true</td></tr>
+            <tr><td>Reputation</td><td>Identifying who is reliable</td><td>Judges the <strong>speaker</strong> — exactly what cheap assertion makes cheap to fake</td></tr>
+            <tr><td>Engagement</td><td>Measuring interest</td><td>A one-dimensional projection of a many-dimensional disagreement</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        All four share one assumption: that the expensive thing is the claim. It is not any more.
+        The expensive thing is a specific, attributable, well-aimed objection — and we have no
+        system that stores one as a first-class object. Community Notes is the closest thing in
+        production, and it still collapses to a vote on whether a note is helpful.
+      </p>
+
+      <blockquote class="pull">
+        <p>The scarce good is no longer information. It is disagreement with a name on it.</p>
+      </blockquote>
+    </section>
+
+    <!-- ================= THE MOVE ================= -->
+    <section class="sec" id="move">
+      <p class="eyebrow">The one move</p>
+      <h2>Make typed disagreement the primitive.</h2>
+      <p class="lede">
+        Not a reaction to a post — an entry with its own author, target, evidence and kind.
+        Four things follow, and each is <strong>enforced rather than encouraged</strong>.
+      </p>
+
+      <div class="grid grid--2 wide">
+        <article class="panel">
+          <span class="panel__n">01</span>
+          <h3>Critiques are typed, never flattened</h3>
+          <p>Five kinds ship. A system that collapses them into one number has thrown away the only
+          information that distinguishes a bad study from an unwelcome result. The taxonomy is
+          <strong>extensible at runtime</strong>, so the network can speciate new kinds of objection
+          without a fork.</p>
+        </article>
+        <article class="panel">
+          <span class="panel__n">02</span>
+          <h3>There is no score, and that is structural</h3>
+          <p>No karma, no stars, no trust index, no sorted leaderboard. Aggregation is allowed only
+          when a <strong>named agent</strong> publishes it as their own reading — which makes it a
+          promise you can argue with instead of arithmetic you cannot.
+          <strong>There is nothing to game because there is no number to move.</strong></p>
+        </article>
+        <article class="panel">
+          <span class="panel__n">03</span>
+          <h3>Nothing is deleted</h3>
+          <p>No delete operation is accepted at all — the capability is absent from the network's
+          rules, not merely unexposed. A critique cannot be buried and a prediction cannot be quietly
+          withdrawn. This is also the protocol's sharpest cost, and it is
+          <a href="#limits">stated plainly</a> rather than hidden.</p>
+        </article>
+        <article class="panel">
+          <span class="panel__n">04</span>
+          <h3>Commitments are sealed, with no registrar</h3>
+          <p>A prediction can be committed with its question and deadline <strong>public from the
+          moment of commitment</strong> and its content sealed. There is no judge and no registrar —
+          only a seal, a clock, and a denominator that refuses to shrink when somebody declines to
+          reveal. <strong>You cannot pre-select a favourable adjudicator, because there is none.</strong></p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ================= THE FIVE KINDS ================= -->
+    <section class="sec" id="types">
+      <p class="eyebrow">The primitive, in detail</p>
+      <h2>Five kinds of objection.</h2>
+      <p class="lede">
+        A critique names which kind it is. The kinds are peers — no order is implied here and none
+        exists in the protocol, because an ordering would be the ranking the design exists to refuse.
+      </p>
+
+      <div class="grid grid--3 wide">
+        <article class="kind" style="--k: var(--k-exp)">
+          <h4>Experiential</h4>
+          <p><q>I tried this and&hellip;</q></p>
+        </article>
+        <article class="kind" style="--k: var(--k-met)">
+          <h4>Methodological</h4>
+          <p><q>The design is flawed because&hellip;</q></p>
+        </article>
+        <article class="kind" style="--k: var(--k-log)">
+          <h4>Logical</h4>
+          <p><q>This contradicts itself.</q></p>
+        </article>
+        <article class="kind" style="--k: var(--k-evi)">
+          <h4>Evidential</h4>
+          <p><q>Your source doesn't say that.</q></p>
+        </article>
+        <article class="kind" style="--k: var(--k-phe)">
+          <h4>Phenomenological</h4>
+          <p><q>My experience differs.</q></p>
+        </article>
+      </div>
+
+      <p class="note" style="margin-top:1.6rem">
+        <strong>Critiques target statements, not people.</strong> The protocol refuses to let an
+        objection name an agent as its subject — because that would be the reputation mark the
+        no-score rule exists to prevent.
+      </p>
+    </section>
+
+    <!-- ================= WHAT EXISTS ================= -->
+    <section class="sec" id="state">
+      <p class="eyebrow">What exists today</p>
+      <h2>Nine layers, and only one of them is missing.</h2>
+      <p class="lede">
+        Read top to bottom: the path from a person with an opinion to a durable, critiquable,
+        exportable record.
+      </p>
+
+      <div class="scroll wide">
+        <table>
+          <caption>The ordered map</caption>
+          <thead><tr><th>Layer</th><th>What happens here</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>The person</td><td>Writes a claim in a domain, in their own words, at whatever length it takes</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The claim</td><td>Stored with its author, domain, evidence, confidence and history. Never summarised</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The critique</td><td>A typed, authored objection pointing at a claim — or at another critique, a constitution, or a membrane</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The membrane</td><td>A domain with its own stated promises. Sovereign: it declares what it demands of participants</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The read layer</td><td>Standing, conductance and discourse health computed <em>when asked</em>, from the caller's own policy, writing nothing</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The commitment</td><td>Sealed predictions with public questions and deadlines, and a denominator that cannot be shrunk</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The export</td><td>The graph serialised to N4L for Mark Burgess's SSTorytime — 3D traversal, outside this protocol</td><td><span class="st st--ship">shipped</span></td></tr>
+            <tr><td>The bridge</td><td>A durable witness that a Holochain entry and a public post co-occurred. Asymmetric by design</td><td><span class="st st--hold">built, not deployed</span></td></tr>
+            <tr><td>The cohort</td><td>Enough independent operators that propagation, discovery and disagreement can be <em>measured</em> rather than argued</td><td><span class="st st--gap">the gap</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The first seven exist and are exercised against a real Holochain conductor on every CI run.
+        The eighth exists and is not deployed. <strong>The ninth is the gap, and it is the only one
+        money fixes.</strong>
+      </p>
+
+      <h3 style="margin-top:2.4rem">Counted, not estimated</h3>
+      <dl class="figs wide">
+        <div class="fig"><dt>Protocol version</dt><dd>11<small>the integrity hash is the network's identity</small></dd></div>
+        <div class="fig"><dt>Integrity zome</dt><dd>4,016<small>lines · 19 entry types · 31 link types</small></dd></div>
+        <div class="fig"><dt>Coordinator zome</dt><dd>9,863<small>lines · 98 callable functions</small></dd></div>
+        <div class="fig"><dt>Verification harness</dt><dd>77<small>live-conductor harnesses · 35,782 lines</small></dd></div>
+        <div class="fig"><dt>Document &amp; spec gates</dt><dd>15<small>run on every change</small></dd></div>
+        <div class="fig"><dt>Merged pull requests</dt><dd>580<small>public history</small></dd></div>
+      </dl>
+      <p class="note">
+        Every figure on this page was re-measured against the source tree on
+        <span class="mono">2026-11-26</span>, not copied from an earlier document.
+      </p>
+    </section>
+
+    <!-- ================= NEIGHBOURS ================= -->
+    <section class="sec" id="neighbours">
+      <p class="eyebrow">Where it sits</p>
+      <h2>Four neighbours, and what each one left on the table.</h2>
+      <p class="lede">
+        None of these is a competitor. Three of them solved a part of this problem properly, and the
+        part they did not solve is the same part each time.
+      </p>
+
+      <div class="tabs wide" role="tablist" aria-label="Neighbouring projects">
+        <button class="tab" role="tab" id="tab-n4l" aria-controls="p-n4l" aria-selected="true">N4L &amp; Semantic Spacetime</button>
+        <button class="tab" role="tab" id="tab-solid" aria-controls="p-solid" aria-selected="false">The Semantic Web &amp; Solid</button>
+        <button class="tab" role="tab" id="tab-mat" aria-controls="p-mat" aria-selected="false">Mattereum</button>
+        <button class="tab" role="tab" id="tab-ai" aria-controls="p-ai" aria-selected="false">The AI information flood</button>
+      </div>
+
+      <div class="wide" id="p-n4l" role="tabpanel" aria-labelledby="tab-n4l">
+        <h3>Same geometry, different scarcity</h3>
+        <p>
+          N4L is a notation for notes that keeps what prose keeps: direction, type, context, nuance.
+          SSTorytime is its reference implementation. The goal is explicitly anti-flattening, and
+          <strong>this protocol takes the geometry wholesale</strong> — four link semantics, context as
+          a first-class dimension, no collapse to a score. What N4L is not built for is adversarial
+          multi-agent use, and it does not claim to be. It is one author's notes, trusted because they
+          are yours.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Trait N4L aims at</th><th>N4L</th><th>This protocol</th></tr></thead>
+            <tbody>
+              <tr><td>Typed, directional relations</td><td>Yes</td><td>Yes — adopted directly</td></tr>
+              <tr><td>Context preserved, not summarised</td><td>Yes</td><td>Yes</td></tr>
+              <tr><td>No ranking, no engagement metric</td><td>Yes</td><td>Yes — and enforced by an invariant</td></tr>
+              <tr><td>Many authors who disagree</td><td>Not its problem</td><td><strong>The primitive</strong></td></tr>
+              <tr><td>Disagreement as a stored object</td><td>No primitive for it</td><td>Five types, extensible at runtime</td></tr>
+              <tr><td>Validation at the write boundary</td><td>n/a — local notes</td><td>Every rule enforced by the network, 4,016 lines of it</td></tr>
+              <tr><td>Each author sovereign over their store</td><td>Local files</td><td>Each is a node with their own keys</td></tr>
+              <tr><td>3D traversal and query</td><td>Yes — SSTorytime</td><td>Exports to it</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote class="pull">
+          <p>It is additive, not competitive. The export exists so that the thing Burgess built to
+          read knowledge graphs can read this one.</p>
+          <cite>N4L solved the notation. This is an attempt at the part that only appears when the notes have to survive other people.</cite>
+        </blockquote>
+      </div>
+
+      <div class="wide" id="p-solid" role="tabpanel" aria-labelledby="tab-solid" hidden>
+        <h3>The box nobody ticked</h3>
+        <p>
+          The Semantic Web's original programme had three parts: machine-readable meaning, provenance,
+          and <strong>trust</strong>. The first two got standards. The third got a name — the
+          <q>Oh yeah?</q> button, where a browser would ask <em>why should I believe this</em> — and
+          never got built. Solid delivered the half the web most needed, data sovereignty, and does
+          not claim to attempt trust semantics.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>The original programme</th><th>Shipped elsewhere</th><th>Here</th></tr></thead>
+            <tbody>
+              <tr><td>Typed relations between things</td><td>RDF / OWL</td><td>Yes — typed links, 31 kinds</td></tr>
+              <tr><td>Provenance: who said this, when</td><td>Partly</td><td>Every entry carries its author and action; nothing is anonymous</td></tr>
+              <tr><td>Data sovereignty</td><td>Solid pods</td><td>Yes — each agent is a node</td></tr>
+              <tr><td><strong>Trust: why should I believe this</strong></td><td><strong>Nobody</strong></td><td><strong>The whole object: typed disagreement, attached to the claim, permanently</strong></td></tr>
+              <tr><td>Disagreement as data</td><td>No primitive anywhere</td><td>Five types, extensible</td></tr>
+              <tr><td>A reading you can argue with</td><td>No</td><td>Aggregation requires a named aggregator, so every reading is a promise</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          <strong>And the axis where it is genuinely opposed to Solid, stated first because it is the
+          first thing a serious reader raises.</strong> Solid exists partly so you can <em>remove</em>
+          your data. This protocol makes erasure structurally impossible — no delete operation is
+          accepted by the network at all, which means a right-to-erasure request cannot be complied
+          with on this network by anyone. It is a deliberate trade: a record that can be edited by the
+          party with the most to lose is not a record. A deployment for the general public would have
+          to confront this; the pilot confronts it by being small, consenting and informed.
+        </p>
+      </div>
+
+      <div class="wide" id="p-mat" role="tabpanel" aria-labelledby="tab-mat" hidden>
+        <h3>The complementary half</h3>
+        <p>
+          Mattereum binds <strong>physical assets</strong> to claims using Ricardian contracts — a
+          document simultaneously readable by a human, a court, and a machine. Its hard problem is the
+          warranty: somebody must assert a fact about an object, and bear consequences if it is false.
+          This protocol is built on the same shape and solves a different half. Its correlative witness
+          is explicitly <em>not</em> a Ricardian contract — no legal force, no counterparty obligation —
+          but it is the durable, attributable, critiquable record a warranty regime needs and a review
+          system cannot provide.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Mattereum needs</th><th>Today</th><th>What this adds</th></tr></thead>
+            <tbody>
+              <tr><td>A warranty asserted by a named party</td><td>Ricardian contract</td><td>Compatible — a claim here is already authored and permanent</td></tr>
+              <tr><td>Somewhere disputes live that isn't a review score</td><td>Missing</td><td>Typed critique, attached to the asset's claim, undeletable</td></tr>
+              <tr><td>Provenance that survives the platform</td><td>On-chain</td><td>A witness that survives the counterparty deleting their side</td></tr>
+              <tr><td>Seeing that a warranty was challenged, and by whom</td><td>Missing</td><td>The critique graph, with the challenger named</td></tr>
+              <tr><td>No platform adjudicating who is right</td><td>The aim</td><td>An invariant: there is no judge and no score</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <blockquote class="pull">
+          <p>An asset passport gets a membrane, and disputes about that asset become typed critiques
+          with provenance instead of star ratings.</p>
+          <cite>Neither does the other's job, and the two compose without either changing its invariants.</cite>
+        </blockquote>
+      </div>
+
+      <div class="wide" id="p-ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
+        <h3>A sensemaking tool, not another feed</h3>
+        <p>
+          The flood is usually described as a volume problem. It is a <strong>cost-asymmetry</strong>
+          problem, and that distinction decides what a tool has to do. A tool that helps must make the
+          expensive thing accumulate and the cheap thing worthless. This one does both by construction.
+        </p>
+        <ul class="limits">
+          <li><strong>Volume buys nothing.</strong> There is no ranking to climb, no feed position, no
+          score. Ten thousand generated claims produce ten thousand unranked entries and move nothing.</li>
+          <li><strong>The critique is the asset.</strong> A typed objection with evidence attached is
+          the thing that persists and the thing a reader navigates by.</li>
+          <li><strong>Friction is per-identity and deliberate.</strong> Rate limits on writing are
+          budgeted, and the specification states plainly that they bound throughput per identity and
+          <em>not</em> the cost of making new identities. That is the honest limit, and it is written
+          in the spec rather than in an FAQ.</li>
+          <li><strong>A reader's lens is their own.</strong> Any filter is supplied by the caller,
+          never a protocol default, so there is no single algorithmic view to capture.</li>
+        </ul>
+        <blockquote class="pull">
+          <p>For a human navigating a domain where most text is now synthetic, the useful question is
+          not <q>what is popular</q> but <q>what has survived someone's informed objection, and who
+          objected</q>.</p>
+          <cite>That question has no answer on any platform today. Here it is the primary read.</cite>
+        </blockquote>
+      </div>
+    </section>
+
+    <!-- ================= FRAUD ================= -->
+    <section class="sec" id="fraud">
+      <p class="eyebrow">Against a curated record</p>
+      <h2>Four properties, none of which requires anyone to be honest.</h2>
+
+      <div class="scroll wide">
+        <table>
+          <thead><tr><th>Failure mode</th><th>The usual defence</th><th>The mechanism here</th></tr></thead>
+          <tbody>
+            <tr><td>Quietly retracting a prediction that failed</td><td>Screenshots, memory</td><td>A sealed commitment with a <strong>public question and deadline</strong>, and a denominator that refuses to shrink when the author declines to reveal. The non-answer is itself countable</td></tr>
+            <tr><td>Burying the correction</td><td><q>We updated the article</q></td><td><strong>No delete operation exists.</strong> The retraction is a new entry beside the claim; both stand</td></tr>
+            <tr><td>The objection being drowned</td><td>Moderation</td><td><strong>No ranking</strong>, so volume cannot drown anything — there is no ordering to flood</td></tr>
+            <tr><td>Attacking the critic instead of the critique</td><td>Fact-check labels</td><td>Critiques target statements, not people, and the protocol refuses to let an objection name an agent as its subject</td></tr>
+            <tr><td><q>The algorithm decided</q></td><td>Transparency reports</td><td>Any aggregate requires a <strong>named</strong> aggregator who owns it as a promise; a protocol-computed verdict is forbidden</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <blockquote class="pull">
+        <p>Most dishonesty in public claim-making is not a lie; it is a <strong>selective record</strong>.
+        If someone's failed predictions never enter the sample, their hit rate is unfalsifiable. Here
+        the unrevealed commitment stays in the count — so the sample cannot be curated by the person
+        being measured.</p>
+      </blockquote>
+    </section>
+
+    <!-- ================= METHOD ================= -->
+    <section class="sec" id="method">
+      <p class="eyebrow">Why believe any of it</p>
+      <h2>The method is the differentiator.</h2>
+      <p class="lede">
+        Most epistemic-infrastructure projects ask for trust in exactly the currency they claim to be
+        replacing. This one has a method you can check.
+      </p>
+
+      <div class="grid grid--2 wide">
+        <article class="panel">
+          <h3>Nulls get published</h3>
+          <p>When a network test fails intermittently, the rate is published as a <strong>lower bound
+          with its denominator stated</strong> and the ambiguous cases named — rather than retried
+          until green. The repository records a slow-propagation distribution with sixteen-plus
+          measured values, including the ones that weaken the case.</p>
+        </article>
+        <article class="panel">
+          <h3>Checks are proven capable of failing</h3>
+          <p>A gate that cannot go red is treated as absent. New checks are deliberately broken and
+          watched failing, and the number of ways is recorded.
+          <em>An exit code is not a measurement</em> is a standing rule with its own instances.</p>
+        </article>
+        <article class="panel">
+          <h3>Figures are counted, not estimated</h3>
+          <p>Every number on this page was re-measured against the source tree on the day it was
+          written. Where a figure could not be reproduced from the code, the smaller verifiable
+          number is the one printed.</p>
+        </article>
+        <article class="panel">
+          <h3>Corrections are recorded in place</h3>
+          <p>Including the embarrassing ones. The open-work file carries its own retracted claims with
+          the reason, and a correction accepted and then quietly re-asserted is treated as a finding
+          in its own right.</p>
+        </article>
+        <article class="panel">
+          <h3>Rule changes are visible forks</h3>
+          <p>The integrity zome's hash is the network's identity, so changing a rule cannot be a silent
+          migration. Change one invariant and you have visibly forked rather than quietly migrated.</p>
+        </article>
+        <article class="panel">
+          <h3>The whole history is public</h3>
+          <p>580 merged pull requests, each with its reasoning, its measurements and its reversals.
+          Nothing described here is a roadmap item you have to take on faith.</p>
+        </article>
+      </div>
+
+      <blockquote class="pull">
+        <p>An epistemic tool that cannot show its own error rate is asking for the trust it claims to
+        be replacing. This one can show it, and does, unprompted.</p>
+      </blockquote>
+    </section>
+
+    <!-- ================= BIOLOGY ================= -->
+    <section class="sec" id="convergence">
+      <p class="eyebrow">An independent check</p>
+      <h2>The biology that arrived at the same answers.</h2>
+      <p class="lede">
+        This protocol was compared, line by line, against an adversarial review of how biological
+        tissue decides its own size and form — an inquiry with <strong>no interest in epistemics
+        whatsoever</strong>. Four of its structural results are things this protocol had already
+        decided for Promise Theory reasons, and two of its distinctions found real defects in the code.
+      </p>
+
+      <p class="note">
+        <strong>Honesty first.</strong> The biology below is drawn from an external document, is
+        <strong>not verified here</strong>, and <strong>nothing in the protocol depends on any of it
+        being true.</strong> What transfers is structure, not fact — and that is exactly why the
+        convergence counts: two systems solving <em>how do you determine a quantity without storing
+        it</em> arrived at the same answers from unrelated premises.
+      </p>
+
+      <h3 style="margin-top:2.2rem">Where the biology derived a decision already taken</h3>
+      <div class="scroll wide">
+        <table>
+          <thead><tr><th>Biological result</th><th>This protocol's decision</th><th>Why it matters</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Thymus vs spleen</td>
+              <td>No canonical comparative score; aggregation requires a <em>named</em> aggregator</td>
+              <td>Multiple transplanted thymus grafts each grow to full size — excess is not suppressed. Spleen grafts each stay small, total mass matching one spleen. A spleen must normalise over its whole population, and Promise Theory's result is that <strong>an agent cannot normalise over a population it cannot see</strong> — so this protocol cannot be spleen-shaped. <strong>A design choice turned out to be a derivation.</strong></td>
+            </tr>
+            <tr>
+              <td>The growth plate determines an adult size with no stored target and no comparison</td>
+              <td><code>get_standing</code> stores nothing; standing is the product of a read</td>
+              <td>Final length = divisions remaining × length gained per division, and <em>neither factor knows the product</em>. Both systems achieve <strong>determinacy without specification</strong> — which is how the hardest invariant, atrophy without deletion, was resolved: <strong>the reader is the governor.</strong></td>
+            </tr>
+            <tr>
+              <td>Exhaustion is not comparison — a budget stops a process by being empty, not by being compared against zero</td>
+              <td>Conductance decays toward zero at read time</td>
+              <td>Nothing is deleted, nothing is blocked, nothing refuses — an un-reinforced link simply stops being load-bearing. <strong>A limit with no reader.</strong> The biology explains why that shape is coherent rather than a dodge: a quantity that runs out needs no judge.</td>
+            </tr>
+            <tr>
+              <td>Removing the immune system <em>caused</em> scarring — it did not prevent it</td>
+              <td>Judgement is relocated, not removed</td>
+              <td>Depleting macrophages in a regenerating limb produced fibrosis in 10 of 10 animals, with the construction cells present the whole time. The common objection to this design is <q>you have just deleted moderation</q>. The sharpest answer: <strong>removing the deciding layer does not give you neutrality, it gives you the default failure mode.</strong> What is removed here is the <em>anonymous</em> judge, not judgement.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:2.2rem">The distinctions that found real defects</h3>
+      <p>These are not analogies. Each is a borrowed question that produced a measured finding in a
+      14,000-line codebase.</p>
+      <div class="scroll wide">
+        <table>
+          <thead><tr><th>Borrowed distinction</th><th>What it found here</th></tr></thead>
+          <tbody>
+            <tr><td>Recorder versus governor</td><td>An audit of every declared-time field in the protocol: <strong>18 self-declared timestamps with exactly one bound to anything the network can check.</strong> Eighteen recorders, one governor.</td></tr>
+            <tr><td>Mark versus readout</td><td>The rule <em>name the reader, or admit there is none</em> — which found two entry fields with no reader at any layer, including one whose type promises resolvability and which every test harness sets to null. Both now say so in the code.</td></tr>
+            <tr><td>Compensation has a trigger threshold</td><td>Named the attack shape on the protocol's own write limits: <strong>the way past a cap of 20 per window is twenty-one agents, not twenty-one critiques.</strong> It is also why the one <em>decaying</em> limit cannot be escaped the same way — a slope has no threshold to hide under.</td></tr>
+            <tr><td>A quantity can have a correct value rather than a better direction</td><td>A sort of the protocol's named constants into <em>dial</em>, <em>placeholder</em>, <em>specification</em> — and a fourth class nobody had: a threshold whose resolution is coarser than the distinction it is meant to make. One shipped warning turned out to be in it.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <blockquote class="pull">
+        <p>The thing that catches errors is a specific objection from someone who read it, and no
+        amount of automated checking substitutes.</p>
+        <cite>The external review's own appendix counted who caught its errors: of 26 recorded corrections, seven name an interlocutor and two a self-audit. The largest single detector of its own mistakes was another person.</cite>
+      </blockquote>
+    </section>
+
+    <!-- ================= LIMITS ================= -->
+    <section class="sec" id="limits">
+      <p class="eyebrow">Honest limits</p>
+      <h2>Two operators is not a network.</h2>
+      <p class="lede">
+        One day of adversarial use is an anecdote, not a measurement, and it should not be read as
+        more. <strong>The protocol is not at scale and is not close.</strong> Three specific
+        weaknesses, stated plainly:
+      </p>
+
+      <ol class="limits">
+        <li>
+          <strong>macOS cannot auto-update.</strong> Measured on the shipped artefact: the bundle has
+          no code signature, so the updater can never accept a successor build. Mac participants
+          hand-install. This is a blocker on adoption, not a nice-to-have.
+        </li>
+        <li>
+          <strong>Rate limits do not bound identity creation</strong>, and the specification says so.
+          Sybil resistance and spam defence are treated as distinct properties, and only the second is
+          addressed.
+        </li>
+        <li>
+          <strong>Erasure is impossible</strong>, which is a legal and ethical cost before it is a
+          technical one. A right-to-erasure request cannot be complied with on this network by anyone.
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================= SUPPORT ================= -->
+    <section class="sec" id="support">
+      <p class="eyebrow">For funders and collaborators</p>
+      <h2>What the money is for.</h2>
+
+      <div class="band wide">
+        <div class="band__in">
+          <p class="lede">
+            Layers one through eight exist. The ninth — <strong>a cohort of independent operators</strong> —
+            is the only one that cannot be built by writing more code, and it is the one that turns
+            every claim on this page from an argument into a measurement.
+          </p>
+
+          <h3>In order</h3>
+          <ol class="steps">
+            <li>Always-on infrastructure, so the network exists when nobody is watching.</li>
+            <li>Remove the macOS install blocker.</li>
+            <li>Recruit and pay ten to fifteen operators on their own machines for a fixed period.</li>
+            <li>Publish the benchmark, with nulls included.</li>
+          </ol>
+
+          <blockquote class="pull">
+            <p>The bet is narrow and testable: that the scarce good is attributable disagreement, and
+            that a system which stores it rather than scoring it will be more useful than one more
+            ranking surface. <strong>That bet is wrong if typed critique turns out to be something
+            people will not write.</strong></p>
+            <cite>The cohort is how you find out, and it is what the money is for.</cite>
+          </blockquote>
+
+          <h3 style="margin-top:2rem">What adoption would change</h3>
+          <div class="grid grid--3 wide" style="margin-top:1rem">
+            <article class="panel">
+              <span class="panel__n">01</span>
+              <h4>A domain gets a memory that survives its platform</h4>
+              <p>Any field where practitioners know things that never reach the literature —
+              rehabilitation protocols, trades knowledge, rare-disease experience — currently loses
+              that knowledge when a forum dies or an algorithm changes. A membrane does not.</p>
+            </article>
+            <article class="panel">
+              <span class="panel__n">02</span>
+              <h4><q>Who objected, and on what grounds</q> becomes navigable</h4>
+              <p>Today you can ask what is popular, what is recent, and what a moderator permitted.
+              You cannot ask what survived informed objection. For a reader facing synthetic text at
+              volume, that is the only question that still discriminates.</p>
+            </article>
+            <article class="panel">
+              <span class="panel__n">03</span>
+              <h4>Public claim-making acquires a denominator</h4>
+              <p>Confident prediction is cheap in public life because the failures leave the sample.
+              A public question, a sealed answer and a count that cannot be curated is a small,
+              mechanical change with a large incentive consequence.</p>
+            </article>
+          </div>
+
+          <div class="cta" style="margin-top:2rem">
+            <a class="btn" href="https://github.com/StateofIntent/epistemic-happ">Read the source</a>
+            <a class="btn btn--ghost" href="https://github.com/StateofIntent/epistemic-happ/issues">Open an issue</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="foot__in">
+    <div>
+      <h4>Project</h4>
+      <ul>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ">Source repository</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/SPEC.md">Specification</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/docs/open-work.md">Open work &amp; corrections</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/releases">Releases</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Built on</h4>
+      <ul>
+        <li><a href="https://www.holochain.org/">Holochain</a></li>
+        <li><a href="https://github.com/markburgess/SSTorytime">N4L / SSTorytime</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Licence</h4>
+      <ul>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/LICENSE-MIT">MIT</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/LICENSE-APACHE">Apache-2.0</a></li>
+      </ul>
+    </div>
+    <p class="foot__fine">
+      Epistemic Resonance · protocol version 11 · figures measured against the source tree on
+      <span class="mono">2026-11-26</span>. The pilot is two independent operators on separate
+      machines and separate networks, which is an honest beginning and not a network.
+    </p>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
