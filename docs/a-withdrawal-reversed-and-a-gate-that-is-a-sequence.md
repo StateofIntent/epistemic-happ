@@ -879,6 +879,30 @@ both zomes and `scripts/`: the only appearances are the comparison itself
 the `reading_claims` exclusion — **and never the threshold.** No range, no
 regime, no citation, no measurement.
 
+> **`[V]` DONE 2026-11-25 — AND THE REGIME IS DERIVABLE EVEN THOUGH THE NUMBER
+> IS NOT.** Readings are `logical/experiential` over integers, spaced
+> `1/experiential` apart, and the comparison is exclusive — so the first firing
+> numerator is `3*experiential + 1` and **the smallest overshoot the warning
+> can report is `1/experiential`.** One embodied critique → **33%**; **ten** is
+> the smallest denominator that can fire within 10% of the threshold, because
+> `(3m+1)/m <= 3.1` reduces to `m >= 10` in integers. **Below ten embodied
+> critiques the warning cannot say *just over*.** Stated at the comparison
+> site and in SPEC §10, pinned by two unit tests, and the number itself is
+> admitted as a chosen default rather than given a derivation nobody has.
+>
+> **`[V]` MY FIRST VERSION SAID FIVE AND THE TEST CAUGHT IT — the claim was
+> vacuous, not merely wrong**, because *within 0.1 of 3.0* is satisfiable at
+> every denominator: the silent reading 3.0 is itself within 0.1 of 3.0.
+> Distance to the threshold is not the measurable quantity; **reportable
+> overshoot is.**
+>
+> **`[V]` AND THE MEASUREMENT FOUND A FALSE STATED REASON NEXT DOOR.** The
+> `else` branch read *"No critiques at all … nothing has happened yet"* — but
+> it is reached whenever neither mode appears, **however many critiques
+> exist**, because the ratio reads **two of five** `CritiqueMode` variants.
+> A domain of a hundred `Methodological` critiques reports `0.0`. The number
+> was right for what the measure measures; the reason was not.
+
 > **`[A]` THAT IS ROW 8.13's COMPLAINT POINTED AT A THRESHOLD INSTEAD OF A
 > LABEL** — *a confidence label without a regime of validity is nearly
 > worthless* — and §4.1's split applies unchanged: **3.0 is a PARAMETRIC regime

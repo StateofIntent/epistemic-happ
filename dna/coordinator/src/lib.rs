@@ -4925,8 +4925,16 @@ fn discourse_ratio(logical_count: u32, experiential_count: u32) -> f32 {
         // Real abstract discourse with no embodied report grounding it.
         f32::MAX
     } else {
-        // No critiques at all. Nothing has drifted from practice,
-        // because nothing has happened yet.
+        // NO CRITIQUE OF EITHER MODE. Nothing has drifted from practice,
+        // because nothing this measure reads has happened yet.
+        //
+        // THAT WORDING IS NARROWER THAN THE ORIGINAL AND THE ORIGINAL WAS
+        // FALSE — corrected 2026-11-25, row 8.19. It said "no critiques at
+        // all", but this branch is reached whenever neither `Logical` nor
+        // `Experiential` appears, HOWEVER MANY critiques exist: a domain
+        // with a hundred `Methodological` critiques and nothing else lands
+        // here and reports 0.0. The number is still the right answer for
+        // what this measure claims to measure; the stated reason was not.
         0.0
     }
 }
@@ -5082,6 +5090,51 @@ pub fn get_discourse_health(payload: GetDiscourseHealthPayload) -> ExternResult<
 
     let ratio = discourse_ratio(logical_count, experiential_count);
 
+    // 3.0 IS A CHOSEN DEFAULT WITH NO DERIVATION, AND SAYING SO IS THE POINT
+    // — row 8.19, measured 2026-11-25. Searched SPEC.md, README.md, both
+    // zomes and scripts/: the only appearances of this number are the
+    // comparison below, the unit tests that pin its boundary, and README's
+    // "warns if >3.0". No range, no citation, no measurement. Writing a
+    // derivation nobody has would be worse than this comment.
+    //
+    // WHAT *CAN* BE DERIVED IS THE REGIME IN WHICH IT MEANS ANYTHING, and it
+    // is arithmetic rather than opinion. The ratio is `logical/experiential`
+    // over integers, so its achievable values near the threshold are spaced
+    // `1/experiential_count` apart:
+    //
+    // apart — so THE SMALLEST OVERSHOOT THAT CAN FIRE IS `1/experiential`,
+    // because the first firing numerator is `3*experiential + 1`:
+    //
+    //   experiential =  1 → the readings straddling 3.0 are 3.0 (silent, the
+    //                       comparison is exclusive) and 4.0 (fires). The
+    //                       warning cannot report less than 33% over.
+    //   experiential = 10 → the first firing reading is 3.1, which is the
+    //                       smallest denominator that can fire within 0.1 of
+    //                       the threshold at all: (3m+1)/m <= 3.1 needs
+    //                       30m + 10 <= 31m, so m >= 10. Integer arithmetic,
+    //                       not a float estimate.
+    //
+    // So BELOW TEN EMBODIED CRITIQUES THIS WARNING CANNOT SAY "just over" —
+    // whenever it fires, it fires at >=10% over, and in a fresh domain the
+    // first firing configuration is 4 Logical against 1 Experiential. That
+    // is the regime, and it is the half of row 8.13's complaint that was
+    // available here.
+    //
+    // AN EARLIER VERSION OF THIS COMMENT SAID FIVE, AND THE TEST BELOW
+    // CAUGHT IT. Five is where the STEP falls to 0.2; the quantity that
+    // matters is the minimum reportable overshoot, and at any denominator
+    // the silent reading 3.0 itself sits within 0.1 of the threshold, which
+    // is what made the first phrasing vacuous rather than merely wrong.
+    //
+    // AND THE MEASURE READS TWO OF FIVE `CritiqueMode` VARIANTS. Only
+    // `Logical` and `Experiential` enter the ratio; `Methodological`,
+    // `Evidential` and `Phenomenological` are counted in `total_critiques`
+    // and reported in `critique_mode_distribution`, and enter neither side.
+    // That is a deliberate narrowing — `abstract_to_embodied` is not a
+    // partition of the taxonomy — but it was nowhere stated, and it is why
+    // the `else` branch above needed its reason corrected. The mapping is
+    // inline in this function rather than in a helper, so nothing can test
+    // it without a conductor; `discourse_ratio`'s own regime is tested.
     let warning = if ratio > 3.0 {
         Some("Discourse becoming detached from practice. More experiential data needed.".into())
     } else {
@@ -7297,6 +7350,57 @@ mod tests {
     fn discourse_ratio_divides_when_both_are_present() {
         assert_eq!(discourse_ratio(4, 1), 4.0);
         assert_eq!(discourse_ratio(3, 3), 1.0);
+    }
+
+    #[test]
+    fn the_drift_threshold_is_exclusive_so_exactly_three_to_one_is_silent() {
+        // Row 8.19. The warning fires on `ratio > 3.0`, so every exact 3:1
+        // reading is silent and the FIRST firing configuration in a fresh
+        // domain is 4 Logical against 1 Experiential. Pinned because the
+        // boundary is a chosen default with no derivation: if the number
+        // ever moves, this test should be what fails first.
+        for (logical, experiential) in [(3u32, 1u32), (6, 2), (9, 3), (30, 10)] {
+            assert_eq!(discourse_ratio(logical, experiential), 3.0);
+            assert!(
+                !(discourse_ratio(logical, experiential) > 3.0),
+                "{logical}:{experiential} is exactly 3.0 and must stay silent"
+            );
+        }
+        assert!(discourse_ratio(4, 1) > 3.0, "4:1 is the first firing reading");
+    }
+
+    #[test]
+    fn the_thresholds_resolution_is_one_over_the_embodied_count() {
+        // Row 8.19's regime of validity, as arithmetic rather than opinion.
+        // Readings are spaced `1/experiential` apart and the comparison is
+        // exclusive, so the first FIRING numerator is `3*experiential + 1`
+        // and the smallest overshoot the warning can report is
+        // `1/experiential`. At one embodied critique that is 33%.
+        assert_eq!(discourse_ratio(4, 1) - discourse_ratio(3, 1), 1.0);
+        assert_eq!(discourse_ratio(4, 1), 4.0);
+
+        // The smallest denominator that can fire within 10% of the
+        // threshold, proved in integers so no float tolerance is involved:
+        // (3m+1)/m <= 3.1  <=>  30m + 10 <= 31m  <=>  m >= 10.
+        let first_fine = (1u32..=40)
+            .find(|m| (3 * m + 1) * 10 <= 31 * m)
+            .expect("some denominator fires within 10% of the threshold");
+        assert_eq!(
+            first_fine, 10,
+            "below ten embodied critiques the warning cannot say 'just over'"
+        );
+
+        // AND THE CLAIM THIS REPLACED WAS VACUOUS, which is why it is
+        // pinned: "a reading within 0.1 of 3.0" is satisfiable at EVERY
+        // denominator, because the silent reading 3.0 is itself within 0.1
+        // of 3.0. Distance to the threshold is not the measurable quantity;
+        // reportable overshoot is.
+        for m in 1u32..=10 {
+            assert!(
+                (discourse_ratio(3 * m, m) - 3.0).abs() <= 0.1,
+                "3:1 at any denominator sits on the threshold, silently"
+            );
+        }
     }
 
     // --- HRR: bind/unbind/superpose (OpenZoo, README §2.5) ---------------
