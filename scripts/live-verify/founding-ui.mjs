@@ -438,6 +438,22 @@ async function main() {
       await dupState() === 'none');
     check('but the founded name is listed as the nearest one, by name',
       await closeState() === 'listed' && (await closeText()).includes(DOMAIN));
+
+    // RESTORE THE BOX TO THE VARIANT, AND THIS IS NOT TIDINESS — the four
+    // checks below assert the `near` state's way out, and they read the box
+    // this block just rewrote. Leaving `${DOMAIN}s` here reddened exactly
+    // those four on the first CI run of this build while the two checks above
+    // passed: a harness check that mutates shared UI state and does not put it
+    // back breaks its NEIGHBOURS, which is the shape 6.27 already paid for
+    // once in a way only CI could see. The repaint is awaited rather than
+    // assumed, for the same reason every other fill here is.
+    await page.locator('[data-testid="founding-domain"]').fill(variant);
+    await page.waitForFunction(() => {
+      const s = document.querySelector('[data-testid="founding-duplicate"]')?.dataset.state;
+      return s === 'near';
+    }, null, { timeout: 20000 }).catch(() => {});
+    check('and the box is back to the near-miss state the checks below read',
+      await dupState() === 'near');
     // NAMES THE FOUNDED STRING, NOT THE TYPED ONE. Echoing what the reader
     // typed would be this row's own confusion rebuilt: the whole value is
     // telling them which string reaches the claims.
