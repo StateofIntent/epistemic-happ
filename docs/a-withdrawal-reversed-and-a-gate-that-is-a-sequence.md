@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16-8.24.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.25.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1326,6 +1326,75 @@ author. *The read layer needs attention* would not.
 
 ---
 
+## 17. `[V]` The two items I dropped were both limits — audited 2026-11-26
+
+**§15 and §16 between them took SEVEN of that turn's NINE items.** The two that
+did not get recorded were **(a)** the source's own limit on its best idea and
+**(b)** its own accounting of what the idea does not achieve. **Every item that
+extends the reframe survived; both items that constrain it were lost.**
+
+**`[V]` Measured by search before writing this:** *"consistency, not
+confirmation"* occurred **zero** times in this repository, and the regress
+item — *moves it down one level rather than solving it* — had no entry either.
+
+> **`[A]` THAT IS §12.1c's ADMITTED-THEN-ABANDONED EXCEPTION, COMMITTED IN THE
+> RECORDING PROCESS RATHER THAN FOUND IN A SOURCE.** Its warning reads as if
+> written for this: *"An exception recorded in prose and omitted from the
+> subsequent enumeration is functionally identical to never having raised it …
+> it is harder to catch, because the document can be searched for the term and
+> will appear to have considered it."* **The mechanism is plain once named:
+> nothing pulls for a disclaimer. No build depends on a limit, and a limit
+> makes no row look better.**
+
+### 17.1 `[Q]` The limit on the product reading — and it applies to our own new taxonomy
+
+> `[Q]` *"It is a reading, not a result. Four systems fit it. **That's
+> consistency, not confirmation.**"*
+
+All four systems were already in that document when the reading was formed.
+**`[A]` So the product architecture does not meet the bar 8.2's grid met** —
+seven domains it was **not** built from (§12.3) — and it does not claim to.
+
+**`[A]` AND THE SAME TEST FALLS ON ROW 8.22 THE DAY IT OPENED.** Its inventory
+— five refusal limits, one exhaustion, one advisory — was derived **from** the
+code it describes. **A description, not a prediction**, with exactly the
+standing the source disclaims for its own.
+
+> **`[A]` The cheap out-of-sample test, and it costs nothing to adopt: the NEXT
+> limit added to this protocol should be classifiable by the taxonomy BEFORE it
+> is written.** A taxonomy earns its keep by sorting an instance that does not
+> exist yet. One that sorts only what is already there is a filing scheme —
+> which is the bar §12.3 handed 8.12, now handed to 8.22.
+
+### 17.2 `[A]` Relocation is progress only if you name the new level — and 8.7 did not
+
+`[U]` The source's own accounting: the product reading *"moves Problem B down
+one level rather than solving it"*, because **something still sets the factor
+values** — and it names where that something sits.
+
+**`[A]` THE SAME MOVE HAPPENED HERE AND WAS NEVER SAID.** 8.7's resolution is
+that `get_standing` **is** the externalised reference because **the reader is
+the governor**. That did not dissolve the reference question; **it moved it onto
+the policy layer**, where the reader supplies `ConductancePolicy` or
+`AttestationPolicy`.
+
+> **`[A]` So *who sets the reference* now reads *who promises the policy* —
+> which is 8.19's and §16.2's question verbatim: name the promiser, or admit
+> the placeholder.** 8.7 and 8.19 are **one question at two levels**, and
+> nothing in this repository said so until row 8.25.
+
+`[A]` Which also explains why 8.7 felt finished and 8.19 felt open: the first
+is the relocation, the second is the bill for it.
+
+### 17.3 `[A]` The habit, not a check
+
+**Record a turn's disclaimers first.** They are the items with nothing pulling
+for them, and by the time the extending items are written up the disclaimers
+read as optional. `[A]` No gate can catch this — a dropped caveat leaves no
+trace, which is §12.1c's point — so it is a writing order, not a script.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1351,4 +1420,6 @@ author. *The read layer needs attention* would not.
 | conductance is a sum of products with no setpoint in the expression | `[V]` | `coordinator:999`-`:1011`, read 2026-11-25 |
 | the friction budget is what stands in for a setpoint, in the zome's own words | `[V]` | `integrity:2230`-`:2239` |
 | a rate cap bounds the slope and not the ceiling | `[A]` | arithmetic, not a measurement of any live DHT — **no accumulated-conductance figure was taken** |
+| seven of nine items recorded; the two dropped were both limits | `[V]` | audited 2026-11-26 by searching this repository for each item of that turn; *"consistency, not confirmation"* returned zero |
+| 8.22's inventory is a description, not a prediction | `[A]` | it was derived from the code it classifies — stated so the row is not read as validated |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
