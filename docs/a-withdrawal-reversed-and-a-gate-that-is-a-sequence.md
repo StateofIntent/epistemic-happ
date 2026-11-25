@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16-8.25.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.27.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1395,6 +1395,125 @@ trace, which is §12.1c's point — so it is a writing order, not a script.
 
 ---
 
+## 18. `[V]` Narrow to factors, not processes — and the unit is what makes a factor a target
+
+**The question was whether to narrow the investigation to processes, factors
+and functions rather than carriers.** `[U]` The source's answer: yes, but
+**"processes" and "functions" are too broad in exactly the way "stroma" was** —
+a **factor is a quantity with units**, and that is what can be a target.
+
+### 18.1 `[U]` The dimensional audit, and it is the best single move in the import
+
+Work out the units of its own leading recipe:
+
+```
+count × (1/time) × time  =  count
+```
+
+**A count is dimensionless, so counts, rates and durations cannot yield a
+length.** At least one factor must carry the units of the answer — and its own
+growth-plate equation had one, *length gained per division*, which `[Q]`
+*"appears twice in 61,000 words and is never pursued once."* `[U]` An empirical
+decomposition then put that neglected term at **44-59%** and the two it had
+spent five sections on at **7-10%** and *varies least of all*.
+
+> **`[A]` THE CHECK IS ONE LINE AND IT IS A FOURTH AXIS: do the factors carry
+> the units of the thing claimed to be produced?** Not 8.2's *which job*, not
+> count-versus-state's *which property*, not 8.20's *which level* — **this one
+> is dimensional**, and it is the cheapest of the four to apply because it
+> needs no judgement about roles at all.
+
+### 18.2 `[V]` This repository learned it for TIME and for nothing else
+
+`scripts/check-time-units.mjs` checks **232 minted time values across 83 code
+files** against the unit SPEC §5.23 declares, and its header says why it had to
+exist — the code *had drifted into interpreting them two ways at once*, seconds
+against microseconds, because:
+
+> `[Q]` *"every time field in this protocol is an app `u64` the caller or the
+> coordinator fills, so **no HDK type carries its unit and nothing could
+> enforce one**."*
+
+**`[A]` That argument is not about time. It is about every app-level scalar.**
+
+**`[V]` MEASURED 2026-11-26.** Of **27** numeric fields across the integrity
+zome's entry structs, **21 are time-like and gated**; **six are not**:
+
+| field | unit |
+|---|---|
+| `DnaProperties.protocol_version` | a version — unambiguous |
+| `PeriodBoundary.entry_count` | entries — unambiguous |
+| `SettlementPolicy.min_assessors` | assessors — unambiguous |
+| `SettlementPolicy.max_dissent` | dissents; compared against a count of dissenting assessors, so used consistently |
+| **`BridgeRecord.original_length`** | **undeclared** |
+| **`BridgeRecord.excerpt_length`** | **undeclared** |
+
+**`[A]` The two lengths are the real ones, and the shape is 8.4's finding 2
+exactly.** They are validated **only by a relation to each other** —
+`excerpt_length <= original_length` (`integrity:2156`) — **which holds whether
+both are bytes, chars or graphemes.** For an imported Twitter excerpt that
+distinction is live. *A check that looks like it governs a quantity governs
+only the ordering of two numbers the author chose.* Row **8.26**.
+
+### 18.3 `[V]` Factor coupling is Problem C — and it was filed as solved
+
+`[U]` The item that would kill the program: **if raising one factor lowers
+another, the product does not scale.** The source's own instance is its
+photoperiod null — two factors moved, product unchanged, F = 0.0001, P = 0.99 —
+and the consequence it draws is that **every scalar intervention that gave
+nothing may have been compensated rather than mis-targeted.**
+
+`[U]` And the filing error: it had declared Problem C *"largely solved"* and
+moved on. **On the product reading C is the binding constraint**, because
+magnitude homeostasis *is* the mechanism that compensates factor changes.
+
+> **`[A]` A PROBLEM FILED AS SOLVED WAS THE OBSTACLE TO EXPLOITING THE
+> ARCHITECTURE IT HAD BEEN SET ASIDE FOR.** That is row 1.35's defect with the
+> sign reversed: 1.35 found **six** records blocked on something **already
+> answered**; this is a record **answered** that should have stayed open.
+
+**`[V]` And this repository watches only the first direction.**
+`check-stale-blockers.mjs` exists because *"a line whose blocker has gone is a
+line to act on"*; `check-row-status.mjs` checks that a closed row **declares**
+its closure, never that the closure **holds**. **Measured: 92 of 157 rows carry
+a closure marker and nothing re-checks any of them.** Caught by hand twice —
+*"the 2026-11-23 block's claim was true when written and is not now"*, and
+#568's *"a negative finding that was false"* — plus §1's instance in the source
+itself, a withdrawal that did not survive a revision. **The cheap version is a
+convention and not a detector: a closure marker carries the date it was
+taken**, which makes the re-read finite. Row **8.27**.
+
+### 18.4 `[A]` One refinement to something I recorded in §11.7
+
+§11.7 took the source's *ECM is deposited output with no program of its own*
+and read it across as **the controllable objects here are the agent and the
+validation rules.** `[U]` The source now adds that matrix volume contributes
+**30-49%** of growth and is **a factor**, not merely output — it carries no
+program **and it holds a term.**
+
+**`[A]` So my read-across was incomplete.** The corpus this protocol
+accumulates is not only deposited output: **it is a term in every computed
+quantity**, which is visible in §16.1's arithmetic — each reinforcement is a
+term, and the entries are what the terms are made of. **A thing can be causally
+load-bearing without being a controller**, and *no program* does not mean *no
+leverage*.
+
+### 18.5 `[A]` And one rule that does NOT transfer, stated because it inverts
+
+`[U]` In a **pure product** every factor has **elasticity 1**, so the source
+concludes *there is no master factor* and prioritisation is **purely achievable
+range and safety**.
+
+**`[A]` `compute_effective_conductance` is a SUM of products, so elasticities
+here are unequal and depend on share** — with `n` reinforcements the base term
+carries roughly `1/(1+n)`. **This protocol does have a dominant term, and which
+one it is changes with `n`.** The one pure ratio is
+`abstract_to_embodied_ratio`, elasticity `+1`/`-1`, **so one embodied critique
+has exactly the leverage of one logical critique — which is §12.4's coarse
+resolution restated as an elasticity.**
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1422,4 +1541,6 @@ trace, which is §12.1c's point — so it is a writing order, not a script.
 | a rate cap bounds the slope and not the ceiling | `[A]` | arithmetic, not a measurement of any live DHT — **no accumulated-conductance figure was taken** |
 | seven of nine items recorded; the two dropped were both limits | `[V]` | audited 2026-11-26 by searching this repository for each item of that turn; *"consistency, not confirmation"* returned zero |
 | 8.22's inventory is a description, not a prediction | `[A]` | it was derived from the code it classifies — stated so the row is not read as validated |
+| 27 numeric entry fields, 21 gated for time, 6 ungated, 2 of them undeclared lengths | `[V]` | parsed from `dna/integrity/src/lib.rs` on 2026-11-26; **entry structs only — coordinator locals and payload types are not counted** |
+| 92 of 157 rows carry a closure marker and nothing re-checks them | `[V]` | counted over `docs/open-work.md` on 2026-11-26 against `check-row-status.mjs`'s own marker vocabulary |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
