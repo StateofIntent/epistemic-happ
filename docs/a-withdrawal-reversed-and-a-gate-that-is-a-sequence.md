@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16, 8.17, 8.18, 8.19 and 8.20.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.21.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1057,6 +1057,74 @@ nothing sits beside it, and render it rather than store it** — while deciding
 
 ---
 
+## 14. `[A]` "Both rivals predict it" — and this repository found the shape first
+
+`[U]` The source proposed an experiment one night and caught it the next day,
+which is the cleanest instance in the whole import of a **confirming** result
+that confirms nothing. The result: a cell-proliferation budget that **scales
+with body mass across species**, measured in culture with the animal absent.
+Read as support for size specification — and **equally predicted by the rival**,
+since under Peto's paradox a larger body needs *more* replicative restraint, so
+the same correlation follows from cancer suppression. Two theories, opposite
+mechanisms, one correlation.
+
+**`[A]` THE TRANSFERABLE MOVE IS THE DISCRIMINATION, NOT THE CATCH: hold
+constant what one explanation needs to vary.** `[U]` Within one recently
+diverged species the tumour-suppression machinery is shared while body mass
+ranges 17-fold, so cancer suppression predicts **no difference** and size
+specification predicts a **larger budget**. The predictions come apart exactly
+where the broad comparison merged them.
+
+### 14.1 `[A]` It is row 8.5's verdict class with the sign reversed
+
+| | 8.5's instance (§6) | this |
+|---|---|---|
+| result | a clean **null** | a clean **positive** |
+| why it settles nothing | the **outcome space** was under-enumerated — a third outcome fits every branch | the **hypothesis space** was under-enumerated — a rival predicts the same number |
+| what the design did | measured something real | measured something real |
+
+**`[A]` Same defect, opposite sign** — so 8.5's third verdict class gets a
+**symmetric entry condition**: not only *this design cannot address this
+claim*, but ***this design's result is predicted by the alternative too.***
+`[A]` And that is the cheaper reading of where this belongs: both are
+statements that a design cannot settle a question, and splitting them into two
+labels would make a reader choose between them for one finding.
+
+### 14.2 `[V]` And row 7.28 is this repository's own instance, already recorded as a withdrawal
+
+**`[V]` The ~421s crossings were read as evidence of a deterministic
+schedule**, because the figures repeated almost exactly across runs. Row 7.28
+now records why that reading was withdrawn, verbatim:
+
+> *"the sampler's resolution is ±5.0s, so an identical figure across runs is
+> **expected from this instrument, not anomalous**."*
+
+**`[A]` A coarse sampler and a real schedule predict the same observation**, so
+repetition discriminated nothing — and the row's remedy was to insist on a
+**denominator** rather than a value, which is the same move as holding the
+species constant. `[A]` **This class was found here first, on an instrument
+rather than an organism**, and nobody had named it as a class.
+
+### 14.3 `[A]` It completes 8.10 rather than duplicating it
+
+8.10's point is that **two claims agreeing is cheap unless their derivation
+paths are disjoint.** `[A]` This is that cheapness **inside a single claim**:
+one result, two rival parents, and nothing in the result marks which produced
+it.
+
+> **`[A]` Agreement between two claims and agreement between a claim and its
+> rival's prediction are the same defect at different scopes** — which argues
+> that the premise edge 8.10 wants should be able to carry a **prediction**,
+> not only a premise. A critique of the form *your rival predicts this too* is
+> an edge from a result to a hypothesis it fails to distinguish, and 8.10's
+> species is the only place in this protocol such an edge could live.
+
+**`[A]` The free half needs no build and no decision:** before citing a result
+as support, ask what the rival predicts. **If the answer is *the same thing*,
+the result is not evidence between them.** Row **8.21**.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1075,4 +1143,6 @@ nothing sits beside it, and render it rather than store it** — while deciding
 | the role vocabulary is absent from SPEC and both zomes; `subtractive` absent everywhere | `[V]` | case-insensitive counts over `docs/open-work.md`, `SPEC.md`, `dna/*/src/lib.rs`, `docs/fixed-core.md` on 2026-11-25 — **a term count is not a concept count**, so this bounds the vocabulary and not the thinking |
 | the half-life has a named promiser and `3.0` has none | `[V]` | `coordinator:915`-`:945` and `:5085`; `GetDiscourseHealthPayload`'s fields per SPEC §10 |
 | all decay is read-side; validation decays nothing | `[V]` | 11 conductance mentions in the integrity zome, none computing decay |
+| 8.4's ratio is 18 declared-time fields to 1 governed | `[V]` | 8.4's own measurement plus `integrity:1403`/`:1463`; **18 is that audit's scoped set — a looser grep for declared `u64` time fields returns 21**, so the ratio bounds that set and not the zome |
+| row 7.28 withdrew the deterministic-schedule reading on sampler-resolution grounds | `[V]` | quoted verbatim from the row, read 2026-11-25 |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
