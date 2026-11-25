@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16-8.27.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.30.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1514,6 +1514,134 @@ resolution restated as an elasticity.**
 
 ---
 
+## 19. `[A]` The factor decomposition — one join, a thymus, and a prior question about numbers
+
+**The source narrowed its own investigation to five factors and then measured
+them, and the useful transfers are not the biology.** Four items, and the first
+is the one it nominated itself.
+
+### 19.1 `[A]` One join serves three rows — and the source named it as the most implementable thing it had
+
+`[U]` Its third filing instance needed **no new query at all**: a molecule
+indexed as *repair quality* was the same molecule indexed as *fibril
+dimension*, both roles already in its own text. Its own remedy:
+
+> `[Q]` *"The remedy is cheaper and distinct from the affordance tag: **index
+> by entity, and surface any entity appearing under more than one affordance.**
+> That's a join, it's mechanical, and it would have fired here."*
+
+**`[A]` AND IT COLLAPSES THREE OF THIS SECTION'S PROPOSED REPORTS INTO ONE
+MECHANISM**, which is worth more than the instance:
+
+| row | group by | flag when |
+|---|---|---|
+| 8.17 | a shared **term** | its claims carry different **role** tags |
+| 8.16 / this | a shared **entity** | it carries different **affordance** tags |
+| 8.20 | a shared **object** | its claims sit at different **levels** |
+
+**One query — `group by entity, having count(distinct axis_value) > 1` — run
+once per axis.** `[A]` So the build order inverts: **the join is cheap and the
+tags are expensive**, which is why 8.2's `[D]` gates all four and why none is
+`[M]`. And an entity is a tag like any other (`about:<thing>`) over the
+`semantic_tags` field that already ships.
+
+> **`[A]` It is also the first detector in this section that needs no
+> judgement.** 8.3's boundary report needed triage of 648 phrases; 8.4's
+> routing needs an index nobody has. **This needs a join and a threshold of
+> two** — a disagreement on an axis is a mechanical fact about two rows, which
+> is the property `check-row-status.mjs` already exploits. Row **8.28**.
+
+### 19.2 `[V]` This protocol is thymus-shaped, and it cannot be spleen-shaped
+
+`[U]` The source's cleanest compensation result splits two organs. **Thymus:**
+multiple fetal grafts each grow to normal size, *"regulated by organ-autonomous
+factors"* — excess **not** suppressed. **Spleen:** multiple grafts each stay
+smaller, **total mass matching one normal spleen**, *"controlled by some
+negative feedback mechanism."* So *is compensation symmetric* has no general
+answer; the usable form is **is this tissue a thymus or a spleen?**
+
+**`[V]` AND HERE THE ANSWER IS A DERIVATION.** A spleen normalises over its
+whole population. SPEC §10 states, for an unrelated purpose, why this protocol
+cannot:
+
+> `[Q]` *"Quantitative Promise Theory's result is that **an agent cannot
+> normalise over a population it cannot see**, so aggregation requires a NAMED
+> aggregator."*
+
+**`[A]` Spleen-shape requires the view from nowhere that Invariant 1 refuses
+and QPT says no agent has.** So this protocol permits excess and suppresses
+nothing — **not because nobody built the suppressor, but because the suppressor
+is the object the invariants exclude.**
+
+**`[V]` The measured instance is 6.29's:** *no layer checks uniqueness, exact
+or near*, so the same string founds a second membrane and both grow
+independently. **And 8.23's *no homeostat anywhere* gains its contrast class:**
+`[U]` the source's `Minute` discs get ~20 extra hours of growth and come out
+the same size — *"discs stop their growth upon reaching the appropriate size,
+even if provided with additional developmental time"* — **and nothing here does
+that.**
+
+> **`[A]` WHY IT PREDICTS RATHER THAN RENAMES: a thymus accumulates duplicates
+> and pays in fragmentation, never in suppression.** That is 6.29's whole
+> problem (a domain split across spellings, unmergeable) **and** 8.18's TLS
+> prediction (species-shaped critiques of unregulated count). **Same shape: an
+> organism that cannot normalise gets more of everything and sorts none of
+> it** — so the remedy here can never be suppression, only **disclosure**,
+> which is what 6.29 shipped and what 6.23's tripwire defaults to. Row
+> **8.29**.
+
+### 19.3 `[A]` Before treating a parameter as a dial, ask whether it has a correct value
+
+`[U]` The source's warning about the handle it had just found: the
+fibril-regulator knockouts produce **joint laxity and impaired integrity**, so
+*"fibril diameter might not be a dial at all … a specification with a correct
+value rather than a quantity where more is better."*
+
+**`[A]` A quantity can have a CORRECT value rather than a better direction, and
+the two are indistinguishable from the parameter's type.** Which makes this a
+**prior** question to §12.4's and §16.2's: *name the promiser, or admit the
+placeholder* **presupposes a dial.** If it is a specification, the honest record
+is neither — it is **a stated correct value and what goes wrong on either side
+of it** — and a reader-supplied policy over a specification is **worse than a
+default**, because it invites a reader to move something with a right answer.
+
+**`[V]` Three candidates here, and they sort differently:**
+
+| constant | kind |
+|---|---|
+| `CONDUCTANCE_HALF_LIFE_SECS` | **dial** — moved onto `ConductancePolicy` in 2026-10-19 precisely so a reader could choose |
+| `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` | **dial, position unargued** — *"a placeholder scale … not a value derived from anything; tunable"* |
+| `3.0` | **possibly neither** — §12.4 measured its minimum reportable overshoot at `1/experiential`, so at small counts **it has no position to be correct at** |
+
+> **`[A]` That third class is the one the question surfaces: a parameter whose
+> resolution is coarser than the distinction it is meant to make is not a dial
+> and not a specification — it is a false precision.** Row **8.30**.
+
+### 19.4 `[A]` The compensation threshold is the adversary's strategy, not ours
+
+`[U]` The mosaic-ablation result reports that *"compensatory proliferation
+requires a minimum insult threshold to be triggered"* — below ~35%
+perturbation **neither response fired** — from which the source derives a
+strategy: **several small distributed pushes rather than one large one.**
+
+**`[A]` Read against 8.22's five refusal limits, that is the adversary's
+strategy.** A cliff with a threshold **invites sub-threshold distribution**, and
+those five are per-agent per-window: the way past `MAX_PER_WINDOW = 20` is
+**twenty-one agents, not twenty-one critiques.**
+
+**`[V]` The zome already says so, which makes this corroboration rather than a
+hole.** SPEC §5: the budget *"bounds per-identity throughput only — it does not
+raise the cost of creating a new agent identity at all"*, and names sybil
+resistance and spam defence as **distinct properties**.
+
+> **`[A]` The borrowed half is the generalisation: a gated response is escapable
+> by staying under the gate**, which is true of a biological homeostat and of a
+> per-window cap for the same arithmetic reason. **And it is the argument for
+> 8.22's single slope: a decay has no threshold to stay under.** Appended to
+> 8.22 rather than given a row.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1543,4 +1671,6 @@ resolution restated as an elasticity.**
 | 8.22's inventory is a description, not a prediction | `[A]` | it was derived from the code it classifies — stated so the row is not read as validated |
 | 27 numeric entry fields, 21 gated for time, 6 ungated, 2 of them undeclared lengths | `[V]` | parsed from `dna/integrity/src/lib.rs` on 2026-11-26; **entry structs only — coordinator locals and payload types are not counted** |
 | 92 of 157 rows carry a closure marker and nothing re-checks them | `[V]` | counted over `docs/open-work.md` on 2026-11-26 against `check-row-status.mjs`'s own marker vocabulary |
+| spleen-shape requires normalisation this protocol cannot have | `[A]` | a derivation from SPEC §10's QPT line plus Invariant 1 — **not a measurement**, and it holds only while aggregation requires a named aggregator |
+| the three reports of 8.16/8.17/8.20 are one query | `[A]` | inference about specifications none of which is built; **no query was written or run** |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
