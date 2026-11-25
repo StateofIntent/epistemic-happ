@@ -306,6 +306,39 @@ async function main() {
     check('no "load existing" button when there is nothing to load',
       await page.locator('[data-testid="founding-duplicate-load"]').isVisible() === false);
 
+    // ROW 6.29's SECOND HALF, BUILT 2026-11-26 — the closest founded names,
+    // which answer what the notice above cannot: "spelt differently" is
+    // invisible to a fold that only touches capitals and spacing.
+    //
+    // THE STATE AND THE WORDS, both, for the reason the check above this one
+    // gives: a paragraph that renders empty satisfies a state assertion and
+    // tells the reader nothing. And silence is not a state here either — with
+    // nothing founded it must SAY nothing is founded.
+    const closeState = () => page.locator('[data-testid="founding-closest"]')
+      .getAttribute('data-state');
+    const closeText = () => page.locator('[data-testid="founding-closest"]').innerText();
+    await page.waitForFunction(() => {
+      const s = document.querySelector('[data-testid="founding-closest"]')?.dataset.state;
+      return s && s !== 'checking';
+    }, null, { timeout: 20000 }).catch(() => {});
+    log(`  closest: [${await closeState()}] ${await closeText()}`);
+    check('a typed name always gets an answer about nearby founded names, in words',
+      ['listed', 'covered', 'no-domains'].includes(await closeState())
+      && (await closeText()).trim().length > 0);
+    // INVARIANT 5 AS A TEST, not as a sentence in a row. "Every domain is a
+    // sovereign membrane" forbids subordinating a new founder to whoever
+    // founded first, so this list may never gate the button. A future version
+    // that disabled submit on a near name would pass every other check here.
+    check('the closest list blocks nothing — the founding button stays enabled',
+      await page.locator('[data-testid="founding-submit"]').isEnabled() === true);
+    // AND IT NEVER CALLS ANYTHING A DUPLICATE, which is the constraint the
+    // 2026-11-26 sweep derived from Invariants 2 and 10: the protocol cannot
+    // hold the identity that word asserts, because `get_claims_by_domain`
+    // hashes the raw string. `domain-proximity-check.mjs` gates the ordering;
+    // this gates the wording, and neither sees the other's half.
+    check('and it never uses the word duplicate, or says these names are the same',
+      !/duplicate|same domain|is the same/i.test(await closeText()));
+
     // Incomplete founding is refused with a usable message.
     await page.locator('[data-testid="founding-submit"]').click();
     const err = await page.locator('[data-testid="founding-error"]').innerText();
@@ -391,6 +424,20 @@ async function main() {
     log(`  near: [${await dupState()}] ${await dupText()}`);
     check('a name differing only in capitals is reported as a near miss',
       await dupState() === 'near' && /SECOND domain/.test(await dupText()));
+
+    // THE CLASS THE OLD FOLD COULD NOT SEE, and the one actually reported:
+    // a plural is not a capitals-or-spacing difference, so the notice above
+    // correctly says nothing about it. The closest list is where it surfaces.
+    await page.locator('[data-testid="founding-domain"]').fill(`${DOMAIN}s`);
+    await page.waitForFunction(() => {
+      const s = document.querySelector('[data-testid="founding-closest"]')?.dataset.state;
+      return s && s !== 'checking';
+    }, null, { timeout: 20000 }).catch(() => {});
+    log(`  plural: dup=[${await dupState()}] closest=[${await closeState()}] ${await closeText()}`);
+    check('a plural of a founded name is NOT caught by the capitals-and-spacing notice',
+      await dupState() === 'none');
+    check('but the founded name is listed as the nearest one, by name',
+      await closeState() === 'listed' && (await closeText()).includes(DOMAIN));
     // NAMES THE FOUNDED STRING, NOT THE TYPED ONE. Echoing what the reader
     // typed would be this row's own confusion rebuilt: the whole value is
     // telling them which string reaches the claims.

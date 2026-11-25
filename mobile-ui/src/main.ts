@@ -28,6 +28,7 @@ import { entryPoint, type AppletSurface, type AppletTarget, type WeaveHost } fro
 import { hostContext, connectAppletHost } from './applet-host';
 import { renderNotesTab, onNotesTabOpened, onNotesTabClosed, type NotesContext } from './notes-ui';
 import { keyMnemonic } from './key-mnemonic';
+import { closestFoundedDomains, foldDomain } from './domain-proximity';
 
 // ============================================================================
 // Tiny app state — no framework. This UI is small enough (browse
@@ -5483,7 +5484,12 @@ function foundedDomain(domain: string): DecodedRecord<Membrane> | null {
  * under exactly this, but one is founded under that" is the whole of the
  * help; saying "founded" would be the defect. */
 function nearFoundedDomain(domain: string): DecodedRecord<Membrane> | null {
-  const fold = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+  // ONE FOLD, and it lives in `domain-proximity.ts` since 6.29's build —
+  // because that module excludes fold-equal names from its ordering on the
+  // grounds that THIS function already states them. Two folds that drifted
+  // would disagree about which names are covered where, and a name could fall
+  // through both: not near enough for this, excluded from that.
+  const fold = foldDomain;
   const target = fold(domain);
   if (!target) return null;
   return membranes.find((m) => m.entry.domain !== domain && fold(m.entry.domain) === target) ?? null;
@@ -7182,6 +7188,26 @@ function renderFoundingForm(): HTMLElement {
   duplicate.dataset.testid = 'founding-duplicate';
   theirs.appendChild(duplicate);
 
+  // ROW 6.29's SECOND HALF, BUILT 2026-11-26 — what else is out there,
+  // spelled otherwise. The notice above answers "is this name taken, or taken
+  // but for capitals". It cannot answer "did I mean one of these", and a
+  // plural, a hyphen or a transposition — *"spelt differently"*, which is what
+  // was actually reported — is invisible to it.
+  //
+  // IT LISTS AND DOES NOT JUDGE, which is a constraint from the invariant
+  // sweep and not a preference. See `domain-proximity.ts`'s header: Invariants
+  // 2 and 10 forbid asserting that two names ARE one domain, because
+  // `get_claims_by_domain` hashes the raw string and the protocol cannot hold
+  // that identity. So there is no threshold, nothing is called a duplicate,
+  // and the only claim made is that these names exist and this is how near
+  // they are — both true by construction, which is why this has no
+  // false-positive rate to tune and cannot suffer the warning fatigue the
+  // discourse-health note warns about. A list is not a warning.
+  const closest = document.createElement('p');
+  closest.className = 'hint';
+  closest.dataset.testid = 'founding-closest';
+  theirs.appendChild(closest);
+
   const goToExisting = document.createElement('button');
   goToExisting.type = 'button';
   goToExisting.className = 'link-button';
@@ -7192,9 +7218,50 @@ function renderFoundingForm(): HTMLElement {
   /** Repaint the duplicate notice without a full render, for the reason
    *  `paintFindability` does the same: a render per keystroke is not what
    *  the focus-restoring machinery is for. */
+  /** The closest founded names, painted on EVERY state including the ones the
+   *  notice above returns early from — because its `exact` and `near` states
+   *  are the two this list excludes, and a reader who typed a name that is
+   *  already founded still benefits from seeing what else is near it. Silence
+   *  is never a state here either: with nothing founded it says so, with the
+   *  read unmade it says that instead. */
+  const paintClosest = (typed: string) => {
+    if (!typed) { closest.dataset.state = 'empty'; closest.textContent = ''; return; }
+    if (membranesError || !membranesLoaded) {
+      // The notice above already names the error or the pending read; saying
+      // it twice on one screen is the "a lot of texts and fine prints" this
+      // form's own reporter has objected to twice.
+      closest.dataset.state = membranesError ? 'unknown' : 'checking';
+      closest.textContent = '';
+      return;
+    }
+    const names = closestFoundedDomains(typed, membranes.map((m) => m.entry.domain), 3);
+    if (!names.length) {
+      // TWO DIFFERENT EMPTIES, AND THEY ARE NOT THE SAME SENTENCE. Nothing
+      // founded at all is a fact about the network; nothing founded BUT the
+      // name already stated above is a fact about this box.
+      const onlyThese = membranes.length > 0;
+      closest.dataset.state = onlyThese ? 'covered' : 'no-domains';
+      closest.textContent = onlyThese
+        ? 'No other founded name is near this one — the list above is all there is.'
+        : 'No domain has been founded yet, so there is nothing to be near.';
+      return;
+    }
+    closest.dataset.state = 'listed';
+    // WORDING IS THE WHOLE CONSTRAINT. "Nearest first" states an ordering;
+    // "none of these is what you typed" states what the list is not. Neither
+    // says duplicate, because nothing here knows that — and the last name may
+    // be nothing like the typed one, since the cap is on COUNT and never on
+    // closeness. Saying so is what keeps the list honest when it is short.
+    closest.textContent =
+      `Founded names nearest to what you typed, nearest first: ${names.map((n) => `"${n}"`).join(', ')}. `
+      + 'None of these is the name in the box, and the last one may be nothing '
+      + 'like it — this is ordered by closeness, not filtered by it.';
+  };
+
   const paintDuplicate = () => {
     const typed = domainInput.value.trim();
     goToExisting.hidden = true;
+    paintClosest(typed);
     if (!typed) {
       // Nothing typed is not a finding, the same judgement the New Claim
       // form's notice makes about an empty box.
