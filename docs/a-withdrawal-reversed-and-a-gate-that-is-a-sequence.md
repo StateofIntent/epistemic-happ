@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16-8.22.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.24.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1212,6 +1212,120 @@ than *they have no governor*.
 
 ---
 
+## 16. `[A]` Factors and products — the four items §15 left out
+
+**§15 took three items from that turn and left four.** Recorded here because
+the omission was mine and because one of the four lands on this protocol's own
+arithmetic rather than on an analogy.
+
+### 16.1 `[V]` Multiplicative composition, and this protocol's one computed quantity is a sum of products
+
+`[U]` The frame that completes §15: if a magnitude is **the product of running
+a process**, there is **no register for it to be in**. Each factor has a
+carrier — a count in a pool, a rate in cell-cycle machinery, a duration in a
+switch state — and **the product has none.** So *"you don't rewrite a
+dimension; you change a factor, and the dimension moves as their product"*,
+and effects **compound** rather than add.
+
+**`[V]` MEASURED: `compute_effective_conductance` (`coordinator:999`-`:1011`)
+is exactly that shape.**
+
+```
+total  = base × decay(age,      half_life)
+      += REINFORCE_WEIGHT × decay(age_of_reinforcement, half_life)   // per reinforcement
+```
+
+- **`half_life` is multiplicative on every term at once** — change it and all
+  terms move together. That is the compounding factor.
+- **a reinforcement is additive** — one more independently decaying term.
+- **there is no comparison and no setpoint anywhere in the expression**, which
+  is 8.7's *determined without being specified* holding for this protocol's own
+  arithmetic instead of for a growth plate.
+
+### 16.2 `[V]` The resistance profile is a diagnostic — and the zome already wrote the answer down
+
+`[U]` The item I most regret leaving out, because it is falsifiable: **a
+stored-target system resists increasingly as you approach the target**, since a
+comparator is correcting against a reference. **A product system shows no such
+resistance** — its bound is *"whichever factor runs out or breaks first, a
+mechanical limit rather than a regulatory one."* **So you can tell which kind of
+limit you have by pushing on it.**
+
+**`[V]` Pushed here, the answer is the product one, in the integrity zome's own
+words.** Nothing in that function resists an increase; what stands in for a
+setpoint is a **refusal limit**, `REINFORCEMENT_MAX_PER_WINDOW_VALIDATION = 40`
+(`integrity:2230`-`:2239`):
+
+> `[Q]` *"without this, an agent (or a sybil farm) could mass-reinforce their
+> own SynapticLinks to keep conductance **artificially high forever**, which
+> would undermine the entire point of computing conductance from real
+> reinforcement activity."*
+
+**`[A]` That is *mechanical bound, not regulatory one* derived independently and
+written down as a friction budget** — and it is why 8.22's five cliffs exist at
+all: **a quantity with no setpoint cannot defend itself, so the defence is
+moved to the write path.**
+
+> **`[A]` ONE IMPLICATION THE COMMENT DOES NOT CLAIM, AND IT IS NOT A HOLE: a
+> rate cap on an unbounded accumulator bounds the SLOPE, not the CEILING.**
+> 40 per hour against a 30-day half-life limits how fast conductance can be
+> driven up, not how high. The comment says *friction-limited*, not bounded,
+> which is the honest reading. **Whether a ceiling is wanted is a real
+> question and it would be this protocol's first homeostat** — 8.22's
+> inventory says it has built one slope, five cliffs and no homeostat at all.
+
+**`[V]` And it completes the defaults inventory §12.4 started.** Three
+undefended-looking numbers, three standards: the half-life has a **named
+promiser**; `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` **admits itself** —
+*"30 days is a placeholder scale … not a value derived from anything;
+tunable"*; and `3.0` **said nothing until 2026-11-25**. **The bar this
+repository already meets twice: name the promiser, or admit the placeholder.**
+
+### 16.3 `[A]` A cliff in effectiveness over timing means a factor was consumed, not a threshold moved
+
+`[U]` The source's reinterpretation of its own leading result: a pulse at one
+embryonic stage gave a threefold organ and a day later gave **nothing**. On the
+product reading the pulse never changed a target — it **extended one factor**,
+a duration, and a day later there was no process left to extend. **Zero effect
+rather than diminished effect, because the factor is gone and not because a
+threshold moved.**
+
+**`[A]` The transferable discriminator: a smooth falloff suggests a threshold
+being approached; a cliff suggests a factor being exhausted.** Both accounts
+can be true of the same system — the bistability is measured — but the product
+reading is what explains **why the cliff is a cliff**. `[A]` Nothing in this
+protocol is known to have that shape, and §16.2's diagnostic is the one to run
+before claiming it does.
+
+### 16.4 `[A]` Two malformed questions, retired — and the second is a rule for how rows here are written
+
+`[U]` **(a) *Re-specification* is malformed if nothing is specified.** The
+well-formed version is *restore the factors to their earlier values*. General
+form: **a goal that names a state nothing holds cannot be pursued, only
+reformulated.**
+
+`[U]` **(b) A location is not something you can act on.** The answer to *should
+we research the stroma* was no — *"you manipulate a cell population, a signal,
+or a force"*, and a compartment **does not decompose into an experiment**. Its
+three actionable objects were a **pool**, a **boundary** and a **gate**; the
+compartment is where they live.
+
+**`[A]` (b) BEARS ON THIS FILE, NOT ONLY ON THAT ONE.** A row in
+`docs/open-work.md` states what will be built and names the `[D]` it answers,
+so **a row whose target is a location rather than an actor is unactionable in
+the same way.** The test is one question: **who changes what.** 8.22(i) passes
+it — *`fixed-core.md` gains the distinction* names a file, a change and an
+author. *The read layer needs attention* would not.
+
+> **`[A]` And it explains a shape this repository keeps finding rather than
+> adding a new one.** [[ai-inhabitant-hooks-built-caller-absent]] is a location
+> statement — *the hook exists here* — and what made it a finding was naming
+> the **absent caller**. 8.18's defect is not *`required_evidence` lives in the
+> wrong place* but ***nothing reads it***. **Both became actionable the moment
+> a compartment was replaced by an actor.** Row **8.24**.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1234,4 +1348,7 @@ than *they have no governor*.
 | row 7.28 withdrew the deterministic-schedule reading on sampler-resolution grounds | `[V]` | quoted verbatim from the row, read 2026-11-25 |
 | five refusal limits, one exhaustion limit, one advisory threshold | `[V]` | the five `_MAX_PER_WINDOW_VALIDATION` constants, `coordinator:918` and `:5085`, read 2026-11-25; **"one exhaustion limit" is a count of mechanisms that decay a read, not of every subtractive effect** |
 | §13.3's *function before carrier* rule is withdrawn | `[V]` | corrected by the source the same day; §15.4 carries what replaces it |
+| conductance is a sum of products with no setpoint in the expression | `[V]` | `coordinator:999`-`:1011`, read 2026-11-25 |
+| the friction budget is what stands in for a setpoint, in the zome's own words | `[V]` | `integrity:2230`-`:2239` |
+| a rate cap bounds the slope and not the ceiling | `[A]` | arithmetic, not a measurement of any live DHT — **no accumulated-conductance figure was taken** |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
