@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16, 8.17 and 8.18.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16, 8.17, 8.18, 8.19 and 8.20.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -920,6 +920,143 @@ place to accept a ratio, and the row is that nothing says so.
 
 ---
 
+## 13. `[A]` The stromal trace — two grades of organiser, a level collapse, and the precedent that answers 8.19
+
+**A later turn traced the specification question through the stroma**, and it
+produced one revision, one correction and one measurement that bears on an open
+decision. `[U]` for all biology, as throughout.
+
+### 13.1 `[A]` Two grades of organiser, and `CritiqueSpecies` is measurably the weak one
+
+`[U]` The organiser role of §12.1 comes in two strengths:
+
+| grade | instance | carries |
+|---|---|---|
+| **weak** | lymphoid tissue inducer cells | architecture only — *"the position came from the needle"*, size unregulated |
+| **strong** | cross-species mesenchyme graft | architecture **plus position plus magnitude**, cell-autonomous, donor-specified |
+
+`[U]` The strong case is the one where a graft builds **donor-sized** structure
+inside a host of the other species, and the recipe is explicitly a budget —
+progenitor count × cycle rate × time-to-differentiation — **none of whose three
+factors knows the product.** That is §8.7's *determined without being
+specified* with a transplantable carrier attached.
+
+**`[V]` `CritiqueSpecies` IS THE WEAK GRADE, FIELD BY FIELD.** `name`,
+`parent_species`, `required_evidence`, `proposer`, `created_at`
+(`dna/integrity/src/lib.rs:381`): **no scope field, no magnitude field.** It
+says what to build and nothing about where it applies or how much is enough.
+
+> **`[A]` WHICH SCOPES §12.2's PREDICTION RATHER THAN RETRACTING IT.** The
+> TLS-shaped output — recognisable form, variable quality, unregulated count —
+> is what a **weak** organiser produces, and the weak grade is what is
+> shipping. **And it sharpens 8.18(i) in a way I had wrong:**
+> `required_evidence: Vec<String>` names evidence **kinds, not counts**, so
+> even fully enforced it buys kind-compliance and says nothing about
+> sufficiency. **Enforcement would not upgrade the grade.** The fork is
+> between *advisory and honest* and *enforced and still unregulated*.
+
+### 13.2 `[V]` The level collapse — a third axis, and `domain` is this protocol's instance
+
+`[U]` The source wrote *"the surveyor is the fibroblast"* and **withdrew it
+within a day** as a level confusion: **compartment** (stroma), **lineage**
+(mesenchymal) and **cell-type** (fibroblast) are three levels, and in **three
+of its six** supporting cases the carrier is explicitly not the cell type it
+had named.
+
+**`[A]` THAT IS A THIRD AXIS, AND IT IS NOT EITHER OF THE TWO ALREADY HERE.**
+8.2's grid asks *which job does this object do*. The count/state pair asks
+*which property of it was specified*. This asks **at which level of
+description the claim is true** — and a claim can be right on both of the
+others and stated one level too narrow.
+
+**`[V]` MEASURED: `domain` occupies three levels here, with different
+governance at each.**
+
+| level | here | governed by |
+|---|---|---|
+| **label** | `Claim.domain: String` (`integrity:110`) | **non-empty only** (`:1354`); nothing checks a `Membrane` exists |
+| **compartment** | assembled at read time from `domain_anchor_hash` + `DomainToClaim` (`coordinator:442`) | **nothing** — it is whatever claims used the same string |
+| **governed entry** | `Membrane.domain` (`:314`) | real validation; SPEC §2.7: *"Not required to exist for a `Claim` to use its `domain` string, but required for that domain to be queryable as discourse health or scoped attestation"* |
+
+Plus a fourth appearance, `PeriodBoundary.domain_tag` (`:435`).
+
+> **`[A]` AND THE CONSEQUENCE IS CONCRETE, WHICH IS WHY IT IS A ROW RATHER THAN
+> A COMPLAINT.** `get_discourse_health` takes a **membrane** (level 3),
+> resolves it to a **string** (level 1), and queries the **compartment**
+> (level 2) — all three in one function. **That is why it needed exclusion
+> fields bolted on:** a label-assembled compartment contains things that are
+> not discourse in it, so `reading_claims` and the federation-import exclusion
+> exist to subtract them. **The level collapse is the reason those fields
+> exist**, and §12.4's 2-of-5 proxy finding sits in the same function for the
+> same reason. Row **8.20**.
+
+### 13.3 `[A]` "Carrier before function" surfaces a recorder — and this repository has the ratio
+
+`[U]` The source's answer to *is it in the chromatin* was **no, not yet**, and
+the reason generalises: its own §11.5e had already profiled a per-division mark
+that **records without governing**, so a carrier hunt run before the function
+is measured is likely to surface another one. Its summary: three for three, the
+useful move was **characterise the function first, the carrier second.**
+
+**`[A]` THAT IS A PREDICTION, NOT AN ORDERING PREFERENCE — recorders are
+abundant and governors are rare — AND ROW 8.4's AUDIT IS THE INSTANCE.** It
+went looking for where declared times are held before asking what governs them,
+and found **18 self-declared time fields with exactly one bound to anything**
+(`validate_pre_registration`). **Eighteen recorders, one governor**, measured
+on a different substrate entirely. `[A]` So 8.6 is better read as a **search
+strategy** than a taxonomy, with 8.9's *name the carrier* as its second step
+rather than its first.
+
+### 13.4 `[V]` The subtractive term — and it hands row 8.19 the precedent that answers it
+
+`[U]` The source's most useful mechanical finding: **a dimension can be set by
+the degradation term.** Its jaw-length result is inversely proportional to
+resorption, and blocking resorption **lengthens** the element — in a document
+that had pushed exclusively on deposition.
+
+**`[V]` ASKING WHERE THIS PROTOCOL'S SUBTRACTIVE TERM LIVES ANSWERED A
+DIFFERENT QUESTION THAN THE ONE I ASKED.** All decay is in the **coordinator**;
+the integrity zome mentions conductance eleven times, in comments and one
+tag-length check, and **validation never decays anything** — Invariant 6
+forbids subtracting from the record. `[A]` So **the reader is the governor
+because the read layer holds the only subtractive term**, which is a mechanism
+for 8.7's answer where there had been a restatement.
+
+**`[V]` AND IT TURNED UP THE OTHER BARE-LOOKING NUMBER, WHICH IS NOT BARE.**
+`CONDUCTANCE_HALF_LIFE_SECS` (30 days) carries a decision block
+(`coordinator:915`-`:945`): SPEC §7 named **two different promisers** for it,
+and on **2026-10-19** *"the FIRST note governs — the half-life becomes a field
+on `ConductancePolicy`, so **the reader supplying it is the promiser**"*,
+because a protocol default *"would itself be the kind of canonical signal this
+invariant rules out."*
+
+> **`[A]` `3.0` HAS NO PROMISER AT ALL, AND THE FIX IS ALREADY IN THE SAME
+> SIGNATURE.** `GetDiscourseHealthPayload` carries `attestation_policy` **and**
+> `conductance_policy`. So 8.19's remaining question reframes: **not *should it
+> fire below ten embodied critiques*, but *should the threshold move onto the
+> policy this payload already takes* — and the 2026-10-19 reasoning answers
+> that for the identical object class.** A minimum denominator would still be
+> a protocol default; a reader-promised threshold is the pattern already
+> chosen. Still a behaviour change, so still not taken.
+
+### 13.5 `[A]` One directional note, which bears on 6.28
+
+`[U]` Every reprogramming asymmetry the source traced runs **one way** — one
+axis reprograms easily and its reverse does not — and the transferable half is
+that **which direction is cheap is a fact to check, not a design choice.**
+
+**`[A]` HERE THE ASYMMETRY IS INVARIANT 6's:** a read-layer render can be
+**withdrawn**; a published entry **cannot**, deletion being absent from the
+integrity zome rather than merely unexposed. So **if 6.28 is ever taken, the
+cheap direction is read-side first** — a boolean computed in the client is
+reversible at no cost and leaves nothing on the DHT, while the same signal as
+an entry field is permanent and needs a bump to add. Combined with §11.1's
+adjacency finding that settles both open *how* questions — **render it where
+nothing sits beside it, and render it rather than store it** — while deciding
+**whether** remains H's.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -934,4 +1071,8 @@ place to accept a ratio, and the row is that nothing says so.
 | 127 public fields over 23 entry structs; two with no reader at any layer | `[V]` | `dna/integrity/src/lib.rs` and `dna/coordinator/src/lib.rs` at `39aa872`, plus `ui/`, `mobile-ui/` and `scripts/`; **"no reader" means no textual reference — a field read through a destructured binding or a serde round-trip would not show, so two is a CEILING on the defect, not a floor** |
 | five too-fast bounds, one too-late bound | `[V]` | integrity zome only, at `39aa872` |
 | row 6.28's refusal turns on adjacency | `[V]` | `mobile-ui/src/main.ts:2148`, read 2026-11-25 — the row cites `:2124`, which is the same comment block |
+| `domain` spans three levels with different governance | `[V]` | `integrity:110`/`:314`/`:435`, `:1354`, `coordinator:442`, SPEC §2.7, read 2026-11-25 |
+| the role vocabulary is absent from SPEC and both zomes; `subtractive` absent everywhere | `[V]` | case-insensitive counts over `docs/open-work.md`, `SPEC.md`, `dna/*/src/lib.rs`, `docs/fixed-core.md` on 2026-11-25 — **a term count is not a concept count**, so this bounds the vocabulary and not the thinking |
+| the half-life has a named promiser and `3.0` has none | `[V]` | `coordinator:915`-`:945` and `:5085`; `GetDiscourseHealthPayload`'s fields per SPEC §10 |
+| all decay is read-side; validation decays nothing | `[V]` | 11 conductance mentions in the integrity zome, none computing decay |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
