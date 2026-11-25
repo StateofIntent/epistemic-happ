@@ -110,7 +110,7 @@ A domain's sovereign, promise-bearing boundary. Not required to exist for a `Cla
 | `domain` | `String` | MUST be non-empty |
 | `description` | `String` | |
 | `required_promises` | `Vec<String>` | MUST be non-empty (§5.8a) — a domain states what it demands of participants rather than charging them to enter |
-| `validation_rules_hash` | `Option<EntryHash>` | Not independently validated |
+| `validation_rules_hash` | `Option<EntryHash>` | **Not validated and not read.** Measured 2026-11-25 (row 8.18): no validation callback resolves it, no coordinator extern inspects it, no client reads it, and every harness sets it `null`. It is **not** one of §5.3's eight enumerated reference fields, so it is not an undocumented exception to referential integrity — the type promises a resolution neither this spec nor the zome ever claimed. Kept because dropping a field forks the network; resolving it in `validate_membrane` would be a validation change |
 | `creator` | `AgentPubKey` | MUST equal the creating action's author |
 | `created_at` | `u64` | |
 | `constitution` | `ActionHash` | The creator's own published `Constitution`. MUST resolve to a real `Constitution` entry, and that entry's `agent` MUST equal `creator` (§5.8a). **This was previously specified as populated-but-not-cross-checked**, which was accurate — the rule existed only as a coordinator-side courtesy while a code comment described it as DHT-enforced. It is now genuinely enforced |

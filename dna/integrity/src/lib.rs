@@ -314,6 +314,26 @@ pub struct Membrane {
     pub domain: String,
     pub description: String,
     pub required_promises: Vec<String>,
+    /// NOTHING READS THIS, AT ANY LAYER — measured 2026-11-25, row 8.18.
+    /// No validation callback resolves it, no coordinator extern returns or
+    /// inspects it, no client reads it, and every harness sets it `null`.
+    /// SPEC §2.7 records it as "Not independently validated", which is true
+    /// and weaker than the state: unvalidated usually means *populated and
+    /// taken on trust*, and this is a field with no reader to take it.
+    ///
+    /// It is NOT a silent exception to §5.3's referential integrity, and the
+    /// distinction is why `check-spec-drift.mjs` is right to pass: §5.3
+    /// enumerates eight `EntryHash` reference fields with exactly one
+    /// documented exception (`Critique.evidence_hashes`), and this field is
+    /// not in that set. So the type promises resolvability that neither the
+    /// spec nor the zome ever claimed for it — which is the reading this
+    /// comment exists to stop, on the model of `author_handle` below.
+    ///
+    /// Kept rather than removed: unused is not the bar for deleting code, and
+    /// dropping a field changes the entry shape, which forks the network.
+    /// Making it real means resolving it in `validate_membrane` — a
+    /// validation change, so it belongs in the bump set, and
+    /// `Membrane.constitution` is precedent that §5.3's list does move.
     pub validation_rules_hash: Option<EntryHash>,
     pub creator: AgentPubKey,
     pub created_at: u64,

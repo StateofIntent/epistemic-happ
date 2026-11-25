@@ -602,6 +602,18 @@ either a comment admitting the limit or removal is a one-line change — and
 [[what-justifies-removing-code]] says *unused* is not the bar, so the comment
 is the default.
 
+> **`[V]` DONE 2026-11-25, and writing it found what the measurement had not.**
+> SPEC §2.7 already carried *"Not independently validated"* — **true, and
+> weaker than the state**: *unvalidated* ordinarily means **populated and taken
+> on trust**, and this is a field with no reader to take it. That cell now
+> records the measurement. **And it is NOT an undocumented exception to §5.3**,
+> which enumerates **eight** reference fields with exactly one documented
+> exception (`Critique.evidence_hashes`): this field is not in that set, **so
+> `check-spec-drift.mjs` is right to pass rather than wrong to miss it**, and
+> the defect is that the *type* promises a resolution neither the spec nor the
+> zome ever claimed — which is the reading the comment exists to stop, on
+> `author_handle`'s model. `cargo check` on `epistemic_integrity` green.
+
 ### 11.3 `[V]` A rate band has two ends, and this protocol guards one of them — deliberately
 
 `[U]` Distraction osteogenesis is **rate-banded, not rate-capped**: 0.25 mm
