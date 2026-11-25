@@ -20,7 +20,7 @@ the most valuable thing in it is a difference between the two.
 > gone and the claim is asserted in six passages, three of which name the
 > shared premise themselves.** §1, counted.
 
-**Rows opened: 8.16-8.21.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
+**Rows opened: 8.16-8.22.** Rows 8.5, 8.9, 8.10 and 8.13 gain evidence —
 carried in `docs/open-work.md` §8.5 rather than inside each row.
 
 **On tissue.** The tissue the source's later chapters are actually about is
@@ -1125,6 +1125,93 @@ the result is not evidence between them.** Row **8.21**.
 
 ---
 
+## 15. `[A]` Exhaustion is not comparison — and the correction to §13.3 that arrived with it
+
+`[U]` The source's account of why eleven sections of register-hunting kept
+returning recorders, and it is the best mechanical idea in the whole import:
+
+> **A budget stops a process by being empty, not by being compared against
+> zero.** No reader, no threshold, no comparison step. The growth plate does
+> not check a count against a limit — it **runs out of substrate**, and
+> *"the governor is the absence of substrate."*
+
+`[U]` Which is why a faithful per-division mark can gate nothing: **nothing
+anywhere computes the product it would have to gate against.** Four systems in
+that document determine an absolute size and **not one stores a dimension** —
+three store recipes whose product is a dimension, and the fourth externalises
+the question to an operator.
+
+### 15.1 `[A]` It is 8.6's cut with a third option, and 8.7's mechanism
+
+8.6 asks **recorder or governor**. This adds **neither**: a limit with no
+reader at all. And 8.7's *determined without being specified* is the same
+object from the other side — **this is the mechanism under that row**, not a
+rival to it: the reason a growth plate needs no stored target is that
+exhaustion needs no comparison.
+
+### 15.2 `[V]` Measured here: five limits that refuse, one that exhausts, one that only talks
+
+| kind | shape | instances |
+|---|---|---|
+| **refusal** | a **cliff** — a count is compared, the write is `Invalid` | **five**: `CRITIQUE_`, `ANTIBODY_PATTERN_`, `SYNAPTIC_LINK_MAX_PER_WINDOW_VALIDATION` at 20, `REINFORCEMENT_` at 40, `ATTESTATION_GRANT_` at 5 (`integrity:1708`, `:1879`, `:2226`, `:2239`, `:2251`) |
+| **exhaustion** | a **slope** — nothing refuses, the thing stops mattering | **one**: conductance decay (`coordinator:918`) |
+| **advisory** | a cliff on a **reading**, forbidding nothing | **one**: `ratio > 3.0` (`coordinator:5085`) |
+
+The exhaustion case states its own mechanism exactly, and it is Invariant 6
+doing the work: `[Q]` *"a flood of un-reinforced links stays fully present in
+the record (nothing deleted, nothing blocked — Invariants #6 and #9) but
+**decays toward zero in any conductance-weighted read.**"*
+
+> **`[A]` AND THIS IS ROW 8.19's PROBLEM RESTATED AS A DESIGN CHOICE RATHER
+> THAN A MISSING DERIVATION.** **A cliff's position has to be defensible; a
+> slope has no position to defend.** §12.4 measured that the drift warning's
+> minimum reportable overshoot is `1/experiential` — 33% at one embodied
+> critique — which is **a resolution problem that exists only because the
+> surface is a cliff.** This protocol already builds slopes, and the slope it
+> built carries a named promiser while the cliff does not. **So 8.19 has a
+> third option nobody listed: make the reading a slope.**
+
+### 15.3 `[A]` An absence the design predicts should be documented as a prediction
+
+`[U]` The source's sharpest line on its own negative result: *"there is no
+size gene because there is no size value"* — six growth-axis loci, no size
+locus, and on the product reading **that absence is a prediction rather than
+an anomaly.**
+
+**`[A]` This protocol's instance is already in the code.** `adoption_count`
+was **removed** in favour of counting real links at query time, so its absence
+is predicted by the design — and the struct comment says so, which is the
+behaviour this item asks for. **`get_standing` is the larger case:** nothing
+stores a standing because standing is the product of a read (8.7), so a reader
+asking *where is the standing stored* should find **nowhere, by construction**
+and not a gap. `[A]` Cheap rule, no build: **when a field is absent by design,
+say that where a reader would look for it.**
+
+### 15.4 `[V]` And it corrects §13.3, which I wrote earlier today
+
+§13.3 said a carrier question asked before the function is measured will
+surface a recorder, and drew the rule **function before carrier**. **The source
+corrected itself the same day and the diagnosis was wrong, not merely strong:**
+
+> `[Q]` *"Chromatin is a legitimate candidate register — for a factor, not for
+> the dimension. … The level, not the sequence, was the error."*
+
+**`[A]` So the rule is not *function before carrier*.** It is **name the object
+at the level a register could hold it, then ask where that object is
+registered.** *Is the size in the chromatin* is malformed because no register
+holds a product; *is time-to-differentiation held as a chromatin state* is a
+real question with a prior. **That is row 8.20's level axis doing the work, and
+not a sequencing rule** — which makes the level axis the load-bearing item of
+the last two days rather than one row among several.
+
+**`[A]` 8.4's 18-to-1 ratio survives and means something narrower.** Those 18
+fields are registers for **factors** — a declared time is a factor — and what
+is missing is not their carrier but **anything that computes a product from
+them.** That is why they read as recorders, and it is a more precise complaint
+than *they have no governor*.
+
+---
+
 ## 10. Confidence tiering
 
 | claim | tier | regime of validity |
@@ -1145,4 +1232,6 @@ the result is not evidence between them.** Row **8.21**.
 | all decay is read-side; validation decays nothing | `[V]` | 11 conductance mentions in the integrity zome, none computing decay |
 | 8.4's ratio is 18 declared-time fields to 1 governed | `[V]` | 8.4's own measurement plus `integrity:1403`/`:1463`; **18 is that audit's scoped set — a looser grep for declared `u64` time fields returns 21**, so the ratio bounds that set and not the zome |
 | row 7.28 withdrew the deterministic-schedule reading on sampler-resolution grounds | `[V]` | quoted verbatim from the row, read 2026-11-25 |
+| five refusal limits, one exhaustion limit, one advisory threshold | `[V]` | the five `_MAX_PER_WINDOW_VALIDATION` constants, `coordinator:918` and `:5085`, read 2026-11-25; **"one exhaustion limit" is a count of mechanisms that decay a read, not of every subtractive effect** |
+| §13.3's *function before carrier* rule is withdrawn | `[V]` | corrected by the source the same day; §15.4 carries what replaces it |
 | every *transfers-to-this-protocol* inference | `[A]` | reviewed by nobody |
