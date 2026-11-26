@@ -318,13 +318,49 @@ async function main() {
     check(`NO FLAG CARRIES A DIGIT (${JSON.stringify(allFlagText.slice(0, 90))})`,
       !/\d/.test(allFlagText));
 
-    const distinctFlagStates = new Set(
-      await page.locator('[data-testid="critiqued-flag"]').evaluateAll(
-        (els) => els.map((e) => e.dataset.critiqued),
-      ),
+    // AND NO QUANTITY WORD, which the digit rule alone does not catch. English
+    // smuggles magnitude without numerals: "several responses" reverses 6.28's
+    // decision by a text change exactly the way "3 critiques" would, and the
+    // first draft of 6.31 proposed "Two people added their experience" — a
+    // count in words, caught while building this.
+    check(`NO FLAG CARRIES A QUANTITY WORD (${JSON.stringify(allFlagText.slice(0, 90))})`,
+      !/\b(one|two|three|four|five|six|seven|eight|nine|ten|several|many|most|few|multiple|numerous|dozens?)\b/i
+        .test(allFlagText));
+
+    // THE TWO-STATE CHECK WAS REPLACED, NOT RELAXED, WHEN 6.28 WAS DECIDED.
+    //
+    // It asserted `distinctFlagStates.size <= 2`, which enforced the BOOLEAN —
+    // the thing 6.28 decided against, because a boolean is the maximal
+    // flattening of five modes and Invariant 4 forbids exactly that. A typed
+    // signal has more than two states by construction, so that assertion
+    // would now fail for the right reason, and deleting it would leave the
+    // property it protected unguarded.
+    //
+    // WHAT IT PROTECTED WAS NOT THE STATE COUNT. It was: a reader must not be
+    // able to order a domain by this line. Three assertions replace it, and
+    // together they are stricter than the one they retire.
+    const flagModes = await page.locator('[data-testid="critiqued-flag"]').evaluateAll(
+      (els) => els.map((e) => (e.dataset.modes || '').split(',').filter(Boolean)),
     );
-    check(`the flag has at most TWO states, so it cannot be a gradient (${[...distinctFlagStates].join(',')})`,
-      distinctFlagStates.size <= 2 && [...distinctFlagStates].every((v) => v === 'true' || v === 'false'));
+
+    // (1) NOMINAL, NOT ORDINAL: every label must come from the five-mode
+    // vocabulary, so nothing numeric or quantitative can reach this line.
+    const VOCAB = ['experiential', 'methodological', 'logical', 'evidential', 'phenomenological'];
+    const strange = flagModes.flat().filter((m) => !VOCAB.includes(m.toLowerCase()));
+    check(`every rendered kind is one of the five modes (${JSON.stringify([...new Set(flagModes.flat())])})`,
+      strange.length === 0);
+
+    // (2) NO KIND REPEATS ON A CLAIM, so a count cannot be inferred by
+    // repetition — de-duplication happens at derivation and this proves it.
+    const repeated = flagModes.filter((ms) => new Set(ms).size !== ms.length);
+    check('no claim repeats a kind, so repetition cannot smuggle a tally in', repeated.length === 0);
+
+    // (3) BOUNDED AT FIVE. 6.28 accepts a cardinality of 0..5 as the price of
+    // Invariant 4 — bounded, where a count was unbounded. If a claim ever
+    // showed more than five, the de-duplication is gone and with it the bound.
+    const widest = Math.max(0, ...flagModes.map((ms) => ms.length));
+    check(`no claim shows more than five kinds, so the magnitude stays bounded (widest ${widest})`,
+      widest <= 5);
 
     check('the flag says what happened and does not instruct — an instruction would be an attention ordering',
       !/should|must|needs|review this|look at/i.test(allFlagText));
