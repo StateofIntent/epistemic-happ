@@ -797,7 +797,7 @@ Three notes, since they materially affect conformance. The first two are carried
 
 **SO THE AMENDMENT THIS NOTE CALLED FOR IS NOT NEEDED.** Neither invariant has to change; what had to change is this note's claim that no implementation resolves the tension. A read-time standing rule resolves it, satisfies both, writes nothing, and does not reopen READINESS item 22 — whose reopen condition governs autonomous WRITES and therefore does not apply to a computation performed on demand. **What remains genuinely open is the THRESHOLD, and that is a Quantitative Promise Theory problem rather than a 6-versus-9 one**: a threshold turning a signal into a decision is itself a promise and needs an agent behind it, which is the argument that retired `CONDUCTANCE_HALF_LIFE_SECS` as a universal constant with no promiser. Three answers are available, and this note listed only the first two until 2026-10-24: a **per-membrane declared promise** (§10.9's shape, and the reading under which "same DNA, different expression" is exact); a threshold **derived** rather than chosen, so that no agent had to pick it; or **the CALLER promising it**, which is what shipped. **ITEM 3.1 WAS DECIDED ON 2026-10-24 — the reader is the promiser, and per-reader is enough** (§10.9). So Invariant 9 is no longer waiting on a threshold either: `standing_policy: None` is a complete answer with a genuinely neutral off position, which is the property a half-life cannot have and the reason this objection is answered in full here rather than half-answered as it is for conductance. The declared option is therefore **not** being built and has come off §4's accumulated bump; the derived one is research (item 3.2) rather than a dependency. **The epigenetics reading went with the declared option.** Per-reader standing is observer-local — Invariants 2 and 5, derivations — rather than differential expression of one genotype, and the place that metaphor still lands exactly is the `Constitution`: same DNA hash, different `required_promises` per membrane, no fork. **Reopen condition: a surface for readings exists AND somebody wants them faster than a person will click** — both halves, and then option (b), opt-in per agent and write-on-change, rather than a heartbeat. The observation is therefore emitted as an ephemeral signal, touching neither the DHT nor the source chain. The structural rule is unchanged and is what made this possible: it belongs in the coordinator, where `sys_time` and `schedule` are both available, and never in validation, for the reason §5.22 gives.
 
-## 7b. Two disciplines that are not invariants
+## 7b. Three disciplines that are not invariants
 
 **These are not invariants and are deliberately not numbered among them.** They are not derivations from Promise Theory, nothing in validation can enforce them, and an implementation that ignored them would still conform to §7. They are rules about how this protocol REPORTS, written down because both were already practised in several places and in none of them as a rule — which is exactly the condition under which a practice lapses without anybody deciding to drop it.
 
@@ -825,7 +825,76 @@ Three notes, since they materially affect conformance. The first two are carried
 
 ### 7b.3 Why these are disciplines rather than rules
 
-Neither is reachable by validation. Both concern coordinator reads, harnesses and clients — the hot-swappable half — so the only enforcement available is the one 7b.2 names: a check that compares a declaration against a measurement and goes red when they disagree. That is weaker than validation and it is what is available. Stating the disciplines is what makes the absence of such a check visible as a gap rather than invisible as a habit nobody wrote down.
+None of the three is reachable by validation. All three concern coordinator reads, harnesses and clients — the hot-swappable half — so the only enforcement available is the one 7b.2 names: a check that compares a declaration against a measurement and goes red when they disagree. That is weaker than validation and it is what is available. Stating the disciplines is what makes the absence of such a check visible as a gap rather than invisible as a habit nobody wrote down.
+
+**7b.4 is the sharpest case and was adopted on exactly this reasoning.** Its subject is a tag a human writes by hand, so not even a declaration-versus-measurement check can reach the question of whether the tag is *right*. What the join reaches instead is whether two tags **agree** — which is why that discipline is adopted together with its query and would not have been adopted without it.
+
+### 7b.4 A tag axis is a declaration, and the join is the only thing that checks it
+
+**Three conventions over `Claim.semantic_tags: Vec<String>` (§2.2), plus a join
+key.** The field already ships, so none of this is an entry change: no
+`protocol_version` bump and no fork (§11.1).
+
+| prefix | axis | values |
+|---|---|---|
+| `role:` | **what role a claim's subject plays** | `sensor`, `reference`, `setpoint-comparator`, `target`, `budget`, `organiser-weak`, `organiser-strong` |
+| `affords:` | **what question this claim could answer** | open, one tag per question it is filed to answer |
+| `level:` | **at what level of description the claim's carrier is named** | open; this protocol's own instance is `domain` |
+| `about:` | **the join key — the entity the claim is about** | open, e.g. `about:fibromodulin` |
+
+**WHY THIS IS ADOPTED CONDITIONALLY, WHICH IS THE WHOLE DECISION.** §7b.2 ends
+with the rule that governs here: **a declaration nothing checks is a comment.**
+A `role:` tag on a single claim is exactly that — a human's judgement about
+meaning, which validation cannot reach even in principle, because the DHT can
+check how a string is spelled and never whether it is the right string. On its
+own the convention does not earn its place.
+
+**Two tags on the same entity are a different object.** They can be compared,
+and a comparison can go red — which is the one enforcement §7b.3 says is
+available on this side of the protocol. So these axes are adopted **together
+with the join below, and would not be adopted without it.** The tag is not what
+earns its keep; **the disagreement is.**
+
+**ONE QUERY, RUN ONCE PER AXIS — NOT THREE REPORTS.** Three separate reports
+were proposed in three places before anyone noticed they were one mechanism:
+
+```
+group by about:<entity>, having count(distinct <axis>) > 1
+```
+
+Run it with `<axis>` as `role:`, then `affords:`, then `level:`. This is written
+down now, before the three proposals each grow their own query, report format
+and threshold. **The join is the cheap half; the tags are the expensive half**,
+and the build order follows.
+
+**THE REPORT MARKS DISAGREEMENT AND MUST NEVER RESOLVE IT.** Two claims
+assigning different roles to one entity is a **finding**, not an error, and
+which of them is right is the reader's to decide — Invariant 1 (no canonical
+comparative score) and Invariant 4 (typed, not flattened). A report that picked
+a winner would be asserting the thing this protocol refuses to assert. The only
+other admissible output is the pair itself.
+
+**AND THE DENOMINATOR IS REPORTED, PER 7b.1.** The report **MUST** state, per
+axis, how many claims carried no tag on that axis at all. Without it, *no
+disagreements found* is indistinguishable from *nobody tagged anything* — which
+is not a hypothetical failure here: this repository has shipped checks that
+passed because their subject was absent rather than correct, and 7b.1 exists
+because a silent drop looks identical to an empty input.
+
+**THE BAR AN AXIS VALUE HAS TO CLEAR.** A value must predict something about a
+claim **nobody has written yet**. Coverage of what has already been filed is no
+evidence at all, since any taxonomy has that, including a bad one — a value that
+only labels the existing corpus is a filing scheme wearing a convention's
+clothes. The `role:` vocabulary above is adopted on that basis and not on its
+coverage: it was built from one inquiry and then found to catch failures in
+several domains it was never built against, which is a different and stronger
+kind of support than fitting what it came from.
+
+**NOT IMPLEMENTED, DELIBERATELY, AND THE REASON IS SEQUENCING RATHER THAN
+DOUBT.** A join over an unpopulated field returns nothing and would report a
+green that means only that the field is empty. The query above is specified and
+unwritten until claims carry tags; populating them is human judgement and
+cannot be automated without becoming the thing §7b.4 exists to make visible.
 
 ## 8. HRR Encoding (Holographic Reduced Representations)
 
