@@ -312,7 +312,55 @@ class HolochainClient {
 // TWITTER CLIENT
 // ============================================================================
 
-class TwitterBridge {
+// ============================================================================
+// THE EXTERNAL PLATFORM SEAM
+// ============================================================================
+//
+// THE WHOLE SURFACE THE BRIDGE NEEDS FROM AN OUTSIDE PLATFORM IS THREE CALLS,
+// and that was true before this interface existed — `TwitterBridge` already
+// had exactly these three methods and `EpistemicBridgeService` touched them at
+// five sites. Naming the seam changes no behaviour; it makes the size of the
+// coupling legible, and makes a second platform a new class rather than a
+// rewrite of this file.
+//
+// WHY NOW, AND WHAT THIS IS NOT. A second target was proposed (a platform
+// whose API is not published), and the useful half of that conversation is
+// answerable without it: how much of this bridge is actually Twitter? The
+// answer is this interface and nothing else. **No second implementation is
+// included here and none should be written from a reverse-engineered API** —
+// an adapter needs a contract from the platform's author, not a guess at the
+// endpoints its own frontend calls.
+//
+// WHAT THIS DOES NOT FIX, AND DELIBERATELY: the ENTRY fields on the Holochain
+// side are still `twitter_id` and `author_handle`, in the integrity zome. A
+// non-Twitter platform writing through them would be storing one platform's id
+// under another's name — open-work 8.17's one-term-many-referents defect,
+// introduced on purpose. Renaming them is an entry-struct change and therefore
+// a DNA hash, so it belongs in §4's accumulated bump and not here.
+// **This seam is free; the honest field naming is a fork.**
+
+/** One reply from an external platform, reduced to what the importer uses. */
+export interface ExternalReply {
+  id: string;
+  text: string;
+  /** NOT NECESSARILY A HANDLE — see the note in `TwitterBridge.replies`. */
+  author_handle: string;
+}
+
+/** Everything the correlative-witness bridge needs from an outside platform. */
+export interface WitnessPlatform {
+  /** For logs and for saying which platform a record came from. */
+  readonly name: string;
+  /** This account's own id on the platform. */
+  selfId(): Promise<string>;
+  /** Publish text; return the platform's id for it. */
+  post(text: string): Promise<{ id: string; text: string }>;
+  /** Replies addressed to `selfId` since `sinceId`, oldest-first. */
+  replies(selfId: string, sinceId?: string): Promise<ExternalReply[]>;
+}
+
+class TwitterBridge implements WitnessPlatform {
+  readonly name = 'twitter';
   private client: TwitterApi;
 
   constructor() {
@@ -324,7 +372,7 @@ class TwitterBridge {
     });
   }
 
-  async tweet(text: string): Promise<{ id: string; text: string }> {
+  async post(text: string): Promise<{ id: string; text: string }> {
     try {
       const tweet = await this.client.v2.tweet(text);
       logger.info(`Tweeted: ${tweet.data.id}`);
@@ -335,20 +383,36 @@ class TwitterBridge {
     }
   }
 
-  async getMentions(userId: string, sinceId?: string): Promise<any[]> {
+  // `author_handle` IS FED AN AUTHOR **ID**, AND THAT IS PRE-EXISTING
+  // BEHAVIOUR PRESERVED HERE RATHER THAN QUIETLY CORRECTED. The zome field is
+  // named `author_handle` and its own comment calls it *"The TWITTER handle"*,
+  // but `userMentionTimeline` returns `author_id` — a numeric id — and a handle
+  // only arrives if expansions are requested, which they are not. So the
+  // mapping below is wrong in the same way it has always been wrong.
+  //
+  // It is NOT fixed in this change because fixing it changes what gets written
+  // to the DHT, and Invariant 6 means nothing written can be taken back. That
+  // is a behaviour decision with a permanent consequence, so it is recorded
+  // and left for one. Making the mapping explicit at least puts the defect
+  // where a reader meets it instead of inside an `any`.
+  async replies(selfId: string, sinceId?: string): Promise<ExternalReply[]> {
     try {
-      const mentions = await this.client.v2.userMentionTimeline(userId, {
+      const mentions = await this.client.v2.userMentionTimeline(selfId, {
         since_id: sinceId,
         max_results: 100,
       });
-      return mentions.data?.data || [];
+      return (mentions.data?.data || []).map((m: any) => ({
+        id: m.id,
+        text: m.text,
+        author_handle: m.author_id,
+      }));
     } catch (error) {
       logger.error('Twitter mentions fetch failed:', error);
       return [];
     }
   }
 
-  async getUserId(): Promise<string> {
+  async selfId(): Promise<string> {
     const user = await this.client.v2.me();
     return user.data.id;
   }
@@ -378,19 +442,21 @@ class TwitterBridge {
 
 class EpistemicBridgeService {
   private holochain: HolochainClient;
-  private twitter: TwitterBridge;
+  private platform: WitnessPlatform;
   private lastMentionId: string | undefined;
   private userId: string = '';
 
-  constructor() {
+  // The platform is injected so a second one is a constructor argument rather
+  // than an edit to this class. Defaulted, so every existing caller is unchanged.
+  constructor(platform: WitnessPlatform = new TwitterBridge()) {
     this.holochain = new HolochainClient(HOLOCHAIN_APP_ID);
-    this.twitter = new TwitterBridge();
+    this.platform = platform;
   }
 
   async start() {
     await this.holochain.connect();
-    this.userId = await this.twitter.getUserId();
-    logger.info(`Twitter user ID: ${this.userId}`);
+    this.userId = await this.platform.selfId();
+    logger.info(`${this.platform.name} account id: ${this.userId}`);
 
     // Listen for Holochain signals (real-time claim/mew creation).
     this.holochain.onSignal((signal) => {
@@ -444,7 +510,7 @@ class EpistemicBridgeService {
     const { carried_fields, dropped_fields } = computeFieldLoss(MEW_FIELDS, ['content']);
 
     try {
-      const tweet = await this.twitter.tweet(tweetText);
+      const tweet = await this.platform.post(tweetText);
 
       // Record the witness back to Holochain.
       // This is the correlative witness: only the DHT side durably records
@@ -486,7 +552,7 @@ class EpistemicBridgeService {
     const { carried_fields, dropped_fields } = computeFieldLoss(CLAIM_FIELDS, ['content', 'domain']);
 
     try {
-      const tweet = await this.twitter.tweet(tweetText);
+      const tweet = await this.platform.post(tweetText);
 
       await this.holochain.callZome(
         'epistemic',
@@ -563,7 +629,7 @@ class EpistemicBridgeService {
 
   private async pollMentions() {
     try {
-      const mentions = await this.twitter.getMentions(this.userId, this.lastMentionId);
+      const mentions = await this.platform.replies(this.userId, this.lastMentionId);
 
       for (const mention of mentions) {
         // Look for Holochain hash references in the reply text.
@@ -587,7 +653,7 @@ class EpistemicBridgeService {
             'import_twitter_reply',
             {
               twitter_id: mention.id,
-              author_handle: mention.author_id,
+              author_handle: mention.author_handle,
               content: mention.text,
               linked_holochain_claim: linkedHash,
               imported_at: Date.now(),
