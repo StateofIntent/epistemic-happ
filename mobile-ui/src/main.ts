@@ -2723,7 +2723,34 @@ function renderClaimCard(
     // are the two a hesitant participant is likeliest to have. "Response" is
     // the neutral noun that is true of all five; the KIND does the work.
     if (!critiqued) {
-      line.textContent = 'No responses yet.';
+      // ROW 8.38 — THIS SENTENCE USED TO ASSERT THE UNEXAMINED BRANCH, AND
+      // THAT WAS FALSE FOR HALF THE CLAIMS IT RENDERED ON.
+      //
+      // It read "No responses yet." until 2026-11-27. The state it renders is
+      // READ-AND-ZERO, not unread — the unread case shows no flag at all, and
+      // this harness's section 5 is what holds that line. But a reader who
+      // opens a claim, considers it and has no objection WRITES NOTHING, so
+      // zero recorded responses conflates two states a reader most needs
+      // separated: nobody looked, and people looked and found nothing. "Yet"
+      // asserts the first of them.
+      //
+      // The protocol cannot record the second, and 8.38 establishes that both
+      // obvious fixes are refused by its own rules: an "I examined this and
+      // had no objection" entry is a declaration nothing can check (SPEC
+      // §7b.2, and row 8.2 was decided on exactly that) and forks the network;
+      // a read-layer count is not DHT-visible and would build a surveillance
+      // surface over reading, which Invariants 2 and 5 exist to prevent.
+      //
+      // So what changes is the SENTENCE, which is SPEC §7b.1's own remedy: an
+      // absence states the scope it was searched over. The record is what is
+      // empty, and reading is outside what the record can hold — said here
+      // rather than implied, because the implication was wrong.
+      line.textContent = 'No responses recorded.';
+      const scope = document.createElement('span');
+      scope.className = 'hint';
+      scope.setAttribute('data-testid', 'critiqued-empty-scope');
+      scope.textContent = ' Reading leaves no record, so this is not agreement.';
+      line.appendChild(scope);
     } else {
       line.textContent = 'Responses: ';
       modes.forEach((m) => {
