@@ -825,7 +825,9 @@ Three notes, since they materially affect conformance. The first two are carried
 
 **This one is already implemented in two places, which is the argument that it is the right rule rather than a new burden.** `scripts/check-outbound-claims.mjs` **exits 2 for CANNOT VERIFY** rather than 0, so an unverifiable claim is never reported as a checked one; and §11.4's sort states its own scope — *nothing in either zome or this document argues for an hour* — rather than *nothing argues for an hour*.
 
-**What (a) and (b) jointly forbid:** an organising sentence with no apparatus, and an absence with no denominator.
+**(c) A LOCATION IS NOT A MEASUREMENT, AND THE WORD IMPORTS THE CONCLUSION INTO THE FRAMING.** A file and line number say **where** something is; a measurement says **how much**, with a method that could have returned another number. Both are evidence and they are not interchangeable: `integrity:316` establishes that a field exists, and no count of line numbers establishes that it is the only one of its kind — that is an enumeration, and an enumeration is only as good as its completeness. **So a claim introduced as *measured* MUST state the quantity and the method**, and a claim resting on a citation says *recorded at* or *present at* instead. This was added after a row in `docs/open-work.md` opened with *"Measured:"* over two line references and an inference from an unfinished enumeration; finishing the enumeration found four instances where the row claimed one. **The tell is that the sentence would read identically if the enumeration had never been run** — which is the same defect (a) describes, in the evidence rather than in the organising.
+
+**What (a), (b) and (c) jointly forbid:** an organising sentence with no apparatus, an absence with no denominator, and a citation presented as a quantity.
 
 ### 7b.2 Every read declares the mode it ran in
 
