@@ -3811,9 +3811,16 @@ pub struct NeighborhoodBinding {
     pub source_hashes: Vec<AnyDhtHash>,
 }
 
-// Matches this file's other bounded-search caps (MAX_ATTESTATION_SEARCH_NODES,
-// MAX_GROUNDING_SEARCH_NODES) — a claim with an unusually large critique
-// stack still gets a bounded, not unbounded, corpus.
+// Bounded in the same WAY as this file's other search caps, not to the same
+// NUMBER — and the distinction is the whole correction here. This comment read
+// "Matches this file's other bounded-search caps (MAX_ATTESTATION_SEARCH_NODES,
+// MAX_GROUNDING_SEARCH_NODES)" until 2026-11-27, and both of those are 100
+// while this is 512, so a reader checking the stated reason found it false.
+// The property actually shared is bounded rather than unbounded: a claim with
+// an unusually large critique stack still gets a finite corpus instead of
+// however many critiques happen to exist. The position 512 is NOT argued
+// anywhere, here or in SPEC — §11.4 sorts it as a dial on exactly that ground,
+// and a reader is entitled to know which of the two it is.
 const MAX_NEIGHBORHOOD_CRITIQUES: usize = 512;
 
 /// Builds a Claim's neighborhood binding fresh from real DHT data —

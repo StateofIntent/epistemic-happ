@@ -731,7 +731,7 @@ untouched.
 
 ## 6. Rate Limits (SWO Temporal Friction) — Consolidated
 
-All windows are rolling (not fixed calendar buckets) and per-agent (global across domains, not per-domain — a deliberate, documented tradeoff, not an oversight). Coordinator-side and DHT-side limits are kept numerically identical by convention (each constant's own comment cross-references its sibling); nothing enforces that equality automatically.
+All windows are rolling (not fixed calendar buckets) and per-agent (global across domains, not per-domain — a deliberate, documented tradeoff, not an oversight). Coordinator-side and DHT-side limits are kept numerically identical, and **that equality is enforced automatically** — each constant's own comment cross-references its sibling, and `scripts/check-spec-drift.mjs` compares all three copies of every row below (this table, the integrity constant, the coordinator constant) in both directions on every pull request, reporting `5 of 5 rows agree`. It fails if a coordinator pre-check is looser than the rule the DHT enforces, which is the direction that would matter. This sentence said *nothing enforces that equality automatically* until 2026-11-27, which was true when written and had been false since the friction arm was added to that gate — a specification understating its own guarantee, found by §11.4's sort.
 
 | Rate-limited action | Window | Max per window | Enforced |
 |---|---|---|---|
@@ -1524,3 +1524,87 @@ Fork provenance is `FederationRecord`'s situation with the remote network being 
 **Two constraints this inherits and MUST keep.** The entry's `author` MUST be the migrating agent, per §5.2, so a provenance record can only ever be self-asserted — the same rule that makes migration necessarily voluntary and partial. And a conforming implementation MUST NOT present such a record as evidence that the referenced entry existed or was valid; it is a statement by one agent about a network the reader cannot query, which is exactly what §2.11's asymmetric-witness paragraph already says of its own fields.
 
 **Still not implemented, deliberately, and the reason is fork economics rather than the decision.** Adding the entry type is an integrity change, so it forks the network again (§11.1) — and forking to ship a type no agent yet writes would spend the network's identity on nothing. The sequencing that follows: this entry type rides along with the migration tooling that would use it, so one fork carries both. §11.1's rule that a coordinator-only change SHOULD NOT be batched into an integrity change has a converse, and this is it.
+
+### 11.4 What kind of number a named constant is
+
+**Ask this before asking who promises it.** §7's note on Invariant 1 asks, of a
+threshold, *which agent makes this promise* — and that question presupposes the
+number is a **dial**, something a reader may legitimately set. If it instead has
+a correct value, the honest record is not a promiser but **the value and what
+breaks on either side of it**, and moving it onto a caller-supplied policy is
+*worse* than a protocol default, because it invites a reader to change something
+that has a right answer.
+
+Five kinds. The last two are the ones usually missed:
+
+| kind | what it is | what has to be defended |
+|---|---|---|
+| **specification** | a correct value; both directions are wrong | the value, and the failure on each side |
+| **dial** | a reader may choose; nearby values are equivalent | who promises it |
+| **placeholder** | a dial whose position is unargued | that it is one, said out loud |
+| **false precision** | resolution coarser than the distinction it draws | nothing — the parameter does not work |
+| **trigger** | the point at which a *different process* starts | that a regime change exists at all |
+
+A **trigger** has a one-question test, and it is cheaper than deriving a value:
+*does its position hold regardless of the path taken to it?* A boundary reached
+at the same place from two different approach rates is a regime boundary; one
+whose position moves with the approach is not a boundary at all.
+
+**The sort, run over every named numeric constant in both zomes on 2026-11-27.**
+"SPEC" records whether this document commits to the figure, which turns out to
+track the sort closely.
+
+| constant | value | SPEC | kind |
+|---|---|---|---|
+| `HRR_DIM` | 512 | §8.1 | **specification** — §8.1 fixes the encoding at 512 × 4 = 2048 bytes and calls the round-trip exact, so a zome built at another width decodes to the wrong length and silently mis-scores every resonance query. **Not** a power-of-two requirement: the convolution is direct O(n²) (`coordinator:3268`), so the band's upper edge is compute and §5.7's 64KB cap, not an FFT |
+| `METABOLIC_TICK_SECS` | 60 | — | **specification, one-sided** — a floor, not a period. Below the host scheduler's own granularity the number asserts something the host does not promise; above it is merely slower |
+| `CONDUCTANCE_HALF_LIFE_SECS` | 30 days | §7, past tense | **dial — the only one with a named promiser.** The 2026-10-19 decision moved it onto `ConductancePolicy`, so the reader supplying it is the promiser and omitting it is the previous behaviour. What remains in the zome is the no-promise default |
+| `MAX_RESONANCE_QUERY_PERIODS` | 4096 | §8 | **dial** — a ceiling on work a caller may request; nothing decodes differently at 4095 |
+| `MAX_NEIGHBORHOOD_CRITIQUES` | 512 | §8 | **dial** — bounded rather than unbounded is the whole point, and the position is not argued |
+| `CHECKPOINT_SCAN_CAP` | 50 | — | **dial** — a first-pass scan width; finding no checkpoint falls back to `FALLBACK_SCAN_CAP` rather than failing, so neither edge is a cliff |
+| `FALLBACK_SCAN_CAP` | 200 | — | **dial** — the safety net's width, same reasoning |
+| `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` | 30 days | §5.14, hedged *"currently"* | **placeholder, self-admitted** — its own comment: *"a placeholder scale … not a value derived from anything; tunable"* |
+| five `*_WINDOW_SECS` (`CRITIQUE`, `ANTIBODY_PATTERN`, `SYNAPTIC_LINK`, `REINFORCEMENT`) and `ATTESTATION_GRANT` | 3600 ×4, 7 days | §6 | **placeholder** — one hour appears four times and **nothing in either zome or this document argues for an hour** |
+| five `*_MAX_PER_WINDOW` | 20, 20, 20, 40, 5 | §6 | **placeholder** — §6 promises these positions to participants and derives none of them. The grant's comment argues its *relative* tightness (vouching should be rarer than critiquing) and not its value, which is the strongest justification any of the ten carries |
+| `MAX_GROUNDING_SEARCH_NODES` | 100 | — | **placeholder** — no comment |
+| `MAX_ATTESTATION_SEARCH_NODES` | 100 | — | **placeholder** — no comment |
+| `DEFAULT_GROUNDING_MAX_DEPTH` | 20 | — | **placeholder** — no comment |
+| `REINFORCE_WEIGHT` | 1.0 | — | **placeholder** — its comment says *"comparable to typical initial conductance"* and no initial-conductance constant exists to be comparable to |
+| `ratio > 3.0` (`get_discourse_health`) | 3.0 | §10 documents the payload, never the threshold | **false precision** — reached twice independently: by resolution (minimum reportable overshoot is `1/experiential`, 33% at one embodied critique) and by invariance, below |
+| `ONE_DAY_MICROS` | 86,400,000,000 | — | *not a parameter* — a unit conversion, listed so the sort is complete |
+
+**Four results, and the first was not expected.**
+
+**(a) The `trigger` row is empty.** No named constant in this protocol is a
+regime boundary. The only trigger-*shaped* number is `ratio > 3.0` — below it
+nothing is emitted, above it a sentence is — and it fails the invariance test,
+because the true ratio at which it fires depends on how many critiques the
+entity already has, which is the path and not a boundary. So this protocol
+bounds **rates and sizes** and recognises **no regime changes**. That is
+consistent rather than suspicious: §6 makes every row an absolute cutoff on a
+rate, and Invariant 9 refuses to block anyone, which leaves nowhere for a
+"different process starts here" to live.
+
+**(b) Exactly two of the sixteen derive themselves, and neither is a reader's to
+turn.** `HRR_DIM` derives from a byte budget against §5.7's entry cap, and
+`METABOLIC_TICK_SECS` from the host's scheduler. One is an entry width, so
+moving it forks the network (§11.1); the other belongs to the host. **Every
+value a reader could actually influence is a position somebody chose**, and the
+one with a promiser behind it has one because a decision put it there.
+
+**(c) Ten positions are promised to participants by §6 and none is derived.**
+This is not an argument that they are wrong — §6 gives a clear derivation of
+*which acts* are metered, and the rule it states (friction applies to acts that
+write onto a base another agent owns) is the load-bearing part. The gap is
+between *that there is a cap* and *that the cap is 20*. Four of the five windows
+are one hour for no stated reason.
+
+**(d) This sort is written down and deliberately not gated.** A coverage check
+requiring every future constant to carry a stated kind was considered and
+refused for the reason `namedBounds()` in `check-spec-drift.mjs` already gives
+about constants generally: this document commits to no figure for seven of the
+sixteen, so a gate over them "would be inventing a requirement rather than
+checking one". The nine SPEC *does* commit to are already gated — three by
+`namedBounds()`, ten rate-limit figures three ways each by the §6 friction arm.
+The sort's value is the **ordering** it imposes on the question, which no gate
+can hold: ask what kind of number it is before asking who promises it.
