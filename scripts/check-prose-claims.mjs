@@ -134,8 +134,30 @@ const countHarnesses = () => harnessFiles().length;
 const countChromiumImporters = () =>
   harnessFiles().filter((f) => read(`scripts/live-verify/${f}`).includes('CHROMIUM')).length;
 
+// MEASURED 100 UNTIL 2026-11-26 AND THE CALLABLE SURFACE IS 95. `/#\[hdk_extern/`
+// is unanchored at both ends, so it counted five things that are not callable
+// zome functions: the string `#[hdk_extern]` written inside THREE COMMENTS
+// (coordinator lines 5667, 7533 and 8438), and the two
+// `#[hdk_extern(infallible)]` scheduled functions, of which `metabolic_tick`
+// is one — the host calls those, no caller can.
+//
+// THIS IS THE THIRD TIME THIS FILE HAS CARRIED THIS EXACT BUG, which is why
+// the fix is a shared pattern rather than a tighter regex of its own. The
+// harness total was inflated by two until shared modules were excluded; the
+// `check()` measure was inflated by two until `\b` was stopped from matching
+// after a dot; and the header above records measuring the comment-match worry
+// in `scripts/live-verify` and finding it **unrealised there**. It is realised
+// in the coordinator, and it was realised in the one file nothing re-measured:
+// the public page said 98, from `grep -c '#[hdk_extern]'`.
+//
+// So the pattern is taken from `check-spec-drift.mjs:198` verbatim, because
+// that gate asserts SET EQUALITY between these names and SPEC §10 and is
+// therefore the authority on what a callable zome function is. Agreement is
+// asserted in main() rather than assumed — three scripts reported 95, 98 and
+// 100 for one artifact, and two of the three were this kind of copy.
+const CALLABLE_RE = /#\[hdk_extern\][^\n]*\n(?:\s*(?:\/\/[^\n]*|#\[[^\]]*\])\n)*\s*pub fn\s+([a-z_0-9]+)/g;
 const countHdkExterns = () =>
-  (read('dna/coordinator/src/lib.rs').match(/#\[hdk_extern/g) || []).length;
+  [...read('dna/coordinator/src/lib.rs').matchAll(CALLABLE_RE)].length;
 
 // THIS ONE USED TO BE A HAND-WRITTEN PAIR OF NUMBERS IN THE TABLE BELOW, which
 // is the defect this whole file exists to find — stated inside the output that
@@ -189,8 +211,20 @@ const countEntryTypes = () =>
 // --------------------------------------------------------------- the vocabulary
 // `gatedBy` names the script that already gates claims of this shape. `null`
 // means NOTHING gates it — which is the whole output of this file.
+// ADDED 2026-11-26, because the figure that forced this file's extern counter
+// to be re-measured was a gate count and NOTHING ANYWHERE COULD COUNT GATES.
+// The public page said 21 and then 15; `scripts/check-*.mjs` holds 16 and only
+// 12 are wired into a workflow. Three defensible numbers for one artifact, and
+// the difference between them is a VERB: "exist" and "run on every change" are
+// not the same claim. This counts the files, which is the cardinal prose
+// usually means; enforcement is adjudicated by `check-site-claims.mjs`, which
+// is the only gate that reads a claim about enforcement.
+const countGateFiles = () =>
+  readdirSync(join(ROOT, 'scripts')).filter((f) => /^check-.*\.mjs$/.test(f)).length;
+
 const ARTIFACTS = [
   { key: 'harness',   nouns: ['harnesses', 'harness'],              count: countHarnesses,        gatedBy: 'check-harness-counts.mjs (suite total only)' },
+  { key: 'gate',      nouns: ['document and spec gates', 'document gates', 'spec gates'], count: countGateFiles, gatedBy: 'check-site-claims.mjs (the public page\'s ENFORCED count, not the file count)' },
   { key: 'chromium',  nouns: ['browser harnesses'],                 count: countChromiumImporters, gatedBy: 'check-harness-counts.mjs (CHROMIUM importers)' },
   { key: 'linktype',  nouns: ['link types', 'link type'],           count: countLinkTypes,        gatedBy: null },
   { key: 'entrytype', nouns: ['entry types', 'entry type'],         count: countEntryTypes,       gatedBy: null },
@@ -279,6 +313,10 @@ const GATE_PATTERNS = {
   zomefn: null,
   linktype: null,
   entrytype: null,
+  // check-site-claims adjudicates the PUBLIC page's enforced-gate figure, which
+  // is a different cardinal from the file count measured here. Nothing gates a
+  // gate-count claim in the six documents below.
+  gate: null,
 };
 
 // file + substring → reason. Suppresses one specific claim, never a pattern.
@@ -286,6 +324,16 @@ const EXEMPT = [
   ['scripts/check-prose-claims.mjs', 'ALL', 'this file quotes all four historical defects in its own header'],
 ];
 
+// SIX DOCUMENTS, AND `site/index.html` IS DELIBERATELY NOT THE SEVENTH.
+// Until 2026-11-26 the public page's absence from this list was the whole of
+// its coverage story: `check-outbound-claims.mjs` takes a named draft and is
+// hand-run, so the one document strangers read was the one no gate could see.
+// It is now read by `scripts/check-site-claims.mjs`, which is in CI and which
+// ADJUDICATES — it exits 1 on a wrong figure and 2 when it cannot find the
+// claim at all. Adding the page here instead would have put it in a mode whose
+// stated contract is that it asserts nothing and always exits zero, which is
+// a weaker answer than the page's audience deserves. The gap is closed by a
+// gate, not by a longer inventory.
 const FILES = ['README.md', 'SPEC.md', 'READINESS.md', 'SECURITY.md', 'docs/open-work.md', 'scripts/live-verify/README.md'];
 
 // ------------------------------------------------------- the model extractor
@@ -451,6 +499,19 @@ function main() {
       console.log(`  there: ${[...theirs].sort().join(', ') || '(none parsed)'}`);
       console.log(`  here:  ${[...mine].sort().join(', ')}`);
       console.log('  Until they agree, the harness total above is not the gate\'s total.');
+    }
+  } catch { /* the gate is the authority; a failed read here changes nothing */ }
+
+  // THE SAME ASSERTION, FOR THE SAME REASON, ON THE OTHER COPIED PATTERN.
+  // `CALLABLE_RE` is byte-copied from check-spec-drift.mjs because that gate
+  // owns the callable set; a copy that drifts re-inflates the truth this file
+  // compares prose against, which is exactly what the old `/#\[hdk_extern/`
+  // did for 100 against a real 95.
+  try {
+    if (!read('scripts/check-spec-drift.mjs').includes(CALLABLE_RE.source)) {
+      console.log('\nCALLABLE_RE HAS DRIFTED from check-spec-drift.mjs, which owns the');
+      console.log('callable-function set. Until they agree, the zomefn total above is not');
+      console.log("the gate's total.");
     }
   } catch { /* the gate is the authority; a failed read here changes nothing */ }
 

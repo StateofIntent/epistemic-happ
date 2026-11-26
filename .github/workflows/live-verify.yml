@@ -177,6 +177,53 @@ jobs:
       - name: row-status — no row says CLOSED in its body and open in its column
         run: node scripts/check-row-status.mjs
 
+      # NEWEST IN THE FAMILY (2026-11-26), and the first one that watches a
+      # document STRANGERS read. `site/index.html` is served at
+      # <https://stateofintent.github.io/epistemic-happ/> with no login, and
+      # until this step existed nothing in the repository re-measured a single
+      # number on it: `check-prose-claims.mjs` reads a fixed six-document list
+      # the page was not in, and `check-outbound-claims.mjs` is hand-run
+      # because its inputs are git-excluded. So the most outward-facing
+      # document was the only one no gate could see.
+      #
+      # IT BELONGS IN CI FOR THE EXACT REASON `check-outbound-claims.mjs` does
+      # not: that script refuses CI because `docs/funding/` is in
+      # `.git/info/exclude`, so a runner would grep an absent directory and go
+      # green — the vacuous green this repository refuses. `site/index.html` is
+      # TRACKED, so a checkout has it. The two ways this could still pass
+      # vacuously are the page being renamed and the figure grid being
+      # rewritten, and both exit 2 rather than 0.
+      #
+      # Its first run found three wrong figures on the live public page, two of
+      # them defects already found, fixed and written down elsewhere in this
+      # repository: 77 harnesses where the harness gate measures 75 (two shared
+      # modules counted as harnesses — the mistake `check-prose-claims.mjs`
+      # records correcting in itself), 98 callable functions where 95 exist
+      # (three of the 98 `#[hdk_extern]` matches are inside COMMENTS), and
+      # "15 gates run on every change" when four of the fifteen are hand-run.
+      # The claim that prompted the audit had already been corrected once, from
+      # 21 — `ls scripts/*.mjs | wc -l`, a set including a spike, a generator
+      # and `ci-scope.mjs` — so the number had been moved onto the right files
+      # and left on the wrong verb, invisibly.
+      #
+      # THIS STEP COUNTS ITSELF: the gates figure is how many `check-*.mjs` a
+      # workflow references, and this line is one of them. Adding or removing a
+      # gate therefore reds the page until the page is updated, which is the
+      # correct direction.
+      #
+      # GH_TOKEN IS SUPPLIED SO THE MERGED-PR FIGURE IS ACTUALLY MEASURED. That
+      # one claim needs the API, and without a token the step would print a
+      # NOTE saying the figure went unchecked on this run — honest, but a
+      # permanently unchecked claim is the one this file is least entitled to
+      # have. Unreachability is a NOTE rather than a failure (the precedent
+      # `check-outbound-claims.mjs` set for the same situation), so a transient
+      # API outage does not red an unrelated pull request, while a wrong figure
+      # and a renamed label still do.
+      - name: site-claims — every counted claim on the public page, re-measured
+        run: node scripts/check-site-claims.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Third in the same family, and for the same reason the two above exist:
       # `scripts/validation-corpus/corpus/inventory.json` is a committed
       # snapshot of every `ValidateCallbackResult::Invalid` site in

@@ -65,9 +65,30 @@
     });
   }
 
+  /* ON A PHONE, SELECTING A TAB HAD NO VISIBLE EFFECT. The four controls stack
+     to roughly a screen's height, so the panel they swap is below the fold and
+     a reader who pressed one saw nothing move — which is how the strip came to
+     read as four inert subheadings. Vertical stacking is the condition, so the
+     same 640px breakpoint the stylesheet uses is the condition here, and the
+     panel is brought to the top of the viewport on press. Keyboard arrows are
+     excluded: they move focus, and scrolling away from a focused control is
+     disorienting rather than helpful. */
+  var STACKED = '(max-width: 640px)';
+  function revealPanel(tab) {
+    if (!window.matchMedia || !window.matchMedia(STACKED).matches) return;
+    var panel = document.getElementById(tab.getAttribute('aria-controls'));
+    if (!panel || !panel.scrollIntoView) return;
+    var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try {
+      panel.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+    } catch (e) {
+      panel.scrollIntoView();
+    }
+  }
+
   tabs.forEach(function (tab, i) {
     tab.setAttribute('tabindex', tab.getAttribute('aria-selected') === 'true' ? '0' : '-1');
-    tab.addEventListener('click', function () { select(tab); });
+    tab.addEventListener('click', function () { select(tab); revealPanel(tab); });
     tab.addEventListener('keydown', function (ev) {
       var d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
       if (!d) return;

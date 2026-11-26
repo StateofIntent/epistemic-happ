@@ -427,15 +427,77 @@ td:first-child { color: var(--ink-strong); font-weight: 560; }
   letter-spacing: 0; margin-top: .25rem; font-family: "Source Serif 4", serif; }
 
 /* --- tabs ----------------------------------------------------------------- */
+/* THE MOBILE PROBLEM THIS SOLVES. At desktop width these four read as a tab
+   strip because they sit on one line against a rule, which is a shape readers
+   know. Wrapped onto four lines on a phone the same markup reads as a LIST OF
+   SUBHEADINGS — four bordered lines of text under a heading — and a reader
+   reported exactly that: it was not clear they could be pressed, or that
+   pressing one swapped the panel below. Nothing about the affordance was
+   carried by the stacked layout.
+
+   So below 640px they stop pretending to be tabs and become what they behave
+   like: full-width disclosure rows, numbered 1-4, each with a chevron, the
+   open one filled and pointing down at its own panel. The hint line says it in
+   words as well, because an affordance a reader has to infer is one this page
+   has already lost once. */
+.tabs__hint {
+  font-size: .9rem; color: var(--muted); margin: 0 0 .7rem;
+}
+.tabs__hint strong { color: var(--accent-ink); }
+
 .tabs { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 1.4rem; max-width: none;
   border-bottom: 1px solid var(--rule); padding-bottom: .7rem; }
 .tab {
   font-family: Archivo, sans-serif; font-size: .85rem; font-weight: 540;
   padding: .45rem .85rem; border: 1px solid var(--rule-strong); background: transparent;
   color: var(--muted); cursor: pointer; border-radius: 2px;
+  display: inline-flex; align-items: center; gap: .5rem; text-align: left;
+}
+.tab__n {
+  font-family: "IBM Plex Mono", monospace; font-size: .7rem; font-weight: 400;
+  color: var(--faint); border: 1px solid var(--rule-strong); border-radius: 50%;
+  width: 1.35rem; height: 1.35rem; display: grid; place-items: center; flex: none;
 }
 .tab:hover { color: var(--ink); border-color: var(--ink); }
+.tab:hover .tab__n { color: var(--ink); border-color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab[aria-selected="true"] .tab__n { color: #fff; border-color: rgba(255, 255, 255, .55); }
+
+@media (max-width: 640px) {
+  /* Full-width rows, not a wrapped strip: one per line, each unmistakably a
+     control. The container rule goes, because a bottom border under a vertical
+     stack reads as the end of a list rather than the edge of a tab strip. */
+  .tabs {
+    display: grid; grid-template-columns: 1fr; gap: .45rem;
+    border-bottom: 0; padding-bottom: 0; margin: 0 0 1.1rem;
+  }
+  .tab {
+    width: 100%; padding: .8rem .9rem; font-size: .95rem;
+    background: var(--surface); border-color: var(--rule-strong);
+    box-shadow: var(--shadow); border-radius: 3px;
+    /* number · title · chevron */
+    display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) 1.1rem;
+    align-items: center; gap: .65rem;
+  }
+  /* A left edge in the accent says "this is a thing you act on", and the
+     filled state then reads as open rather than merely highlighted. */
+  .tab { border-left: 3px solid var(--rule-strong); }
+  .tab .tab__t { line-height: 1.3; }
+  .tab::after {
+    content: "›"; font-family: Archivo, sans-serif; font-size: 1.3rem;
+    line-height: 1; color: var(--faint); justify-self: end;
+    transform: translateY(-.08em);
+  }
+  .tab[aria-selected="true"] {
+    border-left-color: var(--accent-ink);
+  }
+  .tab[aria-selected="true"]::after {
+    content: "⌄"; color: #fff; transform: translateY(-.3em);
+  }
+  .tab[aria-selected="false"] { color: var(--ink); }
+  .tab[aria-selected="false"] .tab__t { font-weight: 540; }
+}
 [hidden] { display: none !important; }
 
 /* --- notes ---------------------------------------------------------------- */
