@@ -11,7 +11,7 @@
 // `frictionStatus.blocked` was read in exactly two places, both purely
 // cosmetic (the meter's label and its bar colour). Nothing gated the
 // action. A practitioner whose budget was spent still saw an enabled
-// "Add critique" button, wrote a critique, submitted it, and got an
+// "Respond" button, wrote a critique, submitted it, and got an
 // opaque validation error from the DHT — the precise failure the HUD
 // was introduced to prevent. The meter depleted in front of them, and
 // then the button lied.

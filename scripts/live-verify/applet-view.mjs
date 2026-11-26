@@ -1267,7 +1267,7 @@ async function main() {
       // it. Checked last because it changes the panel this pass was reading.
       await page.locator('[data-testid="critique-form"] textarea').first()
         .fill('A critique filed from inside the Moss arm, to prove it announces.');
-      await clickByName(page, 'Add critique');
+      await clickByName(page, 'Respond');
       await page.waitForTimeout(4000);
       check(`publishing a critique ANNOUNCES it to the group (${remoteSent.length} sent)`,
         remoteSent.length >= 1);

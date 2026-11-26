@@ -13,7 +13,11 @@
 // ranking. It shows the areas people feel strongly about, and that's probably
 // where people learn the most from a debate." That is not the counter-argument
 // the row anticipated — it asks for the OUTPUT of the refused thing, not the
-// thing. So what shipped is a BOOLEAN: "this claim has been critiqued" with
+// thing. A BOOLEAN shipped first — "this claim has been critiqued" with
+// the count discarded — and row 6.28 DECIDED AGAINST IT on 2026-11-26: a
+// boolean is the maximal flattening of five modes, which is what Invariant 4
+// forbids. What this file now holds is the TYPED signal: the set of KINDS,
+// de-duplicated, with no digit and no quantity word. The old line read:
 // the number thrown away at the point of derivation. Two buckets cannot be
 // ordered into a gradient, so the ranking surface is absent BY CONSTRUCTION
 // rather than by restraint.
