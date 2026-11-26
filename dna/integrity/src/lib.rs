@@ -401,6 +401,39 @@ pub struct Condition {
 pub struct CritiqueSpecies {
     pub name: String,
     pub parent_species: Option<EntryHash>,
+    /// ADVISORY, AND IT CANNOT BE ANYTHING ELSE — row 8.18(i), decided
+    /// 2026-11-27. Nothing validates a critique against this, and the reason
+    /// is the type rather than unfinished work.
+    ///
+    /// **IT IS FREE TEXT.** `validate_critique_species` checks the proposer,
+    /// a non-empty name and parent resolution and never reads this; the
+    /// `CritiqueToSpecies` link validation resolves both ends and never
+    /// consults it either. The one harness that populates it writes an
+    /// English sentence — `"at least one evidence_hash resolving to
+    /// Evidence"` (`scripts/live-verify/secretion.mjs`). **A `Vec<String>` of
+    /// prose is not checkable by validation**, so "enforce it at the link" is
+    /// not an expensive option, it is an unimplementable one against this
+    /// field as typed.
+    ///
+    /// THE TWO OPTIONS THAT WERE REAL, AND WHY BOTH LOSE. Enforcing in the
+    /// COORDINATOR costs no fork and is bypassable by a modified client,
+    /// which this repository has already been bitten by once: row 1.24's
+    /// commitment index is exactly that shape, a convention a client can
+    /// decline while staying in its own denominator. And enforcing anywhere
+    /// makes the protocol adjudicate whether a critique is adequately
+    /// evidenced, which is nearer Invariant 2's line — the topology is the
+    /// truth function, not an algorithm — than it first looks.
+    ///
+    /// SO IT IS GUIDANCE TO A HUMAN AUTHOR, AND 8.12's SEEDED SPECIES MUST BE
+    /// WRITTEN THAT WAY. A species may say what evidence its critiques ought
+    /// to carry; nothing makes them carry it. Seeding species whose stated
+    /// requirements read as rules would ship a promise the protocol does not
+    /// keep, which is the thing 8.18 exists to name.
+    ///
+    /// MAKING IT REAL IS A DIFFERENT FIELD, NOT A STRICTER CHECK ON THIS ONE:
+    /// a machine-readable predicate — an evidence-type set, a minimum count —
+    /// could be validated, and that is an entry-shape change belonging in the
+    /// bump set alongside 4.8, not a tightening of a prose list.
     pub required_evidence: Vec<String>,
     pub proposer: AgentPubKey,
     pub created_at: u64,
