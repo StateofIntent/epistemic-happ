@@ -144,7 +144,7 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 // nothing re-measures. A page added to `site/` and NOT added here is ungated,
 // so `assertEveryPageCovered()` below fails the run rather than leaving that
 // to be noticed.
-const PAGES = ['site/index.html', 'site/how-it-works.html'];
+const PAGES = ['site/index.html', 'site/how-it-works.html', 'site/where-it-sits.html'];
 
 // --------------------------------------------------------------- the counters
 // Each MEASURES. A counter that is itself a hand-written number would put this
