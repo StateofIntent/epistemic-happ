@@ -183,7 +183,7 @@ async function main() {
     // local-first mirror item, which is the actual fix.
     await page.waitForTimeout(3000);
     await page.locator('.critique-form textarea').fill('The cited trial reports adherence, not recurrence.');
-    await page.getByRole('button', { name: 'Add critique', exact: true }).click();
+    await page.getByRole('button', { name: 'Respond', exact: true }).click();
     await page.waitForSelector('[data-testid="conductance"]', { timeout: 25000 });
 
     log('\n=== 1. Reinforcement moves the number it is attached to ===');

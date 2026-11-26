@@ -265,7 +265,7 @@ async function main() {
 
     await picker.first().selectOption({ label: ROOT });
     await page.locator('.critique-form textarea').fill('Sample size is not reported.');
-    await page.getByRole('button', { name: 'Add critique', exact: true }).click();
+    await page.getByRole('button', { name: 'Respond', exact: true }).click();
     // The suite's other write-then-wait at this ceiling, same discipline. The
     // probe runs on the harness's FIRST client because the independent one is
     // opened a few lines below — which is fine here: the question is whether

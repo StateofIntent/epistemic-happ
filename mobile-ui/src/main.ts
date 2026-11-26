@@ -686,10 +686,25 @@ const myCritiqueCounts = new Map<string, number>();
  *  the length discarded in the same expression, so no number ever enters this
  *  map to be rendered or sorted by accident.
  *
- *  It is still WEAKER than the participant asked for. He wanted the count, and
- *  argued that it shows where the learning is rather than what is popular. The
- *  answer to him has to say that this is less than he asked for and why. */
-const critiquedFlags = new Map<string, boolean>();
+ *  SUPERSEDED 2026-11-26 — ROW 6.28 DECIDED, AND THE BOOLEAN WAS THE THING IT
+ *  DECIDED AGAINST. The reasoning above is kept because it is still the
+ *  Invariant 1 argument and it still holds; what changed is that #580 found
+ *  Invariant 4 the SHARPER objection, and a boolean is the maximal flattening
+ *  of five modes into one bit. So the map now carries the MODE NAMES.
+ *
+ *  WHAT TYPING COSTS, STATED HONESTLY BECAUSE THE DECISION FIRST GOT IT WRONG.
+ *  6.28's own text said typing leaves Invariant 1 "unchanged", and that is not
+ *  true. A boolean has cardinality 0 or 1. A mode set has cardinality 0 to 5,
+ *  and a reader CAN order a domain by how many labels a claim carries. The
+ *  exposure is real, it is BOUNDED AT FIVE where a count was unbounded, and it
+ *  is accepted in exchange for Invariant 4 going from maximally violated to
+ *  satisfied. The honest sentence is a smaller magnitude for a whole dimension,
+ *  not a free lunch.
+ *
+ *  STILL NO COUNT AND STILL NO DIGIT. Modes are de-duplicated at derivation, so
+ *  three methodological critiques and one are the same label — the number of
+ *  CRITIQUES never reaches this map, only the set of KINDS. */
+const critiquedModes = new Map<string, string[]>();
 
 // ---- ROW 6.15's PUSH HALF, RECEIVER SIDE (2026-11-15) ---------------------
 //
@@ -2673,7 +2688,7 @@ function renderClaimCard(
         ? '1 critique on this claim.'
         : `${n} critiques on this claim.`;
     card.appendChild(line);
-  } else if (critiquedFlags.has(key)) {
+  } else if (critiquedModes.has(key)) {
     // ROW 6.28 — THE BOOLEAN, wherever the count is not shown: every claim on
     // Browse, and other people's claims in the By Author view. No claim ever
     // shows both, so there is never a number and a boolean side by side.
@@ -2687,18 +2702,38 @@ function renderClaimCard(
     //
     // Says what happened and not what to do about it, for the same reason the
     // count does: an instruction here would be an attention ordering.
-    const critiqued = critiquedFlags.get(key)!;
+    const modes = critiquedModes.get(key)!;
+    const critiqued = modes.length > 0;
     const line = document.createElement('p');
     line.className = critiqued ? 'critique-count answered' : 'critique-count';
     line.setAttribute('data-testid', 'critiqued-flag');
     line.dataset.critiqued = String(critiqued);
-    // DELIBERATELY CARRIES NO DIGIT. `author-scope-ui.mjs` asserts the framing
-    // note on the By Author screen has none; this line is held to the same bar
-    // by `critiqued-flag-ui.mjs`, because the moment a number appears here the
-    // row's decision has been reversed by a text change.
-    line.textContent = critiqued
-      ? 'This claim has been critiqued.'
-      : 'No critiques on this yet.';
+    // The KINDS, for the gate to read without parsing prose.
+    line.dataset.modes = modes.join(',');
+    // CARRIES NO DIGIT AND NO QUANTITY WORD, and `critiqued-flag-ui.mjs` holds
+    // both bars. The digit rule is older than this line; the quantity-word
+    // rule arrived with row 6.31, because English smuggles magnitude in
+    // without numerals and "several responses" would reverse 6.28's decision
+    // by a text change exactly the way "3 critiques" would.
+    //
+    // ROW 6.31 — THE MODE IS NAMED AND THE UMBRELLA NOUN IS GONE. "Critique"
+    // over-claims negativity for two of the five kinds by the zome's own
+    // comments: Experiential is "I tried this and...", Phenomenological is
+    // "my subjective experience differs". Neither is an objection, and they
+    // are the two a hesitant participant is likeliest to have. "Response" is
+    // the neutral noun that is true of all five; the KIND does the work.
+    if (!critiqued) {
+      line.textContent = 'No responses yet.';
+    } else {
+      line.textContent = 'Responses: ';
+      modes.forEach((m) => {
+        const chip = document.createElement('span');
+        chip.className = 'critique-mode';
+        chip.setAttribute('data-testid', 'critiqued-mode');
+        chip.textContent = m.toLowerCase();
+        line.appendChild(chip);
+      });
+    }
     card.appendChild(line);
   }
   card.appendChild(renderAuthorConstitution(claim.entry.author));
@@ -4810,7 +4845,7 @@ function renderCritiquePanel(claim: DecodedRecord<Claim>): HTMLElement {
   panel.appendChild(buildCritiqueForm({
     target: claim.entryHash,
     targetType: 'Claim',
-    submitLabel: 'Add critique',
+    submitLabel: 'Respond',
     placeholder: 'Your critique — say why, not just that you disagree.',
     testid: 'critique-form',
   }));
@@ -4845,7 +4880,7 @@ async function loadClaims(domain: string, fromTheBox = false) {
   // ROW 6.28 — per-domain read state like the stores around it. Keeping it
   // across a domain change would answer "has this been critiqued?" for a
   // claim the reader is no longer looking at.
-  critiquedFlags.clear();
+  critiquedModes.clear();
   // ROW 1.32 — a marker says "the list you are reading has moved on", and
   // this clear is the moment every list on screen is rebuilt anyway, so a
   // flag surviving it would point at a panel that no longer exists.
@@ -4920,7 +4955,7 @@ async function loadClaims(domain: string, fromTheBox = false) {
     // than holding the list back. Every claim in the domain, the reader's own
     // included, because on this surface they all get the boolean and none gets
     // the count.
-    void loadCritiquedFlags(claims);
+    void loadCritiquedModes(claims);
     // ROW 1.31 — the claim cards' own bylines, resolved alongside the
     // critique bylines rather than only inside a panel somebody opens. A
     // reader deciding WHICH claim to open is reading authors too.
@@ -4994,7 +5029,7 @@ async function loadClaimsByAuthor(agentB64: string) {
     // ROW 6.28 — the boolean, for SOMEBODY ELSE's listing. Mutually exclusive
     // with the line above by construction, which is the same split the card
     // renders: the count where it is safe, the boolean everywhere else.
-    else void loadCritiquedFlags(authorClaims);
+    else void loadCritiquedModes(authorClaims);
   } catch (e) {
     authorError = `Could not read this agent's claims: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -5210,14 +5245,24 @@ async function loadMyCritiqueCounts(claimsOfMine: DecodedRecord<Claim>[]) {
  *  failure renders as "not asked yet" and never as "nobody has critiqued
  *  this". Writing `false` on failure is the defect this whole screen is
  *  careful about, one map over. */
-async function loadCritiquedFlags(subject: DecodedRecord<Claim>[]) {
+async function loadCritiquedModes(subject: DecodedRecord<Claim>[]) {
   if (!connection) return;
   const conn = connection;
   await Promise.all(subject.map(async (claim) => {
     try {
       const records = await conn.callZome<any[]>('get_critiques_for', claim.entryHash);
-      // The length is consumed here and not stored. See the map's own comment.
-      critiquedFlags.set(b64(claim.entryHash), records.length > 0);
+      // THE SET OF KINDS, NOT THE NUMBER OF CRITIQUES. De-duplication happens
+      // here, at derivation, for the same reason the length used to be
+      // discarded here: a count that never enters the map cannot be rendered
+      // or sorted by accident. Three methodological critiques collapse to one
+      // label, which is the point — the kind is the information, the tally is
+      // the thing Invariant 1 refuses.
+      const modes = [...new Set(
+        decodeRecords<Critique>(records)
+          .map((r) => String(r.entry.critique_mode ?? ''))
+          .filter(Boolean),
+      )].sort();
+      critiquedModes.set(b64(claim.entryHash), modes);
     } catch { /* absent, not false — see this function's comment */ }
   }));
   render();
