@@ -146,7 +146,16 @@ by one operator's script on one machine — and it is the answer to the question
 that opened this document rather than a constraint on it.
 
 A threshold that turns a signal into a decision **is itself a promise and needs
-an agent behind it.** That argument retired `CONDUCTANCE_HALF_LIFE_SECS` as a
+an agent behind it.**
+
+**AND A THING THAT REPORTS A QUANTITY IS NOT A THING THAT DETERMINES IT** —
+open-work 8.6, which this repository paid for at least three times before
+naming it. A faithful counter that gates nothing is a **recorder**; the rule
+above is about **governors**. The failure mode for a self-maintaining system is
+specific: a reflex reads a number, acts on it, and nobody ever promised that
+number — so the threshold has an owner on paper and a recorder in fact. **Ask
+of every signal a reflex consumes: who promises this, and can they say
+`None`?** A signal with no promiser is not a threshold, it is a reading. That argument retired `CONDUCTANCE_HALF_LIFE_SECS` as a
 universal constant (row 3.1, decided 2026-10-24). What replaced it is
 `StandingPolicy::max_causal_distance`, **supplied by the caller**, where `None`
 means *no atrophy* rather than a default — so a reader who promises nothing has
@@ -211,6 +220,23 @@ third, added 2026-11-21, on *how often* it is checked:
 - **From a fixed, enumerated list** that lives where rule 0 says a core must
   live. Restart a service, restore a config file, reinstall a known version,
   free disk. **Anything not on the list is a proposal, not a reflex.**
+
+**AND THE THIRD LIMIT IS A RATE, WHICH IS A BRAKE AND NOT A BUDGET** —
+open-work 8.31, measured on this protocol's own limits 2026-11-26. Three kinds,
+and a self-repairing system must not confuse them:
+
+| kind | spent by | bounds |
+|---|---|---|
+| **brake** | time, and refills | a **rate**. Names no total |
+| **timer** | elapsed time, unavoidably | a duration |
+| **budget** | **events**, and does not refill | a **total** |
+
+Every counted limit in the happ turned out to be a **brake** — a trailing
+window that refills — while twelve comments in the zome call them budgets.
+**A brake does not stop a runaway reflex. It makes it run away slowly**, and a
+single compliant actor is unbounded given time. If a reflex must be bounded in
+total rather than in rate, **the limit has to be spent by events and never
+refilled**, and nothing in this protocol is currently shaped that way.
 
 **And the list must exclude the stop mechanism** (rule 2), or convergence will
 restart what a host halted and call it repair.
@@ -319,6 +345,54 @@ somebody notices and consents to, not a patch.
 **STRUCTURAL today** because the integrity zome has this property and the rules
 above do not live there yet. **Putting them there is the work**, and it is
 behind §4's fork collision like everything else that touches integrity.
+
+---
+
+## 9. Nothing normalises over a population it cannot see — **STRUCTURAL**
+
+Added 2026-11-27 from open-work 8.29, and it is a **derivation rather than a
+preference**, which is why it belongs here instead of in a design note.
+
+SPEC §10 states the result: *"an agent cannot normalise over a population it
+cannot see, so aggregation requires a NAMED aggregator."* A self-maintaining
+system will want to aggregate — health across nodes, a convergence rate across
+hosts, how often a reflex fired fleet-wide — and **on an agent-centric
+partition-tolerant substrate it structurally cannot**, except by someone
+standing up and promising the number.
+
+The biology that produced it is the cleanest form of the distinction. **Multiple
+fetal thymus grafts each grow to normal size**, regulated by organ-autonomous
+factors with the excess not suppressed; **multiple spleen grafts each stay
+smaller, total mass matching one spleen**, held by negative feedback over the
+whole population. **A spleen normalises over its population. A thymus does
+not.** This protocol is thymus-shaped and cannot be made spleen-shaped without
+a central observer it does not have.
+
+**The consequence for a converging system:** any fleet-wide figure it acts on
+is **a promise by a named aggregator**, not a fact it computed — so rule 4
+applies to it, and the aggregator can say `None`. A system that quietly grows a
+fleet-wide average has grown a central observer, and that is the thing this
+document exists to notice.
+
+---
+
+## How this system may justify a change to itself
+
+**Not rules about what it may do — rules about what counts as a reason**, which
+is a different kind of constraint and is kept separate for that reason. Both
+are from open-work, and both matter most when the thing proposing a change is
+the system itself, or an AI asked to evolve it.
+
+- **A reframe that explains N existing cases was FITTED to those N** (8.25).
+  Consistency is not confirmation. **The test is a prediction about a case
+  outside the set it was built from** — and a self-justifying system will reach
+  for the fitted set first, because it is the set it has.
+- **A goal can be malformed, and then it cannot be pursued, only reformulated**
+  (8.24). *Re-specify the tissue* was malformed because nothing was specified;
+  the well-formed version was *restore the factors to their earlier values*.
+  **A location is not something you can act on** either — you manipulate a
+  population, a signal or a force. A proposal naming a compartment rather than
+  a mechanism has not yet said what it would do.
 
 ---
 
