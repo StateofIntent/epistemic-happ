@@ -331,6 +331,27 @@ async function main() {
     check('no flag reaches for the umbrella noun — row 6.31',
       !/critiqu/i.test(critiquedWords) && !/critiqu/i.test(quietWords));
 
+    // ---- ROW 8.38: THE QUIET STATE MAY NOT ASSERT THAT NOBODY LOOKED -----
+    //
+    // This surface renders READ-AND-ZERO, which section 5 below distinguishes
+    // from unread. But a reader who considers a claim and has no objection
+    // writes nothing, so zero recorded responses is ambiguous between "nobody
+    // looked" and "people looked and found nothing" — and the protocol cannot
+    // record the second without either a fork carrying a declaration nothing
+    // can check (§7b.2) or a surveillance surface over reading (Invariants 2
+    // and 5). Row 8.38 took the third option: the sentence stops asserting
+    // the branch it cannot know.
+    //
+    // TWO ASSERTIONS, BECAUSE THE FIRST ALONE IS SATISFIED BY SAYING NOTHING.
+    // Deleting the sentence would pass a no-"yet" check and lose the scope,
+    // which is the §7b.1 half that makes the state honest rather than merely
+    // quiet. So the ban and the requirement are both held.
+    check(`the quiet state does not assert the unexamined branch — row 8.38 (${JSON.stringify(quietWords)})`,
+      !/\byet\b|\bnobody\b|\bno[- ]one\b|\bunchallenged\b|\bunexamined\b|\buncontested\b/i
+        .test(quietWords));
+    check(`the quiet state STATES ITS SCOPE — §7b.1: an absence names what it was searched over (${JSON.stringify(quietWords)})`,
+      /\bread(ing)?\b/i.test(quietWords) && /\brecord(ed)?\b/i.test(quietWords));
+
     // ---- 2. INVARIANT 1: no magnitude anywhere on this surface -----------
     //
     // Written against the PRESENCE OF A DIGIT rather than against a phrase,
