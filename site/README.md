@@ -38,7 +38,7 @@ for. Adding a page means adding it to `PAGES`.
 | protocol version 11 | `PROTOCOL_VERSION` in `dna/integrity/src/lib.rs` |
 | integrity 4,016 lines | `wc -l dna/integrity/src/lib.rs` |
 | 19 entry types / 31 link types | the `EntryTypes` / `LinkTypes` enums |
-| coordinator 9,863 lines | `wc -l dna/coordinator/src/lib.rs` |
+| coordinator 9,870 lines | `wc -l dna/coordinator/src/lib.rs` |
 | **95** callable functions | `#[hdk_extern] pub fn`, parsed as `check-spec-drift.mjs` parses it |
 | **75** harnesses / **35,609** lines | `scripts/live-verify/*.mjs` **less the two shared modules** |
 | **12** document & spec gates | `scripts/check-*.mjs` **that a workflow references** |

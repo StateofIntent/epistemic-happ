@@ -148,6 +148,27 @@ that opened this document rather than a constraint on it.
 A threshold that turns a signal into a decision **is itself a promise and needs
 an agent behind it.**
 
+**BUT ASK FIRST WHETHER IT IS A THRESHOLD A READER MAY SET** — open-work 8.30,
+and it is a prior question to this rule rather than a caveat on it. *Every
+threshold has an owner* presupposes the number is a **dial**. If it has a
+correct value, giving it an owner is **worse than a default**: it invites a
+reader to move something that has a right answer, and the honest record is then
+the value plus what breaks on each side of it, not a promiser. SPEC §11.4 runs
+the sort — *specification, dial, placeholder, false precision, trigger* — over
+every named numeric constant in both zomes, and the result that bears on this
+rule is that **only two of sixteen derive themselves, and neither is a reader's
+to turn.** So this rule is the right default for very nearly everything here;
+the sort exists so the exceptions are caught before an owner is handed a value
+they should not be free to change.
+
+**A trigger carries a one-question test worth keeping, because it is cheaper
+than deriving a value:** does the threshold sit at the same place regardless of
+the path taken to it? A boundary reached at the same point from two different
+approach rates is a regime boundary; one whose position moves with the approach
+is not, and nothing about it is worth promising. Applied to this protocol's only
+trigger-shaped number it fails, and §11.4's `trigger` row is empty — this
+protocol bounds rates and sizes and recognises no regime changes at all.
+
 **AND A THING THAT REPORTS A QUANTITY IS NOT A THING THAT DETERMINES IT** —
 open-work 8.6, which this repository paid for at least three times before
 naming it. A faithful counter that gates nothing is a **recorder**; the rule
