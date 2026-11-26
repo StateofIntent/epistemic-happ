@@ -85,7 +85,7 @@
       "entry": "protocol_version"
     },
     {
-      "line": 1121,
+      "line": 1154,
       "validator": "validate",
       "message": null,
       "passthrough": "reason",
@@ -95,7 +95,7 @@
       "entry": null
     },
     {
-      "line": 1122,
+      "line": 1155,
       "validator": "validate",
       "message": null,
       "passthrough": "reason",
@@ -105,7 +105,7 @@
       "entry": null
     },
     {
-      "line": 1188,
+      "line": 1221,
       "validator": "validate",
       "message": "Entry updates are not permitted. Nothing written here is mutated: the additive remedies are a Retraction by the author and an AntibodyPattern by anyone, both of which leave the original readable with the objection attached. See SPEC.md §5.1.",
       "passthrough": null,
@@ -115,7 +115,7 @@
       "entry": null
     },
     {
-      "line": 1203,
+      "line": 1236,
       "validator": "validate",
       "message": "Deletion is not permitted. Nothing written here is ever removed; entries may still be updated.",
       "passthrough": null,
@@ -125,7 +125,7 @@
       "entry": null
     },
     {
-      "line": 1212,
+      "line": 1245,
       "validator": "validate",
       "message": null,
       "passthrough": "reason",
@@ -135,7 +135,7 @@
       "entry": null
     },
     {
-      "line": 1213,
+      "line": 1246,
       "validator": "validate",
       "message": null,
       "passthrough": "reason",
@@ -145,7 +145,7 @@
       "entry": null
     },
     {
-      "line": 1223,
+      "line": 1256,
       "validator": "validate",
       "message": "Link deletion is not permitted. Nothing written here is ever removed.",
       "passthrough": null,
@@ -155,7 +155,7 @@
       "entry": null
     },
     {
-      "line": 1271,
+      "line": 1304,
       "validator": "validate_create_entry",
       "message": "Entry updates are not permitted; see SPEC.md §5.1. This refusal is on the update's own new entry, which would otherwise be stored unvalidated and readable by hash.",
       "passthrough": null,
@@ -165,7 +165,7 @@
       "entry": "create_entry"
     },
     {
-      "line": 1323,
+      "line": 1356,
       "validator": "validate_mew",
       "message": "Mew author must match action author.",
       "passthrough": null,
@@ -176,7 +176,7 @@
       "write_path": "create_mew(Mew)"
     },
     {
-      "line": 1326,
+      "line": 1359,
       "validator": "validate_mew",
       "message": "Mew content cannot be empty.",
       "passthrough": null,
@@ -187,7 +187,7 @@
       "write_path": "create_mew(Mew)"
     },
     {
-      "line": 1330,
+      "line": 1363,
       "validator": "validate_mew",
       "message": "Mew content exceeds 560 characters (2x tweet size for unicode safety).",
       "passthrough": null,
@@ -198,7 +198,7 @@
       "write_path": "create_mew(Mew)"
     },
     {
-      "line": 1340,
+      "line": 1373,
       "validator": "validate_mew",
       "message": "Mew linked_claim not found.",
       "passthrough": null,
@@ -208,7 +208,7 @@
       "entry": "mew"
     },
     {
-      "line": 1349,
+      "line": 1382,
       "validator": "validate_claim",
       "message": "Claim author must match action author.",
       "passthrough": null,
@@ -219,7 +219,7 @@
       "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
-      "line": 1352,
+      "line": 1385,
       "validator": "validate_claim",
       "message": "Claim content cannot be empty.",
       "passthrough": null,
@@ -230,7 +230,7 @@
       "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
-      "line": 1355,
+      "line": 1388,
       "validator": "validate_claim",
       "message": "Claim domain cannot be empty.",
       "passthrough": null,
@@ -241,7 +241,7 @@
       "write_path": "create_claim(Claim), assert_expertise(ExpertiseAssertionPayload), promote_mew_to_claim(PromoteMewPayload)"
     },
     {
-      "line": 1359,
+      "line": 1392,
       "validator": "validate_claim",
       "message": "Claim evidence hash not found.",
       "passthrough": null,
@@ -251,7 +251,7 @@
       "entry": "claim"
     },
     {
-      "line": 1378,
+      "line": 1411,
       "validator": "validate_claim",
       "message": "Claim source_mew not found.",
       "passthrough": null,
@@ -261,7 +261,7 @@
       "entry": "claim"
     },
     {
-      "line": 1399,
+      "line": 1432,
       "validator": "validate_pre_registration",
       "message": "PreRegistration author must match action author.",
       "passthrough": null,
@@ -272,7 +272,7 @@
       "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
-      "line": 1404,
+      "line": 1437,
       "validator": "validate_pre_registration",
       "message": "PreRegistration reveal_deadline must be after the commitment itself; a commitment that is already expired can never be revealed and would pad the denominator.",
       "passthrough": null,
@@ -283,7 +283,7 @@
       "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
-      "line": 1410,
+      "line": 1443,
       "validator": "validate_pre_registration",
       "message": "PreRegistration question does not resolve.",
       "passthrough": null,
@@ -293,7 +293,7 @@
       "entry": "pre_registration"
     },
     {
-      "line": 1413,
+      "line": 1446,
       "validator": "validate_pre_registration",
       "message": "PreRegistration question must predate the commitment, so a prediction cannot be re-pointed at a question chosen after the outcome.",
       "passthrough": null,
@@ -304,7 +304,7 @@
       "write_path": "attempt_raw_pre_registration(PreRegistration), pre_register(PreRegisterInput)"
     },
     {
-      "line": 1435,
+      "line": 1468,
       "validator": "validate_revelation",
       "message": "Revelation author must match action author.",
       "passthrough": null,
@@ -315,7 +315,7 @@
       "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
-      "line": 1439,
+      "line": 1472,
       "validator": "validate_revelation",
       "message": "Revelation pre_registration does not resolve.",
       "passthrough": null,
@@ -325,7 +325,7 @@
       "entry": "revelation"
     },
     {
-      "line": 1442,
+      "line": 1475,
       "validator": "validate_revelation",
       "message": "Revelation pre_registration is not a PreRegistration.",
       "passthrough": null,
@@ -336,7 +336,7 @@
       "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
-      "line": 1450,
+      "line": 1483,
       "validator": "validate_revelation",
       "message": "Only the author of a PreRegistration may reveal it.",
       "passthrough": null,
@@ -347,7 +347,7 @@
       "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
-      "line": 1458,
+      "line": 1491,
       "validator": "validate_revelation",
       "message": "Revelation content does not hash to the sealed commitment; this is not what was committed to.",
       "passthrough": null,
@@ -358,7 +358,7 @@
       "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
-      "line": 1464,
+      "line": 1497,
       "validator": "validate_revelation",
       "message": "Revelation is past its reveal_deadline. A late reveal would let the author choose, after seeing the outcome, whether the commitment counts as revealed or expired.",
       "passthrough": null,
@@ -369,7 +369,7 @@
       "write_path": "attempt_raw_revelation(Revelation), reveal_pre_registration(RevealInput)"
     },
     {
-      "line": 1475,
+      "line": 1508,
       "validator": "validate_assessment",
       "message": "Assessment assessor must match action author.",
       "passthrough": null,
@@ -380,7 +380,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1487,
+      "line": 1520,
       "validator": "validate_assessment",
       "message": "Assessment target must be an EntryHash-shaped reference.",
       "passthrough": null,
@@ -391,7 +391,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1491,
+      "line": 1524,
       "validator": "validate_assessment",
       "message": "Assessment target not found.",
       "passthrough": null,
@@ -401,7 +401,7 @@
       "entry": "assessment"
     },
     {
-      "line": 1497,
+      "line": 1530,
       "validator": "validate_assessment",
       "message": "Assessment past_cone exceeds {} entries.",
       "passthrough": null,
@@ -412,7 +412,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1503,
+      "line": 1536,
       "validator": "validate_assessment",
       "message": "Assessment past_cone contains a duplicate entry.",
       "passthrough": null,
@@ -423,7 +423,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1508,
+      "line": 1541,
       "validator": "validate_assessment",
       "message": "Assessment past_cone entry does not resolve to a valid record.",
       "passthrough": null,
@@ -433,7 +433,7 @@
       "entry": "assessment"
     },
     {
-      "line": 1512,
+      "line": 1545,
       "validator": "validate_assessment",
       "message": "Assessment past_cone entry is not a Critique.",
       "passthrough": null,
@@ -444,7 +444,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1515,
+      "line": 1548,
       "validator": "validate_assessment",
       "message": "Assessment past_cone entry critiques a different target.",
       "passthrough": null,
@@ -455,7 +455,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1520,
+      "line": 1553,
       "validator": "validate_assessment",
       "message": "Assessment past_cone is not transitively closed.",
       "passthrough": null,
@@ -466,7 +466,7 @@
       "write_path": "publish_assessment(Assessment)"
     },
     {
-      "line": 1531,
+      "line": 1564,
       "validator": "validate_settlement_policy",
       "message": "SettlementPolicy author must match action author.",
       "passthrough": null,
@@ -477,7 +477,7 @@
       "write_path": "publish_settlement_policy(SettlementPolicy)"
     },
     {
-      "line": 1534,
+      "line": 1567,
       "validator": "validate_settlement_policy",
       "message": "SettlementPolicy name cannot be empty.",
       "passthrough": null,
@@ -488,7 +488,7 @@
       "write_path": "publish_settlement_policy(SettlementPolicy)"
     },
     {
-      "line": 1537,
+      "line": 1570,
       "validator": "validate_settlement_policy",
       "message": "SettlementPolicy statement cannot be empty; a threshold nobody explained is a number pretending to be a reason.",
       "passthrough": null,
@@ -499,7 +499,7 @@
       "write_path": "publish_settlement_policy(SettlementPolicy)"
     },
     {
-      "line": 1546,
+      "line": 1579,
       "validator": "validate_settlement_policy",
       "message": "SettlementPolicy min_assessors must be at least 1; a policy settling on zero assessments would settle anything.",
       "passthrough": null,
@@ -510,7 +510,7 @@
       "write_path": "publish_settlement_policy(SettlementPolicy)"
     },
     {
-      "line": 1565,
+      "line": 1598,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus aggregator must match action author.",
       "passthrough": null,
@@ -521,7 +521,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1568,
+      "line": 1601,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus inputs exceed {} entries.",
       "passthrough": null,
@@ -532,7 +532,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1574,
+      "line": 1607,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus inputs contain a duplicate; a repeated assessment would count its assessor twice.",
       "passthrough": null,
@@ -543,7 +543,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1581,
+      "line": 1614,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus policy does not resolve.",
       "passthrough": null,
@@ -553,7 +553,7 @@
       "entry": "settlement_status"
     },
     {
-      "line": 1584,
+      "line": 1617,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus policy is not a SettlementPolicy.",
       "passthrough": null,
@@ -564,7 +564,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1595,
+      "line": 1628,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus input does not resolve to a valid record.",
       "passthrough": null,
@@ -574,7 +574,7 @@
       "entry": "settlement_status"
     },
     {
-      "line": 1600,
+      "line": 1633,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus input assesses a different target.",
       "passthrough": null,
@@ -585,7 +585,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1611,
+      "line": 1644,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus input critiques a different target.",
       "passthrough": null,
@@ -596,7 +596,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1616,
+      "line": 1649,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus input is neither an Assessment nor a Critique.",
       "passthrough": null,
@@ -607,7 +607,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1623,
+      "line": 1656,
       "validator": "validate_settlement_status",
       "message": "SettlementStatus state does not follow from its own policy and inputs: {} distinct assessor(s) and {} dissent(s) under \"{}\" (min_assessors {}, max_dissent {}) yields {:?}, not {:?}. Settlement is a pure function and every peer computes it.",
       "passthrough": null,
@@ -618,7 +618,7 @@
       "write_path": "publish_settlement_status(SettlementStatus)"
     },
     {
-      "line": 1636,
+      "line": 1669,
       "validator": "validate_retraction",
       "message": "Retraction author must match action author.",
       "passthrough": null,
@@ -629,7 +629,7 @@
       "write_path": "create_retraction(Retraction)"
     },
     {
-      "line": 1656,
+      "line": 1689,
       "validator": "validate_retraction",
       "message": "Retraction target claim not found.",
       "passthrough": null,
@@ -639,7 +639,7 @@
       "entry": "retraction"
     },
     {
-      "line": 1661,
+      "line": 1694,
       "validator": "validate_retraction",
       "message": "Retraction target must be a Claim.",
       "passthrough": null,
@@ -650,7 +650,7 @@
       "write_path": "create_retraction(Retraction)"
     },
     {
-      "line": 1666,
+      "line": 1699,
       "validator": "validate_retraction",
       "message": "A Retraction can only be published by the claim's own author — it records that the author no longer stands by it, not that someone else disagrees. Use a Critique for that.",
       "passthrough": null,
@@ -661,7 +661,7 @@
       "write_path": "create_retraction(Retraction)"
     },
     {
-      "line": 1673,
+      "line": 1706,
       "validator": "validate_retraction",
       "message": "Retraction reason cannot be empty.",
       "passthrough": null,
@@ -672,7 +672,7 @@
       "write_path": "create_retraction(Retraction)"
     },
     {
-      "line": 1678,
+      "line": 1711,
       "validator": "validate_retraction",
       "message": "Retraction replacement_claim not found.",
       "passthrough": null,
@@ -682,7 +682,7 @@
       "entry": "retraction"
     },
     {
-      "line": 1712,
+      "line": 1745,
       "validator": "validate_critique",
       "message": "Critique author must match action author.",
       "passthrough": null,
@@ -693,7 +693,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1756,
+      "line": 1789,
       "validator": "validate_critique",
       "message": "Critique target_type does not match what the target actually is.",
       "passthrough": null,
@@ -704,7 +704,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1761,
+      "line": 1794,
       "validator": "validate_critique",
       "message": "Critique target is not a critiquable entry type.",
       "passthrough": null,
@@ -715,7 +715,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1768,
+      "line": 1801,
       "validator": "validate_critique",
       "message": "Critique content cannot be empty.",
       "passthrough": null,
@@ -726,7 +726,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1772,
+      "line": 1805,
       "validator": "validate_critique",
       "message": "Critique species reference not found.",
       "passthrough": null,
@@ -736,7 +736,7 @@
       "entry": "critique"
     },
     {
-      "line": 1797,
+      "line": 1830,
       "validator": "validate_critique",
       "message": "SWO temporal friction: author has {} Critiques in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
       "passthrough": null,
@@ -753,7 +753,7 @@
       }
     },
     {
-      "line": 1811,
+      "line": 1844,
       "validator": "validate_critique",
       "message": "Critique past_cone exceeds {} entries. Validation resolves every member and every member's own members, so an unbounded cone is an unbounded cost paid by every peer.",
       "passthrough": null,
@@ -770,7 +770,7 @@
       }
     },
     {
-      "line": 1822,
+      "line": 1855,
       "validator": "validate_critique",
       "message": "Critique past_cone contains a duplicate entry.",
       "passthrough": null,
@@ -781,7 +781,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1829,
+      "line": 1862,
       "validator": "validate_critique",
       "message": "Critique past_cone entry does not resolve to a valid record; an author cannot record having seen something that does not exist.",
       "passthrough": null,
@@ -791,7 +791,7 @@
       "entry": "critique"
     },
     {
-      "line": 1835,
+      "line": 1868,
       "validator": "validate_critique",
       "message": "Critique past_cone entry is not a Critique.",
       "passthrough": null,
@@ -802,7 +802,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1844,
+      "line": 1877,
       "validator": "validate_critique",
       "message": "Critique past_cone entry critiques a different target; a cone records what was seen OF THIS NODE, not of the DHT at large.",
       "passthrough": null,
@@ -813,7 +813,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1856,
+      "line": 1889,
       "validator": "validate_critique",
       "message": "Critique past_cone is not transitively closed: it records having seen a critique without recording what that critique itself recorded seeing. Admitting X means admitting everything X admitted.",
       "passthrough": null,
@@ -824,7 +824,7 @@
       "write_path": "create_critique(Critique)"
     },
     {
-      "line": 1883,
+      "line": 1916,
       "validator": "validate_antibody_pattern",
       "message": "AntibodyPattern author must match action author.",
       "passthrough": null,
@@ -835,7 +835,7 @@
       "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
-      "line": 1917,
+      "line": 1950,
       "validator": "validate_antibody_pattern",
       "message": "AntibodyPattern target_type does not match what the target actually is.",
       "passthrough": null,
@@ -846,7 +846,7 @@
       "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
-      "line": 1922,
+      "line": 1955,
       "validator": "validate_antibody_pattern",
       "message": "AntibodyPattern target is not a critiquable entry type.",
       "passthrough": null,
@@ -857,7 +857,7 @@
       "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
-      "line": 1929,
+      "line": 1962,
       "validator": "validate_antibody_pattern",
       "message": "AntibodyPattern rationale cannot be empty.",
       "passthrough": null,
@@ -868,7 +868,7 @@
       "write_path": "publish_antibody_pattern(AntibodyPattern)"
     },
     {
-      "line": 1946,
+      "line": 1979,
       "validator": "validate_antibody_pattern",
       "message": "SWO temporal friction: author has {} AntibodyPatterns in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
       "passthrough": null,
@@ -885,7 +885,7 @@
       }
     },
     {
-      "line": 1959,
+      "line": 1992,
       "validator": "validate_evidence",
       "message": "Evidence author must match action author.",
       "passthrough": null,
@@ -896,7 +896,7 @@
       "write_path": "create_evidence(Evidence)"
     },
     {
-      "line": 1962,
+      "line": 1995,
       "validator": "validate_evidence",
       "message": "Evidence content cannot be empty.",
       "passthrough": null,
@@ -907,7 +907,7 @@
       "write_path": "create_evidence(Evidence)"
     },
     {
-      "line": 1970,
+      "line": 2003,
       "validator": "validate_membrane",
       "message": "Membrane creator must match action author.",
       "passthrough": null,
@@ -928,7 +928,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane constitution must be the creator's own published Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
-      "line": 1973,
+      "line": 2006,
       "validator": "validate_membrane",
       "message": "Membrane domain cannot be empty.",
       "passthrough": null,
@@ -939,7 +939,7 @@
       "write_path": "create_membrane(Membrane), attempt_unaccountable_membrane(Membrane)"
     },
     {
-      "line": 1999,
+      "line": 2032,
       "validator": "validate_membrane",
       "message": "Membrane must declare at least one required_promise — a domain states what it demands of its participants rather than charging them to enter.",
       "passthrough": null,
@@ -959,7 +959,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane must declare at least one required_promise.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
-      "line": 2009,
+      "line": 2042,
       "validator": "validate_membrane",
       "message": "Membrane's constitution hash does not resolve to a Constitution entry.",
       "passthrough": null,
@@ -980,7 +980,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Referenced entry is not a Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
-      "line": 2014,
+      "line": 2047,
       "validator": "validate_membrane",
       "message": "Membrane's constitution must be the creator's own published Constitution — a founder is accountable under promises they made themselves.",
       "passthrough": null,
@@ -1000,7 +1000,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — create_membrane returns \"Membrane constitution must be the creator's own published Constitution.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_unaccountable_membrane, which carries no pre-check."
     },
     {
-      "line": 2035,
+      "line": 2068,
       "validator": "validate_federation_record",
       "message": "FederationRecord author must match action author.",
       "passthrough": null,
@@ -1011,7 +1011,7 @@
       "write_path": "record_federation(FederationRecord)"
     },
     {
-      "line": 2040,
+      "line": 2073,
       "validator": "validate_federation_record",
       "message": "FederationRecord local_membrane not found.",
       "passthrough": null,
@@ -1021,7 +1021,7 @@
       "entry": "federation_record"
     },
     {
-      "line": 2045,
+      "line": 2078,
       "validator": "validate_federation_record",
       "message": "FederationRecord local_membrane is not a Membrane entry.",
       "passthrough": null,
@@ -1032,7 +1032,7 @@
       "write_path": "record_federation(FederationRecord)"
     },
     {
-      "line": 2049,
+      "line": 2082,
       "validator": "validate_federation_record",
       "message": "FederationRecord can only be authored by local_membrane's own creator.",
       "passthrough": null,
@@ -1043,7 +1043,7 @@
       "write_path": "record_federation(FederationRecord)"
     },
     {
-      "line": 2055,
+      "line": 2088,
       "validator": "validate_federation_record",
       "message": "FederationRecord remote_network_label cannot be empty.",
       "passthrough": null,
@@ -1054,7 +1054,7 @@
       "write_path": "record_federation(FederationRecord)"
     },
     {
-      "line": 2058,
+      "line": 2091,
       "validator": "validate_federation_record",
       "message": "FederationRecord remote_membrane_ref cannot be empty.",
       "passthrough": null,
@@ -1065,7 +1065,7 @@
       "write_path": "record_federation(FederationRecord)"
     },
     {
-      "line": 2067,
+      "line": 2100,
       "validator": "validate_constitution",
       "message": "Constitution agent must match action author.",
       "passthrough": null,
@@ -1076,7 +1076,7 @@
       "write_path": "publish_constitution(Constitution)"
     },
     {
-      "line": 2070,
+      "line": 2103,
       "validator": "validate_constitution",
       "message": "Constitution must contain at least one promise.",
       "passthrough": null,
@@ -1087,7 +1087,7 @@
       "write_path": "publish_constitution(Constitution)"
     },
     {
-      "line": 2074,
+      "line": 2107,
       "validator": "validate_constitution",
       "message": "Promise action and domain cannot be empty.",
       "passthrough": null,
@@ -1098,7 +1098,7 @@
       "write_path": "publish_constitution(Constitution)"
     },
     {
-      "line": 2079,
+      "line": 2112,
       "validator": "validate_constitution",
       "message": "expires_at must be > published_at.",
       "passthrough": null,
@@ -1109,7 +1109,7 @@
       "write_path": "publish_constitution(Constitution)"
     },
     {
-      "line": 2088,
+      "line": 2121,
       "validator": "validate_critique_species",
       "message": "CritiqueSpecies proposer must match action author.",
       "passthrough": null,
@@ -1120,7 +1120,7 @@
       "write_path": "create_critique_species(CritiqueSpecies)"
     },
     {
-      "line": 2091,
+      "line": 2124,
       "validator": "validate_critique_species",
       "message": "CritiqueSpecies name cannot be empty.",
       "passthrough": null,
@@ -1131,7 +1131,7 @@
       "write_path": "create_critique_species(CritiqueSpecies)"
     },
     {
-      "line": 2095,
+      "line": 2128,
       "validator": "validate_critique_species",
       "message": "Parent CritiqueSpecies not found.",
       "passthrough": null,
@@ -1141,7 +1141,7 @@
       "entry": "critique_species"
     },
     {
-      "line": 2104,
+      "line": 2137,
       "validator": "validate_worldline_trace",
       "message": "WorldlineTrace agent must match action author.",
       "passthrough": null,
@@ -1152,7 +1152,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2107,
+      "line": 2140,
       "validator": "validate_worldline_trace",
       "message": "WorldlineTrace must have at least one period boundary.",
       "passthrough": null,
@@ -1163,7 +1163,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2117,
+      "line": 2150,
       "validator": "validate_worldline_trace",
       "message": "PeriodBoundary sample_action must be authored by trace agent.",
       "passthrough": null,
@@ -1174,7 +1174,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2121,
+      "line": 2154,
       "validator": "validate_worldline_trace",
       "message": "PeriodBoundary sample_action not found.",
       "passthrough": null,
@@ -1184,7 +1184,7 @@
       "entry": "worldline_trace"
     },
     {
-      "line": 2126,
+      "line": 2159,
       "validator": "validate_worldline_trace",
       "message": "Checksum must be 32 bytes.",
       "passthrough": null,
@@ -1195,7 +1195,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2130,
+      "line": 2163,
       "validator": "validate_worldline_trace",
       "message": "PeriodBoundary start_time must be <= end_time.",
       "passthrough": null,
@@ -1206,7 +1206,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2135,
+      "line": 2168,
       "validator": "validate_worldline_trace",
       "message": "expires_at must be > created_at.",
       "passthrough": null,
@@ -1217,7 +1217,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2140,
+      "line": 2173,
       "validator": "validate_worldline_trace",
       "message": "trace_payload exceeds 64KB limit.",
       "passthrough": null,
@@ -1228,7 +1228,7 @@
       "write_path": "attempt_raw_worldline_trace(WorldlineTrace), generate_worldline_trace(TraceGenerationParams)"
     },
     {
-      "line": 2167,
+      "line": 2200,
       "validator": "validate_bridge_record",
       "message": "BridgeRecord author must match action author.",
       "passthrough": null,
@@ -1239,7 +1239,7 @@
       "write_path": "attempt_raw_bridge_record(BridgeRecord), record_twitter_mirror(RecordTwitterMirrorInput)"
     },
     {
-      "line": 2170,
+      "line": 2203,
       "validator": "validate_bridge_record",
       "message": "BridgeRecord target not found.",
       "passthrough": null,
@@ -1249,7 +1249,7 @@
       "entry": "bridge_record"
     },
     {
-      "line": 2173,
+      "line": 2206,
       "validator": "validate_bridge_record",
       "message": "BridgeRecord {}.",
       "passthrough": null,
@@ -1260,7 +1260,7 @@
       "write_path": "attempt_raw_bridge_record(BridgeRecord), record_twitter_mirror(RecordTwitterMirrorInput)"
     },
     {
-      "line": 2181,
+      "line": 2214,
       "validator": "validate_external_critique",
       "message": "ExternalCritique importer must match action author. Note this is the importing agent, not the Twitter handle in author_handle — see the entry type.",
       "passthrough": null,
@@ -1271,7 +1271,7 @@
       "write_path": "attempt_raw_external_critique(ExternalCritique), import_twitter_reply(ImportTwitterReplyInput)"
     },
     {
-      "line": 2187,
+      "line": 2220,
       "validator": "validate_external_critique",
       "message": "ExternalCritique content cannot be empty.",
       "passthrough": null,
@@ -1282,7 +1282,7 @@
       "write_path": "attempt_raw_external_critique(ExternalCritique), import_twitter_reply(ImportTwitterReplyInput)"
     },
     {
-      "line": 2190,
+      "line": 2223,
       "validator": "validate_external_critique",
       "message": "ExternalCritique linked claim not found.",
       "passthrough": null,
@@ -1292,7 +1292,7 @@
       "entry": "external_critique"
     },
     {
-      "line": 2452,
+      "line": 2485,
       "validator": "validate_create_link",
       "message": "SynapticLink tag must contain at least 4 bytes (f32 conductance).",
       "passthrough": null,
@@ -1303,7 +1303,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2470,
+      "line": 2503,
       "validator": "validate_create_link",
       "message": "SWO temporal friction: author has {} SynapticLinks in the last {} seconds (limit {}). This is an absolute limit, enforced by DHT validation, not a client-side courtesy.",
       "passthrough": null,
@@ -1323,7 +1323,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — check_synaptic_link_friction returns \"SWO temporal friction: {} SynapticLinks already created in the last {} seconds (limit {}). \\\\              This is an absolute limit.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
-      "line": 2484,
+      "line": 2517,
       "validator": "validate_create_link",
       "message": "AgentToMembrane tag must be exactly 36 bytes (a raw AgentPubKey).",
       "passthrough": null,
@@ -1334,7 +1334,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2490,
+      "line": 2523,
       "validator": "validate_create_link",
       "message": "AgentToMembrane links can only be created by the agent joining, not on someone else's behalf.",
       "passthrough": null,
@@ -1345,7 +1345,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2505,
+      "line": 2538,
       "validator": "validate_create_link",
       "message": "AgentToMembrane base is not a valid Membrane.",
       "passthrough": null,
@@ -1356,7 +1356,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2511,
+      "line": 2544,
       "validator": "validate_create_link",
       "message": "AgentToMembrane base must be an EntryHash.",
       "passthrough": null,
@@ -1367,7 +1367,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2525,
+      "line": 2558,
       "validator": "validate_create_link",
       "message": "Reinforcement links can only be created by the agent doing the reinforcing, not on someone else's behalf.",
       "passthrough": null,
@@ -1378,7 +1378,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2550,
+      "line": 2583,
       "validator": "validate_create_link",
       "message": "Reinforcement base is not a SynapticLink creation.",
       "passthrough": null,
@@ -1389,7 +1389,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2566,
+      "line": 2599,
       "validator": "validate_create_link",
       "message": "SWO temporal friction: author has {} Reinforcements in the last {} seconds (limit {}). This is enforced by DHT validation, not a client-side courtesy.",
       "passthrough": null,
@@ -1409,7 +1409,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — check_reinforcement_friction returns \"SWO temporal friction: {} Reinforcements already created in the last {} seconds (limit {}). \\\\              This is intentional friction, not a reputation judgment — try again later.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
-      "line": 2583,
+      "line": 2616,
       "validator": "validate_create_link",
       "message": "AttestationGrant tag must be exactly 36 bytes (a raw ActionHash).",
       "passthrough": null,
@@ -1420,7 +1420,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2591,
+      "line": 2624,
       "validator": "validate_create_link",
       "message": "AttestationGrant's referenced membership action not found.",
       "passthrough": null,
@@ -1431,7 +1431,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2621,
+      "line": 2654,
       "validator": "validate_create_link",
       "message": "AttestationGrant requires proof of sufficiently tenured membership in this membrane — the referenced action must be the granter's own AgentToMembrane join for this same membrane, created at least the required tenure period ago.",
       "passthrough": null,
@@ -1442,7 +1442,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2643,
+      "line": 2676,
       "validator": "validate_create_link",
       "message": "SWO temporal friction: author has granted attestation {} times in the last {} seconds (limit {}). This bounds how fast the right to vouch can be spent, not just how fast links can be created.",
       "passthrough": null,
@@ -1462,7 +1462,7 @@
       "enforcement_caveat": "the coordinator refuses this payload FIRST — check_attestation_grant_friction returns \"SWO temporal friction: {} AttestationGrants already created in the last {} seconds \\\\              (limit {}). This bounds how fast the right to vouch can be spent — try again later.\" — so a case driven through it passes on the courtesy rather than the enforcement. Assert it through attempt_false_attachment_link, which carries no pre-check."
     },
     {
-      "line": 2670,
+      "line": 2703,
       "validator": "validate_create_link",
       "message": "DomainToClaim target is not a Claim.",
       "passthrough": null,
@@ -1473,7 +1473,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2686,
+      "line": 2719,
       "validator": "validate_create_link",
       "message": "DomainToClaim base anchor does not match the claim's own domain ({:?}). A claim may only be indexed under the domain it declares.",
       "passthrough": null,
@@ -1484,7 +1484,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2700,
+      "line": 2733,
       "validator": "validate_create_link",
       "message": "A DomainToClaim link may only be created by the claim's own author.",
       "passthrough": null,
@@ -1495,7 +1495,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2721,
+      "line": 2754,
       "validator": "validate_create_link",
       "message": "TaxonomyToSpecies target is not a CritiqueSpecies.",
       "passthrough": null,
@@ -1506,7 +1506,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2736,
+      "line": 2769,
       "validator": "validate_create_link",
       "message": "TaxonomyToSpecies base is not the taxonomy anchor.",
       "passthrough": null,
@@ -1517,7 +1517,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2747,
+      "line": 2780,
       "validator": "validate_create_link",
       "message": "A TaxonomyToSpecies link may only be created by the species' own proposer.",
       "passthrough": null,
@@ -1528,7 +1528,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2765,
+      "line": 2798,
       "validator": "validate_create_link",
       "message": "MembraneRegistry target is not a Membrane.",
       "passthrough": null,
@@ -1539,7 +1539,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2776,
+      "line": 2809,
       "validator": "validate_create_link",
       "message": "MembraneRegistry base is not the membrane registry anchor.",
       "passthrough": null,
@@ -1550,7 +1550,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2782,
+      "line": 2815,
       "validator": "validate_create_link",
       "message": "A MembraneRegistry link may only be created by the membrane's own creator.",
       "passthrough": null,
@@ -1561,7 +1561,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2849,
+      "line": 2882,
       "validator": "validate_create_link",
       "message": "ClaimToRetraction target must be an ActionHash.",
       "passthrough": null,
@@ -1572,7 +1572,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2858,
+      "line": 2891,
       "validator": "validate_create_link",
       "message": "ClaimToRetraction target is not a Retraction.",
       "passthrough": null,
@@ -1583,7 +1583,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2866,
+      "line": 2899,
       "validator": "validate_create_link",
       "message": "ClaimToRetraction base must be a Claim's EntryHash.",
       "passthrough": null,
@@ -1594,7 +1594,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2879,
+      "line": 2912,
       "validator": "validate_create_link",
       "message": "A ClaimToRetraction link must hang from the Claim the Retraction itself names in target_claim. A retraction of one claim may not be filed against another.",
       "passthrough": null,
@@ -1605,7 +1605,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2894,
+      "line": 2927,
       "validator": "validate_create_link",
       "message": "A ClaimToRetraction link may only be created by the Retraction's own author.",
       "passthrough": null,
@@ -1616,7 +1616,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2922,
+      "line": 2955,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base must be the Retraction's ActionHash.",
       "passthrough": null,
@@ -1627,7 +1627,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2931,
+      "line": 2964,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base is not a Retraction.",
       "passthrough": null,
@@ -1638,7 +1638,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2937,
+      "line": 2970,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement base Retraction names no replacement_claim, so there is no replacement for this link to record.",
       "passthrough": null,
@@ -1649,7 +1649,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2945,
+      "line": 2978,
       "validator": "validate_create_link",
       "message": "RetractionToReplacement target must be a Claim's EntryHash.",
       "passthrough": null,
@@ -1660,7 +1660,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2951,
+      "line": 2984,
       "validator": "validate_create_link",
       "message": "A RetractionToReplacement link must point at the Claim the Retraction itself names in replacement_claim.",
       "passthrough": null,
@@ -1671,7 +1671,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2957,
+      "line": 2990,
       "validator": "validate_create_link",
       "message": "A RetractionToReplacement link may only be created by the Retraction's own author.",
       "passthrough": null,
@@ -1682,7 +1682,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2982,
+      "line": 3015,
       "validator": "validate_create_link",
       "message": "TargetToCritique target must be an ActionHash.",
       "passthrough": null,
@@ -1693,7 +1693,7 @@
       "entry": "create_link"
     },
     {
-      "line": 2991,
+      "line": 3024,
       "validator": "validate_create_link",
       "message": "TargetToCritique target is not a Critique.",
       "passthrough": null,
@@ -1704,7 +1704,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3004,
+      "line": 3037,
       "validator": "validate_create_link",
       "message": "A TargetToCritique link must hang from the node the Critique itself names in target. A critique of one node may not be filed against another.",
       "passthrough": null,
@@ -1715,7 +1715,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3010,
+      "line": 3043,
       "validator": "validate_create_link",
       "message": "A TargetToCritique link may only be created by the Critique's own author.",
       "passthrough": null,
@@ -1726,7 +1726,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3032,
+      "line": 3065,
       "validator": "validate_create_link",
       "message": "TargetToAntibody target must be an ActionHash.",
       "passthrough": null,
@@ -1737,7 +1737,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3041,
+      "line": 3074,
       "validator": "validate_create_link",
       "message": "TargetToAntibody target is not an AntibodyPattern.",
       "passthrough": null,
@@ -1748,7 +1748,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3047,
+      "line": 3080,
       "validator": "validate_create_link",
       "message": "A TargetToAntibody link must hang from the node the AntibodyPattern itself names in target.",
       "passthrough": null,
@@ -1759,7 +1759,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3053,
+      "line": 3086,
       "validator": "validate_create_link",
       "message": "A TargetToAntibody link may only be created by the AntibodyPattern's own author.",
       "passthrough": null,
@@ -1770,7 +1770,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3078,
+      "line": 3111,
       "validator": "validate_create_link",
       "message": "AgentToClaim target must be an ActionHash.",
       "passthrough": null,
@@ -1781,7 +1781,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3087,
+      "line": 3120,
       "validator": "validate_create_link",
       "message": "AgentToClaim target is not a Claim.",
       "passthrough": null,
@@ -1792,7 +1792,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3098,
+      "line": 3131,
       "validator": "validate_create_link",
       "message": "AgentToClaim base must be an EntryHash anchor.",
       "passthrough": null,
@@ -1803,7 +1803,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3104,
+      "line": 3137,
       "validator": "validate_create_link",
       "message": "AgentToClaim base anchor does not match the claim's own author. A claim may only be indexed under the agent who wrote it.",
       "passthrough": null,
@@ -1814,7 +1814,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3117,
+      "line": 3150,
       "validator": "validate_create_link",
       "message": "AgentToClaim tag must be the claim's own domain, which is the only domain a by-agent reader has to go on.",
       "passthrough": null,
@@ -1825,7 +1825,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3129,
+      "line": 3162,
       "validator": "validate_create_link",
       "message": "An AgentToClaim link may only be created by the claim's own author.",
       "passthrough": null,
@@ -1836,7 +1836,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3153,
+      "line": 3186,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies target must be an ActionHash.",
       "passthrough": null,
@@ -1847,7 +1847,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3162,
+      "line": 3195,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies target is not a Critique.",
       "passthrough": null,
@@ -1858,7 +1858,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3170,
+      "line": 3203,
       "validator": "validate_create_link",
       "message": "CritiqueToSpecies base must be a CritiqueSpecies' EntryHash.",
       "passthrough": null,
@@ -1869,7 +1869,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3183,
+      "line": 3216,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link must hang from the CritiqueSpecies the Critique itself declares in `species`, not a different one.",
       "passthrough": null,
@@ -1880,7 +1880,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3189,
+      "line": 3222,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link cannot record an adoption the Critique does not declare: its `species` field is None.",
       "passthrough": null,
@@ -1891,7 +1891,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3196,
+      "line": 3229,
       "validator": "validate_create_link",
       "message": "A CritiqueToSpecies link may only be created by the Critique's own author.",
       "passthrough": null,
@@ -1902,7 +1902,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3213,
+      "line": 3246,
       "validator": "validate_create_link",
       "message": "AgentToConstitution target must be an ActionHash.",
       "passthrough": null,
@@ -1913,7 +1913,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3222,
+      "line": 3255,
       "validator": "validate_create_link",
       "message": "AgentToConstitution target is not a Constitution.",
       "passthrough": null,
@@ -1924,7 +1924,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3227,
+      "line": 3260,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1935,7 +1935,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3230,
+      "line": 3263,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1946,7 +1946,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3233,
+      "line": 3266,
       "validator": "validate_create_link",
       "message": "An AgentToConstitution link may only be created by the agent whose constitution it indexes.",
       "passthrough": null,
@@ -1957,7 +1957,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3248,
+      "line": 3281,
       "validator": "validate_create_link",
       "message": "AgentToWorldlineTrace target must be an ActionHash.",
       "passthrough": null,
@@ -1968,7 +1968,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3257,
+      "line": 3290,
       "validator": "validate_create_link",
       "message": "AgentToWorldlineTrace target is not a WorldlineTrace.",
       "passthrough": null,
@@ -1979,7 +1979,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3262,
+      "line": 3295,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -1990,7 +1990,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3265,
+      "line": 3298,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2001,7 +2001,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3268,
+      "line": 3301,
       "validator": "validate_create_link",
       "message": "An AgentToWorldlineTrace link may only be created by the agent whose chain the trace compresses.",
       "passthrough": null,
@@ -2012,7 +2012,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3282,
+      "line": 3315,
       "validator": "validate_create_link",
       "message": "AgentToMew target must be an ActionHash.",
       "passthrough": null,
@@ -2023,7 +2023,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3291,
+      "line": 3324,
       "validator": "validate_create_link",
       "message": "AgentToMew target is not a Mew.",
       "passthrough": null,
@@ -2039,7 +2039,7 @@
       "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
-      "line": 3296,
+      "line": 3329,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2050,7 +2050,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3299,
+      "line": 3332,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2061,7 +2061,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3302,
+      "line": 3335,
       "validator": "validate_create_link",
       "message": "An AgentToMew link may only be created by the Mew's own author.",
       "passthrough": null,
@@ -2072,7 +2072,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3331,
+      "line": 3364,
       "validator": "validate_create_link",
       "message": "SpeciesToParent target must be an ActionHash.",
       "passthrough": null,
@@ -2083,7 +2083,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3340,
+      "line": 3373,
       "validator": "validate_create_link",
       "message": "SpeciesToParent target is not a CritiqueSpecies.",
       "passthrough": null,
@@ -2094,7 +2094,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3348,
+      "line": 3381,
       "validator": "validate_create_link",
       "message": "SpeciesToParent base must be the parent CritiqueSpecies' EntryHash.",
       "passthrough": null,
@@ -2105,7 +2105,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3366,
+      "line": 3399,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link must hang from the CritiqueSpecies the child itself declares in parent_species, not a different one.",
       "passthrough": null,
@@ -2116,7 +2116,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3372,
+      "line": 3405,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link cannot record a parent the child does not declare: its parent_species field is None.",
       "passthrough": null,
@@ -2127,7 +2127,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3379,
+      "line": 3412,
       "validator": "validate_create_link",
       "message": "A SpeciesToParent link may only be created by the child species' own proposer.",
       "passthrough": null,
@@ -2138,7 +2138,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3417,
+      "line": 3450,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation target must be an ActionHash.",
       "passthrough": null,
@@ -2149,7 +2149,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3426,
+      "line": 3459,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation target is not a Revelation.",
       "passthrough": null,
@@ -2160,7 +2160,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3434,
+      "line": 3467,
       "validator": "validate_create_link",
       "message": "PreRegistrationToRevelation base must be the PreRegistration's ActionHash.",
       "passthrough": null,
@@ -2171,7 +2171,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3441,
+      "line": 3474,
       "validator": "validate_create_link",
       "message": "A PreRegistrationToRevelation link must hang from the PreRegistration the Revelation itself names. A reveal of one commitment may not be recorded against another — that is how an expired commitment is made to look revealed.",
       "passthrough": null,
@@ -2182,7 +2182,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3453,
+      "line": 3486,
       "validator": "validate_create_link",
       "message": "A PreRegistrationToRevelation link may only be created by the revealing agent.",
       "passthrough": null,
@@ -2193,7 +2193,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3470,
+      "line": 3503,
       "validator": "validate_create_link",
       "message": "AgentToPreRegistration target must be an ActionHash.",
       "passthrough": null,
@@ -2204,7 +2204,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3479,
+      "line": 3512,
       "validator": "validate_create_link",
       "message": "AgentToPreRegistration target is not a PreRegistration.",
       "passthrough": null,
@@ -2215,7 +2215,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3484,
+      "line": 3517,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2226,7 +2226,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3487,
+      "line": 3520,
       "validator": "validate_create_link",
       "message": null,
       "passthrough": "reason",
@@ -2237,7 +2237,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3490,
+      "line": 3523,
       "validator": "validate_create_link",
       "message": "An AgentToPreRegistration link may only be created by the committing agent.",
       "passthrough": null,
@@ -2248,7 +2248,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3515,
+      "line": 3548,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration target must be an ActionHash.",
       "passthrough": null,
@@ -2259,7 +2259,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3524,
+      "line": 3557,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration target is not a PreRegistration.",
       "passthrough": null,
@@ -2270,7 +2270,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3533,
+      "line": 3566,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration base must be an EntryHash anchor.",
       "passthrough": null,
@@ -2281,7 +2281,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3539,
+      "line": 3572,
       "validator": "validate_create_link",
       "message": "QuestionToPreRegistration base anchor does not match the question the PreRegistration itself names. A commitment may only be indexed under the question it was made about.",
       "passthrough": null,
@@ -2292,7 +2292,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3546,
+      "line": 3579,
       "validator": "validate_create_link",
       "message": "A QuestionToPreRegistration link may only be created by the committing agent.",
       "passthrough": null,
@@ -2303,7 +2303,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3559,
+      "line": 3592,
       "validator": "validate_create_link",
       "message": "MewToClaim target must be an ActionHash.",
       "passthrough": null,
@@ -2314,7 +2314,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3568,
+      "line": 3601,
       "validator": "validate_create_link",
       "message": "MewToClaim target is not a Claim.",
       "passthrough": null,
@@ -2325,7 +2325,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3576,
+      "line": 3609,
       "validator": "validate_create_link",
       "message": "MewToClaim base must be a Mew's EntryHash.",
       "passthrough": null,
@@ -2336,7 +2336,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3584,
+      "line": 3617,
       "validator": "validate_create_link",
       "message": "A MewToClaim link must hang from the Mew the Claim itself names in source_mew.",
       "passthrough": null,
@@ -2347,7 +2347,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3590,
+      "line": 3623,
       "validator": "validate_create_link",
       "message": "A MewToClaim link cannot record a promotion the Claim does not claim: its source_mew is None.",
       "passthrough": null,
@@ -2358,7 +2358,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3597,
+      "line": 3630,
       "validator": "validate_create_link",
       "message": "A MewToClaim link may only be created by the promoted Claim's own author.",
       "passthrough": null,
@@ -2369,7 +2369,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3612,
+      "line": 3645,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord target must be an ActionHash.",
       "passthrough": null,
@@ -2380,7 +2380,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3621,
+      "line": 3654,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord target is not a FederationRecord.",
       "passthrough": null,
@@ -2391,7 +2391,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3629,
+      "line": 3662,
       "validator": "validate_create_link",
       "message": "MembraneToFederationRecord base must be a Membrane's EntryHash.",
       "passthrough": null,
@@ -2402,7 +2402,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3635,
+      "line": 3668,
       "validator": "validate_create_link",
       "message": "A MembraneToFederationRecord link must hang from the Membrane the FederationRecord itself names in local_membrane.",
       "passthrough": null,
@@ -2413,7 +2413,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3641,
+      "line": 3674,
       "validator": "validate_create_link",
       "message": "A MembraneToFederationRecord link may only be created by the FederationRecord's own author — who §5.18 already requires to be the membrane's founder.",
       "passthrough": null,
@@ -2424,7 +2424,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3667,
+      "line": 3700,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's target must be an ActionHash.",
       "passthrough": null,
@@ -2435,7 +2435,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3676,
+      "line": 3709,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's target is not a BridgeRecord.",
       "passthrough": null,
@@ -2446,7 +2446,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3684,
+      "line": 3717,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link's base must be an EntryHash.",
       "passthrough": null,
@@ -2457,7 +2457,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3690,
+      "line": 3723,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link must hang from the entry the BridgeRecord itself names in mew_hash.",
       "passthrough": null,
@@ -2468,7 +2468,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3702,
+      "line": 3735,
       "validator": "validate_create_link",
       "message": "A ClaimToBridgeRecord link's base is not a Claim. A mirror of a Mew filed as a claim's would make get_unbridged_claims answer about the wrong entry.",
       "passthrough": null,
@@ -2479,7 +2479,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3709,
+      "line": 3742,
       "validator": "validate_create_link",
       "message": "A MewToBridgeRecord link's base is not a Mew.",
       "passthrough": null,
@@ -2495,7 +2495,7 @@
       "enforcement_caveat": "reads as a type check and is only a partial one: Claim bytes deserialise as Mew, so this guard returns Ok(Some(..)) for Claim and the message cannot fire for one. It DOES still fire for an entry of any other type (the deserialise fails) and for a non-entry action (Ok(None)). READINESS item 17 accepted this rather than adding a discriminant field, which would change the DNA hash."
     },
     {
-      "line": 3714,
+      "line": 3747,
       "validator": "validate_create_link",
       "message": "A BridgeRecord link may only be created by the agent who recorded the mirror.",
       "passthrough": null,
@@ -2506,7 +2506,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3728,
+      "line": 3761,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique target must be an ActionHash.",
       "passthrough": null,
@@ -2517,7 +2517,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3737,
+      "line": 3770,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique target is not an ExternalCritique.",
       "passthrough": null,
@@ -2528,7 +2528,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3745,
+      "line": 3778,
       "validator": "validate_create_link",
       "message": "ClaimToExternalCritique base must be a Claim's EntryHash.",
       "passthrough": null,
@@ -2539,7 +2539,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3751,
+      "line": 3784,
       "validator": "validate_create_link",
       "message": "A ClaimToExternalCritique link must hang from the Claim the ExternalCritique itself names in linked_holochain_claim.",
       "passthrough": null,
@@ -2550,7 +2550,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3760,
+      "line": 3793,
       "validator": "validate_create_link",
       "message": "A ClaimToExternalCritique link may only be created by the importing agent.",
       "passthrough": null,
@@ -2561,7 +2561,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3775,
+      "line": 3808,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target must be an ActionHash.",
       "passthrough": null,
@@ -2572,7 +2572,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3779,
+      "line": 3812,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target does not resolve.",
       "passthrough": null,
@@ -2583,7 +2583,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3783,
+      "line": 3816,
       "validator": "validate_create_link",
       "message": "TargetToAssessment target is not an Assessment.",
       "passthrough": null,
@@ -2594,7 +2594,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3787,
+      "line": 3820,
       "validator": "validate_create_link",
       "message": "A TargetToAssessment link must hang from the node the Assessment itself names in target.",
       "passthrough": null,
@@ -2605,7 +2605,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3792,
+      "line": 3825,
       "validator": "validate_create_link",
       "message": "A TargetToAssessment link may only be created by the Assessment's own assessor.",
       "passthrough": null,
@@ -2616,7 +2616,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3798,
+      "line": 3831,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target must be an ActionHash.",
       "passthrough": null,
@@ -2627,7 +2627,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3802,
+      "line": 3835,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target does not resolve.",
       "passthrough": null,
@@ -2638,7 +2638,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3806,
+      "line": 3839,
       "validator": "validate_create_link",
       "message": "TargetToSettlementStatus target is not a SettlementStatus.",
       "passthrough": null,
@@ -2649,7 +2649,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3810,
+      "line": 3843,
       "validator": "validate_create_link",
       "message": "A TargetToSettlementStatus link must hang from the node the SettlementStatus itself names in target.",
       "passthrough": null,
@@ -2660,7 +2660,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3815,
+      "line": 3848,
       "validator": "validate_create_link",
       "message": "A TargetToSettlementStatus link may only be created by the status's own aggregator.",
       "passthrough": null,
@@ -2671,7 +2671,7 @@
       "entry": "create_link"
     },
     {
-      "line": 3849,
+      "line": 3882,
       "validator": "agent_index_anchor_matches",
       "message": "{link_name} base must be an EntryHash anchor.",
       "passthrough": null,
@@ -2681,7 +2681,7 @@
       "entry": null
     },
     {
-      "line": 3855,
+      "line": 3888,
       "validator": "agent_index_anchor_matches",
       "message": "{link_name} base anchor does not match the agent the target entry names. An entry may only be indexed under the agent it belongs to.",
       "passthrough": null,
