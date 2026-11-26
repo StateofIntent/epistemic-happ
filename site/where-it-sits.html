@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The box nobody ticked — Epistemic Resonance</title>
+<meta name="description" content="The Semantic Web's layer cake has a top layer that never became a standard. Berners-Lee specified what it should return in 1997 — a list of assumptions on which the trust is based — and nobody built it. This is a diagram of that gap and what fills it.">
+<link rel="icon" href="assets/icon.png" type="image/png">
+<meta property="og:title" content="The box nobody ticked">
+<meta property="og:description" content="Meaning shipped. Provenance partly shipped. Trust got a name and never got built. A diagram of the layer that is still empty.">
+<meta property="og:type" content="article">
+<meta property="og:image" content="assets/epistemic-resonance.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="mast">
+  <a class="mast__logo" href="index.html" aria-label="Epistemic Resonance — home">
+    <img class="logo--light" src="assets/logo-light.png" alt="Epistemic Resonance" width="1280" height="347">
+    <img class="logo--dark" src="assets/logo-dark.png" alt="" aria-hidden="true" width="1280" height="347">
+  </a>
+  <nav class="mast__nav" aria-label="Primary">
+    <a class="opt" href="index.html#problem">The problem</a>
+    <a class="opt" href="how-it-works.html">How it works</a>
+    <a class="opt" href="index.html#limits">Limits</a>
+    <a class="btn" href="https://github.com/StateofIntent/epistemic-happ">Source</a>
+  </nav>
+</header>
+
+<div class="shell" id="top">
+
+  <nav class="rail" aria-label="Sections">
+    <ol>
+      <li><a href="#stack">The layer that never shipped</a></li>
+      <li><a href="#button">What the button was meant to return</a></li>
+      <li><a href="#mapping">The programme, line by line</a></li>
+      <li><a href="#against">Where it is genuinely opposed</a></li>
+      <li><a href="how-it-works.html">How it works</a></li>
+    </ol>
+  </nav>
+
+  <main class="col" id="main">
+
+    <section class="sec" style="border-top:0">
+      <p class="eyebrow">Where it sits · the Semantic Web</p>
+      <h1>The box nobody ticked</h1>
+      <p class="lede">
+        The Semantic Web's original programme had three parts: machine-readable meaning,
+        provenance, and trust. <strong>The first two got standards. The third got a name and
+        never got built.</strong> This protocol is an attempt at that third box — not the
+        standard for it, which is a different and larger thing, but a working object where
+        there has been an empty slot since 1997.
+      </p>
+    </section>
+
+    <section class="sec" id="stack">
+      <p class="eyebrow">Figure 1 · the stack as proposed</p>
+      <h2>Eight layers, and the top two never became recommendations</h2>
+      <p>
+        Berners-Lee's layer cake is a dependency stack: each layer uses the capabilities of the
+        ones beneath it. Most of it shipped, and shipped well. The argument on this page is
+        entirely about the top.
+      </p>
+
+      <figure class="dgm-fig dgm-fig--wide wide">
+        <div class="scroll" style="border:0;background:none;margin:0">
+          <svg viewBox="0 0 880 560" role="img" aria-label="The Semantic Web layer stack drawn bottom to top: URI and Unicode, XML, RDF, RDF Schema, Ontology, Querying, Unifying logic, Proof, and Trust. The lower six carry W3C Recommendations. Unifying logic is partial. Proof and Trust never became recommendations, and Trust is drawn as an empty box with an arrow to what this protocol puts in that slot.">
+
+            <text x="60" y="30" class="sv-th">THE PROGRAMME, AS DRAWN BY ITS AUTHOR</text>
+            <text x="470" y="30" class="sv-tf">STATUS</text>
+            <text x="620" y="30" class="sv-tf">WHAT IS IN THE SLOT</text>
+
+            <!-- Trust: the empty box -->
+            <rect x="60" y="48" width="380" height="42" class="sv-dead"/>
+            <text x="76" y="68" class="sv-t">Trust</text>
+            <text x="76" y="84" class="sv-tf">“why should I believe this?”</text>
+            <path d="M448 60 H604" class="sv-edge-a" marker-end="url(#a1)"/>
+            <text x="470" y="86" class="sv-tf">never a Recommendation</text>
+            <rect x="610" y="48" width="236" height="42" class="sv-accs"/>
+            <text x="626" y="68" class="sv-ta">typed disagreement</text>
+            <text x="626" y="84" class="sv-tf">attached to the claim, permanent</text>
+
+            <!-- Proof -->
+            <rect x="60" y="100" width="380" height="42" class="sv-dead"/>
+            <text x="76" y="126" class="sv-t">Proof</text>
+            <text x="470" y="126" class="sv-tf">never a Recommendation</text>
+            <text x="626" y="126" class="sv-tf">not attempted here</text>
+
+            <!-- Unifying logic -->
+            <rect x="60" y="152" width="380" height="42" class="sv-rule" fill="var(--surface-2)"/>
+            <text x="76" y="178" class="sv-t">Unifying logic</text>
+            <text x="470" y="178" class="sv-tf">partial — RIF exists</text>
+            <text x="626" y="178" class="sv-tf">not attempted here</text>
+
+            <!-- the shipped six -->
+            <g>
+              <rect x="60" y="204" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="230" class="sv-t">Querying · SPARQL</text>
+              <rect x="60" y="256" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="282" class="sv-t">Ontology · OWL</text>
+              <rect x="60" y="308" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="334" class="sv-t">RDF Schema</text>
+              <rect x="60" y="360" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="386" class="sv-t">RDF</text>
+              <rect x="60" y="412" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="438" class="sv-t">XML · Namespaces</text>
+              <rect x="60" y="464" width="380" height="42" class="sv-rule" fill="var(--surface)"/>
+              <text x="76" y="490" class="sv-t">URI · Unicode</text>
+            </g>
+            <text x="470" y="230" class="sv-ta">shipped</text>
+            <text x="470" y="282" class="sv-ta">shipped</text>
+            <text x="470" y="334" class="sv-ta">shipped</text>
+            <text x="470" y="386" class="sv-ta">shipped</text>
+            <text x="470" y="438" class="sv-ta">shipped</text>
+            <text x="470" y="490" class="sv-ta">shipped</text>
+            <text x="626" y="230" class="sv-tf">used as-is</text>
+            <text x="626" y="282" class="sv-tf">used as-is</text>
+            <text x="626" y="334" class="sv-tf">31 link types, typed in the zome</text>
+            <text x="626" y="386" class="sv-tf">every entry carries its author</text>
+            <text x="626" y="438" class="sv-tf">used as-is</text>
+            <text x="626" y="490" class="sv-tf">used as-is</text>
+
+            <!-- the dependency direction -->
+            <path d="M46 500 V62" class="sv-edge" marker-end="url(#a2)"/>
+            <text x="30" y="300" class="sv-tf" transform="rotate(-90 30 300)" text-anchor="middle">each layer uses the one below</text>
+
+            <text x="60" y="534" class="sv-tm">The stack is a dependency order, not a schedule. The lower layers did not fail to reach the top —</text>
+            <text x="60" y="550" class="sv-tm">the top two were never specified, so there was nothing to reach.</text>
+
+            <defs>
+              <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/>
+              </marker>
+              <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--counter)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption class="dgm-cap">
+          <span class="dgm-cap__t">Figure 1</span>
+          Six layers became W3C Recommendations and are used here unchanged. <strong>Proof and
+          Trust never did.</strong> Proof is not attempted here and this page does not claim
+          otherwise — a proof layer is a different project. The empty box at the top is the
+          only one this protocol is for.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="sec" id="button">
+      <p class="eyebrow">Figure 2 · the specification that already existed</p>
+      <h2>The button was designed in 1997, down to what it returns</h2>
+      <p>
+        The trust layer is usually described as vague. It was not. Berners-Lee specified the
+        interaction, the mechanism and the <em>return value</em> in a W3C design note dated
+        <span class="mono">6 February 1997</span> — a toolbar button marked
+        <strong>“Oh, yeah?”</strong>, pressed when you lose that feeling of trust, which asks the
+        web <em>so how do I know I can trust this information?</em>
+      </p>
+
+      <figure class="dgm-fig dgm-fig--wide wide">
+        <div class="scroll" style="border:0;background:none;margin:0">
+          <svg viewBox="0 0 880 430" role="img" aria-label="A comparison of two round trips. In the 1997 design a reader presses the Oh yeah button, the software follows signatures back through a chain of trust, and returns either a list of assumptions on which the trust is based or an error. In this protocol the reader asks the same question and receives the claim's typed critiques, their authors and their evidence, with no path of trust required because nothing is being authenticated.">
+
+            <!-- 1997 -->
+            <text x="40" y="32" class="sv-th">1997 — as specified</text>
+            <circle cx="60" cy="86" r="11" class="sv-node"/>
+            <text x="82" y="90" class="sv-t">reader presses “Oh, yeah?”</text>
+            <path d="M60 100 V134" class="sv-edge" marker-end="url(#b1)"/>
+            <rect x="40" y="140" width="330" height="56" class="sv-rule" fill="var(--surface)"/>
+            <text x="56" y="162" class="sv-t">follow signatures back</text>
+            <text x="56" y="180" class="sv-tf">a path of trust from you to the page</text>
+            <path d="M60 196 V230" class="sv-edge" marker-end="url(#b1)"/>
+            <rect x="40" y="236" width="330" height="76" class="sv-rule" fill="var(--surface-2)"/>
+            <text x="56" y="258" class="sv-t">returns, in his words:</text>
+            <text x="56" y="278" class="sv-tf">“a list of assumptions on which the</text>
+            <text x="56" y="294" class="sv-tf">trust is based” — or an error</text>
+            <text x="40" y="340" class="sv-tm">It was never built. The mechanism it needed —</text>
+            <text x="40" y="356" class="sv-tm">a signature chain reaching every author —</text>
+            <text x="40" y="372" class="sv-tm">is the part that did not arrive.</text>
+
+            <!-- divider -->
+            <path d="M440 40 V392" class="sv-dash"/>
+
+            <!-- here -->
+            <text x="480" y="32" class="sv-th">Here — same question, different return</text>
+            <circle cx="500" cy="86" r="11" class="sv-node"/>
+            <text x="522" y="90" class="sv-t">reader opens the claim</text>
+            <path d="M500 100 V134" class="sv-edge-a" marker-end="url(#b2)"/>
+            <rect x="480" y="140" width="340" height="56" class="sv-accs"/>
+            <text x="496" y="162" class="sv-ta">read the claim's own critique links</text>
+            <text x="496" y="180" class="sv-tf">no authentication, no chain to walk</text>
+            <path d="M500 196 V230" class="sv-edge-a" marker-end="url(#b2)"/>
+            <rect x="480" y="236" width="340" height="76" class="sv-rule" fill="var(--surface-2)"/>
+            <text x="496" y="258" class="sv-t">returns the assumptions, and who disputes them:</text>
+            <text x="496" y="278" class="sv-tf">5 critique modes · each with an author</text>
+            <text x="496" y="294" class="sv-tf">each with its own typed evidence</text>
+            <text x="480" y="340" class="sv-tm">The 1997 design asked whether a document could be</text>
+            <text x="480" y="356" class="sv-tm">trusted. This answers a narrower question it can</text>
+            <text x="480" y="372" class="sv-tm">actually answer: what has been said against it.</text>
+
+            <defs>
+              <marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--counter)"/>
+              </marker>
+              <marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption class="dgm-cap">
+          <span class="dgm-cap__t">Figure 2</span>
+          <strong>The substitution is the whole idea, and it is a narrowing rather than a
+          solution.</strong> The 1997 design needed a signature chain reaching every author in
+          order to tell you whether to believe something. This protocol never tries to tell you
+          that. It returns the typed objections and their authors and lets you decide — which
+          needs no chain of trust, because nothing is being authenticated.
+        </figcaption>
+      </figure>
+
+      <p class="note">
+        <strong>Source.</strong> Tim Berners-Lee, <em>Consistent User Interface</em>, W3C Design
+        Issues, 6 February 1997, updated September 1997 —
+        <span class="mono">w3.org/DesignIssues/UI.html</span>. The quoted return value is his:
+        the button produces <em>“either a list of assumptions on which the trust is based, or of
+        course an error message indicating either that a signature has failed, or that the
+        system couldn't find a path of trust from you to the page.”</em>
+      </p>
+    </section>
+
+    <section class="sec" id="mapping">
+      <p class="eyebrow">Line by line</p>
+      <h2>The original programme, and where each part stands</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>The original programme</th><th>Shipped elsewhere</th><th>Here</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Typed relations between things</td><td>RDF / OWL</td><td>Yes — typed links, 31 kinds</td></tr>
+            <tr><td>Provenance: who said this, when</td><td>Partly</td><td>Every entry carries its author and action; nothing is anonymous</td></tr>
+            <tr><td>Data sovereignty</td><td>Solid pods</td><td>Yes — each agent is a node</td></tr>
+            <tr><td>Trust: why should I believe this</td><td>Nobody</td><td>The whole object: typed disagreement, attached to the claim, permanently</td></tr>
+            <tr><td>Disagreement as data</td><td>No primitive anywhere</td><td>5 critique modes, extensible at runtime</td></tr>
+            <tr><td>A reading you can argue with</td><td>No</td><td>Aggregation requires a named aggregator, so every reading is a promise</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Solid delivered the half the web most needed — data sovereignty — and does not claim to
+        attempt trust semantics. Nothing on this page is a criticism of it; they are different
+        boxes in the same stack.
+      </p>
+    </section>
+
+    <section class="sec" id="against">
+      <p class="eyebrow">Honest limits</p>
+      <h2>Where it is genuinely opposed, stated first</h2>
+      <ol class="limits">
+        <li>
+          <strong>Erasure.</strong> Solid exists partly so you can remove your data. This
+          protocol makes erasure <em>structurally impossible</em> — no delete operation is
+          accepted by the network at all, so a right-to-erasure request cannot be complied with
+          by anyone. It is a deliberate trade: a record that can be edited by the party with the
+          most to lose is not a record. A deployment for the general public would have to
+          confront this. The pilot confronts it by being small, consenting and informed.
+        </li>
+        <li>
+          <strong>This is an implementation, not a standard.</strong> Filling a slot in the stack
+          with one working system is not the same as specifying the layer, and the difference
+          matters: a standard is something others can implement independently, and this is not
+          that yet.
+        </li>
+        <li>
+          <strong>Proof is not attempted.</strong> The layer below Trust is also empty, and
+          nothing here addresses it. A system that stores what was said against a claim is not a
+          system that proves anything.
+        </li>
+        <li>
+          <strong>Two operators is not a network.</strong> The trust layer's whole premise is
+          many parties who do not trust each other. The pilot has two, who do.
+        </li>
+      </ol>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="foot__in">
+    <div>
+      <h4>Read</h4>
+      <ul>
+        <li><a href="index.html">Overview</a></li>
+        <li><a href="how-it-works.html">How it works — the diagram</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/SPEC.md">Specification</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ">Source repository</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Referenced</h4>
+      <ul>
+        <li><a href="https://www.w3.org/DesignIssues/UI.html">“Oh, yeah?” — W3C Design Issues, 1997</a></li>
+        <li><a href="https://en.wikipedia.org/wiki/Semantic_Web_Stack">The Semantic Web stack</a></li>
+        <li><a href="https://solidproject.org/">Solid</a></li>
+      </ul>
+    </div>
+    <p class="foot__fine">
+      Epistemic Resonance · protocol version 11 · figures re-measured against the source tree on
+      every push.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
