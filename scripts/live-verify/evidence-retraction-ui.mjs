@@ -187,6 +187,116 @@ async function main() {
       && draft.url === 'https://example.org/draft');
     if (draft.content !== 'Half-written, not yet published.') log(`    (the form now holds ${JSON.stringify(draft)})`);
 
+    // === ROW 1.36: THE REPORT TEMPLATE, AND WHY IT IS CHECKED HERE ========
+    //
+    // The template selector is the one control on this form that calls
+    // `render()` ITSELF — choosing a template rebuilds the screen to show its
+    // fields. So the defect the block above exists to catch is reachable from
+    // inside the form rather than only from a tab switch or an arriving claim,
+    // and a template that wiped the prose box on selection would be a form
+    // that punishes anyone who tries it. That is worth an assertion rather
+    // than an assumption.
+    log('\n=== Row 1.36: the report template is additive and survives a rebuild ===');
+    await page.locator('[data-testid="report-template"]').selectOption('node-health');
+    await page.waitForTimeout(300);
+    check('choosing a template does not wipe the prose being written',
+      (await page.locator('[data-testid="new-claim-content"]').inputValue())
+        === 'Half-written, not yet published.');
+    check('  ...and reveals the template fields',
+      (await page.locator('[data-testid="report-field-symptom"]').count()) === 1);
+    check('  ...with a note saying the fields are a convention and not a checked format',
+      /convention/i.test(await page.locator('[data-testid="report-convention-note"]').innerText()));
+
+    await page.locator('[data-testid="report-field-symptom"]').selectOption('the app froze');
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+    check('the template choice survives the screen rebuilding underneath it',
+      (await page.locator('[data-testid="report-template"]').inputValue()) === 'node-health');
+    check('  ...and so does the field already filled in',
+      (await page.locator('[data-testid="report-field-symptom"]').inputValue()) === 'the app froze');
+
+    // THE PROSE BOX IS STILL THE REQUIRED ONE, which is the whole of 1.36's
+    // "offered, never required": a template is an addition to a claim and
+    // never a replacement for one.
+    check('the prose box is still the required field, and the template is not',
+      (await page.locator('[data-testid="new-claim-content"]').getAttribute('required')) !== null
+      && (await page.locator('[data-testid="report-template"]').getAttribute('required')) === null);
+
+    // === AND THE CONVENTION IS ACTUALLY WRITTEN, WHICH IS THE POINT ======
+    //
+    // Everything above tests the form. This tests the only thing the form is
+    // FOR: that a filled template reaches `Claim.content` as a readable block,
+    // and that an untouched one changes nothing at all. The second half is the
+    // load-bearing one — 1.36's whole claim is that the template is ADDITIVE,
+    // so selecting one and filling none of it must publish exactly what prose
+    // alone would have. A form that quietly stamped an empty "[Node health
+    // report]" onto every claim would be the opposite of offered-never-required.
+    //
+    // Published into its own domain so the grounding assertions above and
+    // below, which match cards by content, cannot be reached by these.
+    const RPT = `${DOMAIN}Rpt`;
+    await page.locator('[data-testid="new-claim-content"]').fill('The node stopped answering.');
+    await page.locator('[data-testid="new-claim-domain"]').fill(RPT);
+    await page.locator('[data-testid="report-template"]').selectOption('node-health');
+    await page.waitForTimeout(250);
+    await page.locator('[data-testid="report-field-symptom"]').selectOption('the app froze');
+    await page.getByRole('button', { name: 'Publish claim', exact: true }).click();
+    await page.waitForTimeout(2500);
+
+    // AND THE ANSWERS DO NOT SURVIVE THE PUBLISH, which is a defect this
+    // harness caught while being written. `clearAfterPublish` resets the draft
+    // by SPREADING it, so anything unnamed survives — deliberate for `domain`
+    // and wrong for the field answers, because a symptom left over from the
+    // last report would be appended to the next unrelated claim as if freshly
+    // observed. The template choice SHOULD persist, for the same reason the
+    // domain does, so both halves are asserted.
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+    check('the template choice persists after publishing, as the domain does',
+      (await page.locator('[data-testid="report-template"]').inputValue()) === 'node-health');
+    check('BUT THE ANSWERS DO NOT — a stale symptom must not ride onto the next claim',
+      (await page.locator('[data-testid="report-field-symptom"]').inputValue()) === '');
+
+    // The same prose again, with a template selected and NOTHING filled in.
+    await page.locator('[data-testid="new-claim-content"]').fill('Nothing was filled in here.');
+    await page.locator('[data-testid="new-claim-domain"]').fill(RPT);
+    await page.locator('[data-testid="report-template"]').selectOption('usability');
+    await page.waitForTimeout(250);
+    await page.getByRole('button', { name: 'Publish claim', exact: true }).click();
+    await page.waitForTimeout(2500);
+
+    await page.getByRole('button', { name: 'Browse', exact: true }).click();
+    await page.locator('.search-row input').first().fill(RPT);
+    await page.getByRole('button', { name: 'Load claims' }).first().click();
+    await page.waitForSelector('.claim-card', { timeout: 20000 });
+    const filledCard = await page.locator('.claim-card')
+      .filter({ hasText: 'The node stopped answering' }).first().innerText();
+    const emptyCard = await page.locator('.claim-card')
+      .filter({ hasText: 'Nothing was filled in here' }).first().innerText();
+    check('a filled template reaches the claim as a labelled block',
+      /\[Node health report\]/.test(filledCard) && /Symptom: the app froze/.test(filledCard));
+    check('  ...with the author\'s own words FIRST, not the template',
+      filledCard.indexOf('The node stopped answering')
+        < filledCard.indexOf('[Node health report]'));
+    check('A TEMPLATE SELECTED AND LEFT EMPTY ADDS NOTHING AT ALL — 1.36 is additive',
+      !/report\]/i.test(emptyCard) && !/Screen:|Tried:|Expected:/.test(emptyCard));
+    check('  ...and tags no claim it did not write a block for',
+      !/report:usability/.test(emptyCard));
+    check('CONTROL: the filled one DOES carry its conventional tag, so the check above can fail',
+      /report:node-health/.test(filledCard));
+    log(`    filled: ${JSON.stringify(filledCard.slice(0, 120))}`);
+    log(`    empty:  ${JSON.stringify(emptyCard.slice(0, 120))}`);
+
+    await page.getByRole('button', { name: 'New Claim', exact: true }).click();
+
+    // RESET TO PROSE, for exactly the reason the evidence fields are cleared
+    // below: a template left selected would append a report block to every
+    // claim this harness publishes afterwards, and the grounding assertions
+    // match cards by their content.
+    await page.locator('[data-testid="report-template"]').selectOption('prose');
+    await page.waitForTimeout(300);
+    check('CONTROL: returning to prose removes the template fields again',
+      (await page.locator('[data-testid="report-field-symptom"]').count()) === 0);
+
     // Cleared by hand so the composition above cannot leak into the claims
     // published below — this harness asserts one of them is UNGROUNDED, and a
     // stray evidence field is exactly how that would stop being true.
