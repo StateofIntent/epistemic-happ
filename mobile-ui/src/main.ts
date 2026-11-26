@@ -910,6 +910,90 @@ let authorDraft = '';
  * One object rather than a variable per field, deliberately. A form is a single
  * thing a person is in the middle of, and `clearAfterPublish` below is only
  * coherent when there is one place that says what "in the middle of" means. */
+/** ROW 1.36 — THE REPORT TEMPLATES, AND WHAT THEY DELIBERATELY DO NOT BUY.
+ *
+ * Nobody knows whether a participant will fill in a form, and the whole typed
+ * observation design (row 5.3) rests on it. 5.3 is a typed class on `Evidence`,
+ * which is an integrity change, and on this substrate a bump is a RELAUNCH
+ * rather than an upgrade — so the expensive half sits behind §4's fork queue,
+ * where a bump after "invite ten people" strands their data permanently under
+ * Invariant 6.
+ *
+ * THIS IS THE CHEAP HALF, AND IT TESTS THE ONE THING NO AMOUNT OF DESIGN
+ * SETTLES: a client-side form writing a CONVENTIONAL structure into the
+ * `Claim` fields that already exist. No entry change, no bump, no fork.
+ *
+ * WHAT IT CANNOT BUY, SAID HERE SO THIS IS NEVER READ AS 5.3 ARRIVING EARLY:
+ * VALIDATION CANNOT CHECK A CONVENTION. A field written as "App version:
+ * v0.3.7" is structured only by agreement; the zome sees a string. Nothing is
+ * enforced, and no read may claim it was. That is the entire difference
+ * between this and 5.3, and it is why this is a behavioural instrument rather
+ * than a feature.
+ *
+ * THE FREE-TEXT CLAIM BOX IS NOT A FALLBACK, IT IS THE SENSOR. Invariant 4
+ * forbids flattening, and a fixed list squeezes out exactly the report that
+ * would have opened a new row — a participant's seven-point message would not
+ * have survived a dropdown. So the prose box stays primary and required, the
+ * template is additive, and `prose` is the default. WHEN THE SAME THING KEEPS
+ * TURNING UP IN PROSE, THAT IS THE SIGNAL TO ADD AN OPTION — which makes the
+ * note field the thing that improves the form.
+ *
+ * AND IT IS OFFERED, NEVER REQUIRED. The risk here is not technical: the pilot
+ * is two people, one of whom has written every row of §6 in prose and in his
+ * own register, and asking him to switch may cost more goodwill than the data
+ * is worth. Whether to put this in front of a participant is row 1.36's `[D]`
+ * and is the human's, not this client's. Building it costs nothing and answers
+ * the question the moment somebody uses it. */
+const REPORT_TEMPLATES: Record<string, {
+  label: string;
+  tag: string;
+  fields: { key: string; label: string; options?: string[]; placeholder?: string }[];
+}> = {
+  'node-health': {
+    label: 'Node health',
+    tag: 'report:node-health',
+    fields: [
+      { key: 'Node', label: 'Which node', options: [
+        'this device', 'the always-on node', "a peer's device", 'not sure'] },
+      { key: 'Symptom', label: 'Symptom', options: [
+        'claims will not load',
+        'a claim never reached a peer',
+        'the app will not start',
+        'the app froze',
+        'an update failed',
+        'something else — say so in the claim box'] },
+      { key: 'Version', label: 'App version', placeholder: 'e.g. v0.3.7' },
+      { key: 'Recurred', label: 'Happened before', options: ['first time', 'happened before'] },
+    ],
+  },
+  usability: {
+    label: 'Usability',
+    tag: 'report:usability',
+    fields: [
+      { key: 'Screen', label: 'Which screen', options: [
+        'Browse', 'By Author', 'New claim', 'Respond', 'Worldline', 'Found a domain', 'somewhere else'] },
+      { key: 'Tried', label: 'What you tried', placeholder: 'the action you took' },
+      { key: 'Expected', label: 'What you expected', placeholder: 'what you thought would happen' },
+      { key: 'Happened', label: 'What happened', placeholder: 'what actually happened' },
+    ],
+  },
+};
+
+/** The conventional block this form writes into `Claim.content`. Prefixed and
+ * fenced so a reader — human or script — can tell the convention from the
+ * prose, and so that a future 5.3 migration can find it. Returns '' for the
+ * prose default, which is what keeps the form additive. */
+function reportBlock(template: string, values: Record<string, string>): string {
+  const t = REPORT_TEMPLATES[template];
+  if (!t) return '';
+  const lines = t.fields
+    .map((f) => [f.key, (values[f.key] ?? '').trim()])
+    .filter(([, v]) => v.length > 0)
+    .map(([k, v]) => `${k}: ${v}`);
+  if (lines.length === 0) return '';
+  return [`[${t.label} report]`, ...lines].join('\n');
+}
+
 interface NewClaimDraft {
   content: string;
   /** Empty means "not typed yet", which is what lets the box keep pre-filling
@@ -920,10 +1004,14 @@ interface NewClaimDraft {
   evidenceContent: string;
   evidenceType: EvidenceType;
   evidenceUrl: string;
+  /** Row 1.36. `prose` is the default and means no template. */
+  report: string;
+  reportFields: Record<string, string>;
 }
 const emptyClaimDraft = (): NewClaimDraft => ({
   content: '', domain: '', confidence: 'Moderate', tags: '',
   evidenceContent: '', evidenceType: EVIDENCE_TYPES[0], evidenceUrl: '',
+  report: 'prose', reportFields: {},
 });
 let newClaimDraft: NewClaimDraft = emptyClaimDraft();
 
@@ -989,6 +1077,17 @@ function clearAfterPublish(): void {
     tags: '',
     evidenceContent: '',
     evidenceUrl: '',
+    // ROW 1.36 — THE ANSWERS CLEAR, THE TEMPLATE CHOICE STAYS, AND THE SPLIT
+    // IS NOT COSMETIC. This reset is a SPREAD, so anything not named here
+    // survives a publish: that is deliberate for `domain`, because somebody
+    // filing a series of reports wants the same domain back. It would be a
+    // defect for the field ANSWERS. A symptom left selected from the last
+    // report would be appended, silently and as if freshly observed, to the
+    // next unrelated claim — a stale observation republished under a new
+    // timestamp, which is worse than no form at all. So the answers clear and
+    // the template persists, which is the same rule `domain` already follows:
+    // the structural choice is sticky, the content is not.
+    reportFields: {},
   };
 }
 /** set once a read has come back, so an empty list can be reported as the
@@ -8042,6 +8141,71 @@ function renderNewClaimTab(): HTMLElement {
   };
   contentLabel.appendChild(contentArea);
 
+  // ROW 1.36 — OFFERED, NEVER REQUIRED, AND BELOW THE PROSE BOX ON PURPOSE.
+  // The prose box above stays the required field and the sensor; this is
+  // additive, defaults to `prose`, and writes a convention nothing validates.
+  const reportLabel = document.createElement('label');
+  reportLabel.textContent = 'Report template (optional)';
+  const reportSelect = document.createElement('select');
+  reportSelect.dataset.testid = 'report-template';
+  for (const [value, text] of [['prose', 'None — just write it'],
+    ...Object.entries(REPORT_TEMPLATES).map(([k, t]) => [k, t.label])] as [string, string][]) {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = text;
+    o.selected = newClaimDraft.report === value;
+    reportSelect.appendChild(o);
+  }
+  reportSelect.onchange = () => { newClaimDraft.report = reportSelect.value; render(); };
+  reportLabel.appendChild(reportSelect);
+
+  const reportFieldsBox = document.createElement('div');
+  reportFieldsBox.dataset.testid = 'report-fields';
+  const activeTemplate = REPORT_TEMPLATES[newClaimDraft.report];
+  if (activeTemplate) {
+    const why = document.createElement('p');
+    why.className = 'hint';
+    why.dataset.testid = 'report-convention-note';
+    // SAYS WHAT THE FORM IS AND IS NOT. A reader who thinks these fields are
+    // checked would trust them more than they can bear: nothing validates a
+    // convention, and row 1.36 exists to find out whether anyone fills it in.
+    why.textContent = 'These fields are a shared convention, not a checked '
+      + 'format — they are written into the claim text as typed. Anything the '
+      + 'list does not cover belongs in the box above, which is the part that '
+      + 'tends to matter most.';
+    reportFieldsBox.appendChild(why);
+
+    for (const f of activeTemplate.fields) {
+      const lab = document.createElement('label');
+      lab.textContent = f.label;
+      let input: HTMLSelectElement | HTMLInputElement;
+      if (f.options) {
+        const sel = document.createElement('select');
+        const blank = document.createElement('option');
+        blank.value = ''; blank.textContent = '—';
+        sel.appendChild(blank);
+        for (const opt of f.options) {
+          const o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          o.selected = newClaimDraft.reportFields[f.key] === opt;
+          sel.appendChild(o);
+        }
+        input = sel;
+      } else {
+        const txt = document.createElement('input');
+        txt.type = 'text';
+        if (f.placeholder) txt.placeholder = f.placeholder;
+        txt.value = newClaimDraft.reportFields[f.key] ?? '';
+        input = txt;
+      }
+      input.dataset.testid = `report-field-${f.key.toLowerCase()}`;
+      // NOT required, any of them. A half-filled template is a real report.
+      input.oninput = () => { newClaimDraft.reportFields[f.key] = input.value; };
+      input.onchange = () => { newClaimDraft.reportFields[f.key] = input.value; };
+      lab.appendChild(input);
+      reportFieldsBox.appendChild(lab);
+    }
+  }
+
   const domainLabel = document.createElement('label');
   domainLabel.textContent = 'Domain';
   const domainInput = document.createElement('input');
@@ -8441,6 +8605,9 @@ function renderNewClaimTab(): HTMLElement {
   evidenceFieldset.appendChild(evidenceUrl);
 
   form.appendChild(contentLabel);
+  // Row 1.36: below the prose box, above everything else — additive and skippable.
+  form.appendChild(reportLabel);
+  form.appendChild(reportFieldsBox);
   form.appendChild(domainLabel);
   form.appendChild(confidenceLabel);
   form.appendChild(adversary);
@@ -8481,14 +8648,31 @@ function renderNewClaimTab(): HTMLElement {
       }
     }
 
+    // ROW 1.36 — THE CONVENTION IS COMPOSED HERE, AND THE PROSE COMES FIRST.
+    //
+    // The author's own words lead and the structured block follows, because
+    // the block is the part a script can read and the prose is the part that
+    // opens a row. Reversing them would make the template look like the claim.
+    // An empty or untouched template contributes nothing, so selecting one and
+    // filling in none of it publishes exactly what prose alone would have.
+    const block = reportBlock(newClaimDraft.report, newClaimDraft.reportFields);
+    const composedContent = block
+      ? `${contentArea.value.trim()}\n\n${block}`
+      : contentArea.value;
+    // The template's tag is CONVENTIONAL too, and is merged rather than
+    // replacing what the author typed.
+    const templateTag = REPORT_TEMPLATES[newClaimDraft.report]?.tag;
+    const typedTags = tagsInput.value.split(',').map((t) => t.trim()).filter(Boolean);
     const claim: Claim = {
-      content: contentArea.value,
+      content: composedContent,
       domain: domainInput.value.trim(),
       author: connection.myAgentPubKey,
       timestamp: nowMicros(),
       evidence_hashes: evidenceHashes,
       confidence: confidenceSelect.value as Claim['confidence'],
-      semantic_tags: tagsInput.value.split(',').map((t) => t.trim()).filter(Boolean),
+      semantic_tags: block && templateTag && !typedTags.includes(templateTag)
+        ? [...typedTags, templateTag]
+        : typedTags,
       source_mew: null,
     };
     try {

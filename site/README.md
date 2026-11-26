@@ -40,7 +40,7 @@ for. Adding a page means adding it to `PAGES`.
 | 19 entry types / 31 link types | the `EntryTypes` / `LinkTypes` enums |
 | coordinator 9,870 lines | `wc -l dna/coordinator/src/lib.rs` |
 | **95** callable functions | `#[hdk_extern] pub fn`, parsed as `check-spec-drift.mjs` parses it |
-| **75** harnesses / **35,689** lines | `scripts/live-verify/*.mjs` **less the two shared modules** |
+| **75** harnesses / **35,799** lines | `scripts/live-verify/*.mjs` **less the two shared modules** |
 | **12** document & spec gates | `scripts/check-*.mjs` **that a workflow references** |
 | 580 merged PRs | GitHub search count — a lower bound, may understate, may not overstate |
 | 5 critique modes | the `CritiqueMode` enum |
@@ -58,7 +58,7 @@ written down somewhere else:
   are shared modules, not harnesses. `check-harness-counts.mjs:207` excludes
   exactly those two, and `check-prose-claims.mjs`'s own header records making
   this same mistake and correcting it. The page was the third surface and the
-  only public one. The line count moves with it: 35,782 → 35,689.
+  only public one. The line count moves with it: 35,782 → 35,799.
 - **98 callable functions → 95.** The old method in this table was
   `grep -c '#[hdk_extern]'`, and **three of those 98 matches are the string
   `#[hdk_extern]` written inside comments** (coordinator lines 5667, 7533,
