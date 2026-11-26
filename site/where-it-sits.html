@@ -40,6 +40,7 @@
     <ol>
       <li><a href="#stack">The layer that never shipped</a></li>
       <li><a href="#button">What the button was meant to return</a></li>
+      <li><a href="#models">Where the models enter</a></li>
       <li><a href="#mapping">The programme, line by line</a></li>
       <li><a href="#against">Where it is genuinely opposed</a></li>
       <li><a href="how-it-works.html">How it works</a></li>
@@ -234,6 +235,98 @@
         course an error message indicating either that a signature has failed, or that the
         system couldn't find a path of trust from you to the page.”</em>
       </p>
+    </section>
+
+
+    <section class="sec" id="models">
+      <p class="eyebrow">Figure 3 · where the models enter</p>
+      <h2>Language models are not a layer in this stack</h2>
+      <p>
+        The obvious question about the two empty boxes is whether a language model fills them.
+        It is worth answering carefully, because the answer locates the whole problem: models
+        are not a layer at all. The Semantic Web bet that machines could use meaning if the data
+        were made formal. Models got a usable approximation by <em>not</em> doing that — which
+        makes them the stack's competitor rather than one of its components.
+      </p>
+
+      <figure class="dgm-fig dgm-fig--wide wide">
+        <div class="scroll" style="border:0;background:none;margin:0">
+          <svg viewBox="0 108 880 414" role="img" aria-label="Model-generated assertions enter the stack at the bottom, in the content layers, and also route around the formal layers entirely. Two attempts to place a language model in the empty boxes are drawn and crossed out: a model as prover fails the Proof layer because nothing can be checked independently, and a model as judge fails the Trust layer because a verdict is a canonical score. What is in the Trust box here is stored human disagreement, which is not a verdict.">
+
+            <!-- the four bands -->
+            <rect x="70" y="130" width="330" height="52" class="sv-dead"/>
+            <text x="86" y="152" class="sv-t">Trust</text>
+            <text x="86" y="170" class="sv-tf">never built</text>
+
+            <rect x="70" y="192" width="330" height="52" class="sv-dead"/>
+            <text x="86" y="214" class="sv-t">Proof</text>
+            <text x="86" y="232" class="sv-tf">never built</text>
+
+            <rect x="70" y="254" width="330" height="52" class="sv-rule" fill="var(--surface-2)"/>
+            <text x="86" y="276" class="sv-t">Unifying logic</text>
+            <text x="86" y="294" class="sv-tf">partial</text>
+
+            <rect x="70" y="316" width="330" height="52" class="sv-rule" fill="var(--surface)"/>
+            <text x="86" y="338" class="sv-t">The formal layers · RDF, OWL, SPARQL</text>
+            <text x="86" y="356" class="sv-tf">shipped, and used here unchanged</text>
+
+            <!-- models enter at the bottom -->
+            <path d="M235 404 V374" class="sv-edge-a" marker-end="url(#c1)"/>
+            <text x="256" y="398" class="sv-ta">model-generated assertions enter here</text>
+            <text x="70" y="428" class="sv-tm">Volume at the bottom went up by orders of magnitude. Nothing was added to the layers above it.</text>
+
+            <!-- and route around -->
+            <path d="M52 400 V150" class="sv-dash" marker-end="url(#c2)"/>
+            <text x="40" y="275" class="sv-tf" transform="rotate(-90 40 275)" text-anchor="middle">and route around the formal layers</text>
+
+            <!-- attempt 1: model as judge, at Trust -->
+            <rect x="470" y="130" width="300" height="52" class="sv-dead"/>
+            <path d="M474 134 L766 178 M766 134 L474 178" stroke="var(--rule-strong)" stroke-width="1.4" fill="none"/>
+            <text x="486" y="152" class="sv-t" fill="var(--faint)">a model as judge</text>
+            <text x="486" y="170" class="sv-tf">“which of these should I believe?”</text>
+            <text x="782" y="152" class="sv-tf">a verdict is a</text>
+            <text x="782" y="166" class="sv-tf">canonical score</text>
+
+            <!-- attempt 2: model as prover, at Proof -->
+            <rect x="470" y="192" width="300" height="52" class="sv-dead"/>
+            <path d="M474 196 L766 240 M766 196 L474 240" stroke="var(--rule-strong)" stroke-width="1.4" fill="none"/>
+            <text x="486" y="214" class="sv-t" fill="var(--faint)">a model as prover</text>
+            <text x="486" y="232" class="sv-tf">“here is why it follows”</text>
+            <text x="782" y="214" class="sv-tf">nothing to check</text>
+            <text x="782" y="228" class="sv-tf">independently</text>
+
+            <text x="470" y="276" class="sv-tm">Both fail for the stack's own reasons rather than for taste.</text>
+            <text x="470" y="294" class="sv-tm">Proof requires a verifier who need not trust the prover.</text>
+            <text x="470" y="312" class="sv-tm">Trust requires that interpretation stay with the reader.</text>
+            <text x="470" y="340" class="sv-tf">A model can still GENERATE a candidate derivation</text>
+            <text x="470" y="356" class="sv-tf">for a checker to verify — but then the model is</text>
+            <text x="470" y="372" class="sv-tf">outside the stack and the checker is the Proof layer.</text>
+
+            <!-- what is actually in the box -->
+            <rect x="70" y="448" width="776" height="56" class="sv-accs"/>
+            <text x="86" y="472" class="sv-ta">What is in the Trust box here: stored human disagreement — typed, attributed, permanent, contestable.</text>
+            <text x="86" y="492" class="sv-tf">Not a verdict. The reader is left holding the interpretation, which is the one thing the layer was specified to protect.</text>
+
+            <defs>
+              <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/>
+              </marker>
+              <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 1 L9 5 L0 9 z" fill="var(--rule-strong)"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+        <figcaption class="dgm-cap">
+          <span class="dgm-cap__t">Figure 3</span>
+          <strong>The flood arrived at the one part of the stack that was never built.</strong>
+          Models enter as producers at the bottom and bypass the formal layers; the two boxes
+          that would have absorbed the consequence are the two that were never specified. Filling
+          either with a model puts an algorithm where the specification asked for a reason.
+          <strong>This is reasoning rather than measurement</strong> — unlike the figures above
+          it, no part of it is checked against the source tree.
+        </figcaption>
+      </figure>
     </section>
 
     <section class="sec" id="mapping">
