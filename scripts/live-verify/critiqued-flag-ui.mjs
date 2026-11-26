@@ -168,6 +168,10 @@ const claim = (agent, domain, content) => agent.call('create_claim', {
 const cardFor = (page, content) =>
   page.locator('.claim-card').filter({ hasText: content }).first();
 
+/** The five modes, as the zome declares them. Shared by the vocabulary and
+ *  naming checks below so one list cannot drift from the other. */
+const VOCAB = ['experiential', 'methodological', 'logical', 'evidential', 'phenomenological'];
+
 async function main() {
   const admin = await AdminWebsocket.connect({ url: new URL(ADMIN_URL), wsClientOptions: { origin: 'live-verify' } });
   const agent1 = await connectApp(admin, APP_ID);
@@ -308,8 +312,24 @@ async function main() {
 
     const critiquedWords = await critiquedFlag.innerText();
     const quietWords = await quietFlag.innerText();
+    // THIS CHECK USED TO REQUIRE THE WORD "critiqued" IN THE CRITIQUED STATE,
+    // WHICH MADE IT A GUARD ON THE RETIRED VOCABULARY RATHER THAN ON THE
+    // PROPERTY. Row 6.31 removed that umbrella noun from every user-facing
+    // string — "critique" over-claims negativity for two of the five kinds by
+    // the zome's own comments — and this assertion then failed the build for
+    // saying so. A test that fails because the decision was implemented is
+    // testing the implementation it replaced.
+    //
+    // What it should assert, and now does: the two states differ, AND the
+    // critiqued state NAMES A KIND, AND it does not reach for the umbrella
+    // noun again. The last clause makes this check enforce 6.31 instead of
+    // contradicting it.
     check(`the words differ between the two states (${JSON.stringify(critiquedWords)} vs ${JSON.stringify(quietWords)})`,
-      critiquedWords !== quietWords && /critiqued/i.test(critiquedWords));
+      critiquedWords !== quietWords);
+    check(`the critiqued state NAMES A KIND rather than asserting a bare fact (${JSON.stringify(critiquedWords)})`,
+      VOCAB.some((m) => new RegExp(m, 'i').test(critiquedWords)));
+    check('no flag reaches for the umbrella noun — row 6.31',
+      !/critiqu/i.test(critiquedWords) && !/critiqu/i.test(quietWords));
 
     // ---- 2. INVARIANT 1: no magnitude anywhere on this surface -----------
     //
@@ -349,7 +369,6 @@ async function main() {
 
     // (1) NOMINAL, NOT ORDINAL: every label must come from the five-mode
     // vocabulary, so nothing numeric or quantitative can reach this line.
-    const VOCAB = ['experiential', 'methodological', 'logical', 'evidential', 'phenomenological'];
     const strange = flagModes.flat().filter((m) => !VOCAB.includes(m.toLowerCase()));
     check(`every rendered kind is one of the five modes (${JSON.stringify([...new Set(flagModes.flat())])})`,
       strange.length === 0);
