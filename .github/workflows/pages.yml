@@ -34,30 +34,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # BUILD AND DEPLOY ARE TWO JOBS, AND THAT IS THE FIX FOR A REAL FAILURE.
+  #
+  # They were one job until 2026-11-27, which is the shape that uploads the
+  # artifact and then immediately asks the artifacts API for it. That request
+  # can return BEFORE the upload is visible, and `deploy-pages` reports
+  # "No artifacts named github-pages were found" while the upload step above
+  # it says "successfully finalized" with an artifact id. It is a race, it is
+  # won most of the time, and it lost twice in a row today on a workflow that
+  # had succeeded for weeks — including on a fresh `workflow_dispatch`, with
+  # githubstatus.com reporting all systems operational, so it is not an
+  # incident and it is not configuration.
+  #
+  # Splitting them is GitHub's own documented shape: `needs: build` puts a job
+  # boundary between the upload and the query, which is what makes the
+  # artifact reliably visible. Nothing else changed.
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
       # A broken link to a stylesheet renders as an unstyled page, not an
-      # error, so check every local asset the page references actually exists.
-      - name: every referenced local asset exists
+      # error, so check every local asset the pages reference actually exists.
+      #
+      # EVERY PAGE, NOT index.html — corrected 2026-11-27. This loop read only
+      # index.html, which was right while the site was one page and silently
+      # wrong from the moment it became three (#596, #598): a missing asset on
+      # how-it-works.html or where-it-sits.html would have deployed green. The
+      # same class of defect as the mobile nav bug, where a rule written for
+      # one page kept applying after the site grew.
+      - name: every referenced local asset exists, on every page
         run: |
           cd site
           miss=0
-          for ref in $(grep -oE '(src|href)="[^"#:]+"' index.html \
-                       | sed -E 's/.*="([^"]+)"/\1/' | sort -u); do
-            if [ ! -e "$ref" ]; then echo "MISSING: $ref"; miss=1; fi
+          for page in *.html; do
+            for ref in $(grep -oE '(src|href)="[^"#:]+"' "$page" \
+                         | sed -E 's/.*="([^"]+)"/\1/' | sort -u); do
+              if [ ! -e "$ref" ]; then echo "MISSING: $ref (referenced by $page)"; miss=1; fi
+            done
           done
-          [ "$miss" -eq 0 ] && echo "all local assets present"
+          [ "$miss" -eq 0 ] && echo "all local assets present, across $(ls *.html | wc -l) page(s)"
           exit "$miss"
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
