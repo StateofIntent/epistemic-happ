@@ -194,7 +194,25 @@ code {
 }
 .mast__nav a { color: var(--muted); text-decoration: none; }
 .mast__nav a:hover { color: var(--accent); }
-@media (max-width: 860px) { .mast__nav .opt { display: none; } }
+/* NARROW SCREENS HIDE SECTION ANCHORS, NEVER LINKS TO OTHER PAGES.
+   The original rule hid every `.opt`, which was right while the nav held
+   only in-page anchors — on a phone you scroll instead. It became wrong the
+   moment the site grew a second and third PAGE (#596, #598) and those links
+   reused `.opt`: below 860px the sub-pages were left with no navigation at
+   all except the logo and Source, and the rail does not appear until 1120px.
+   Reported from a phone. `.opt--page` is the exemption, and it is the class
+   every cross-page destination carries. */
+@media (max-width: 860px) {
+  .mast__nav .opt:not(.opt--page) { display: none; }
+  /* One line each: two wrapped two-line links is the first thing a phone
+     visitor sees, and it reads as an accident. nowrap plus a tighter gap
+     fits both plus the button at 390px, measured rather than assumed. */
+  .mast__nav .opt--page {
+    font-size: .78rem; padding: .3rem 0; white-space: nowrap; letter-spacing: -.01em;
+  }
+  .mast__nav { gap: .7rem; }
+  .mast__logo img { max-height: 28px; width: auto; }
+}
 
 .btn {
   display: inline-flex; align-items: center; gap: .45rem;
