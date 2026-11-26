@@ -138,7 +138,13 @@ import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const PAGE = 'site/index.html';
+// EVERY PUBLIC PAGE, NOT ONE. `site/how-it-works.html` was added 2026-11-26
+// and carries more counted claims than the landing page does — which is
+// exactly how the original hazard happened: a second outward-facing surface
+// nothing re-measures. A page added to `site/` and NOT added here is ungated,
+// so `assertEveryPageCovered()` below fails the run rather than leaving that
+// to be noticed.
+const PAGES = ['site/index.html', 'site/how-it-works.html'];
 
 // --------------------------------------------------------------- the counters
 // Each MEASURES. A counter that is itself a hand-written number would put this
@@ -159,6 +165,17 @@ const enumBody = (src, name) => {
   if (!m) throw new Error(`dna/integrity/src/lib.rs has no \`pub enum ${name}\``);
   return m[1];
 };
+const variantsOf = (name) =>
+  (enumBody(integrity(), name).match(/^\s+[A-Z][A-Za-z]*\s*,/gm) || []).length;
+
+/** A named `const NAME: ty = <int>;` in the integrity zome. */
+const constInt = (name) => {
+  const m = integrity().match(new RegExp(`${name}[^=\\n]*=\\s*([0-9*\\s]+);`));
+  if (!m) throw new Error(`dna/integrity/src/lib.rs declares no ${name}`);
+  // the tenure constant is written `30 * 24 * 3600`, so evaluate the product
+  return m[1].split('*').map((x) => Number(x.trim())).reduce((a, b) => a * b, 1);
+};
+
 const entryTypes = () => (enumBody(integrity(), 'EntryTypes').match(/^\s+[A-Z][A-Za-z]*\(/gm) || []).length;
 const linkTypes = () => (enumBody(integrity(), 'LinkTypes').match(/^\s+[A-Z][A-Za-z]*,/gm) || []).length;
 
@@ -295,6 +312,46 @@ const CLAIMS = [
     authority: 'scripts/check-*.mjs referenced by a file in .github/workflows/',
   },
   {
+    id: 'critique-modes',
+    what: 'critique modes',
+    grid: null,
+    sweep: [/([\d,]+)\s+critique modes/i, /one of ([\d,]+) modes/i],
+    measure: () => variantsOf('CritiqueMode'),
+    authority: 'the CritiqueMode enum in dna/integrity/src/lib.rs',
+  },
+  {
+    id: 'evidence-types',
+    what: 'evidence types',
+    grid: null,
+    sweep: [/([\d,]+)\s+evidence types/i],
+    measure: () => variantsOf('EvidenceType'),
+    authority: 'the EvidenceType enum in dna/integrity/src/lib.rs',
+  },
+  {
+    id: 'settlement-states',
+    what: 'settlement states',
+    grid: null,
+    sweep: [/([\d,]+)\s+settlement states/i],
+    measure: () => variantsOf('SettlementState'),
+    authority: 'the SettlementState enum in dna/integrity/src/lib.rs',
+  },
+  {
+    id: 'critique-cap',
+    what: 'critiques per window per agent',
+    grid: null,
+    sweep: [/([\d,]+)\s+critiques (?:an|per) hour/i, /([\d,]+)\s+critiques \/ hour/i, /cap of ([\d,]+) critiques per window/i],
+    measure: () => constInt('CRITIQUE_MAX_PER_WINDOW_VALIDATION'),
+    authority: 'CRITIQUE_MAX_PER_WINDOW_VALIDATION in dna/integrity/src/lib.rs',
+  },
+  {
+    id: 'tenure-days',
+    what: 'days of tenure before an attestation grant',
+    grid: null,
+    sweep: [/([\d,]+)\s+days of tenure/i],
+    measure: () => constInt('ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION') / 86400,
+    authority: 'ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION in dna/integrity/src/lib.rs',
+  },
+  {
     id: 'merged-prs',
     what: 'merged pull requests',
     grid: 'Merged pull requests',
@@ -313,8 +370,11 @@ const UNCOVERED = [
    'the figure is an audit result (row 8.6), counting timestamp FIELDS across entry structs. `check-time-units.mjs` declares seven field NAMES and their units, which is a different denominator; a counter would have to enumerate struct fields by type and nothing does'],
   ['nine layers, first seven exist',
    'the layer model is prose in the funding draft and has no enumeration in the tree, so a counter would read a document rather than the thing'],
-  ['a cap of 20 per window',
-   'a protocol constant and genuinely gated — but it is a VALUE, not a count of artifacts, and lives in the integrity zome. Worth adding as a value assertion rather than a cardinal'],
+  // ['a cap of 20 per window'] WAS HERE AND IS NOW ADJUDICATED — see the
+  // `critique-cap` claim above, added 2026-11-26 with `tenure-days`. The entry
+  // said it was "worth adding as a value assertion rather than a cardinal",
+  // which is what was done; leaving it in this list would be the stale
+  // resolution this repository has a row about.
   ['26 recorded corrections, seven interlocutors',
    'figures about an EXTERNAL document (the ECM review appendix) that this repository does not hold and must not restate as its own measurement'],
   ['two pilot operators',
@@ -365,16 +425,30 @@ function parseGrid(html) {
 }
 
 function main() {
-  if (!existsSync(join(ROOT, PAGE))) {
-    unverifiable(PAGE, 'the public page is not at this path. It was renamed, moved or deleted — this gate cannot pass without reading it.');
+  // EVERY .html IN site/ MUST BE LISTED, or it is a public page nothing reads.
+  const onDisk = readdirSync(join(ROOT, 'site')).filter((f) => f.endsWith('.html')).map((f) => `site/${f}`);
+  const unlisted = onDisk.filter((f) => !PAGES.includes(f));
+  if (unlisted.length > 0) {
+    unverifiable('page-coverage',
+      `${unlisted.join(', ')} ${unlisted.length === 1 ? 'is' : 'are'} served from site/ and not listed in PAGES, so nothing re-measures the claims on ${unlisted.length === 1 ? 'it' : 'them'}. Add to PAGES, or this gate is reporting on a subset of the public surface while appearing to cover it.`);
     process.exit(2);
   }
-  const html = read(PAGE);
-  const grid = parseGrid(html);
+
+  const pages = [];
+  for (const f of PAGES) {
+    if (!existsSync(join(ROOT, f))) {
+      unverifiable(f, 'a listed public page is not at this path. It was renamed, moved or deleted — this gate cannot pass without reading it.');
+      process.exit(2);
+    }
+    pages.push({ path: f, html: read(f) });
+  }
+  const html = pages.map((p) => p.html).join('\n');
+  const grid = new Map();
+  for (const pg of pages) for (const [k, v] of parseGrid(pg.html)) grid.set(k, v);
 
   if (grid.size === 0) {
     unverifiable('figure grid',
-      'no <dt>…</dt><dd>N<small>…</small> cell parsed out of the page. The markup of the "Counted, not estimated" block changed; this gate is reading nothing and must not report a pass.');
+      'no <dt>…</dt><dd>N<small>…</small> cell parsed out of any listed page. The markup of the "Counted, not estimated" block changed; this gate is reading nothing and must not report a pass.');
     process.exit(2);
   }
 
@@ -402,7 +476,9 @@ function main() {
     unverifiable('callable-parser', 'could not read check-spec-drift.mjs to confirm the callable-function pattern.');
   }
 
-  console.log(`${PAGE} — ${grid.size} figure cells, ${CLAIMS.length} adjudicated claims\n`);
+  console.log(`${pages.length} public page(s) — ${grid.size} figure cells, ${CLAIMS.length} adjudicated claims\n`);
+  for (const pg of pages) console.log(`  · ${pg.path}`);
+  console.log('');
 
   for (const claim of CLAIMS) {
     let measured;
@@ -434,9 +510,11 @@ function main() {
     }
     for (const re of claim.sweep) {
       const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
-      for (const m of html.matchAll(g)) {
-        const line = html.slice(0, m.index).split('\n').length;
-        sites.push({ where: `line ${line}`, stated: num(m[1]) });
+      for (const pg of pages) {
+        for (const m of pg.html.matchAll(g)) {
+          const line = pg.html.slice(0, m.index).split('\n').length;
+          sites.push({ where: `${pg.path}:${line}`, stated: num(m[1]) });
+        }
       }
     }
 
@@ -486,7 +564,7 @@ function main() {
   }
   if (hard > 0) {
     console.error(`\n${hard} counted claim(s) on the public page do not match what this repository measures${cannot ? `, and ${cannot} could not be verified` : ''}.`);
-    console.error('This page is served to strangers at https://stateofintent.github.io/epistemic-happ/.');
+    console.error('These pages are served to strangers at https://stateofintent.github.io/epistemic-happ/.');
     process.exit(1);
   }
   if (noted > 0) {

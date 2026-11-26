@@ -20,12 +20,18 @@ The page is not a rendering of that file and has diverged deliberately: the
 funder framing, the "versions to paste" section and the internal notes are not
 here.
 
-**2. Every number on this page is now gated, and three of them were wrong.**
-`scripts/check-site-claims.mjs` re-measures each counted claim against the
-thing that determines it, runs in `live-verify.yml` on every push and pull
-request, exits 1 on a figure that does not match and **2 when it cannot find
-the claim at all** — a renamed label or a rewritten figure grid is a failure,
-not a pass. Run it by hand with `node scripts/check-site-claims.mjs`.
+**2. Every number on these pages is gated, and three were wrong when the gate
+was first written.** `scripts/check-site-claims.mjs` re-measures each counted
+claim against the thing that determines it, runs in `live-verify.yml` on every
+push and pull request, exits 1 on a figure that does not match and **2 when it
+cannot find the claim at all** — a renamed label or a rewritten figure grid is a
+failure, not a pass. Run it by hand with `node scripts/check-site-claims.mjs`.
+
+**IT COVERS EVERY `.html` IN THIS DIRECTORY, AND ENFORCES THAT IT DOES.** The
+gate holds a `PAGES` list, and a page served from `site/` that is not in that
+list **fails the run** rather than being silently unread — because an
+outward-facing surface nothing re-measures is the whole defect this gate exists
+for. Adding a page means adding it to `PAGES`.
 
 | claim | measured from |
 |---|---|
@@ -37,6 +43,11 @@ not a pass. Run it by hand with `node scripts/check-site-claims.mjs`.
 | **75** harnesses / **35,609** lines | `scripts/live-verify/*.mjs` **less the two shared modules** |
 | **12** document & spec gates | `scripts/check-*.mjs` **that a workflow references** |
 | 580 merged PRs | GitHub search count — a lower bound, may understate, may not overstate |
+| 5 critique modes | the `CritiqueMode` enum |
+| 6 evidence types | the `EvidenceType` enum |
+| 3 settlement states | the `SettlementState` enum |
+| 20 critiques per window | `CRITIQUE_MAX_PER_WINDOW_VALIDATION` |
+| 30 days of tenure | `ATTESTATION_GRANT_MIN_TENURE_SECS_VALIDATION` ÷ 86,400 |
 
 **What the first run of that gate found, and why the method column above is
 written the way it is.** Three figures on the live public page were wrong, and
@@ -75,7 +86,15 @@ this page is the most outward-facing document in the repository.
 
 ## Files
 
-- `index.html` — the whole page
+- `index.html` — the landing page
+- `how-it-works.html` — the ordered diagram: nine part glyphs, the six-stage
+  spine, and the two attacks (volume, timing). Added 2026-11-26. Its drawings
+  are hand-authored inline SVG with **no library and no runtime**; every colour
+  resolves through a token in `styles.css`, including the five critique hues,
+  which are **equal value on purpose** — no mode outranks another
+- `assets/diagram.css` — only what `how-it-works.html` needs and `styles.css`
+  does not already provide. **It defines no tokens**: a second copy of the
+  palette is a second thing to drift
 - `assets/styles.css` — palette measured off the brand mark; three theme states
 - `assets/app.js` — the wave, the tabs, the rail. The page reads fine without it
 - `assets/epistemic-resonance.jpg` — the brand mark as supplied
