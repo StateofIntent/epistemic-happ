@@ -813,6 +813,20 @@ Three notes, since they materially affect conformance. The first two are carried
 
 **What it forbids:** a read that returns fewer things than it considered without saying so.
 
+**TWO CASES THIS DISCIPLINE COVERS AND DID NOT NAME, BOTH ADDED 2026-11-27 AFTER BEING VIOLATED HERE RATHER THAN THEORISED.**
+
+**(a) A SENTENCE THAT ORGANISES CLAIMS RESTS ON THEM AND USUALLY CITES NONE.** A claim in this repository gets a source, a caveat and a confidence note; **a sentence asserting that several claims share a cause, a direction or a target gets none of the three**, and is written last, under the most pressure to make an account cohere. It is therefore a statement that cannot cite what it rests on — this discipline's own subject — and it is the one place the discipline was never applied. **So: a statement that several results share a cause, direction or target MUST name the results and state the shared feature separately for each.** Stating it per-result is what makes a constructed convergence visible, because the shared feature either survives being written out three times or it does not.
+
+**The uncomfortable corollary is that summarising is both the detector and the point of entry.** Compression is what puts two claims next to each other and catches a conflation; it is also where a conflation is introduced, because the organising sentence is the only one with no apparatus attached. This was measured here on 2026-11-27: a report of the `partition-rejoin` instrument described a new observation as *the third* when the instrument's own output said the fourth, and the error was in a summarising sentence while every measured figure beside it was right.
+
+**This protocol already solves it for its one organising OBJECT, which is why the gap is only in prose.** `SettlementStatus` organises claims into an aggregate, and §11.2 records that **validation RECOMPUTES it** from (policy, inputs) rather than accepting the aggregator's word — so that organiser cannot drift from what it organises. A prose summary has no such object and no such recomputation.
+
+**(b) AN ABSENCE CLAIM MUST STATE THE SCOPE IT WAS SEARCHED OVER.** *Nothing does X* is a read that returned zero, so it is already forbidden by the sentence above unless it says what it considered — but the zero case reads as a fact about the world rather than as a read, which is why it needs naming. **An unscoped absence manufactures a gap that is not there**, and the remedy costs a clause: *no clinical series has varied it* is checkable where *nobody has varied it* is both unfalsifiable and, in the instance that produced this rule, false. The cheap test is whether a reader can reproduce the search that returned nothing.
+
+**This one is already implemented in two places, which is the argument that it is the right rule rather than a new burden.** `scripts/check-outbound-claims.mjs` **exits 2 for CANNOT VERIFY** rather than 0, so an unverifiable claim is never reported as a checked one; and §11.4's sort states its own scope — *nothing in either zome or this document argues for an hour* — rather than *nothing argues for an hour*.
+
+**What (a) and (b) jointly forbid:** an organising sentence with no apparatus, and an absence with no denominator.
+
 ### 7b.2 Every read declares the mode it ran in
 
 **A computation with more than one mode — a fallback, a sampling resolution, a cap, a tie-break — reports which mode it used, in the same structure as its answer.** Veritas's form is *"honest degradation"*: each stage declares its fallback, and outputs *"state what they filtered rather than silently shrinking."*
