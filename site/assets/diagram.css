@@ -1,0 +1,83 @@
+/* ===========================================================================
+   diagram.css — ONLY what how-it-works.html needs and styles.css does not
+   already provide.
+
+   NO TOKENS ARE DEFINED HERE, AND THAT IS THE POINT. Every colour below
+   resolves through a custom property declared once in styles.css, including
+   the five critique hues, which are set at EQUAL VALUE there on purpose:
+   no mode outranks another, which is Invariant 4 rendered rather than
+   described. A second copy of the palette is a second thing to drift.
+
+   The page reuses .eyebrow, .lede, .note, .limits, .scroll, .grid, .panel,
+   .mono, .sec, .shell, .col, .rail, .mast and .foot unchanged. Everything
+   added here is namespaced `dgm-` so it cannot collide with those.
+   =========================================================================== */
+
+/* --- glyph legend: a .panel variant that puts a mark beside the text ----- */
+.dgm-glyph { display: flex; gap: .7rem; align-items: flex-start; }
+.dgm-glyph svg { flex: none; margin-top: .15rem; }
+.dgm-glyph__n {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .76rem; font-weight: 500; color: var(--ink-strong);
+  display: block; margin-bottom: .2rem;
+}
+.dgm-glyph__d { font-size: .86rem; color: var(--muted); line-height: 1.45; }
+
+/* --- figures ------------------------------------------------------------- */
+.dgm-fig {
+  margin: 0 0 1.6rem; padding: 1.2rem 1.1rem .9rem;
+  background: var(--surface); box-shadow: 0 0 0 1px var(--rule);
+  max-width: none;
+}
+.dgm-fig svg { display: block; max-width: 100%; height: auto; }
+.dgm-fig--wide svg { min-width: 780px; }
+.dgm-cap {
+  margin: .9rem 0 0; padding-top: .8rem; border-top: 1px solid var(--rule);
+  font-size: .89rem; color: var(--muted); line-height: 1.5;
+}
+.dgm-cap strong { color: var(--ink-strong); }
+.dgm-cap__t {
+  display: block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: .35rem;
+}
+
+/* --- the two attacks, side by side where there is room ------------------- */
+.dgm-duo { display: grid; gap: 1.4rem; grid-template-columns: 1fr; max-width: none; }
+@media (min-width: 1120px) { .dgm-duo { grid-template-columns: 1fr 1fr; } }
+
+/* --- annotated stages: number gutter, then the reasoning ----------------- */
+.dgm-stages { display: grid; gap: 1px; max-width: none; margin: 1.4rem 0 0; }
+.dgm-stage {
+  background: var(--surface); box-shadow: 0 0 0 1px var(--rule);
+  display: grid; grid-template-columns: 2.6rem 1fr; gap: 1rem;
+  padding: 1.1rem 1.2rem;
+}
+.dgm-stage__n {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .78rem; color: var(--accent); padding-top: .18rem;
+}
+.dgm-stage h3 {
+  font-family: Archivo, sans-serif; font-size: 1.02rem; font-weight: 600;
+  margin: 0 0 .4rem; color: var(--ink-strong); letter-spacing: -.005em;
+}
+.dgm-stage p { margin: 0; font-size: .94rem; color: var(--muted); }
+.dgm-stage p + p { margin-top: .55rem; }
+.dgm-stage strong { color: var(--ink-strong); }
+
+/* --- SVG primitives, every one resolving through a styles.css token ------ */
+.sv-rule   { stroke: var(--rule-strong); fill: none; stroke-width: 1; }
+.sv-edge   { stroke: var(--counter); fill: none; stroke-width: 1.4; }
+.sv-edge-a { stroke: var(--accent); fill: none; stroke-width: 1.6; }
+.sv-dash   { stroke: var(--rule-strong); fill: none; stroke-width: 1.2; stroke-dasharray: 5 4; }
+.sv-dead   { stroke: var(--faint); fill: none; stroke-width: 1.3; stroke-dasharray: 3 3; }
+.sv-node   { fill: var(--surface); stroke: var(--ink); stroke-width: 1.5; }
+.sv-acc    { fill: var(--accent); }
+.sv-accs   { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.sv-band   { fill: var(--surface-2); }
+.sv-junk   { fill: var(--counter); }
+.sv-t      { fill: var(--ink); font-family: Archivo, sans-serif; font-size: 12px; }
+.sv-tm     { fill: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: 10.5px; }
+.sv-tf     { fill: var(--faint); font-family: "IBM Plex Mono", monospace; font-size: 10px; }
+.sv-ta     { fill: var(--accent); font-family: Archivo, sans-serif; font-size: 12px; font-weight: 600; }
+.sv-th     { fill: var(--ink-strong); font-family: Archivo, sans-serif; font-size: 13px; font-weight: 650; }

@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works — Epistemic Resonance</title>
+<meta name="description" content="An ordered diagram of the protocol: nine kinds of part, six stages a claim passes through, and the ranking surface that deliberately does not exist — applied to AI-generated claim floods and agenda-timed claims.">
+<link rel="icon" href="assets/icon.png" type="image/png">
+<meta property="og:title" content="How it works — Epistemic Resonance">
+<meta property="og:description" content="Ten thousand generated claims produce ten thousand unranked entries and move nothing. The diagram of why.">
+<meta property="og:type" content="article">
+<meta property="og:image" content="assets/epistemic-resonance.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/diagram.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="mast">
+  <a class="mast__logo" href="index.html" aria-label="Epistemic Resonance — home">
+    <img class="logo--light" src="assets/logo-light.png" alt="Epistemic Resonance" width="1280" height="347">
+    <img class="logo--dark" src="assets/logo-dark.png" alt="" aria-hidden="true" width="1280" height="347">
+  </a>
+  <nav class="mast__nav" aria-label="Primary">
+    <a class="opt" href="index.html#problem">The problem</a>
+    <a class="opt" href="index.html#state">What exists</a>
+    <a class="opt" href="index.html#limits">Limits</a>
+    <a class="btn" href="https://github.com/StateofIntent/epistemic-happ">Source</a>
+  </nav>
+</header>
+
+<div class="shell" id="top">
+
+  <nav class="rail" aria-label="Sections">
+    <ol>
+      <li><a href="#alphabet">The alphabet</a></li>
+      <li><a href="#ordered">The ordered mechanism</a></li>
+      <li><a href="#attacks">The two attacks</a></li>
+      <li><a href="#limits">What it does not do</a></li>
+      <li><a href="index.html">Back to the overview</a></li>
+    </ol>
+  </nav>
+
+  <main class="col" id="main">
+
+    <section class="sec" style="border-top:0">
+      <p class="eyebrow">Structure and process</p>
+      <h1>Nothing to move</h1>
+      <p class="lede">
+        The cost of producing a plausible claim collapsed. <strong>The cost of checking one did
+        not.</strong> Every proposed fix tries to sort the flood faster. This protocol removes the
+        thing the flood is pushing against — and then makes disagreement a stored, typed object, so
+        that checking accumulates instead of evaporating.
+      </p>
+
+      <div class="grid grid--3 wide">
+        <div class="panel">
+          <p class="panel__n">The attack</p>
+          <p>Generate ten thousand plausible claims. Or one claim, timed and framed to serve an agenda.</p>
+        </div>
+        <div class="panel">
+          <p class="panel__n">Why ranking fails</p>
+          <p>A ranked feed converts volume into position. The cheap thing moves the expensive thing.</p>
+        </div>
+        <div class="panel">
+          <p class="panel__n">The move here</p>
+          <p>There is no canonical score to occupy. Ten thousand entries produce ten thousand entries.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="alphabet">
+      <p class="eyebrow">The alphabet</p>
+      <h2>Nine kinds of part, and the typed edges between them</h2>
+      <p>
+        Every shape below is a real entry or link type in the integrity zome — the layer the network
+        itself enforces, not a client convention. A reader needs the alphabet before the sentence, so
+        this is the legend for all three figures.
+      </p>
+      <div class="grid grid--3 wide">
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Agent glyph: an open ring">
+          <circle cx="17" cy="17" r="8" class="sv-node"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">Agent</span>
+            <span class="dgm-glyph__d">A keypair with a membrane. Not an account — nothing to suspend, nothing to score.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Claim glyph: a filled circle">
+          <circle cx="17" cy="17" r="8" class="sv-acc"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">Claim</span>
+            <span class="dgm-glyph__d">An assertion stored with its author, domain, evidence and confidence. Never summarised away.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Critique glyph: a diamond">
+          <path d="M17 8 L26 17 L17 26 L8 17 Z" fill="var(--k-met)"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">Critique</span>
+            <span class="dgm-glyph__d">A disagreement as a first-class object, carrying one of 5 modes. Colour = mode.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Evidence glyph: a document with a folded corner">
+          <path d="M10 8 H21 L25 12 V26 H10 Z" class="sv-node"/>
+          <path d="M21 8 V12 H25" class="sv-rule"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">Evidence</span>
+            <span class="dgm-glyph__d">Typed: study, case report, video, image, text, measurement. Attaches to a critique or a claim.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Settlement glyph: a hexagon">
+          <path d="M17 7 L25 12 V22 L17 27 L9 22 V12 Z" class="sv-accs"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">SettlementStatus</span>
+            <span class="dgm-glyph__d">Open, Contested or Settled — recomputed from inputs and a policy pinned by hash, never declared.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Membrane glyph: a dashed enclosure">
+          <rect x="7" y="9" width="20" height="16" rx="2" class="sv-dash"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">Membrane</span>
+            <span class="dgm-glyph__d">A sovereign domain. Signals stay inside it; there is no cross-domain aggregate.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Pre-registration glyph: a sealed square">
+          <rect x="9" y="9" width="16" height="16" class="sv-node"/>
+          <path d="M9 17 H25" class="sv-rule"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">PreRegistration</span>
+            <span class="dgm-glyph__d">A public hash of a sealed prediction. The content stays private until it is revealed.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Antibody pattern glyph: a Y shape">
+          <path d="M17 26 V18 M17 18 L11 9 M17 18 L23 9" stroke="var(--k-phe)" stroke-width="1.8" fill="none"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">AntibodyPattern</span>
+            <span class="dgm-glyph__d">An agent&rsquo;s signed recognition of a bad-faith shape: spam flood, sybil cluster, coordinated manipulation.</span>
+          </div>
+        </div>
+        <div class="panel dgm-glyph">
+          <svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="Junk claim glyph: a hollow grey circle">
+          <circle cx="17" cy="17" r="7" fill="var(--counter)"/>
+          </svg>
+          <div>
+            <span class="dgm-glyph__n">unexamined</span>
+            <span class="dgm-glyph__d">Grey throughout: a claim nobody has checked. Not false — <em>unchecked</em>, and the two are kept apart.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="ordered">
+      <p class="eyebrow">Figure 1 · the ordered mechanism</p>
+      <h2>What a claim passes through, in order</h2>
+      <p>
+        Six stages, and the order matters: each one can only do its job because the one above it
+        already ran. The right-hand rail is the thing that does <em>not</em> exist, and it is the
+        reason the whole structure holds.
+      </p>
+
+      <figure class="dgm-fig dgm-fig--wide wide">
+        <div class="scroll" style="border:0;background:none;margin:0">
+<svg viewBox="0 0 880 796" role="img" aria-label="An ordered six-stage pipeline: claims enter from any source, pass a validation boundary with a per-agent rate brake, become addressable claims inside a membrane, receive typed critiques in five equal-value modes, which carry typed evidence, which feed a recomputed settlement status, which a reader interprets locally. A seventh path to a canonical score is drawn struck through, because it does not exist.">
+
+        <!-- right rail: the absent score -->
+        <rect x="648" y="34" width="208" height="742" rx="3" class="sv-band"/>
+        <text x="752" y="58" text-anchor="middle" class="sv-tf">THE PATH THAT DOES NOT EXIST</text>
+        <path d="M676 76 h152 v86 h-152 Z" class="sv-dead"/>
+        <text x="752" y="104" text-anchor="middle" class="sv-t" fill="var(--faint)">canonical score</text>
+        <text x="752" y="122" text-anchor="middle" class="sv-t" fill="var(--faint)">ranked feed</text>
+        <text x="752" y="140" text-anchor="middle" class="sv-t" fill="var(--faint)">top-agent board</text>
+        <path d="M680 72 L824 166 M824 72 L680 166" stroke="var(--rule-strong)" stroke-width="1.4" fill="none"/>
+        <text x="752" y="186" text-anchor="middle" class="sv-tf">Invariant 1 refuses it</text>
+        <!-- the absence persists at every stage, so it is marked at every stage -->
+        <path d="M752 206 V728" class="sv-dead"/>
+        <g stroke="var(--faint)" stroke-width="1.3" fill="none">
+          <path d="M745 263 l14 14 M759 263 l-14 14"/>
+          <path d="M745 399 l14 14 M759 399 l-14 14"/>
+          <path d="M745 540 l14 14 M759 540 l-14 14"/>
+          <path d="M745 665 l14 14 M759 665 l-14 14"/>
+        </g>
+        <text x="738" y="275" text-anchor="end" class="sv-tf">no score</text>
+        <text x="738" y="411" text-anchor="end" class="sv-tf">no score</text>
+        <text x="738" y="552" text-anchor="end" class="sv-tf">no score</text>
+        <text x="738" y="677" text-anchor="end" class="sv-tf">no score</text>
+        <text x="752" y="756" text-anchor="middle" class="sv-tm" fill="var(--faint)">no gradient to climb</text>
+
+        <!-- 00 input -->
+        <text x="24" y="52" class="sv-tm">00</text>
+        <text x="60" y="52" class="sv-th">Anything can be written</text>
+        <g>
+          <circle cx="92"  cy="86" r="6" class="sv-junk"/>
+          <circle cx="116" cy="86" r="6" class="sv-junk"/>
+          <circle cx="140" cy="86" r="6" class="sv-junk"/>
+          <circle cx="164" cy="86" r="6" class="sv-junk"/>
+          <circle cx="188" cy="86" r="6" class="sv-junk"/>
+          <circle cx="212" cy="86" r="6" class="sv-junk"/>
+          <circle cx="236" cy="86" r="6" class="sv-junk"/>
+          <circle cx="260" cy="86" r="6" class="sv-junk"/>
+        </g>
+        <text x="288" y="90" class="sv-tm">model-made, human or agenda-timed —</text>
+        <text x="288" y="106" class="sv-tm">indistinguishable at this point</text>
+
+        <!-- arrow -->
+        <path d="M176 100 V124" class="sv-edge" marker-end="url(#ar)"/>
+
+        <!-- 01 write boundary -->
+        <text x="24" y="150" class="sv-tm">01</text>
+        <rect x="60" y="132" width="560" height="56" rx="2" class="sv-rule"/>
+        <text x="76" y="154" class="sv-th">WRITE BOUNDARY — validation, in the zome</text>
+        <text x="76" y="174" class="sv-tm">author must match signer · entry type fixed · 20 critiques / hour / agent</text>
+        <text x="608" y="166" text-anchor="end" class="sv-ta">accepts</text>
+
+        <path d="M176 188 V214" class="sv-edge" marker-end="url(#ar)"/>
+        <text x="190" y="206" class="sv-tf">nothing is deleted — Invariant 6</text>
+
+        <!-- 02 claim in membrane -->
+        <text x="24" y="246" class="sv-tm">02</text>
+        <rect x="60" y="222" width="300" height="96" rx="3" class="sv-dash"/>
+        <text x="76" y="242" class="sv-th">Membrane — one domain</text>
+        <circle cx="110" cy="276" r="9" class="sv-acc"/>
+        <circle cx="152" cy="276" r="8" fill="var(--counter)"/>
+        <circle cx="190" cy="276" r="8" fill="var(--counter)"/>
+        <circle cx="228" cy="276" r="8" fill="var(--counter)"/>
+        <text x="110" y="302" text-anchor="middle" class="sv-tf">claim</text>
+        <text x="190" y="302" text-anchor="middle" class="sv-tf">unexamined</text>
+        <text x="376" y="262" class="sv-tm">MembraneToClaim · AgentToClaim</text>
+        <text x="376" y="280" class="sv-tm">each claim carries its own history,</text>
+        <text x="376" y="296" class="sv-tm">addressable and quotable on its own</text>
+
+        <path d="M110 318 V346" class="sv-edge-a" marker-end="url(#ara)"/>
+        <text x="124" y="338" class="sv-ta">TargetToCritique</text>
+
+        <!-- 03 typed critique -->
+        <text x="24" y="382" class="sv-tm">03</text>
+        <text x="60" y="372" class="sv-th">TYPED CRITIQUE — you cannot dismiss, you must say how</text>
+        <g>
+          <path d="M96 392 L110 406 L96 420 L82 406 Z" fill="var(--k-exp)"/>
+          <text x="96" y="438" text-anchor="middle" class="sv-tf">Experiential</text>
+          <path d="M206 392 L220 406 L206 420 L192 406 Z" fill="var(--k-met)"/>
+          <text x="206" y="438" text-anchor="middle" class="sv-tf">Methodological</text>
+          <path d="M316 392 L330 406 L316 420 L302 406 Z" fill="var(--k-log)"/>
+          <text x="316" y="438" text-anchor="middle" class="sv-tf">Logical</text>
+          <path d="M426 392 L440 406 L426 420 L412 406 Z" fill="var(--k-evi)"/>
+          <text x="426" y="438" text-anchor="middle" class="sv-tf">Evidential</text>
+          <path d="M536 392 L550 406 L536 420 L522 406 Z" fill="var(--k-phe)"/>
+          <text x="536" y="438" text-anchor="middle" class="sv-tf">Phenomenological</text>
+        </g>
+        <text x="60" y="462" class="sv-tm">drawn at equal value on purpose — Invariant 4</text>
+        <text x="60" y="478" class="sv-tm">forbids flattening them into one number</text>
+
+        <path d="M316 470 V496" class="sv-edge-a" marker-end="url(#ara)"/>
+        <text x="330" y="488" class="sv-ta">CritiqueToEvidence</text>
+
+        <!-- 04 evidence -->
+        <text x="24" y="528" class="sv-tm">04</text>
+        <text x="60" y="520" class="sv-th">EVIDENCE — typed, and attached to the objection rather than the headline</text>
+        <g>
+          <path d="M78 534 H98 L104 540 V560 H78 Z" class="sv-node"/>
+          <text x="91" y="576" text-anchor="middle" class="sv-tf">Study</text>
+          <path d="M160 534 H180 L186 540 V560 H160 Z" class="sv-node"/>
+          <text x="173" y="576" text-anchor="middle" class="sv-tf">CaseReport</text>
+          <path d="M250 534 H270 L276 540 V560 H250 Z" class="sv-node"/>
+          <text x="263" y="576" text-anchor="middle" class="sv-tf">Measurement</text>
+          <path d="M350 534 H370 L376 540 V560 H350 Z" class="sv-node"/>
+          <text x="363" y="576" text-anchor="middle" class="sv-tf">Video</text>
+          <path d="M424 534 H444 L450 540 V560 H424 Z" class="sv-node"/>
+          <text x="437" y="576" text-anchor="middle" class="sv-tf">Image · Text</text>
+        </g>
+
+        <path d="M263 588 V614" class="sv-edge-a" marker-end="url(#ara)"/>
+        <text x="277" y="606" class="sv-ta">TargetToSettlementStatus</text>
+
+        <!-- 05 settlement -->
+        <text x="24" y="648" class="sv-tm">05</text>
+        <text x="60" y="640" class="sv-th">SETTLEMENT — recomputed, never asserted</text>
+        <path d="M100 652 L118 662 V682 L100 692 L82 682 V662 Z" class="sv-accs"/>
+        <text x="100" y="710" text-anchor="middle" class="sv-tf">Open</text>
+        <path d="M192 652 L210 662 V682 L192 692 L174 682 V662 Z" class="sv-accs"/>
+        <text x="192" y="710" text-anchor="middle" class="sv-tf">Contested</text>
+        <path d="M284 652 L302 662 V682 L284 692 L266 682 V662 Z" class="sv-accs"/>
+        <text x="284" y="710" text-anchor="middle" class="sv-tf">Settled</text>
+        <text x="332" y="668" class="sv-tm">policy pinned BY HASH, so a verdict cannot be</text>
+        <text x="332" y="684" class="sv-tm">reinterpreted later under different parameters.</text>
+        <text x="332" y="700" class="sv-tm">Anyone can recompute it and disagree.</text>
+
+        <!-- 06 read -->
+        <text x="24" y="766" class="sv-tm">06</text>
+        <circle cx="100" cy="760" r="9" class="sv-node"/>
+        <text x="124" y="764" class="sv-th">READ — the reader is the governor</text>
+        <text x="356" y="764" class="sv-tm">computed at read time, stored nowhere</text>
+
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 1 L9 5 L0 9 z" fill="var(--counter)"/>
+          </marker>
+          <marker id="ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+      </svg>
+        </div>
+        <figcaption class="dgm-cap">
+          <span class="dgm-cap__t">Figure 1</span>
+          A claim&rsquo;s ordered path, and the struck rail on the right is the mechanism. Nothing in
+          the pipeline produces a comparative score, so there is no position for volume to buy. Every
+          stage adds <strong>dimension</strong> — a mode, a source type, a recomputable verdict —
+          where a ranking system would be removing it.
+        </figcaption>
+      </figure>
+
+      <div class="dgm-stages wide">
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">01</span>
+        <div>
+          <h3>The boundary accepts almost everything, and that is deliberate</h3>
+          <p>Validation checks that the author matches the signer and the entry is well-formed. It does <strong>not</strong> judge whether a claim is true — no code anywhere does. What it enforces is a <strong>per-agent rate brake</strong>: 20 critiques an hour.</p>
+          <p>That bounds how fast one identity can act; it does not bound totals, and the way past it is twenty-one agents rather than twenty-one critiques. The brake buys time, not safety, and the project records it that way.</p>
+        </div>
+      </div>
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">02</span>
+        <div>
+          <h3>A claim is addressable, so it can be argued with</h3>
+          <p>The unit is the sentence, not the article. A reader can point at one assertion inside a long piece and attach a disagreement to <em>that</em>, which is what makes checking accumulate rather than scatter into comment threads nobody can cite later.</p>
+        </div>
+      </div>
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">03</span>
+        <div>
+          <h3>Disagreement is stored, and it has a shape</h3>
+          <p>A critique is an entry with an author, a target and <strong>one of 5 modes</strong>. You cannot register that something is wrong; you must register <em>how</em> — the method, the logic, the sourcing, your own experience, or how it felt from inside.</p>
+          <p>Against a generated flood this is the expensive step, and it stays expensive. The difference is that the expense is <strong>paid once and kept</strong>, attached to the claim, visible to the next reader. A fact-check published elsewhere evaporates; this one is a link in the graph.</p>
+        </div>
+      </div>
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">04</span>
+        <div>
+          <h3>Evidence hangs off the objection, not the headline</h3>
+          <p>6 evidence types, declared rather than inferred. A reader can see that a dispute rests on a measurement and the original on a press release — a comparison the reader makes, not one the protocol makes for them.</p>
+        </div>
+      </div>
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">05</span>
+        <div>
+          <h3>A verdict that can be recomputed is a verdict you can refuse</h3>
+          <p><code>SettlementStatus</code> is not a declaration somebody writes. Validation recomputes it from the inputs and a policy <strong>pinned by hash</strong>, so nobody can quietly restate last month&rsquo;s verdict under this month&rsquo;s parameters. 3 settlement states, and <strong>Contested is a real resting place</strong> rather than a failure to converge.</p>
+        </div>
+      </div>
+      <div class="dgm-stage">
+        <span class="dgm-stage__n">06</span>
+        <div>
+          <h3>The reader is the governor</h3>
+          <p>Standing is computed when somebody asks, and stored nowhere. There is no number the network maintains about you. That is why the struck box in the figure is empty: the question <em>where is the score kept</em> has the answer <strong>nowhere, by construction</strong> — a predicted absence rather than a missing feature.</p>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <section class="sec" id="attacks">
+      <p class="eyebrow">Figures 2 and 3 · the two attacks</p>
+      <h2>Volume, and timing</h2>
+      <p>
+        AI overproduction and agenda-framing are different attacks and they fail for different
+        reasons. One is defeated by an absence, the other by an ordering.
+      </p>
+
+      <div class="dgm-duo wide">
+        <figure class="dgm-fig">
+          <div class="scroll" style="border:0;background:none;margin:0">
+<svg viewBox="0 0 520 410" role="img" aria-label="The volume attack: ten thousand generated claims all pass the write boundary and become ten thousand unexamined entries, with the arrow to a ranking surface struck through because none exists. One claim that received a typed critique with evidence is legible; the rest remain unexamined.">
+          <text x="16" y="26" class="sv-th">Figure 2 — the volume attack</text>
+          <text x="16" y="46" class="sv-tm">generate ten thousand plausible claims</text>
+
+          <g>
+            <!-- field of junk -->
+            <g fill="var(--counter)">
+              <circle cx="30" cy="80" r="4.2"/><circle cx="52" cy="80" r="4.2"/><circle cx="74" cy="80" r="4.2"/><circle cx="96" cy="80" r="4.2"/><circle cx="118" cy="80" r="4.2"/><circle cx="140" cy="80" r="4.2"/><circle cx="162" cy="80" r="4.2"/><circle cx="184" cy="80" r="4.2"/><circle cx="206" cy="80" r="4.2"/><circle cx="228" cy="80" r="4.2"/>
+              <circle cx="30" cy="100" r="4.2"/><circle cx="52" cy="100" r="4.2"/><circle cx="74" cy="100" r="4.2"/><circle cx="96" cy="100" r="4.2"/><circle cx="118" cy="100" r="4.2"/><circle cx="140" cy="100" r="4.2"/><circle cx="162" cy="100" r="4.2"/><circle cx="184" cy="100" r="4.2"/><circle cx="206" cy="100" r="4.2"/><circle cx="228" cy="100" r="4.2"/>
+              <circle cx="30" cy="120" r="4.2"/><circle cx="52" cy="120" r="4.2"/><circle cx="74" cy="120" r="4.2"/><circle cx="96" cy="120" r="4.2"/><circle cx="118" cy="120" r="4.2"/><circle cx="140" cy="120" r="4.2"/><circle cx="162" cy="120" r="4.2"/><circle cx="184" cy="120" r="4.2"/><circle cx="206" cy="120" r="4.2"/><circle cx="228" cy="120" r="4.2"/>
+              <circle cx="30" cy="140" r="4.2"/><circle cx="52" cy="140" r="4.2"/><circle cx="74" cy="140" r="4.2"/><circle cx="96" cy="140" r="4.2"/><circle cx="118" cy="140" r="4.2"/><circle cx="140" cy="140" r="4.2"/><circle cx="162" cy="140" r="4.2"/><circle cx="184" cy="140" r="4.2"/><circle cx="206" cy="140" r="4.2"/><circle cx="228" cy="140" r="4.2"/>
+            </g>
+            <text x="30" y="166" class="sv-tf">all of them are accepted — nothing is blocked</text>
+          </g>
+
+          <path d="M250 110 H318" class="sv-edge" marker-end="url(#ar2)"/>
+          <text x="284" y="102" text-anchor="middle" class="sv-tf">write</text>
+
+          <!-- outcome -->
+          <rect x="330" y="62" width="172" height="104" rx="3" class="sv-rule"/>
+          <text x="416" y="86" text-anchor="middle" class="sv-t">10,000 entries</text>
+          <text x="416" y="106" text-anchor="middle" class="sv-t">0 positions</text>
+          <text x="416" y="132" text-anchor="middle" class="sv-tf">unranked, unsummarised,</text>
+          <text x="416" y="148" text-anchor="middle" class="sv-tf">each one still unexamined</text>
+
+          <!-- the struck arrow -->
+          <path d="M416 176 V214" class="sv-dead"/>
+          <path d="M398 188 L434 206 M434 188 L398 206" stroke="var(--faint)" stroke-width="1.5" fill="none"/>
+          <text x="416" y="236" text-anchor="middle" class="sv-tf">no feed to climb</text>
+
+          <!-- the one checked claim -->
+          <path d="M16 262 H504" class="sv-rule"/>
+          <text x="16" y="286" class="sv-th">meanwhile, one claim someone checked</text>
+          <circle cx="40" cy="330" r="9" class="sv-acc"/>
+          <path d="M54 330 H92" class="sv-edge-a" marker-end="url(#ara2)"/>
+          <path d="M110 316 L124 330 L110 344 L96 330 Z" fill="var(--k-met)"/>
+          <path d="M132 330 H168" class="sv-edge-a" marker-end="url(#ara2)"/>
+          <path d="M174 320 H194 L200 326 V344 H174 Z" class="sv-node"/>
+          <text x="216" y="326" class="sv-tm">a methodological critique,</text>
+          <text x="216" y="342" class="sv-tm">carrying a study, attached permanently</text>
+          <text x="16" y="374" class="sv-tf">this one is legible. The ten thousand are not —</text>
+          <text x="16" y="390" class="sv-tf">and neither is ranked above the other.</text>
+
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 1 L9 5 L0 9 z" fill="var(--counter)"/>
+            </marker>
+            <marker id="ara2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 1 L9 5 L0 9 z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+        </svg>
+          </div>
+          <figcaption class="dgm-cap">
+            <span class="dgm-cap__t">Figure 2 · volume</span>
+            The flood is not filtered, blocked or down-ranked — it is <strong>admitted and rendered
+            inert</strong>. Generation is cheap because ranked systems convert volume into position;
+            with no position on offer, ten thousand claims buy exactly ten thousand rows. The
+            asymmetry does not disappear. It stops compounding.
+          </figcaption>
+        </figure>
+
+        <figure class="dgm-fig">
+          <div class="scroll" style="border:0;background:none;margin:0">
+<svg viewBox="0 0 520 400" role="img" aria-label="The timing attack: an agenda actor cannot claim after the fact to have predicted an outcome, because a pre-registration publishes a hash of a sealed prediction before the event, and the revelation afterwards is checked against that hash. A thirty-day tenure requirement blocks minting a fresh agent to vouch for yourself.">
+          <text x="16" y="26" class="sv-th">Figure 3 — the timing attack</text>
+          <text x="16" y="46" class="sv-tm">frame a claim after the fact to fit the outcome</text>
+
+          <!-- timeline -->
+          <path d="M40 150 H488" class="sv-rule"/>
+          <circle cx="90" cy="150" r="4" class="sv-acc"/>
+          <circle cx="264" cy="150" r="4" fill="var(--counter)"/>
+          <circle cx="438" cy="150" r="4" class="sv-acc"/>
+          <text x="90"  y="172" text-anchor="middle" class="sv-tf">t0 · before</text>
+          <text x="264" y="172" text-anchor="middle" class="sv-tf">t1 · the world happens</text>
+          <text x="438" y="172" text-anchor="middle" class="sv-tf">t2 · after</text>
+
+          <!-- t0 objects -->
+          <rect x="60" y="78" width="16" height="16" class="sv-node"/>
+          <path d="M60 86 H76" class="sv-rule"/>
+          <text x="68" y="70" text-anchor="middle" class="sv-tf">sealed</text>
+          <rect x="104" y="78" width="16" height="16" class="sv-accs"/>
+          <text x="112" y="70" text-anchor="middle" class="sv-tf">hash</text>
+          <path d="M90 100 V142" class="sv-edge-a"/>
+          <text x="134" y="92" class="sv-tm">PreRegistration — public</text>
+          <text x="134" y="108" class="sv-tm">SealedPrediction — private</text>
+
+          <!-- t2 -->
+          <rect x="430" y="78" width="16" height="16" class="sv-node"/>
+          <path d="M438 100 V142" class="sv-edge-a"/>
+          <text x="504" y="118" text-anchor="end" class="sv-tm">Revelation</text>
+          <text x="504" y="134" text-anchor="end" class="sv-tm">content opened</text>
+
+          <!-- the check -->
+          <path d="M112 212 V240 H438 V212" class="sv-edge-a"/>
+          <text x="275" y="260" text-anchor="middle" class="sv-ta">hashes must match</text>
+          <text x="275" y="278" text-anchor="middle" class="sv-tm">PreRegistrationToRevelation</text>
+
+          <!-- the blocked fraud -->
+          <path d="M16 300 H504" class="sv-rule"/>
+          <text x="16" y="324" class="sv-th">what becomes impossible</text>
+          <text x="16" y="346" class="sv-tm">· claiming at t2 that you said it at t0 — the hash was already public</text>
+          <text x="16" y="364" class="sv-tm">· minting a fresh agent to vouch for yourself — attestation needs 30 days of tenure</text>
+          <text x="16" y="382" class="sv-tm">· quietly deleting the prediction that missed — nothing is deletable</text>
+        </svg>
+          </div>
+          <figcaption class="dgm-cap">
+            <span class="dgm-cap__t">Figure 3 · timing</span>
+            Agenda-shaped claims depend on <strong>retrodiction</strong> — being able to say
+            afterwards that you called it, and to let the misses disappear. Commit-then-reveal
+            removes both: the hash is public before the event and the record is permanent, so a
+            forecasting history becomes something a reader can audit rather than something a
+            publisher curates.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="sec" id="limits">
+      <p class="eyebrow">Honest limits</p>
+      <h2>What this structure does not do</h2>
+      <p>
+        Everything above is about what the shape makes impossible. These are the things it leaves
+        open, and the first is live and unsolved right now.
+      </p>
+      <ol class="limits">
+        <li>
+          <strong>Discovery is the open problem, and a pilot participant has raised it three times.</strong>
+          With no ranking there is also no summary, so a reader cannot see which claims have been
+          critiqued without opening each one. Every surface that fixes this reintroduces comparison
+          between neighbouring claims, which is the thing the design refuses. That trade is recorded,
+          argued, and still undecided.
+        </li>
+        <li>
+          <strong>The rate brake bounds a rate, not a total.</strong> 20 critiques an hour per agent
+          is a brake: a single compliant agent is unbounded given time, and twenty-one agents clear
+          the cap outright. It buys time for people to notice. It does not stop anything.
+        </li>
+        <li>
+          <strong>Checking stays expensive.</strong> Nothing here makes verification cheap. It makes
+          verification <em>durable</em> — paid once, attached, and still there for the next reader.
+          That is a different claim, and a smaller one.
+        </li>
+        <li>
+          <strong>Nothing can be erased.</strong> The permanence that defeats the vanishing-prediction
+          trick is the same permanence that makes a deletion request impossible to honour. It is a
+          deliberate property, and a real cost.
+        </li>
+        <li>
+          <strong>Two operators is not a network.</strong> All of this is built and runs against a
+          real conductor. None of it has been tested at the scale where flooding actually happens.
+        </li>
+      </ol>
+
+      <p class="note">
+        <strong>Provenance.</strong> Every type name, mode, state and threshold on this page was read
+        from the integrity zome on <span class="mono">2026-11-26</span>: 19 entry types, 31 link
+        types, 5 critique modes, 6 evidence types, 3 settlement states, a cap of 20 critiques per
+        window per agent, and 30 days of tenure before an attestation grant.
+        <strong>Those figures are re-measured against the source tree on every push</strong> by
+        <span class="mono">scripts/check-site-claims.mjs</span>, which fails the build when a number
+        here stops matching the code.
+      </p>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="foot__in">
+    <div>
+      <h4>Read</h4>
+      <ul>
+        <li><a href="index.html">Overview</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/SPEC.md">Specification</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ/blob/main/docs/open-work.md">Open work &amp; corrections</a></li>
+        <li><a href="https://github.com/StateofIntent/epistemic-happ">Source repository</a></li>
+      </ul>
+    </div>
+    <p class="foot__fine">
+      Epistemic Resonance · protocol version 11 · the five critique colours are set at equal value
+      on purpose: no mode outranks another.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
