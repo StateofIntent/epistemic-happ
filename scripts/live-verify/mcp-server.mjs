@@ -367,6 +367,35 @@ async function main() {
   check('claims_awaiting_my_critique excludes what this agent already critiqued',
     !awaitingTexts.includes(CLAIM_TEXT));
 
+  // ---- 5a-ii. RETRACTION, which nothing here called until 2026-11-28 ----
+  //
+  // FOUND BY THE COVERAGE ASSERTION AT THE END OF THIS FILE, on its first
+  // run. `retract_claim` is a WRITE tool and had never been exercised by this
+  // harness — the same class and the same silence as the domain-name tools
+  // §5c is about, and nobody noticed for the same reason: nothing counted.
+  //
+  // A DEDICATED CLAIM, published to be withdrawn. Retracting CLAIM_TEXT or
+  // UNCRITIQUED would move state the checks above and below depend on, and a
+  // harness that quietly changes its own fixtures is how a green run stops
+  // meaning what it says.
+  const TO_RETRACT = `A claim published to be withdrawn, stamped ${STAMP}.`;
+  const retractable = await callTool('publish_claim', {
+    content: TO_RETRACT, domain: DOMAIN, confidence: 'Tentative',
+  });
+  const retracted = await callTool('retract_claim', {
+    claim_hash: retractable.parsed?.entry_hash_for_critique,
+    reason: 'Withdrawn by its author, to exercise the tool.',
+  });
+  check('retract_claim records a withdrawal under the agent\'s own key',
+    !retracted.isError && typeof retracted.parsed?.action_hash === 'string');
+  // THE PROPERTY THAT MATTERS IS WHAT SURVIVES. A retraction is an added
+  // record, not a deletion — nothing in this protocol is removed — so the
+  // original must still be readable afterwards. A tool that quietly made the
+  // claim vanish would pass the check above and break the invariant.
+  const afterRetraction = await callTool('claims_in_domain', { domain: DOMAIN });
+  check('and the retracted claim is STILL THERE — a withdrawal adds, it does not delete',
+    ((afterRetraction.parsed ?? []).map((c) => c.content)).includes(TO_RETRACT));
+
   // ---- 5b. The tools added for open-work 1.19 --------------------------
   //
   // Every tool below wraps a function the SDK gained on 2026-10-28 and the
@@ -991,7 +1020,13 @@ async function main() {
   // diff two lists; the failure is only actionable if it says which.
   const advertised = tools.map((t) => t.name);
   const unexercised = advertised.filter((n) => !exercised.has(n));
-  check(`every advertised tool is exercised by this harness (${advertised.length} advertised, ${exercised.size} called)`,
+  // THE COUNT IS OF ADVERTISED TOOLS CALLED, not of calls made. The first
+  // version printed `exercised.size`, which reads as full coverage while a
+  // tool is missing — the set also holds `no_such_tool`, deliberately called
+  // in §6 and advertised by nobody. It printed "24 advertised, 24 called"
+  // directly above the line naming the one that was not.
+  const covered = advertised.filter((n) => exercised.has(n)).length;
+  check(`every advertised tool is exercised by this harness (${covered}/${advertised.length})`,
     unexercised.length === 0);
   if (unexercised.length) log(`  UNEXERCISED: ${unexercised.join(', ')}`);
 
