@@ -240,7 +240,12 @@ const rpc = (method, params) => new Promise((resolve, reject) => {
   server.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
   setTimeout(() => { if (pending.has(id)) { pending.delete(id); reject(new Error(`timeout on ${method}`)); } }, 30000);
 });
+// EVERY TOOL NAME THIS RUN ACTUALLY CALLED, for the coverage assertion at the
+// end. A set rather than a count: the question is which tools went unexercised,
+// not how many calls were made.
+const exercised = new Set();
 const callTool = async (name, args) => {
+  exercised.add(name);
   const r = await rpc('tools/call', { name, arguments: args });
   const text = r.result?.content?.[0]?.text ?? '';
   return { isError: r.result?.isError === true, text, parsed: (() => { try { return JSON.parse(text); } catch { return null; } })() };
@@ -361,6 +366,53 @@ async function main() {
     awaitingTexts.includes(UNCRITIQUED));
   check('claims_awaiting_my_critique excludes what this agent already critiqued',
     !awaitingTexts.includes(CLAIM_TEXT));
+
+  // ---- 5a-ii. RETRACTION, which nothing here called until 2026-11-28 ----
+  //
+  // FOUND BY THE COVERAGE ASSERTION AT THE END OF THIS FILE, on its first
+  // run. `retract_claim` is a WRITE tool and had never been exercised by this
+  // harness — the same class and the same silence as the domain-name tools
+  // §5c is about, and nobody noticed for the same reason: nothing counted.
+  //
+  // A DEDICATED CLAIM, published to be withdrawn. Retracting CLAIM_TEXT or
+  // UNCRITIQUED would move state the checks above and below depend on, and a
+  // harness that quietly changes its own fixtures is how a green run stops
+  // meaning what it says.
+  // THE ENTRY HASH COMES FROM `claims_in_domain`, NOT FROM THE PUBLISH.
+  // `publish_claim` returns `{ action_hash, note }` and nothing else — the
+  // first version of this block read `entry_hash_for_critique` off it, which
+  // is a field `publish_discourse_reading` returns and this one does not. It
+  // sent `claim_hash: undefined` and went red on a live conductor. §5b takes
+  // the same route for the same reason, two dozen lines below.
+  const TO_RETRACT = `A claim published to be withdrawn, stamped ${STAMP}.`;
+  await callTool('publish_claim', {
+    content: TO_RETRACT, domain: DOMAIN, confidence: 'Tentative',
+  });
+  const beforeRetraction = await callTool('claims_in_domain', { domain: DOMAIN });
+  const retractableHash = (beforeRetraction.parsed ?? [])
+    .find((c) => c.content === TO_RETRACT)?.entry_hash;
+  check('a claim entry hash is in hand for the retraction below',
+    typeof retractableHash === 'string');
+  const retracted = await callTool('retract_claim', {
+    claim_hash: retractableHash,
+    reason: 'Withdrawn by its author, to exercise the tool.',
+  });
+  check('retract_claim records a withdrawal under the agent\'s own key',
+    !retracted.isError && typeof retracted.parsed?.action_hash === 'string');
+  // THE PROPERTY THAT MATTERS IS WHAT SURVIVES. A retraction is an added
+  // record, not a deletion — nothing in this protocol is removed — so the
+  // original must still be readable afterwards. A tool that quietly made the
+  // claim vanish would pass the check above and break the invariant.
+  //
+  // AND THIS CHECK IS VACUOUS WHEN THE ONE ABOVE IT FAILS, which is not a
+  // hypothetical: on run 140581388912 the retraction never happened and this
+  // line went green anyway, because an un-retracted claim is also still
+  // there. It is a control on the tool working, not evidence that it ran —
+  // read it only alongside the check above, and that is why the guard on the
+  // hash is its own check rather than an unasserted `?.`.
+  const afterRetraction = await callTool('claims_in_domain', { domain: DOMAIN });
+  check('and the retracted claim is STILL THERE — a withdrawal adds, it does not delete',
+    ((afterRetraction.parsed ?? []).map((c) => c.content)).includes(TO_RETRACT));
 
   // ---- 5b. The tools added for open-work 1.19 --------------------------
   //
@@ -685,6 +737,17 @@ async function main() {
   check('and the error says why rather than only that it failed',
     /no membrane|membrane has been founded/i.test(noMembrane.text));
 
+  // THE SECOND DOMAIN-NAME TOOL, ADDED 2026-11-28 WITH THE TOOL ITSELF, and
+  // added here BECAUSE of the comment above rather than in spite of it:
+  // `standing_in_domain` is the same shape that shipped broken, so it is
+  // exercised in the same two places — the legible error here, the positive
+  // resolution below. An unexercised domain tool is how the last one died.
+  const standingNoMembrane = await callTool('standing_in_domain', { domain: DOMAIN });
+  check('standing_in_domain on a domain with no membrane is a legible error',
+    standingNoMembrane.isError === true);
+  check('and that error says why too',
+    /no membrane|membrane has been founded/i.test(standingNoMembrane.text));
+
   // ---- 5d. FOUNDING, which used to be setup and is now the thing tested ---
   //
   // THE SEEDING THAT STOOD HERE WENT THROUGH THE SDK's RAW `call` HATCH with
@@ -855,6 +918,38 @@ async function main() {
     const health = await callTool('discourse_health', { domain: someDomain });
     check('discourse_health RESOLVES a real domain name to its membrane',
       !health.isError && typeof health.parsed?.total_claims === 'number');
+
+    // THE POSITIVE CASE IS THE ONE THAT CATCHES THE BUG, per injection F
+    // above: the broken version errors too, so an error-presence assertion
+    // passes it indefinitely. This asserts the resolution WORKING.
+    const standing = await callTool('standing_in_domain', { domain: someDomain });
+    check('standing_in_domain RESOLVES a real domain name to its membrane',
+      !standing.isError && typeof standing.parsed?.claims_examined === 'number');
+    // AND THE HASHES COME BACK READABLE. `ok` is JSON.stringify, so a bare
+    // Uint8Array would serialise as {"0":1,"1":2,...} — the handler base64s
+    // them by hand and this is what proves it, since the shape is otherwise
+    // a perfectly valid object full of unusable numbers.
+    check('and its hashes are base64 strings rather than byte maps',
+      typeof standing.parsed?.observer === 'string'
+      && (standing.parsed?.claims ?? []).every((c) => typeof c.claim === 'string'));
+    // THE NEUTRAL READING IS A REAL ANSWER AND THE REPORT SAYS SO. Omitting
+    // max_causal_distance promises no threshold and atrophies nothing; the
+    // flag is how a reader tells that apart from a threshold that happened
+    // to exclude nobody. Defaulting one here would be this server choosing a
+    // patience the operator never did.
+    check('and omitting a policy reports that no threshold was promised',
+      standing.parsed?.threshold_promised_by_caller === false
+      && standing.parsed?.atrophied === 0);
+    // A CONTROL, so the check above is not a constant: supplying a threshold
+    // must flip the flag. It asserts the flag and NOT the atrophy count,
+    // because whether anything actually atrophies depends on the seeded
+    // domain's shape and would make this a test of the fixture.
+    const patient = await callTool('standing_in_domain', {
+      domain: someDomain, max_causal_distance: 0,
+    });
+    check('and supplying one flips that flag, so the check above is not a constant',
+      !patient.isError && patient.parsed?.threshold_promised_by_caller === true
+      && patient.parsed?.max_causal_distance === 0);
     const reading = await callTool('publish_discourse_reading', {
       domain: someDomain, confidence: 'Tentative',
     });
@@ -925,6 +1020,34 @@ async function main() {
     log(`${failures} CHECK(S) FAILED.`);
     if (stderr.trim()) log(`\nserver stderr:\n${stderr.trim().slice(0, 800)}`);
   }
+  // ---- EVERY ADVERTISED TOOL MUST HAVE BEEN CALLED --------------------
+  //
+  // ADDED 2026-11-28, AND IT IS THIS FILE'S OWN LESSON TURNED INTO A CHECK.
+  // §5c records that a tool shipped broken and survived because this harness
+  // never called it — "the two tools this file did not exercise were the two
+  // that took a domain". That property, every tool exercised, has been true
+  // since only because somebody kept remembering. The existing assertion is
+  // `tools.length >= 8`, which cannot see an unexercised 24th tool.
+  //
+  // WHY IT IS AN ASSERTION AND NOT A NOTE. A remedy that depends on being
+  // remembered has the reliability of the judgement it replaces. This one
+  // fires on the next person to add a tool, which is the only moment it is
+  // cheap to act on.
+  //
+  // IT NAMES THEM. A count would say coverage dropped and leave the reader to
+  // diff two lists; the failure is only actionable if it says which.
+  const advertised = tools.map((t) => t.name);
+  const unexercised = advertised.filter((n) => !exercised.has(n));
+  // THE COUNT IS OF ADVERTISED TOOLS CALLED, not of calls made. The first
+  // version printed `exercised.size`, which reads as full coverage while a
+  // tool is missing — the set also holds `no_such_tool`, deliberately called
+  // in §6 and advertised by nobody. It printed "24 advertised, 24 called"
+  // directly above the line naming the one that was not.
+  const covered = advertised.filter((n) => exercised.has(n)).length;
+  check(`every advertised tool is exercised by this harness (${covered}/${advertised.length})`,
+    unexercised.length === 0);
+  if (unexercised.length) log(`  UNEXERCISED: ${unexercised.join(', ')}`);
+
   server.kill();
   process.exit(failures === 0 ? 0 : 1);
 }
