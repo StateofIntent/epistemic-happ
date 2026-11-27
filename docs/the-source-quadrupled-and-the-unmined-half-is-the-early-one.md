@@ -74,12 +74,17 @@ claims protocol)"* — and its closing characterisation of what crossed over is:
 > an argument, one discriminator and one convention — not one new mechanism.
 > It's the import that's moved to consolidation, not the source."*
 
-**`[A]` That is the correct reading and it should change where the next import
-looks.** The two documents are in a feedback loop over §11 and §12, and the
-loop has thinned: §12 is now a catalogue of remedies this repository has
-already built, measured against, or deliberately declined. **The unread
-surface is §1–§10, and it is unread because the companions were written when
-§1–§10 *was* the document.**
+**`[A]` The reading is half right, and §6 is the other half.** The two
+documents are in a feedback loop, and over **§12's early material** the loop
+has thinned: those thirteen phrases name remedies this repository has already
+built, measured against, or deliberately declined. **What a phrase count over
+that vocabulary could not see is that §12 kept going.** Its later passes
+number their remedies and reach at least 41, and the search above tested none
+of their vocabulary.
+
+> **So there are two unmined seams, not one.** §1–§10, unread because the
+> companions were written when §1–§10 *was* the document; and **§12.1's second
+> half, unread because it did not exist when they were written.**
 
 ---
 
@@ -285,3 +290,132 @@ buys under a 3-fold change in length"*) is a result about elastic composites.
 The portable half is the habit, not the exponent: **ask what power a lever
 enters at before investing in it.** No row; it is advice, and §12's own
 finding is that advice does not fire.
+
+---
+
+## 6. §12.1's second half: numbered remedies, and the ones with no counterpart here
+
+Added after finishing the read. **`[V]`** Measured against `docs/open-work.md`:
+*search by the problem* **0**, *model organism* **0**, *textbook idealisation*
+**0**, *founding observation* **0**, *evaluate it* **0**, *named topic* **0**,
+*could have disagreed* **0**, *physical constant* **0**, *trigger conditions*
+**0**. **`[A]`** These are the later passes' remedies, numbered by the source
+to at least 41, and the five below are the ones whose analogue here is a thing
+that could be built or a practice that could be adopted rather than a
+restatement.
+
+### 6.1 A scoping assumption is invisible in a list of results
+
+**`[Q]` Remedy 14.** *"Any assumption used to **scope** a search — to exclude a
+class of candidates — is load-bearing on everything the search did not find.
+Re-check it whenever a source speaks to it, and **keep a list of such
+assumptions separately from the findings, because a scoping assumption is
+invisible in a list of results.**"*
+
+The instance is the sharpest kind: the source had asserted *senescence is a
+function of divisions rather than time* and used it to scope its register
+search — *"everything that tracks time is excluded"* — while a source it later
+cited itself describes a time-indexed program. **Neither statement was
+retrieved in order to check the other.**
+
+**`[A]`** This repository's analogue is exact and currently has no home.
+`docs/open-work.md` is a list of **findings and open items**; the assumptions
+that decided which candidates were never entered as rows are nowhere.
+Row 1.35's stale-blocker gate and row 8.27's stale-resolution mirror both watch
+*recorded* things changing; neither can watch an exclusion nobody wrote down.
+**The buildable version is a section of its own — the scoping assumptions, each
+with what it excluded — and it is prose before it is a script.**
+
+### 6.2 Do the arithmetic on what you already retrieved
+
+**`[Q]` Remedy 32.** *"When a source states a formula and separately states its
+inputs, **evaluate it.** A source that gives both and computes neither is not
+withholding the answer — it did not need the answer for its own purposes, **and
+the question it was not asking may be yours.**"*
+
+**`[Q]`** The source's own accounting: *"Twice in two passes, the central result
+was an arithmetic step the review had every input for and never took."* Both
+times it was the pass's headline finding. And the diagnosis of why it stayed
+invisible for 180,000 words is the transferable part — the document had remedies
+for retrieval, scope, enumeration, sourcing, ranking and field entry, and
+*"none for **arithmetic on retrieved material**, because that is not a research
+step — it is what you do after."*
+
+**`[A]`** The analogue here is not arithmetic but **evaluation of things already
+in hand**: this repository's own habit is to measure, and its best results come
+from it — but the measuring is commissioned, never prompted. **A check that
+asked, of each row citing a formula or a threshold in `SPEC.md`, whether anybody
+has evaluated it against the shipped values, would be the mechanised form.**
+Not proposed as a row; named because the gap is the same shape.
+
+### 6.3 Re-examine the founding observation
+
+**`[Q]` Remedy 30.** *"Periodically test whether the review's **oldest and most
+load-bearing observation** has become a consequence of something found later.
+Founding observations are the least re-examined claims in any long document,
+because everything is built on them and nothing points back at them."*
+
+**`[Q]`** And why nothing catches it: *"A review accumulates findings and
+occasionally acquires something that **reorganises** them. The second kind is
+not detectable by any of the checks this appendix has built, because **every one
+of those checks operates on individual claims. Nothing in the apparatus asks
+whether two established findings are the same finding.**"* The instance is the
+source's founding asymmetry — position stored redundantly, magnitude stored
+nowhere — carried for 180,000 words as a fact about biology and turning out to
+be **arithmetic** (L²/D).
+
+**`[A]`** This repository's founding observations are its **Invariants**, and
+row 8.49 has already measured that the barely-cited ones are load-bearing — the
+*citation* direction. **Remedy 30 is the other direction: not is this invariant
+still cited, but has something found since made it a consequence rather than a
+premise.** Nothing here asks that, and it is a question for a human rather than
+a script.
+
+### 6.4 A decisive item makes two claims and only one gets checked
+
+**`[Q]` Remedy 28.** *"When an item claims a result will be **decisive**, state
+the inference from each branch to the consequence, and check those inferences
+**before** running the research. An item that names what turns on it has made
+two claims — about the fact and about the entailment — and **only the first is
+usually examined.**"* The instance: a binary question was researched, both
+branches were returned, and the question **stopped mattering** — a way of
+closing the source's appendix did not have a category for.
+
+**`[A]`** `docs/open-work.md`'s `[D]` rows are exactly this shape: each names a
+decision and, usually, what turns on it. **The entailment half is the unchecked
+half here too**, and the cheap version is a sentence per row — *if this resolves
+either way, here is what changes* — written before the work rather than after.
+
+### 6.5 A remedy that is read and not applied needs a trigger
+
+**`[Q]` Remedy 41**, and this repository is the worked example. *"Attach a
+convergence audit to the act of **counting instances**, not to the document."*
+The source records that **its external auditor — this repository — had read the
+convergence audit and then committed the error it names**, treating a
+shared-cause pattern as a third independent instance while reaching the right
+conclusion for the wrong reason. Its verdict: ***"A remedy that is read and not
+applied needs a trigger, not a statement."***
+
+**`[A]`** That is the same finding as this file's own §3, arrived at from the
+other side, and it is the argument for why the four items above are worth
+little as prose. **The repository already knows this** — it is why row 8.3's
+boundary-claim report was demoted to a column and why `check-rationale-drift.mjs`
+exists rather than a paragraph saying *watch for rotating justifications*.
+**The test for whether any of §6 is worth taking is whether it can be given a
+trigger. §6.1 can (a file section, checked when a row is closed). §6.4 can (a
+field on a `[D]`). §6.2 and §6.3 cannot, and should be recorded as aspirations
+rather than procedures** — which is the source's own rule about its own
+remedies.
+
+---
+
+## 7. What the full read changed about §1–§5
+
+**`[A]` One thing, and it is this file's headline.** §1 counted the overlap over
+§12's early vocabulary and concluded the seam was worked out. **The seam was
+worked out where the count looked.** The five items in §2 stand unchanged —
+they are from §1–§10 and the full read did not touch them — and §3's record of
+this file's own unscoped absence claim now has a second instance, which is the
+file's own headline. **Two instances of one error in one document is the
+pattern §12.1c calls characteristic, and the remedy it names is the one neither
+version of this file applied: state the scope the search was run over.**
