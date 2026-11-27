@@ -378,12 +378,23 @@ async function main() {
   // UNCRITIQUED would move state the checks above and below depend on, and a
   // harness that quietly changes its own fixtures is how a green run stops
   // meaning what it says.
+  // THE ENTRY HASH COMES FROM `claims_in_domain`, NOT FROM THE PUBLISH.
+  // `publish_claim` returns `{ action_hash, note }` and nothing else — the
+  // first version of this block read `entry_hash_for_critique` off it, which
+  // is a field `publish_discourse_reading` returns and this one does not. It
+  // sent `claim_hash: undefined` and went red on a live conductor. §5b takes
+  // the same route for the same reason, two dozen lines below.
   const TO_RETRACT = `A claim published to be withdrawn, stamped ${STAMP}.`;
-  const retractable = await callTool('publish_claim', {
+  await callTool('publish_claim', {
     content: TO_RETRACT, domain: DOMAIN, confidence: 'Tentative',
   });
+  const beforeRetraction = await callTool('claims_in_domain', { domain: DOMAIN });
+  const retractableHash = (beforeRetraction.parsed ?? [])
+    .find((c) => c.content === TO_RETRACT)?.entry_hash;
+  check('a claim entry hash is in hand for the retraction below',
+    typeof retractableHash === 'string');
   const retracted = await callTool('retract_claim', {
-    claim_hash: retractable.parsed?.entry_hash_for_critique,
+    claim_hash: retractableHash,
     reason: 'Withdrawn by its author, to exercise the tool.',
   });
   check('retract_claim records a withdrawal under the agent\'s own key',
@@ -392,6 +403,13 @@ async function main() {
   // record, not a deletion — nothing in this protocol is removed — so the
   // original must still be readable afterwards. A tool that quietly made the
   // claim vanish would pass the check above and break the invariant.
+  //
+  // AND THIS CHECK IS VACUOUS WHEN THE ONE ABOVE IT FAILS, which is not a
+  // hypothetical: on run 140581388912 the retraction never happened and this
+  // line went green anyway, because an un-retracted claim is also still
+  // there. It is a control on the tool working, not evidence that it ran —
+  // read it only alongside the check above, and that is why the guard on the
+  // hash is its own check rather than an unasserted `?.`.
   const afterRetraction = await callTool('claims_in_domain', { domain: DOMAIN });
   check('and the retracted claim is STILL THERE — a withdrawal adds, it does not delete',
     ((afterRetraction.parsed ?? []).map((c) => c.content)).includes(TO_RETRACT));
