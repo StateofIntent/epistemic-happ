@@ -318,6 +318,34 @@ const TOOLS = [
     },
   },
   {
+    name: 'standing_in_domain',
+    description:
+      'Every claim in a domain with how far behind the live frontier its engagement sits — the '
+      + 'two-level read, which walks critiques of critiques rather than stopping at the first. '
+      + 'Use it when you need to know whether a claim has been ENGAGED WITH recently, not just '
+      + 'whether critiques exist. This is NOT a score and nothing ranks agents by it: every '
+      + 'figure is per claim and echoes the patience it was computed under, so you can disagree '
+      + 'with it. Leave max_causal_distance out and nothing atrophies — that is a real neutral '
+      + 'reading, not a missing one, and the report says which you got.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'The domain name, as shown by list_domains.' },
+        max_causal_distance: {
+          type: 'number',
+          description:
+            'Optional. How many causal steps behind the frontier an engagement may lie and still '
+            + 'confer standing. Omit it to promise no threshold, which atrophies nothing.',
+        },
+        horizon_levels: {
+          type: 'number',
+          description: 'Optional. Levels of critique-of-critique to walk. Omit for the default.',
+        },
+      },
+      required: ['domain'],
+    },
+  },
+  {
     name: 'assess',
     description:
       'State where you stand on a claim, under your own agent key. This is NOT a vote and '
@@ -687,6 +715,37 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         // `mcp-server.mjs` never called this tool — the two tools it did not
         // exercise were the two that took a domain.
         return ok(await ep.discourseHealth(await membraneFor(ep, a.domain)));
+
+      case 'standing_in_domain':
+        // RESOLVED FROM THE DOMAIN NAME, exactly as discourse_health is, and
+        // for the reason recorded above it: `standing` takes a MEMBRANE HASH,
+        // `a` is `Record<string, any>`, and TypeScript cannot object if a
+        // domain string is passed straight through. That defect shipped once
+        // in this file and survived because the harness did not exercise the
+        // tool. `scripts/live-verify/mcp-server.mjs` now calls this one.
+        //
+        // THE POLICY IS PASSED THROUGH AND NEVER DEFAULTED. Omitted means no
+        // threshold promised and nothing atrophied, which is a real neutral
+        // reading — supplying one here would be this server choosing a
+        // patience the agent's operator never did (agent-sdk README §4.4).
+        {
+          const report = await ep.standing(await membraneFor(ep, a.domain), {
+            standingPolicy: a.max_causal_distance === undefined
+              ? undefined
+              : { max_causal_distance: a.max_causal_distance },
+            horizonLevels: a.horizon_levels,
+          });
+          // HASHES ARE BASE64'D BY HAND HERE, and `decoded` is the wrong
+          // helper: it maps an array of RECORDS, and this is one struct whose
+          // hashes sit inside it. `ok` is JSON.stringify, which turns a bare
+          // Uint8Array into {"0":1,"1":2,...} — readable by nothing. Caught by
+          // the compiler on the first shape and by inspection on the second.
+          return ok({
+            ...report,
+            observer: b64(report.observer),
+            claims: report.claims.map((c) => ({ ...c, claim: b64(c.claim) })),
+          });
+        }
 
       case 'assess': {
         // READ FRESH AT CALL TIME, not taken from the caller. An agent

@@ -229,6 +229,53 @@ export interface DiscourseHealth {
   critique_mode_distribution: [CritiqueMode, number][];
 }
 
+/** A reader's patience, and it is never defaulted by this library.
+ *
+ * `max_causal_distance` is how many causal steps behind the frontier an
+ * engagement may lie and still confer standing. Omitting the policy
+ * entirely is a REAL neutral position, not an absent one: no threshold is
+ * promised, nothing atrophies, and the report says so through
+ * `threshold_promised_by_caller`. */
+export interface StandingPolicy {
+  max_causal_distance?: number | null;
+}
+
+/** One claim's standing under the policy the caller supplied. Published
+ * per claim so the verdict is checkable rather than asserted. */
+export interface ClaimStanding {
+  claim: Uint8Array;
+  has_standing: boolean;
+  engagement_distance: number;
+  engagements: number;
+  own_depth_used: boolean;
+}
+
+/** The two-level read: a domain's claims with how far behind the frontier
+ * each one's engagement lies.
+ *
+ * WHY THIS IS NOT A SCORE. Every figure is per claim and echoes the policy
+ * it was computed under, so a reader can tell which patience produced it
+ * and disagree with it. `threshold_promised_by_caller` is false when no
+ * policy was supplied, and nothing atrophied in that case. */
+export interface StandingReport {
+  observer: Uint8Array;
+  domain: string;
+  /** Echoed so a reader can tell which patience produced the report. */
+  max_causal_distance: number | null;
+  /** TRUE only when the CALLER supplied the threshold and therefore
+   * promised it. */
+  threshold_promised_by_caller: boolean;
+  claims: ClaimStanding[];
+  records_examined: number;
+  claims_examined: number;
+  with_standing: number;
+  atrophied: number;
+  causal_edges: number;
+  max_height: number;
+  /** Levels of critique-of-critique actually walked. */
+  horizon_levels: number;
+}
+
 export interface CrossDomainCritique {
   critique_action: Uint8Array;
   critique_author: Uint8Array;

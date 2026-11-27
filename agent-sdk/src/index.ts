@@ -53,6 +53,7 @@ import { decode } from '@msgpack/msgpack';
 import type {
   Claim, Critique, Membrane, AntibodyPattern, Retraction,
   FrictionStatus, DiscourseHealth, CrossDomainCritique,
+  StandingPolicy, StandingReport,
   AttestationPolicy, ConductancePolicy,
   ConfidenceLevel, CritiqueMode, CritiqueTargetType, Decoded,
   Constitution, ConstitutionPromise, Condition,
@@ -752,6 +753,32 @@ export class EpistemicAgent {
       membrane: membraneHash,
       attestation_policy: lenses.attestationPolicy ?? null,
       conductance_policy: lenses.conductancePolicy ?? null,
+    });
+  }
+
+  /** The two-level read: every claim in a domain with how far behind the
+   * frontier its engagement sits.
+   *
+   * WHY IT TAKES A POLICY AND NEVER DEFAULTS ONE. Supplying a
+   * `max_causal_distance` silently would be this library promising a
+   * patience the agent's operator never chose — the same rule as
+   * discourseHealth(). Omit it and NOTHING ATROPHIES: every claim keeps
+   * standing, the report sets `threshold_promised_by_caller` false, and
+   * that is a complete and honest answer rather than a missing one.
+   *
+   * `horizonLevels` is how many levels of critique-of-critique to walk;
+   * omitted means the coordinator's own default. */
+  async standing(
+    membraneHash: Uint8Array,
+    opts: {
+      standingPolicy?: StandingPolicy;
+      horizonLevels?: number;
+    } = {},
+  ): Promise<StandingReport> {
+    return this.call<StandingReport>('get_standing', {
+      membrane: membraneHash,
+      standing_policy: opts.standingPolicy ?? null,
+      horizon_levels: opts.horizonLevels ?? null,
     });
   }
 
